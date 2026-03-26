@@ -1,0 +1,79 @@
+# Memory
+
+## Me
+**YOUR_NAME**, YOUR_ROLE at YOUR_COMPANY.
+Jira: YOUR_JIRA_USERNAME | Project: YOUR_PROJECT | Board: YOUR_BOARD_ID
+
+## Team: YOUR_TEAM
+Focus: Your team's focus area
+| Who | Role | Notes |
+|-----|------|-------|
+| **Team Member 1** | Developer | |
+| **Team Member 2** | Designer | |
+
+## Key People
+| Who | Context |
+|-----|---------|
+| **Manager** | Your direct manager |
+| **Tech Lead** | Technical leadership |
+
+## Other Squads
+List other teams you interact with
+
+## Terms
+| Term | Meaning |
+|------|---------|
+| YOUR_ORG | Your organization name |
+| SDD | Software Design Document |
+| SP | Story Points |
+| FF | Feature Flag |
+
+## Projects
+| Name | What |
+|------|------|
+| **Project A** | Brief description |
+| **Project B** | Brief description |
+
+## Processes
+- Sprints: ~X weeks each
+- Release cycle: describe your release process
+
+## Current Focus
+- Current quarter objectives
+- Key initiatives
+
+## Task Tracking
+- Describe how tasks flow between tools (e.g., Notion → TASKS.md)
+
+## Known Issues
+- **Apostrophe in project path:** The path "Claude's Home" contains an apostrophe which can cause glob/search failures in subagents. When delegating file searches to subagents, ensure paths are properly quoted or escaped.
+
+See `memory/` for detailed profiles and context.
+
+## Dashboard
+- **Run with:** `node serve.js` (from project root) — opens at `http://localhost:3000/dashboard/`
+- TASKS.md and memory files auto-load via HTTP fetch on page load
+- Tasks poll every 2s for changes — edits via Claude Code appear automatically
+
+### Dashboard Architecture
+- `dashboard/js/main.js` — entry point, imports all modules, config loading
+- `dashboard/js/tasks-parser.js` — parses TASKS.md markdown into structured data
+- `dashboard/js/tasks-board.js` — board view rendering, drag-drop, inline card editing
+- `dashboard/js/tasks-list.js` — list view rendering
+- `dashboard/js/memory-renderer.js` — memory tab rendering (overview, files, directories)
+- `dashboard/js/memory-parser.js` — parses memory markdown files (fields, tables, sections)
+- `dashboard/js/memory-modal.js` — modal CRUD for people/projects pages
+- `dashboard/js/inline-edit.js` — inline editing for context page (fields, table cells, section lines)
+- `dashboard/js/http-loader.js` — HTTP fetch/save fallback (httpSave, loadMemoryViaHttp)
+- `dashboard/js/state.js` — shared state, tab switching, status bar
+- `dashboard/js/persistence.js` — IndexedDB handle storage for FileSystem API
+- `dashboard/js/overview.js` — overview tab widgets
+- `dashboard/js/theme.js` — dark/light theme toggle
+- `dashboard/styles/` — base.css, tasks.css, memory.css, modal.css, overview.css, misc.css
+- `serve.js` — Node.js dev server with `/api/save` (POST) and `/api/memory-manifest` (GET)
+
+### Task Priority System
+- Priorities: `low` (blue), `medium` (yellow), `high` (red) — default is `medium`
+- Stored in TASKS.md HTML comments: `<\!-- created:2026-02-22 priority:medium -->`
+- Board shows clickable priority dots — click cycles low → medium → high
+- Notes use em-dash separator: `**Title** — note text`

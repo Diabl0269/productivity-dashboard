@@ -1,0 +1,31 @@
+## Backlog
+
+- [ ] Research new CI/CD pipeline options
+  <\!-- created:2026-01-15 priority:low -->
+- [ ] Evaluate monitoring tools
+  <\!-- created:2026-01-20 priority:low -->
+
+## Todo
+
+- [ ] Set up project documentation
+  <\!-- created:2026-02-01 priority:medium -->
+- [ ] Review PR for auth module — needs security review
+  <\!-- created:2026-02-05 priority:high -->
+
+## In Progress
+
+- [ ] Implement user settings page
+  - Design approved, working on API integration
+  <\!-- created:2026-02-10 priority:medium -->
+
+## Done
+
+- [x] Configure development environment
+  <\!-- created:2026-01-10 priority:high -->
+- [x] Set up productivity dashboard
+  <\!-- created:2026-01-12 priority:medium -->
+
+## Archive
+
+- [x] Initial project scaffolding
+  <\!-- created:2025-12-01 priority:medium -->

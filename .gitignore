@@ -1,0 +1,22 @@
+# Personal data — never commit
+CLAUDE.md
+TASKS.md
+memory/
+config.json
+
+# Local Claude config
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Actual daily-update script (has personal paths/IDs)
+scripts/daily-update.sh
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node (future-proofing)
+node_modules/

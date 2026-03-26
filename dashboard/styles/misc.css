@@ -1,0 +1,66 @@
+/* Memory panel scrollable area */
+.memory-content-area {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.memory-content-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.memory-content-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.memory-content-area::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.memory-content-area::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.file-card-content::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.file-card-content::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.file-card-content::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.file-card-content::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* File path display */
+.file-path {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+[data-theme="dark"] .header-left svg rect[fill="#faf9f5"] {
+  fill: #1a1a1a;
+}
+[data-theme="dark"] .header-left svg rect[fill="#c4c4c2"] {
+  fill: #6c6c6a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .header-left svg rect[fill="#faf9f5"] {
+    fill: #1a1a1a;
+  }
+  :root:not([data-theme="light"]) .header-left svg rect[fill="#c4c4c2"] {
+    fill: #6c6c6a;
+  }
+}

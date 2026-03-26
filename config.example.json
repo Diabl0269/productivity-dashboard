@@ -1,0 +1,14 @@
+{
+  "quickLinks": [
+    { "icon": "📊", "label": "Jira Board", "url": "https://your-org.atlassian.net/jira/software/projects/PROJ/boards/1" },
+    { "icon": "📅", "label": "Daily Planner", "url": "https://www.notion.so/your-page-id" },
+    { "icon": "💬", "label": "Team Channel", "url": "https://your-org.slack.com/archives/C0EXAMPLE" }
+  ],
+  "sprints": [
+    { "name": "Q1 S1", "start": "2026-01-01", "end": "2026-01-21" },
+    { "name": "Q1 S2", "start": "2026-01-22", "end": "2026-02-11" }
+  ],
+  "defaultWorkshops": [
+    { "name": "Example Workshop", "status": "planned" }
+  ]
+}

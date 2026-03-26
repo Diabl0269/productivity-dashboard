@@ -1,0 +1,61 @@
+#\!/bin/bash
+
+set -e
+
+# ============================================
+# CUSTOMIZE THESE for your environment
+# ============================================
+PROJECT_DIR="$HOME/Documents/Claude's Home"        # Path to this project
+SLACK_USER_ID="UXXXXXXXXXX"                         # Your Slack user ID (for DM delivery)
+# ============================================
+
+# Export PATH to include common locations for claude binary
+export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.claude/local:/usr/local/bin:$HOME/.npm-global/bin:$HOME/.cargo/bin:/usr/bin:/bin:$PATH"
+
+LOG_FILE="$PROJECT_DIR/scripts/daily-update.log"
+TODAY=$(date +%d.%m.%y)
+
+# Create log file with timestamp
+{
+  echo "=========================================="
+  echo "Daily Update Started: $(date)"
+  echo "=========================================="
+  echo ""
+} > "$LOG_FILE"
+
+# Change to project directory
+cd "$PROJECT_DIR"
+
+# Run productivity update — fully non-interactive, sends Slack DM directly
+JSON_OUTPUT=$(claude -p --output-format json --name "daily $TODAY" "You are running as an AUTOMATED NON-INTERACTIVE cron job. Do NOT ask any questions, request confirmations, or wait for user input — you cannot receive responses.
+
+Run /productivity:update --comprehensive
+
+INSTRUCTIONS FOR THIS AUTOMATED RUN:
+1. Gather all data (Jira, Notion, Slack, memory scan) in parallel
+2. Compile findings into a structured report — do NOT ask which items to add or triage
+3. Do NOT modify TASKS.md or memory files — only report findings
+4. Send a Slack DM (not draft) to user $SLACK_USER_ID with a concise summary formatted with Slack mrkdwn
+5. At the end of the Slack message, include: To resume: \`claude -r \"daily $TODAY\"\`
+
+Complete everything without any user interaction." 2>> "$LOG_FILE")
+
+echo "$JSON_OUTPUT" >> "$LOG_FILE"
+
+# Extract session ID from JSON output and log the resume command
+SESSION_ID=$(echo "$JSON_OUTPUT" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('session_id',''))" 2>/dev/null || echo "")
+
+if [ -n "$SESSION_ID" ]; then
+  echo "" >> "$LOG_FILE"
+  echo "Resume command: claude -r \"daily $TODAY\" (or by ID: claude -r $SESSION_ID)" >> "$LOG_FILE"
+fi
+
+# Log completion
+{
+  echo ""
+  echo "=========================================="
+  echo "Daily Update Completed: $(date)"
+  echo "=========================================="
+} >> "$LOG_FILE"
+
+exit 0

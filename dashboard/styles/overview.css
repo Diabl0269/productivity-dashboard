@@ -1,0 +1,335 @@
+/* Overview panel styles */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  padding: 20px 0;
+  max-width: 1200px;
+}
+
+@media (max-width: 900px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.widget-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px var(--shadow);
+}
+
+.widget-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.widget-content {
+  color: var(--text-primary);
+}
+
+/* Sprint Info Widget */
+.sprint-name {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.sprint-days {
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+/* Task Summary Widget */
+.task-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.summary-stat {
+  text-align: center;
+  padding: 12px 8px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.stat-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Quick Links Widget */
+.quick-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quick-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: all 0.15s ease;
+  font-size: 14px;
+}
+
+.quick-link:hover {
+  background: var(--border);
+  transform: translateX(4px);
+}
+
+.quick-link-icon {
+  font-size: 16px;
+}
+
+/* 1:1 Topics Widget */
+.topics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.topics-empty {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.topic-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.topic-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  border-radius: 4px;
+}
+
+.topic-delete:hover {
+  background: var(--border);
+  color: var(--accent);
+}
+
+.topic-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.topic-input {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.topic-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.topic-add-btn {
+  padding: 10px 16px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.topic-add-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* Upcoming Deadlines Widget */
+.deadlines-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deadline-empty {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.deadline-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.deadline-item.deadline-today {
+  border-left: 3px solid #ef4444;
+  background: #ef444410;
+}
+
+.deadline-item.deadline-soon {
+  border-left: 3px solid #f59e0b;
+  background: #f59e0b10;
+}
+
+.deadline-date {
+  font-weight: 600;
+  min-width: 56px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.deadline-task {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deadline-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.deadline-today .deadline-badge {
+  background: #ef444420;
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.deadline-soon .deadline-badge {
+  background: #f59e0b20;
+  color: #f59e0b;
+}
+
+/* Workshops Widget */
+.workshop-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.workshop-name-input {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  flex: 1;
+  min-width: 0;
+}
+
+.workshop-name-input:hover {
+  background: var(--border);
+}
+
+.workshop-name-input:focus {
+  outline: none;
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+}
+
+.workshop-status-select {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: center;
+}
+
+.workshop-status-select:focus {
+  outline: none;
+}
+
+.workshop-add-btn {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  margin-top: 4px;
+}
+
+.workshop-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
