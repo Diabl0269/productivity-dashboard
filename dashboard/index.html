@@ -18,42 +18,46 @@
 </head>
 <body>
   <header>
-    <div class="header-left">
-      <svg width="28" height="28" viewBox="0 0 32 32" style="margin-right: 12px; flex-shrink: 0;">
-        <rect x="4" y="2" width="24" height="28" rx="4" fill="#faf9f5" stroke="#D97757" stroke-width="2"/>
-        <rect x="8" y="0" width="16" height="5" rx="2.5" fill="#D97757"/>
-        <path d="M9 13l3 3 5-5" fill="none" stroke="#D97757" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <rect x="20" y="12" width="5" height="2" rx="1" fill="#c4c4c2"/>
-        <rect x="9" y="20" width="10" height="2" rx="1" fill="#c4c4c2"/>
-        <rect x="9" y="25" width="7" height="2" rx="1" fill="#c4c4c2"/>
-      </svg>
-      <div>
-        <h1>Productivity</h1>
-        <div id="filePath" class="file-path"></div>
+    <div class="header-top">
+      <div class="header-left">
+        <svg width="28" height="28" viewBox="0 0 32 32" style="margin-right: 12px; flex-shrink: 0;">
+          <rect x="4" y="2" width="24" height="28" rx="4" fill="#faf9f5" stroke="#D97757" stroke-width="2"/>
+          <rect x="8" y="0" width="16" height="5" rx="2.5" fill="#D97757"/>
+          <path d="M9 13l3 3 5-5" fill="none" stroke="#D97757" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="20" y="12" width="5" height="2" rx="1" fill="#c4c4c2"/>
+          <rect x="9" y="20" width="10" height="2" rx="1" fill="#c4c4c2"/>
+          <rect x="9" y="25" width="7" height="2" rx="1" fill="#c4c4c2"/>
+        </svg>
+        <div>
+          <h1>Productivity</h1>
+          <div id="filePath" class="file-path"></div>
+        </div>
       </div>
+      <div class="buttons">
+        <button id="themeToggle" title="Toggle dark mode" style="padding: 8px 10px; font-size: 18px; line-height: 1;">☀️</button>
+        <button id="openTaskBtn">Select File</button>
+        <button id="openMemoryBtn" style="display: none;">Open Folder</button>
+        <button id="saveBtn" class="primary" disabled style="display: none;">Save</button>
+      </div>
+    </div>
+    <div class="header-nav">
       <div class="view-toggle" id="mainTabToggle">
         <button id="overviewTabBtn" class="active">Overview</button>
         <button id="tasksTabBtn">Tasks</button>
         <button id="memoryTabBtn">Memory</button>
         <button id="globalMemoryTabBtn">Global Memory</button>
       </div>
-      <div class="view-toggle" id="taskViewToggle">
+      <div class="view-toggle" id="taskViewToggle" style="display: none;">
         <button id="boardViewBtn" class="active">Board</button>
         <button id="listViewBtn">List</button>
         <button id="sortPriorityBtn" title="Sort by priority">&#8597; Priority</button>
       </div>
-    </div>
-    <div class="unified-search" id="unifiedSearch" style="display: none;">
-      <svg class="unified-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input type="text" id="unifiedSearchInput" placeholder="Search tasks..." autocomplete="off">
-      <button class="unified-search-clear" id="unifiedSearchClear" style="display: none;">&times;</button>
-      <kbd class="unified-search-shortcut">⌘F</kbd>
-    </div>
-    <div class="buttons">
-      <button id="themeToggle" title="Toggle dark mode" style="padding: 8px 10px; font-size: 18px; line-height: 1;">☀️</button>
-      <button id="openTaskBtn">Select File</button>
-      <button id="openMemoryBtn" style="display: none;">Open Folder</button>
-      <button id="saveBtn" class="primary" disabled style="display: none;">Save</button>
+      <div class="unified-search" id="unifiedSearch" style="display: none;">
+        <svg class="unified-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="unifiedSearchInput" placeholder="Search tasks..." autocomplete="off">
+        <button class="unified-search-clear" id="unifiedSearchClear" style="display: none;">&times;</button>
+        <kbd class="unified-search-shortcut">⌘F</kbd>
+      </div>
     </div>
   </header>
 
