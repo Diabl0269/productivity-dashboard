@@ -33,6 +33,18 @@ function formatMetaComment(created, updated, priority, id) {
   return ' ' + comment;
 }
 
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+const escHtml = s => s.replace(/[&<>"]/g, c => ESC[c]);
+const MD_LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+const BARE_URL_RE = /(?<!href="|">)(https?:\/\/[^\s<"&]+)/g;
+
+export function renderLinks(text) {
+  if (!text) return '';
+  return escHtml(text)
+    .replace(MD_LINK_RE, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(BARE_URL_RE, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
 export function parseTaskMarkdown(content) {
   const resultSections = [];
   const resultTasks = {};

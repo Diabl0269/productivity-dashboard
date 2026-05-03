@@ -2,7 +2,7 @@
 
 import { markChanged } from './tasks-io.js';
 import { moveTask, deleteTask } from './tasks-board.js';
-import { taskSectionId, todayStr } from './tasks-parser.js';
+import { taskSectionId, todayStr, renderLinks } from './tasks-parser.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -366,8 +366,9 @@ function createListItem(task, section) {
 
   const title = document.createElement('div');
   title.className = `list-item-title ${task.checked ? 'checked' : ''}`;
-  title.textContent = task.title;
+  title.innerHTML = renderLinks(task.title);
   title.addEventListener('click', (e) => {
+    if (e.target.closest('a')) return;
     e.stopPropagation();
     startEditingListItem(title, task);
   });
@@ -387,8 +388,9 @@ function createListItem(task, section) {
   if (task.note) {
     const note = document.createElement('div');
     note.className = 'list-item-note';
-    note.textContent = task.note;
+    note.innerHTML = renderLinks(task.note);
     note.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return;
       e.stopPropagation();
       startEditingListNote(note, task);
     });
@@ -436,12 +438,13 @@ function createListItem(task, section) {
       });
 
       const stText = document.createElement('span');
-      stText.textContent = st.text;
+      stText.innerHTML = renderLinks(st.text);
       if (st.checked) {
         stText.style.textDecoration = 'line-through';
         stText.style.color = 'var(--text-muted)';
       }
       stText.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return;
         e.stopPropagation();
         startEditingListSubtask(stText, task, idx);
       });
@@ -603,13 +606,13 @@ function createArchiveListItem(task) {
 
   const title = document.createElement('div');
   title.className = 'list-item-title checked';
-  title.textContent = task.title;
+  title.innerHTML = renderLinks(task.title);
   content.appendChild(title);
 
   if (task.note) {
     const note = document.createElement('div');
     note.className = 'list-item-note';
-    note.textContent = task.note;
+    note.innerHTML = renderLinks(task.note);
     content.appendChild(note);
   }
 

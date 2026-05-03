@@ -1,7 +1,7 @@
 // tasks-board.js - Board rendering, card creation, column creation, drag-drop for board view
 
 import { markChanged } from './tasks-io.js';
-import { taskSectionId, todayStr } from './tasks-parser.js';
+import { taskSectionId, todayStr, renderLinks } from './tasks-parser.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -36,12 +36,12 @@ function createCard(task, isArchive = false) {
         <span class="checkbox checked"></span>
         <div>
           <span class="priority-dot priority-${task.priority || 'medium'}"></span>
-          <div class="card-title">${task.title}</div>
+          <div class="card-title">${renderLinks(task.title)}</div>
         </div>
       </div>
     `;
     if (task.note) {
-      html += `<div class="card-note" style="margin-left: 30px;">${task.note}</div>`;
+      html += `<div class="card-note" style="margin-left: 30px;">${renderLinks(task.note)}</div>`;
     }
     if (dateBadge) {
       html += `<div style="margin-left: 30px; margin-top: 4px;">${dateBadge}</div>`;
@@ -59,7 +59,7 @@ function createCard(task, isArchive = false) {
       <div style="flex: 1;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span class="priority-dot ${priorityClass}" data-action="cycle-priority" title="${task.priority || 'medium'} priority"></span>
-          <div class="card-title" data-action="edit-title">${task.title}</div>
+          <div class="card-title" data-action="edit-title">${renderLinks(task.title)}</div>
           ${taskIdBadge}
         </div>
       </div>
@@ -67,7 +67,7 @@ function createCard(task, isArchive = false) {
   `;
 
   if (task.note) {
-    html += `<div class="card-note" data-action="edit-note" style="cursor: pointer; margin-left: 30px;">${task.note}</div>`;
+    html += `<div class="card-note" data-action="edit-note" style="cursor: pointer; margin-left: 30px;">${renderLinks(task.note)}</div>`;
   } else {
     html += `<div class="card-note add-on-hover" data-action="edit-note" style="cursor: pointer; margin-left: 30px; font-style: italic;">+ Add note</div>`;
   }
@@ -81,7 +81,7 @@ function createCard(task, isArchive = false) {
     task.subtasks.forEach((st, idx) => {
       html += `<div class="subtask">
         <span class="checkbox ${st.checked ? 'checked' : ''}" data-action="toggle-sub" data-idx="${idx}" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px;"></span>
-        <span data-action="edit-subtask" data-idx="${idx}" style="cursor: pointer;">${st.text}</span>
+        <span data-action="edit-subtask" data-idx="${idx}" style="cursor: pointer;">${renderLinks(st.text)}</span>
       </div>`;
     });
     html += `<div class="subtask add-on-hover" data-action="add-subtask" style="color: var(--text-muted); cursor: pointer; font-style: italic; padding-left: 24px;">+ Add subtask</div>`;

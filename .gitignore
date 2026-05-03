@@ -11,6 +11,9 @@ config.json
 # Actual daily-update script (has personal paths/IDs)
 scripts/daily-update.sh
 
+# Cron run logs (personal productivity data)
+.cron-runs/
+
 # Logs
 *.log
 
