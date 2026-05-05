@@ -7,6 +7,9 @@ import { taskSectionId, todayStr, renderLinks } from './tasks-parser.js';
 let getState = null;
 let getRenderTasks = null;
 
+const SUBTASK_COLLAPSE_THRESHOLD = 3;
+const expandedSubtaskItems = new Set();
+
 export function setListCallbacks({ stateFn, renderFn }) {
   getState = stateFn;
   getRenderTasks = renderFn;
@@ -424,7 +427,14 @@ function createListItem(task, section) {
     const subtasksContainer = document.createElement('div');
     subtasksContainer.className = 'list-item-subtasks';
 
-    task.subtasks.forEach((st, idx) => {
+    const needsCollapse = task.subtasks.length > SUBTASK_COLLAPSE_THRESHOLD;
+    const isExpanded = expandedSubtaskItems.has(task.id);
+    const indexed = task.subtasks.map((st, idx) => [idx, st]);
+    const visible = (!needsCollapse || isExpanded)
+      ? indexed
+      : indexed.filter(([, st]) => !st.checked).slice(0, SUBTASK_COLLAPSE_THRESHOLD);
+
+    visible.forEach(([idx, st]) => {
       const subtaskEl = document.createElement('div');
       subtaskEl.className = 'list-item-subtask';
 
@@ -453,6 +463,21 @@ function createListItem(task, section) {
       subtaskEl.appendChild(stText);
       subtasksContainer.appendChild(subtaskEl);
     });
+
+    if (needsCollapse) {
+      const hiddenCount = task.subtasks.length - visible.length;
+      const toggleEl = document.createElement('div');
+      toggleEl.className = 'list-item-subtask subtask-toggle';
+      toggleEl.style.cssText = 'color: var(--text-muted); cursor: pointer; font-style: italic; padding-left: 24px;';
+      toggleEl.textContent = isExpanded ? 'Show less' : `+ ${hiddenCount} more`;
+      toggleEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (expandedSubtaskItems.has(task.id)) expandedSubtaskItems.delete(task.id);
+        else expandedSubtaskItems.add(task.id);
+        getRenderTasks()();
+      });
+      subtasksContainer.appendChild(toggleEl);
+    }
 
     content.appendChild(subtasksContainer);
   }

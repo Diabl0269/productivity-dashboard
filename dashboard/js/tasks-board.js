@@ -6,6 +6,9 @@ import { taskSectionId, todayStr, renderLinks } from './tasks-parser.js';
 let getState = null;
 let getRenderTasks = null;
 
+const SUBTASK_COLLAPSE_THRESHOLD = 3;
+const expandedSubtaskCards = new Set();
+
 export function setBoardCallbacks({ stateFn, renderFn }) {
   getState = stateFn;
   getRenderTasks = renderFn;
@@ -78,12 +81,27 @@ function createCard(task, isArchive = false) {
 
   if (task.subtasks.length > 0) {
     html += '<div class="card-subtasks" style="margin-left: 30px;">';
-    task.subtasks.forEach((st, idx) => {
+
+    const needsCollapse = task.subtasks.length > SUBTASK_COLLAPSE_THRESHOLD;
+    const isExpanded = expandedSubtaskCards.has(task.id);
+    const indexed = task.subtasks.map((st, idx) => [idx, st]);
+    const visible = (!needsCollapse || isExpanded)
+      ? indexed
+      : indexed.filter(([, st]) => !st.checked).slice(0, SUBTASK_COLLAPSE_THRESHOLD);
+
+    visible.forEach(([idx, st]) => {
       html += `<div class="subtask">
         <span class="checkbox ${st.checked ? 'checked' : ''}" data-action="toggle-sub" data-idx="${idx}" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px;"></span>
         <span data-action="edit-subtask" data-idx="${idx}" style="cursor: pointer;">${renderLinks(st.text)}</span>
       </div>`;
     });
+
+    if (needsCollapse) {
+      const hiddenCount = task.subtasks.length - visible.length;
+      const label = isExpanded ? 'Show less' : `+ ${hiddenCount} more`;
+      html += `<div class="subtask subtask-toggle" data-action="toggle-subtasks" style="color: var(--text-muted); cursor: pointer; font-style: italic; padding-left: 24px;">${label}</div>`;
+    }
+
     html += `<div class="subtask add-on-hover" data-action="add-subtask" style="color: var(--text-muted); cursor: pointer; font-style: italic; padding-left: 24px;">+ Add subtask</div>`;
     html += '</div>';
   } else {
@@ -130,6 +148,10 @@ function createCard(task, isArchive = false) {
     } else if (action === 'edit-subtask') {
       const idx = parseInt(e.target.dataset.idx);
       startEditingSubtask(e.target, task, idx);
+    } else if (action === 'toggle-subtasks') {
+      if (expandedSubtaskCards.has(task.id)) expandedSubtaskCards.delete(task.id);
+      else expandedSubtaskCards.add(task.id);
+      getRenderTasks()();
     } else if (action === 'add-subtask') {
       startAddingSubtask(e.target, task);
     } else if (action === 'cycle-priority') {
