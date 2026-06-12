@@ -67,6 +67,13 @@ export function switchTaskView(view) {
     listViewBtn.classList.remove('active');
     boardViewBtn.classList.add('active');
   }
+
+  // Show legend only in board view
+  const legend = board && board.previousElementSibling &&
+    board.previousElementSibling.classList.contains('priority-legend')
+    ? board.previousElementSibling : null;
+  if (legend) legend.classList.toggle('hidden', view !== 'board');
+
   renderTasks();
 }
 
@@ -115,11 +122,29 @@ export async function openTaskFile() {
   }
 }
 
+function injectPriorityLegend() {
+  const board = document.getElementById('board');
+  if (!board) return;
+  // Inject once directly before .board
+  if (board.previousElementSibling && board.previousElementSibling.classList.contains('priority-legend')) return;
+  const legend = document.createElement('div');
+  legend.className = 'priority-legend';
+  legend.setAttribute('aria-label', 'Priority colour key');
+  legend.innerHTML = `
+    <span class="priority-dot priority-low" aria-hidden="true"></span><span>Low</span>
+    <span class="priority-dot priority-medium" aria-hidden="true"></span><span>Medium</span>
+    <span class="priority-dot priority-high" aria-hidden="true"></span><span>High</span>
+  `;
+  board.parentNode.insertBefore(legend, board);
+}
+
 export function initTasks() {
   const listViewBtn = document.getElementById('listViewBtn');
   const boardViewBtn = document.getElementById('boardViewBtn');
   const openTaskBtn = document.getElementById('openTaskBtn');
   const saveBtn = document.getElementById('saveBtn');
+
+  injectPriorityLegend();
 
   listViewBtn.addEventListener('click', () => switchTaskView('list'));
   boardViewBtn.addEventListener('click', () => switchTaskView('board'));

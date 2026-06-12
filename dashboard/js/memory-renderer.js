@@ -86,50 +86,173 @@ function renderMemory() {
   renderMemoryContent();
 }
 
-function renderMemoryTabs() {
-  let html = '';
+/**
+ * Format a snake_case or kebab-case filename for display.
+ * E.g. "feedback_memory_gap_detection.md" -> "Memory Gap Detection"
+ * Strips known prefixes (feedback_, reference_) and capitalises each word.
+ */
+function formatTabLabel(rawName) {
+  const name = rawName.replace(/\.md$/, '');
+  // Strip common prefixes for cleaner labels
+  const withoutPrefix = name.replace(/^(feedback_|reference_)/, '');
+  // Replace underscores/hyphens with spaces, capitalise first letter of each word
+  return withoutPrefix
+    .replace(/[_-]/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
 
-  if (memoryState.memoryData.claudeMd) {
-    html += `<button class="memory-tab active" data-tab="overview">Overview</button>`;
-  }
+/**
+ * Classify a memory file into a sidebar group.
+ * Returns 'core' | 'feedback' | 'reference'
+ */
+function classifyFile(name) {
+  const lower = name.toLowerCase();
+  if (lower.startsWith('feedback_')) return 'feedback';
+  if (lower.startsWith('reference_')) return 'reference';
+  return 'core';
+}
+
+/**
+ * Build the grouped vertical sidebar navigation.
+ * Spec §7.1–7.2: group labels, vertical nav items, role="tab", aria-selected.
+ */
+function renderMemoryTabs() {
+  // Classify memory files into groups
+  const coreFiles = [];
+  const feedbackFiles = [];
+  const referenceFiles = [];
 
   for (const file of memoryState.memoryData.memoryFiles) {
-    const name = file.name.replace('.md', '');
-    html += `<button class="memory-tab${!memoryState.memoryData.claudeMd && memoryState.memoryData.memoryFiles[0] === file ? ' active' : ''}" data-tab="file-${name}">${name}</button>`;
+    const group = classifyFile(file.name);
+    if (group === 'feedback') feedbackFiles.push(file);
+    else if (group === 'reference') referenceFiles.push(file);
+    else coreFiles.push(file);
   }
 
-  for (const dirName of Object.keys(memoryState.memoryData.memoryDirs).sort()) {
-    const files = memoryState.memoryData.memoryDirs[dirName];
-    let count;
-    if (dirName === 'context') {
-      count = 0;
-      for (const file of files) {
-        const p = file.parsed;
-        count += Object.keys(p.fields).length;
-        for (const table of p.tables) {
-          count += table.rows.length;
-        }
-        for (const [sName, sContent] of Object.entries(p.sections)) {
-          if (sContent && sName !== '_intro') {
-            count += sContent.split('\n').filter(l => l.trim() && !l.trim().startsWith('|')).length;
+  // Determine the default active tab id (first item in render order)
+  let defaultTabId = null;
+  if (memoryState.memoryData.claudeMd) {
+    defaultTabId = 'overview';
+  } else if (coreFiles.length > 0) {
+    defaultTabId = 'file-' + coreFiles[0].name.replace('.md', '');
+  } else if (feedbackFiles.length > 0) {
+    defaultTabId = 'file-' + feedbackFiles[0].name.replace('.md', '');
+  } else if (referenceFiles.length > 0) {
+    defaultTabId = 'file-' + referenceFiles[0].name.replace('.md', '');
+  } else {
+    const dirNames = Object.keys(memoryState.memoryData.memoryDirs).sort();
+    if (dirNames.length > 0) defaultTabId = 'dir-' + dirNames[0];
+  }
+
+  let html = '';
+
+  // ── Core group ──
+  const hasCoreItems = memoryState.memoryData.claudeMd || coreFiles.length > 0;
+  if (hasCoreItems) {
+    html += '<span class="memory-sidebar-group-label">Core</span>';
+
+    if (memoryState.memoryData.claudeMd) {
+      html += buildTabButton('overview', 'Overview', null, false);
+    }
+
+    for (const file of coreFiles) {
+      const tabId = 'file-' + file.name.replace('.md', '');
+      html += buildTabButton(tabId, formatTabLabel(file.name), null, false);
+    }
+  }
+
+  // ── Feedback group ──
+  if (feedbackFiles.length > 0) {
+    html += '<span class="memory-sidebar-group-label">Feedback</span>';
+    for (const file of feedbackFiles) {
+      const name = file.name.replace('.md', '');
+      const tabId = 'file-' + name;
+      html += buildTabButton(tabId, formatTabLabel(file.name), null, false);
+    }
+  }
+
+  // ── Reference group ──
+  if (referenceFiles.length > 0) {
+    html += '<span class="memory-sidebar-group-label">Reference</span>';
+    for (const file of referenceFiles) {
+      const tabId = 'file-' + file.name.replace('.md', '');
+      html += buildTabButton(tabId, formatTabLabel(file.name), null, false);
+    }
+  }
+
+  // ── Directories group ──
+  const dirNames = Object.keys(memoryState.memoryData.memoryDirs).sort();
+  if (dirNames.length > 0) {
+    html += '<span class="memory-sidebar-group-label">Directories</span>';
+    for (const dirName of dirNames) {
+      const files = memoryState.memoryData.memoryDirs[dirName];
+      const tabId = 'dir-' + dirName;
+
+      let count;
+      if (dirName === 'context') {
+        count = 0;
+        for (const file of files) {
+          const p = file.parsed;
+          count += Object.keys(p.fields).length;
+          for (const table of p.tables) { count += table.rows.length; }
+          for (const [sName, sContent] of Object.entries(p.sections)) {
+            if (sContent && sName !== '_intro') {
+              count += sContent.split('\n').filter(l => l.trim() && !l.trim().startsWith('|')).length;
+            }
           }
         }
+      } else {
+        count = files.length;
       }
-    } else {
-      count = files.length;
+
+      const label = dirName.charAt(0).toUpperCase() + dirName.slice(1);
+      html += buildTabButton(tabId, label, count, false);
     }
-    html += `<button class="memory-tab" data-tab="dir-${dirName}">${dirName} <span class="count">${count}</span></button>`;
   }
 
   memoryTabsContainer.innerHTML = html;
 
+  // Activate the default tab
+  if (defaultTabId) {
+    const defaultBtn = memoryTabsContainer.querySelector('[data-tab="' + defaultTabId + '"]');
+    if (defaultBtn) {
+      defaultBtn.classList.add('active');
+      defaultBtn.setAttribute('aria-selected', 'true');
+    }
+  }
+
+  // Wire up click handlers
   memoryTabsContainer.querySelectorAll('.memory-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      memoryTabsContainer.querySelectorAll('.memory-tab').forEach(t => t.classList.remove('active'));
+      memoryTabsContainer.querySelectorAll('.memory-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
       tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
       renderMemoryContent();
     });
   });
+}
+
+/**
+ * Build a single sidebar nav button HTML string.
+ */
+function buildTabButton(tabId, label, count, initialActive) {
+  const countHtml = count != null
+    ? '<span class="count">' + count + '</span>'
+    : '';
+  const activeClass = initialActive ? ' active' : '';
+  const ariaSelected = initialActive ? 'true' : 'false';
+  return (
+    '<button class="memory-tab' + activeClass + '" ' +
+    'data-tab="' + escapeHtml(tabId) + '" ' +
+    'role="tab" ' +
+    'aria-selected="' + ariaSelected + '">' +
+    escapeHtml(label) +
+    countHtml +
+    '</button>'
+  );
 }
 
 function renderMemoryContent() {
@@ -173,7 +296,7 @@ function renderMemoryOverview() {
     statsHtml += `
       <div class="stat">
         <div class="stat-value">${count}</div>
-        <div class="stat-label">${dirName}</div>
+        <div class="stat-label">${escapeHtml(dirName)}</div>
       </div>
     `;
   }
@@ -184,9 +307,9 @@ function renderMemoryOverview() {
   memoryContentContainer.innerHTML = `
     ${statsHtml}
     <div class="file-card">
-      <div class="file-card-header" onclick="this.nextElementSibling.classList.toggle('expanded'); this.querySelector('.toggle').textContent = this.nextElementSibling.classList.contains('expanded') ? '\u2212' : '+'">
+      <div class="file-card-header" onclick="this.nextElementSibling.classList.toggle('expanded'); this.querySelector('.toggle').textContent = this.nextElementSibling.classList.contains('expanded') ? '−' : '+'">
         <span class="file-card-title">CLAUDE.md</span>
-        <span class="toggle" style="color: var(--text-muted);">&minus;</span>
+        <span class="toggle" style="color: var(--text-tertiary);">&minus;</span>
       </div>
       <div class="file-card-content expanded markdown-content">${claudeContent}</div>
     </div>
@@ -198,16 +321,17 @@ function renderMemoryFile(fileName) {
   const file = memoryState.memoryData.memoryFiles.find(f => f.name === fileName);
   if (!file) return;
 
+  // Render as markdown — do NOT add file-card-content--raw for markdown files
   const content = renderMarkdownToHtml(file.content);
 
   memoryContentContainer.innerHTML = `
     <div class="file-card">
       <div class="file-card-header">
-        <span class="file-card-title">${fileName}</span>
+        <span class="file-card-title">${escapeHtml(fileName)}</span>
       </div>
       <div class="file-card-content expanded markdown-content">${content}</div>
     </div>
-    <button onclick="openEditModal('${fileName}', 'memoryFile')" style="margin-top: 10px;">Edit ${fileName}</button>
+    <button onclick="openEditModal('${escapeHtml(fileName)}', 'memoryFile')" style="margin-top: 10px;">Edit ${escapeHtml(fileName)}</button>
   `;
 }
 
@@ -221,9 +345,7 @@ function renderMemoryDirectory(dirName) {
   }
 
   // All other directories use card grid view
-  let html = `
-    <div class="memory-grid" id="dirGrid">
-  `;
+  let html = '<div class="memory-grid" id="dirGrid">';
 
   for (const file of files) {
     const p = file.parsed;
@@ -253,8 +375,16 @@ function renderMemoryDirectory(dirName) {
     }
     if (!preview) preview = getPreview(p.rawContent, 100);
 
+    const cardLabel = escapeHtml('Open ' + title);
+
     html += `
-      <div class="memory-card" onclick="openFileModal('${dirName}', '${file.name}')" data-search="${escapeHtml((title + ' ' + JSON.stringify(p.fields) + ' ' + p.rawContent).toLowerCase())}">
+      <div class="memory-card"
+           tabindex="0"
+           role="button"
+           aria-label="${cardLabel}"
+           data-dir="${escapeHtml(dirName)}"
+           data-file="${escapeHtml(file.name)}"
+           data-search="${escapeHtml((title + ' ' + JSON.stringify(p.fields) + ' ' + p.rawContent).toLowerCase())}">
         <div class="memory-card-title">${escapeHtml(title)}</div>
         ${fieldsHtml}
         <div class="memory-card-preview">${escapeHtml(preview)}</div>
@@ -263,18 +393,33 @@ function renderMemoryDirectory(dirName) {
   }
 
   html += `
-    <div class="add-btn" onclick="openNewFileModal('${dirName}')">
-      + Add to ${dirName}
+    <div class="add-btn" onclick="openNewFileModal('${escapeHtml(dirName)}')">
+      + Add to ${escapeHtml(dirName)}
     </div>
   </div>`;
 
   memoryContentContainer.innerHTML = html;
+
+  // Wire up card clicks and keyboard activation (ARIA §7.5)
+  memoryContentContainer.querySelectorAll('.memory-card').forEach(card => {
+    const dirN = card.dataset.dir;
+    const fileN = card.dataset.file;
+
+    card.addEventListener('click', () => {
+      window.openFileModal(dirN, fileN);
+    });
+
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        window.openFileModal(dirN, fileN);
+      }
+    });
+  });
 }
 
 function renderMemoryDirectoryFlat(dirName, files) {
-  let html = `
-    <div id="dirGrid">
-  `;
+  let html = '<div id="dirGrid">';
 
   for (const file of files) {
     const p = file.parsed;
@@ -282,7 +427,7 @@ function renderMemoryDirectoryFlat(dirName, files) {
     // Render fields as a key-value table
     const fieldEntries = Object.entries(p.fields);
     if (fieldEntries.length > 0) {
-      html += `<div class="file-card" data-file-dir="${dirName}" data-file-name="${file.name}" style="margin-bottom: 16px;"><table class="memory-flat-table"><tbody>`;
+      html += `<div class="file-card" data-file-dir="${escapeHtml(dirName)}" data-file-name="${escapeHtml(file.name)}" style="margin-bottom: 16px;"><table class="memory-flat-table"><tbody>`;
       for (const [key, value] of fieldEntries) {
         html += `<tr data-search="${escapeHtml((key + ' ' + value).toLowerCase())}"><td>${escapeHtml(key)}</td><td data-editable="field" data-field-key="${escapeHtml(key)}">${escapeHtml(value)}</td></tr>`;
       }
@@ -292,7 +437,7 @@ function renderMemoryDirectoryFlat(dirName, files) {
     // Render parsed tables (teams, tools, etc.) as proper HTML tables
     for (let ti = 0; ti < p.tables.length; ti++) {
       const table = p.tables[ti];
-      html += `<div class="file-card" data-file-dir="${dirName}" data-file-name="${file.name}" style="margin-bottom: 16px;"><table class="memory-flat-table"><thead><tr>`;
+      html += `<div class="file-card" data-file-dir="${escapeHtml(dirName)}" data-file-name="${escapeHtml(file.name)}" style="margin-bottom: 16px;"><table class="memory-flat-table"><thead><tr>`;
       for (const h of table.headers) {
         html += `<th>${escapeHtml(h)}</th>`;
       }
@@ -315,7 +460,7 @@ function renderMemoryDirectoryFlat(dirName, files) {
       if (!sectionContent || sectionName === '_intro') continue;
       const lines = sectionContent.split('\n').filter(l => l.trim() && !l.trim().startsWith('|'));
       if (lines.length === 0) continue;
-      html += `<div class="file-card" data-file-dir="${dirName}" data-file-name="${file.name}" style="margin-bottom: 16px;"><table class="memory-flat-table"><thead><tr><th colspan="2">${escapeHtml(sectionName)}</th></tr></thead><tbody>`;
+      html += `<div class="file-card" data-file-dir="${escapeHtml(dirName)}" data-file-name="${escapeHtml(file.name)}" style="margin-bottom: 16px;"><table class="memory-flat-table"><thead><tr><th colspan="2">${escapeHtml(sectionName)}</th></tr></thead><tbody>`;
       for (const line of lines) {
         const cleanLine = line.replace(/^[-*]\s*/, '').replace(/\*\*(.+?)\*\*/g, '$1').trim();
         if (!cleanLine) continue;
@@ -325,7 +470,7 @@ function renderMemoryDirectoryFlat(dirName, files) {
     }
   }
 
-  html += `</div>`;
+  html += '</div>';
   memoryContentContainer.innerHTML = html;
 }
 

@@ -6,6 +6,64 @@ import { showStatus } from './state.js';
 import { httpSave } from './http-loader.js';
 
 const modalOverlay = document.getElementById('modalOverlay');
+const modalEl = modalOverlay.querySelector('.modal');
+
+// ── Focus trap state ──
+let _lastFocusedElement = null;
+let _focusTrapHandler = null;
+
+/**
+ * Collect all focusable elements within the modal.
+ * Spec §9 / impl-map §memory-modal.js — focus trap.
+ */
+function getFocusableElements() {
+  return Array.from(
+    modalEl.querySelectorAll(
+      'button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter(el => !el.disabled && !el.closest('[hidden]'));
+}
+
+function trapFocus(e) {
+  const focusable = getFocusableElements();
+  if (focusable.length === 0) return;
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  if (e.key === 'Tab') {
+    if (e.shiftKey) {
+      // Shift+Tab: if on first, wrap to last
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      // Tab: if on last, wrap to first
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
+}
+
+function openModal() {
+  // Record the element that triggered the open, so we can restore focus on close
+  _lastFocusedElement = document.activeElement;
+
+  modalOverlay.classList.add('visible');
+
+  // Install focus trap
+  _focusTrapHandler = trapFocus;
+  modalEl.addEventListener('keydown', _focusTrapHandler);
+
+  // Move focus to the first focusable element in the modal
+  requestAnimationFrame(() => {
+    const focusable = getFocusableElements();
+    if (focusable.length > 0) focusable[0].focus();
+  });
+}
 
 function openFileModal(dirName, fileName) {
   const files = memoryState.memoryData.memoryDirs[dirName];
@@ -19,14 +77,14 @@ function openFileModal(dirName, fileName) {
     </div>
     <div class="form-group">
       <label>Edit Raw Markdown</label>
-      <textarea id="editContent">${escapeHtml(file.content)}</textarea>
+      <textarea id="editContent" class="form-input">${escapeHtml(file.content)}</textarea>
     </div>
   `;
 
-  modalOverlay.classList.add('visible');
   modalOverlay.dataset.type = 'dirFile';
   modalOverlay.dataset.dirName = dirName;
   modalOverlay.dataset.fileName = fileName;
+  openModal();
 }
 
 function openNewFileModal(dirName) {
@@ -50,17 +108,17 @@ function openNewFileModal(dirName) {
   document.getElementById('modalBody').innerHTML = `
     <div class="form-group">
       <label>Filename (without .md)</label>
-      <input type="text" id="newFileName" placeholder="my-new-entry" style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-size: 14px; font-family: inherit; margin-bottom: 16px;">
+      <input type="text" id="newFileName" class="form-input" placeholder="my-new-entry">
     </div>
     <div class="form-group">
       <label>Content</label>
-      <textarea id="editContent">${escapeHtml(template)}</textarea>
+      <textarea id="editContent" class="form-input">${escapeHtml(template)}</textarea>
     </div>
   `;
 
-  modalOverlay.classList.add('visible');
   modalOverlay.dataset.type = 'newDirFile';
   modalOverlay.dataset.dirName = dirName;
+  openModal();
 }
 
 function openEditModal(fileName, type) {
@@ -76,17 +134,29 @@ function openEditModal(fileName, type) {
   document.getElementById('modalBody').innerHTML = `
     <div class="form-group">
       <label>Content</label>
-      <textarea id="editContent" style="min-height: 400px;">${escapeHtml(content)}</textarea>
+      <textarea id="editContent" class="form-input" style="min-height: 400px;">${escapeHtml(content)}</textarea>
     </div>
   `;
 
-  modalOverlay.classList.add('visible');
   modalOverlay.dataset.type = type;
   modalOverlay.dataset.fileName = fileName;
+  openModal();
 }
 
 function closeModal() {
   modalOverlay.classList.remove('visible');
+
+  // Remove focus trap
+  if (_focusTrapHandler) {
+    modalEl.removeEventListener('keydown', _focusTrapHandler);
+    _focusTrapHandler = null;
+  }
+
+  // Restore focus to the triggering element
+  if (_lastFocusedElement && typeof _lastFocusedElement.focus === 'function') {
+    _lastFocusedElement.focus();
+    _lastFocusedElement = null;
+  }
 }
 
 async function saveModal() {
@@ -199,13 +269,13 @@ export function initModal() {
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalSave').addEventListener('click', saveModal);
 
-  const modalOverlay = document.getElementById('modalOverlay');
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) closeModal();
+  const modalOverlayEl = document.getElementById('modalOverlay');
+  modalOverlayEl.addEventListener('click', (e) => {
+    if (e.target === modalOverlayEl) closeModal();
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape' && modalOverlayEl.classList.contains('visible')) closeModal();
   });
 
   // Expose to window for onclick handlers

@@ -32,36 +32,42 @@ function createCard(task, isArchive = false) {
     }
   }
 
+  const priority = task.priority || 'medium';
+
   if (isArchive) {
     // Compact archive card - no edit, no drag, no delete
     let html = `
       <div style="display: flex; align-items: flex-start; gap: 12px;">
-        <span class="checkbox checked"></span>
+        <span class="checkbox checked" role="checkbox" aria-checked="true" aria-label="Completed"></span>
         <div>
-          <span class="priority-dot priority-${task.priority || 'medium'}"></span>
+          <span class="priority-dot priority-${priority}" aria-hidden="true"></span>
           <div class="card-title">${renderLinks(task.title)}</div>
         </div>
       </div>
     `;
     if (task.note) {
-      html += `<div class="card-note" style="margin-left: 30px;">${renderLinks(task.note)}</div>`;
+      html += `<div class="card-note">${renderLinks(task.note)}</div>`;
     }
     if (dateBadge) {
-      html += `<div style="margin-left: 30px; margin-top: 4px;">${dateBadge}</div>`;
+      html += `<div class="card-date-row">${dateBadge}</div>`;
     }
     card.innerHTML = html;
     return card;
   }
 
-  const priorityClass = `priority-${task.priority || 'medium'}`;
+  const priorityClass = `priority-${priority}`;
   const taskIdBadge = task.taskId ? `<span class="task-id">${task.taskId}</span>` : '';
   let html = `
     <div style="display: flex; align-items: flex-start; gap: 12px;">
-      <button class="delete-btn" data-action="delete" title="Delete task">&times;</button>
-      <span class="checkbox ${task.checked ? 'checked' : ''}" data-action="toggle"></span>
+      <button class="delete-btn" data-action="delete" aria-label="Delete task">&times;</button>
+      <span class="checkbox ${task.checked ? 'checked' : ''}" data-action="toggle"
+            role="checkbox" aria-checked="${task.checked ? 'true' : 'false'}" tabindex="0"></span>
       <div style="flex: 1;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="priority-dot ${priorityClass}" data-action="cycle-priority" title="${task.priority || 'medium'} priority"></span>
+          <span class="priority-dot ${priorityClass}" data-action="cycle-priority"
+                role="button" tabindex="0"
+                aria-label="Priority: ${priority} — click to cycle"
+                title="Priority: ${priority} — click to cycle"></span>
           <div class="card-title" data-action="edit-title">${renderLinks(task.title)}</div>
           ${taskIdBadge}
         </div>
@@ -70,17 +76,17 @@ function createCard(task, isArchive = false) {
   `;
 
   if (task.note) {
-    html += `<div class="card-note" data-action="edit-note" style="cursor: pointer; margin-left: 30px;">${renderLinks(task.note)}</div>`;
+    html += `<div class="card-note" data-action="edit-note" style="cursor: pointer;">${renderLinks(task.note)}</div>`;
   } else {
-    html += `<div class="card-note add-on-hover" data-action="edit-note" style="cursor: pointer; margin-left: 30px; font-style: italic;">+ Add note</div>`;
+    html += `<div class="card-note add-on-hover" data-action="edit-note">+ Add note</div>`;
   }
 
   if (dateBadge) {
-    html += `<div style="margin-left: 30px; margin-top: 4px;">${dateBadge}</div>`;
+    html += `<div class="card-date-row">${dateBadge}</div>`;
   }
 
   if (task.subtasks.length > 0) {
-    html += '<div class="card-subtasks" style="margin-left: 30px;">';
+    html += '<div class="card-subtasks">';
 
     const needsCollapse = task.subtasks.length > SUBTASK_COLLAPSE_THRESHOLD;
     const isExpanded = expandedSubtaskCards.has(task.id);
@@ -91,7 +97,8 @@ function createCard(task, isArchive = false) {
 
     visible.forEach(([idx, st]) => {
       html += `<div class="subtask">
-        <span class="checkbox ${st.checked ? 'checked' : ''}" data-action="toggle-sub" data-idx="${idx}" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px;"></span>
+        <span class="checkbox ${st.checked ? 'checked' : ''}" data-action="toggle-sub" data-idx="${idx}"
+              role="checkbox" aria-checked="${st.checked ? 'true' : 'false'}" tabindex="0"></span>
         <span data-action="edit-subtask" data-idx="${idx}" style="cursor: pointer;">${renderLinks(st.text)}</span>
       </div>`;
     });
@@ -99,18 +106,29 @@ function createCard(task, isArchive = false) {
     if (needsCollapse) {
       const hiddenCount = task.subtasks.length - visible.length;
       const label = isExpanded ? 'Show less' : `+ ${hiddenCount} more`;
-      html += `<div class="subtask subtask-toggle" data-action="toggle-subtasks" style="color: var(--text-muted); cursor: pointer; font-style: italic; padding-left: 24px;">${label}</div>`;
+      html += `<div class="subtask subtask-toggle" data-action="toggle-subtasks">${label}</div>`;
     }
 
-    html += `<div class="subtask add-on-hover" data-action="add-subtask" style="color: var(--text-muted); cursor: pointer; font-style: italic; padding-left: 24px;">+ Add subtask</div>`;
+    html += `<div class="subtask add-on-hover subtask-toggle" data-action="add-subtask">+ Add subtask</div>`;
     html += '</div>';
   } else {
-    html += `<div class="card-subtasks add-on-hover" style="margin-left: 30px;">
-      <div class="subtask" data-action="add-subtask" style="color: var(--text-muted); cursor: pointer; font-style: italic;">+ Add subtask</div>
+    html += `<div class="card-subtasks add-on-hover">
+      <div class="subtask subtask-toggle" data-action="add-subtask">+ Add subtask</div>
     </div>`;
   }
 
   card.innerHTML = html;
+
+  // Keyboard handler for checkboxes and priority dots
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const action = e.target.dataset.action;
+      if (action === 'toggle' || action === 'toggle-sub' || action === 'cycle-priority') {
+        e.preventDefault();
+        e.target.click();
+      }
+    }
+  });
 
   card.addEventListener('dragstart', (e) => {
     card.classList.add('dragging');
@@ -171,7 +189,7 @@ function startEditingTitle(titleEl, task) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = task.title;
-  input.style.cssText = 'width: 100%; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 6px; padding: 6px 10px; color: var(--text-primary); font-size: 14px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
 
   titleEl.replaceWith(input);
   input.focus();
@@ -200,7 +218,7 @@ function startEditingNote(noteEl, task) {
   const input = document.createElement('textarea');
   input.value = task.note || '';
   input.placeholder = 'Add a note... (Shift+Enter for new line)';
-  input.style.cssText = 'width: 100%; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 6px; padding: 4px 8px; color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none; resize: none; overflow: hidden; box-sizing: border-box;';
+  input.className = 'inline-edit-textarea';
   input.rows = 1;
 
   const autoResize = () => {
@@ -235,7 +253,7 @@ function startEditingSubtask(subtaskEl, task, idx) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = task.subtasks[idx].text;
-  input.style.cssText = 'width: calc(100% - 30px); background: var(--bg-card); border: 2px solid var(--accent); border-radius: 4px; padding: 2px 6px; color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
 
   subtaskEl.replaceWith(input);
   input.focus();
@@ -263,7 +281,7 @@ function startAddingSubtask(el, task) {
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = 'New subtask...';
-  input.style.cssText = 'width: calc(100% - 10px); background: var(--bg-card); border: 2px solid var(--accent); border-radius: 4px; padding: 2px 6px; color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
 
   el.replaceWith(input);
   input.focus();
@@ -292,7 +310,8 @@ function startEditingColumnTitle(titleEl, colId) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = section.name;
-  input.style.cssText = 'width: 180px; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 6px; padding: 4px 10px; color: var(--text-primary); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
+  input.style.width = '180px';
 
   titleEl.replaceWith(input);
   input.focus();
@@ -325,21 +344,34 @@ function startEditingColumnTitle(titleEl, colId) {
   input.addEventListener('blur', saveEdit);
 }
 
+function colorForSection(id) {
+  const normalized = (id || '').toLowerCase().replace(/[\s_-]+/g, '');
+  if (normalized === 'inprogress' || normalized === 'in-progress') return 'var(--status-inprogress)';
+  if (normalized === 'done' || normalized === 'completed') return 'var(--status-done)';
+  if (normalized === 'todo' || normalized === 'to-do') return 'var(--status-todo)';
+  if (normalized === 'backlog') return 'var(--status-backlog)';
+  if (normalized === 'archive') return 'var(--text-tertiary)';
+  return 'var(--border)';
+}
+
 function createColumn(id, title, items) {
   const col = document.createElement('div');
   col.className = 'column';
+
+  // Set column identity stripe color via CSS custom property
+  col.style.setProperty('--col-color', colorForSection(id));
 
   const isArchiveCol = id === 'archive';
   const isBacklogCol = id === 'backlog';
   if (isArchiveCol) {
     col.classList.add('archive-column');
     col.innerHTML = `
-      <div class="column-header archive-header" style="cursor: pointer;">
+      <div class="column-header archive-header" role="button" tabindex="0" aria-expanded="false" style="cursor: pointer;">
         <span class="column-title">${title}</span>
         <span class="count">${items.length}</span>
-        <span class="archive-toggle">&#9654;</span>
+        <span class="archive-toggle"></span>
       </div>
-      <div class="archive-search" style="display: none; padding: 0 12px 8px;">
+      <div class="archive-search" style="display: none;">
         <input type="text" class="archive-search-input" placeholder="Search archive..." />
       </div>
       <div class="cards" data-column="${id}" style="display: none;"></div>
@@ -348,13 +380,17 @@ function createColumn(id, title, items) {
     const archiveHeader = col.querySelector('.archive-header');
     const archiveCards = col.querySelector('.cards');
     const archiveSearch = col.querySelector('.archive-search');
-    const archiveToggle = col.querySelector('.archive-toggle');
 
-    archiveHeader.addEventListener('click', () => {
-      const isOpen = archiveCards.style.display !== 'none';
+    const toggleArchive = () => {
+      const isOpen = col.classList.contains('open');
+      col.classList.toggle('open', !isOpen);
       archiveCards.style.display = isOpen ? 'none' : 'block';
       archiveSearch.style.display = isOpen ? 'none' : 'block';
-      archiveToggle.textContent = isOpen ? '\u25B6' : '\u25BC';
+      archiveHeader.setAttribute('aria-expanded', String(!isOpen));
+    };
+    archiveHeader.addEventListener('click', toggleArchive);
+    archiveHeader.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleArchive(); }
     });
 
     const searchInput = col.querySelector('.archive-search-input');
@@ -449,6 +485,11 @@ function createColumn(id, title, items) {
     cardsContainer.appendChild(card);
   });
 
+  // Empty column state
+  if (!isArchiveCol && items.length === 0) {
+    cardsContainer.innerHTML = '<div class="column-empty-state">Drop tasks here<br>or click + Add task</div>';
+  }
+
   const getDropPosition = (e) => {
     const allCards = [...cardsContainer.querySelectorAll('.task-card')];
     const visibleCards = allCards.filter(c => !c.classList.contains('dragging'));
@@ -470,7 +511,6 @@ function createColumn(id, title, items) {
     const { insertBeforeCard } = getDropPosition(e);
     const indicator = document.createElement('div');
     indicator.className = 'drop-indicator';
-    indicator.style.cssText = 'height: 3px; background: var(--accent); border-radius: 2px; margin: 5px 0;';
     if (insertBeforeCard) { cardsContainer.insertBefore(indicator, insertBeforeCard); }
     else { cardsContainer.appendChild(indicator); }
   };
@@ -640,9 +680,8 @@ export function renderBoard() {
   });
 
   const addSectionBtn = document.createElement('div');
-  addSectionBtn.className = 'column';
-  addSectionBtn.style.cssText = 'background: transparent; border: 2px dashed var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 120px;';
-  addSectionBtn.innerHTML = '<span style="color: var(--text-muted); font-size: 14px; font-weight: 500;">+ Add Section</span>';
+  addSectionBtn.className = 'column-add-section';
+  addSectionBtn.textContent = '+ Add Section';
   addSectionBtn.addEventListener('click', () => startAddingSection(addSectionBtn));
   board.appendChild(addSectionBtn);
 
@@ -660,10 +699,10 @@ export function startAddingSection(btn) {
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = 'Section name...';
-  input.style.cssText = 'width: 220px; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 8px; padding: 10px 14px; color: var(--text-primary); font-size: 14px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
+  input.style.width = '180px';
 
   btn.innerHTML = '';
-  btn.style.cssText = 'background: var(--bg-secondary); border: 2px dashed var(--accent); display: flex; align-items: center; justify-content: center; cursor: default; min-height: 120px; min-width: 340px; border-radius: 12px;';
   btn.appendChild(input);
   input.focus();
 

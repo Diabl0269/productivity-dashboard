@@ -34,14 +34,24 @@ export function switchMainTab(tab) {
   const memoryPanel = document.getElementById('memoryPanel');
   const globalMemoryPanel = document.getElementById('globalMemoryPanel');
   const taskViewToggle = document.getElementById('taskViewToggle');
+  const sortPriorityBtn = document.getElementById('sortPriorityBtn');
   const openTaskBtn = document.getElementById('openTaskBtn');
   const openMemoryBtn = document.getElementById('openMemoryBtn');
   const saveBtn = document.getElementById('saveBtn');
+  const headerLeft = document.querySelector('.header-left');
 
-  overviewTabBtn.classList.toggle('active', tab === 'overview');
-  tasksTabBtn.classList.toggle('active', tab === 'tasks');
-  memoryTabBtn.classList.toggle('active', tab === 'memory');
-  globalMemoryTabBtn.classList.toggle('active', tab === 'global-memory');
+  // Toggle .active and aria-selected on tab buttons
+  const tabButtons = [
+    { btn: overviewTabBtn, id: 'overview' },
+    { btn: tasksTabBtn, id: 'tasks' },
+    { btn: memoryTabBtn, id: 'memory' },
+    { btn: globalMemoryTabBtn, id: 'global-memory' },
+  ];
+  for (const { btn, id } of tabButtons) {
+    const isActive = tab === id;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  }
 
   overviewPanel.classList.toggle('active', tab === 'overview');
   tasksPanel.classList.toggle('active', tab === 'tasks');
@@ -50,6 +60,11 @@ export function switchMainTab(tab) {
 
   // Show/hide view toggle for tasks
   taskViewToggle.style.display = tab === 'tasks' ? 'flex' : 'none';
+
+  // Sort priority button — now a standalone sibling, visibility managed by class
+  if (sortPriorityBtn) {
+    sortPriorityBtn.classList.toggle('hidden', tab !== 'tasks');
+  }
 
   // Show/hide appropriate buttons
   openTaskBtn.style.display = tab === 'tasks' ? 'inline-flex' : 'none';
@@ -69,6 +84,12 @@ export function switchMainTab(tab) {
   } else {
     filePathEl.textContent = '';
   }
+
+  // Toggle .has-path on .header-left to show/hide the file-path subtitle
+  if (headerLeft) {
+    headerLeft.classList.toggle('has-path', !!filePathEl.textContent.trim());
+  }
+
   onTabSwitch(tab);
 }
 
