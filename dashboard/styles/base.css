@@ -616,7 +616,7 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 0 var(--space-6) var(--space-2);
+  padding: var(--space-4) var(--space-6) var(--space-3);
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   flex-shrink: 0;
