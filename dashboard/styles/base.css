@@ -423,6 +423,15 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
   padding: var(--space-1) 0 0;
 }
 
+/* Main header tabs: looser spacing than the shared .view-toggle base */
+#mainTabToggle.view-toggle {
+  gap: var(--space-2);
+}
+
+#mainTabToggle button {
+  padding: 7px 22px;
+}
+
 .view-toggle {
   display: flex;
   gap: var(--space-1);
