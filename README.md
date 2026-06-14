@@ -18,7 +18,7 @@ A modular, local-first productivity dashboard designed for [Claude Code](https:/
 | Task Editing | External only | Inline editing directly on cards |
 | Memory Management | Read-only display | Full CRUD with modal editor + inline editing |
 | Search | None | Full-text search across tasks and memory |
-| Theme | None | Dark/light mode with system preference detection |
+| Theme | None | Dark-first design with light mode toggle |
 | Views | Single view | Board view + list view |
 | Overview | None | Sprint tracker, deadlines, 1:1 topics, workshops widgets |
 | Automation | None | Daily summary via macOS LaunchAgent |
@@ -110,9 +110,9 @@ See `memory.example/` for the expected format.
 - **Workshops:** Track workshop status (planned, in-progress, done)
 
 ### Dark/Light Mode
-- Toggle in the top-right corner
+- Dark theme is the default; toggle to light in the top-right corner
 - Preference saved to localStorage
-- Auto-detects system preference on first visit
+- Both themes share a single design-token system (`dashboard/styles/base.css`)
 
 ## Daily Automation (macOS LaunchAgent)
 

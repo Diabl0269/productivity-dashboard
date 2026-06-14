@@ -2,7 +2,7 @@
 
 import { markChanged } from './tasks-io.js';
 import { moveTask, deleteTask } from './tasks-board.js';
-import { taskSectionId, todayStr, renderLinks } from './tasks-parser.js';
+import { taskSectionId, todayStr, renderLinks, daysSince } from './tasks-parser.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -40,11 +40,10 @@ export function renderList() {
   // Quick add at top
   const quickAdd = document.createElement('div');
   quickAdd.className = 'quick-add';
-  quickAdd.style.cssText = 'border-bottom: 2px solid var(--border); margin-bottom: 24px; padding-bottom: 16px;';
 
   const sectionName = sections.find(s => s.id === currentQuickAddSection)?.name || 'Select section';
   quickAdd.innerHTML = `
-    <span class="checkbox" style="opacity: 0.3;"></span>
+    <span class="checkbox checkbox--ghost" role="checkbox" aria-checked="false" aria-label="Task completion"></span>
     <input type="text" class="quick-add-input" placeholder="Add a task..." id="quickAddInput">
     <span class="quick-add-section" id="quickAddSectionBtn">${sectionName}</span>
   `;
@@ -115,9 +114,9 @@ export function renderList() {
       header.innerHTML = `
         <span class="section-title">${section.name}</span>
         <span class="count">${sectionTasks.length}</span>
-        <span class="archive-toggle">&#9654;</span>
+        <span class="archive-toggle"></span>
       `;
-      header.style.cursor = 'pointer';
+      header.setAttribute('aria-expanded', 'false');
     } else {
       header.innerHTML = `
         <span class="section-title" data-section-id="${section.id}">${section.name}</span>
@@ -152,16 +151,21 @@ export function renderList() {
       tasksContainer.appendChild(item);
     });
 
+    // Empty section state (non-archive sections only)
+    if (!isArchive && sectionTasks.length === 0) {
+      tasksContainer.innerHTML = '<div class="list-section-empty">No tasks — press Enter in the quick-add bar to add one</div>';
+    }
+
     sectionEl.appendChild(tasksContainer);
 
     // Archive toggle and search
     if (isArchive) {
-      const toggle = header.querySelector('.archive-toggle');
       header.addEventListener('click', () => {
-        const isOpen = tasksContainer.style.display !== 'none';
+        const isOpen = sectionEl.classList.contains('open');
+        sectionEl.classList.toggle('open', !isOpen);
         tasksContainer.style.display = isOpen ? 'none' : 'block';
         sectionEl.querySelector('.archive-search').style.display = isOpen ? 'none' : 'block';
-        toggle.textContent = isOpen ? '\u25B6' : '\u25BC';
+        header.setAttribute('aria-expanded', String(!isOpen));
       });
 
       archiveSearchInput.addEventListener('input', () => {
@@ -245,7 +249,8 @@ function startEditingListSectionTitle(titleEl, section) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = section.name;
-  input.style.cssText = 'width: 200px; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 6px; padding: 4px 10px; color: var(--text-primary); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
+  input.style.width = '200px';
 
   titleEl.replaceWith(input);
   input.focus();
@@ -283,11 +288,9 @@ function startAddingListSection(btn) {
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = 'Section name...';
-  input.style.cssText = 'width: 100%; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 8px; padding: 12px 16px; color: var(--text-primary); font-size: 14px; font-family: inherit; outline: none; text-align: left;';
+  input.className = 'inline-edit-input';
 
   btn.innerHTML = '';
-  btn.style.border = '2px solid var(--accent)';
-  btn.style.cursor = 'default';
   btn.appendChild(input);
   input.focus();
 
@@ -334,7 +337,10 @@ function createListItem(task, section) {
 
   const checkbox = document.createElement('span');
   checkbox.className = `checkbox ${task.checked ? 'checked' : ''}`;
-  checkbox.addEventListener('click', (e) => {
+  checkbox.setAttribute('role', 'checkbox');
+  checkbox.setAttribute('aria-checked', task.checked ? 'true' : 'false');
+  checkbox.setAttribute('tabindex', '0');
+  const toggleCheckbox = (e) => {
     e.stopPropagation();
     task.checked = !task.checked;
     if (task.checked) {
@@ -348,23 +354,35 @@ function createListItem(task, section) {
       markChanged(task);
       getRenderTasks()();
     }
+  };
+  checkbox.addEventListener('click', toggleCheckbox);
+  checkbox.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCheckbox(e); }
   });
 
   const content = document.createElement('div');
   content.className = 'list-item-content';
 
   const titleRow = document.createElement('div');
-  titleRow.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+  titleRow.className = 'list-item-title-row';
 
+  const priority = task.priority || 'medium';
   const priorityDot = document.createElement('span');
-  priorityDot.className = `priority-dot priority-${task.priority || 'medium'}`;
-  priorityDot.title = `${task.priority || 'medium'} priority`;
-  priorityDot.addEventListener('click', (e) => {
+  priorityDot.className = `priority-dot priority-${priority}`;
+  priorityDot.setAttribute('role', 'button');
+  priorityDot.setAttribute('tabindex', '0');
+  priorityDot.setAttribute('aria-label', `Priority: ${priority} — click to cycle`);
+  priorityDot.title = `Priority: ${priority} — click to cycle`;
+  const cyclePriority = (e) => {
     e.stopPropagation();
     const cycle = { low: 'medium', medium: 'high', high: 'low' };
     task.priority = cycle[task.priority || 'medium'];
     markChanged(task);
     getRenderTasks()();
+  };
+  priorityDot.addEventListener('click', cyclePriority);
+  priorityDot.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cyclePriority(e); }
   });
 
   const title = document.createElement('div');
@@ -414,9 +432,7 @@ function createListItem(task, section) {
     const badge = document.createElement('span');
     badge.className = 'date-badge';
     if (task.checked && (task.updated || task.created)) {
-      const doneDate = new Date((task.updated || task.created) + 'T00:00:00');
-      const daysAgo = Math.floor((new Date() - doneDate) / (1000 * 60 * 60 * 24));
-      badge.textContent = `done ${daysAgo}d ago`;
+      badge.textContent = `done ${daysSince(task)}d ago`;
     } else {
       badge.textContent = task.created;
     }
@@ -440,18 +456,24 @@ function createListItem(task, section) {
 
       const stCheckbox = document.createElement('span');
       stCheckbox.className = `checkbox ${st.checked ? 'checked' : ''}`;
-      stCheckbox.addEventListener('click', (e) => {
+      stCheckbox.setAttribute('role', 'checkbox');
+      stCheckbox.setAttribute('aria-checked', st.checked ? 'true' : 'false');
+      stCheckbox.setAttribute('tabindex', '0');
+      const toggleSt = (e) => {
         e.stopPropagation();
         st.checked = !st.checked;
         markChanged(task);
         getRenderTasks()();
+      };
+      stCheckbox.addEventListener('click', toggleSt);
+      stCheckbox.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSt(e); }
       });
 
       const stText = document.createElement('span');
       stText.innerHTML = renderLinks(st.text);
       if (st.checked) {
-        stText.style.textDecoration = 'line-through';
-        stText.style.color = 'var(--text-muted)';
+        stText.classList.add('subtask-text--done');
       }
       stText.addEventListener('click', (e) => {
         if (e.target.closest('a')) return;
@@ -468,7 +490,7 @@ function createListItem(task, section) {
       const hiddenCount = task.subtasks.length - visible.length;
       const toggleEl = document.createElement('div');
       toggleEl.className = 'list-item-subtask subtask-toggle';
-      toggleEl.style.cssText = 'color: var(--text-muted); cursor: pointer; font-style: italic; padding-left: 24px;';
+      toggleEl.classList.add('subtask-toggle');
       toggleEl.textContent = isExpanded ? 'Show less' : `+ ${hiddenCount} more`;
       toggleEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -493,7 +515,7 @@ function createListItem(task, section) {
 
   const actions = document.createElement('div');
   actions.className = 'list-item-actions';
-  actions.innerHTML = '<button title="Delete task">&times;</button>';
+  actions.innerHTML = '<button aria-label="Delete task" title="Delete task">&times;</button>';
   actions.querySelector('button').addEventListener('click', (e) => {
     e.stopPropagation();
     deleteTask(task);
@@ -507,11 +529,11 @@ function createListItem(task, section) {
 }
 
 function startEditingListNote(noteEl, task) {
-  const input = document.createElement('input');
-  input.type = 'text';
+  const input = document.createElement('textarea');
+  input.rows = 2;
   input.value = task.note || '';
   input.placeholder = 'Add a note...';
-  input.style.cssText = 'width: 100%; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 6px; padding: 4px 8px; color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-textarea';
 
   noteEl.replaceWith(input);
   input.focus();
@@ -536,7 +558,7 @@ function startEditingListSubtask(subtaskEl, task, idx) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = task.subtasks[idx].text;
-  input.style.cssText = 'width: calc(100% - 30px); background: var(--bg-card); border: 2px solid var(--accent); border-radius: 4px; padding: 2px 6px; color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
 
   subtaskEl.replaceWith(input);
   input.focus();
@@ -564,7 +586,7 @@ function startAddingListSubtask(el, task) {
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = 'New subtask...';
-  input.style.cssText = 'width: calc(100% - 10px); background: var(--bg-card); border: 2px solid var(--accent); border-radius: 4px; padding: 2px 6px; color: var(--text-primary); font-size: 13px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
 
   el.replaceWith(input);
   input.focus();
@@ -593,7 +615,7 @@ function startEditingListItem(titleEl, task) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = task.title;
-  input.style.cssText = 'width: 100%; background: var(--bg-card); border: 2px solid var(--accent); border-radius: 6px; padding: 8px 12px; color: var(--text-primary); font-size: 15px; font-family: inherit; outline: none;';
+  input.className = 'inline-edit-input';
 
   titleEl.replaceWith(input);
   input.focus();
@@ -645,9 +667,7 @@ function createArchiveListItem(task) {
   if (task.created) {
     const badge = document.createElement('span');
     badge.className = 'date-badge';
-    const doneDate = new Date((task.updated || task.created) + 'T00:00:00');
-    const daysAgo = Math.floor((new Date() - doneDate) / (1000 * 60 * 60 * 24));
-    badge.textContent = `done ${daysAgo}d ago`;
+    badge.textContent = `done ${daysSince(task)}d ago`;
     content.appendChild(badge);
   }
 

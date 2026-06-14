@@ -1,83 +1,529 @@
-/* ===== MEMORY STYLES ===== */
+/* ===== MEMORY STYLES — Warm Editorial Polish ===== */
 
-.memory-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  background: var(--bg-secondary);
-  padding: 4px;
-  border-radius: 8px;
+/* ── §7.1 Two-Pane Layout ── */
+
+.memory-sidebar {
+  width: 220px;
+  min-width: 220px;
   flex-shrink: 0;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: var(--space-4) 0 var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
+
+.memory-sidebar-group-label {
+  /* .label-caps treatment — APPROVED uppercase use: structural sidebar labels */
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: var(--space-4) var(--space-4) var(--space-1);
+  margin-top: var(--space-2);
+  /* Subtle rule above each group (except the first) */
+}
+
+.memory-sidebar-group-label:first-child {
+  margin-top: 0;
+}
+
+.memory-content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-7);
+  background: var(--surface-0);
+}
+
+/* ── §7.2 Memory Nav Items ── */
 
 .memory-tab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   background: transparent;
-  color: var(--text-muted);
-  padding: 8px 16px;
+  color: var(--text-secondary);
+  /* Comfortable vertical rhythm — 8px top + 8px bottom */
+  padding: var(--space-2) var(--space-4);
+  margin: 0 var(--space-2);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
+  /* Left accent track — invisible by default, accent when active */
+  border-left: 2px solid transparent;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-  text-transform: capitalize;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  font-family: var(--font-sans);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-left-color var(--transition-fast);
+  text-align: left;
+  width: calc(100% - var(--space-4));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: var(--leading-normal);
 }
 
-.memory-tab:hover { color: var(--text-primary); }
+.memory-tab:hover {
+  background: var(--accent-muted);
+  color: var(--text-primary);
+}
 
 .memory-tab.active {
-  color: var(--text-primary);
-  background: var(--bg-card);
-  box-shadow: 0 1px 3px var(--shadow);
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-left-color: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+
+.memory-tab:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  outline: none;
 }
 
 .memory-tab .count {
-  background: var(--bg-secondary);
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  margin-left: 6px;
-  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  /* Tabular nums for reliable column alignment */
+  font-variant-numeric: tabular-nums;
 }
 
 .memory-tab.active .count {
-  background: var(--border-light);
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-color: var(--accent);
 }
+
+/* ── §7.3 File Card Content — monospace fix ── */
+
+.file-card-content {
+  /* REMOVED: font-family: monospace — was defeating markdown rendering */
+  /* REMOVED: white-space: pre-wrap — was defeating markdown rendering */
+  padding: var(--space-5) var(--space-6);
+  overflow: hidden;
+  max-height: 0;
+}
+
+.file-card-content.expanded {
+  max-height: none;
+  display: block;
+}
+
+/* Raw files (non-markdown) use the --raw modifier */
+.file-card-content--raw {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+/* ── §7.4 Markdown Content — Editorial Prose ── */
+
+.markdown-content {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
+  color: var(--text-primary);
+  /* Comfortable editorial measure — prevents eye-fatigue on long files */
+  max-width: 70ch;
+  white-space: normal; /* Explicit override — ensures inherited pre-wrap cannot propagate */
+}
+
+/* H1 — chapter title: serif, display tracking, generous separation */
+.markdown-content h1 {
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-display);
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
+  margin: var(--space-7) 0 var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-3);
+}
+
+/* First h1 needs no top margin — it begins the content */
+.markdown-content h1:first-child {
+  margin-top: 0;
+}
+
+/* H2 — section heading: serif, slightly smaller, no border */
+.markdown-content h2 {
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-display);
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+/* H3 — subsection: sans, medium weight, secondary colour */
+.markdown-content h3 {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  letter-spacing: var(--tracking-tight);
+  margin: var(--space-5) 0 var(--space-2);
+  line-height: var(--leading-normal);
+}
+
+.markdown-content p {
+  margin-bottom: var(--space-4);
+  line-height: var(--leading-relaxed);
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: var(--space-2) 0 var(--space-4) var(--space-5);
+}
+
+.markdown-content li {
+  margin: var(--space-1) 0;
+  line-height: var(--leading-relaxed);
+}
+
+/* Links — accent colour with refined underline-on-hover */
+.markdown-content a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition-fast);
+}
+
+.markdown-content a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* Relative .md links — styled text-only (no route in SPA) */
+.markdown-content .md-link-relative {
+  color: var(--accent);
+  opacity: 0.70;
+  cursor: default;
+  font-style: italic;
+  border-bottom: none;
+}
+
+/* Blockquote — warm left-rule, offset indentation */
+.markdown-content blockquote {
+  border-left: 3px solid var(--accent-muted);
+  margin: var(--space-4) 0;
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-secondary);
+  font-style: italic;
+  background: var(--accent-muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* Code spans — text-secondary (NOT accent) for WCAG AA at 13px */
+.markdown-content code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+/* Code blocks — elevated surface, clear separation */
+.markdown-content pre {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  overflow-x: auto;
+  margin: var(--space-4) 0;
+  line-height: var(--leading-relaxed);
+}
+
+.markdown-content pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* Tables — clean editorial style */
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  margin: var(--space-5) 0;
+}
+
+.markdown-content th {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border-bottom: 2px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+
+.markdown-content td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  line-height: var(--leading-relaxed);
+}
+
+.markdown-content tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown-content tr:hover td {
+  background: var(--surface-2);
+}
+
+/* ── §7.5 Memory Card Grid ── */
 
 .memory-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
 }
+
+.memory-card {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.memory-card:hover {
+  border-color: var(--accent);
+  /* lift + shadow via base.css grouped rule */
+}
+
+.memory-card:focus-visible {
+  box-shadow: var(--focus-ring), var(--shadow-md);
+  outline: none;
+}
+
+.memory-card-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.memory-card-preview {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  line-clamp: 3;
+  line-height: var(--leading-relaxed);
+}
+
+/* ── §7.6 Inline Edit (Context Page) ── */
+
+[data-editable] {
+  cursor: text;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+[data-editable]:hover {
+  background: var(--surface-3);
+  outline: 1px dashed var(--border);
+  outline-offset: 1px;
+}
+
+[data-editable].editing {
+  outline: 2px solid var(--accent);
+  background: var(--surface-3);
+}
+
+.inline-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.inline-edit-save,
+.inline-edit-cancel {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  min-height: 28px; /* WCAG minimum touch target */
+  font-family: var(--font-sans);
+}
+
+.inline-edit-save {
+  background: var(--accent);
+  color: white;
+  border: none;
+}
+
+.inline-edit-save:hover { background: var(--accent-hover); }
+
+.inline-edit-cancel {
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.inline-edit-cancel:hover { background: var(--surface-4); }
+
+/* Save/error flash feedback */
+.inline-edit-success { animation: flash-success 0.8s ease-out; }
+.inline-edit-error   { animation: flash-error   0.8s ease-out; }
+
+@keyframes flash-success {
+  0%   { background: rgba(93, 175, 122, 0.20); }
+  100% { background: transparent; }
+}
+
+@keyframes flash-error {
+  0%   { background: rgba(224, 92, 92, 0.20); }
+  100% { background: transparent; }
+}
+
+/* Prevent hover styles while editing */
+.inline-editing [data-editable]:not(.editing):hover {
+  background: transparent;
+  outline: none;
+}
+
+/* ── §7.7 Overview Stats Bar ── */
+
+.stats {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.stat {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+  min-width: 110px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.stat:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat:hover {
+    transform: none;
+  }
+}
+
+/* Editorial figure number — serif, tabular, prominent */
+.stat-value {
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+/* ── File cards (shared for overview + file views) ── */
+
+.file-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.file-card-header {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  background: var(--surface-2);
+  transition: background var(--transition-fast);
+}
+
+.file-card-header:hover {
+  background: var(--surface-3);
+}
+
+.file-card-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* ── Memory flat table (context directory) ── */
 
 .memory-flat-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .memory-flat-table th {
   text-align: left;
-  padding: 10px 16px;
-  font-weight: 500;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  padding: var(--space-2) var(--space-4);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border);
 }
 
 .memory-flat-table td {
-  padding: 9px 16px;
-  border-bottom: 1px solid var(--border-light);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  line-height: 1.4;
+  line-height: var(--leading-normal);
 }
 
 .memory-flat-table td:first-child {
-  color: var(--text-muted);
-  font-weight: 500;
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
   width: 120px;
 }
@@ -87,335 +533,86 @@
 }
 
 .memory-flat-table tr:hover td {
-  background: var(--bg-secondary);
+  background: var(--surface-3);
 }
 
-.memory-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 3px var(--shadow);
-}
-
-.memory-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 4px 12px var(--shadow-hover);
-}
-
-.memory-card-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-primary);
-}
-
-.memory-card-meta {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-
-.memory-card-preview {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-}
-
-.memory-card-fields {
-  margin-top: 10px;
-  font-size: 12px;
-}
-
-.memory-card-field {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.memory-card-field-label {
-  color: var(--text-muted);
-  min-width: 80px;
-}
-
-.memory-card-field-value {
-  color: var(--text-secondary);
-}
-
-.file-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px var(--shadow);
-}
-
-.file-card-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--border-light);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-}
-
-.file-card-header:hover {
-  background: var(--bg-secondary);
-}
-
-.file-card-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.file-card-content {
-  padding: 16px;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  overflow-y: auto;
-  display: none;
-  color: var(--text-secondary);
-}
-
-.file-card-content.expanded {
-  display: block;
-}
-
-.stats {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
-
-.stat {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 16px 24px;
-  min-width: 100px;
-  box-shadow: 0 1px 3px var(--shadow);
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  text-transform: capitalize;
-  margin-top: 4px;
-}
-
-.search-box {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.search-box input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-size: 14px;
-  font-family: inherit;
-  outline: none;
-}
-
-.search-box input::placeholder {
-  color: var(--text-muted);
-}
+/* ── Add btn (add to directory) ── */
 
 .add-btn {
   background: transparent;
   border: 2px dashed var(--border);
-  color: var(--text-muted);
-  padding: 40px;
-  border-radius: 10px;
+  color: var(--text-tertiary);
+  padding: var(--space-7) var(--space-4);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    background var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  font-family: var(--font-sans);
 }
 
 .add-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--accent-muted);
 }
 
-.markdown-content {
-  line-height: 1.6;
-  color: var(--text-secondary);
+/* ── Responsive ── */
+
+@media (max-width: 1100px) {
+  .memory-sidebar { width: 180px; min-width: 180px; }
+  .memory-content-area { padding: var(--space-5) var(--space-6); }
 }
 
-.markdown-content h1 { font-size: 1.4em; margin: 16px 0 8px; color: var(--text-primary); }
-.markdown-content h2 { font-size: 1.2em; margin: 14px 0 6px; color: var(--text-primary); }
-.markdown-content h3 { font-size: 1.1em; margin: 12px 0 4px; color: var(--text-secondary); }
-.markdown-content p { margin: 8px 0; }
-.markdown-content ul, .markdown-content ol { margin: 8px 0 8px 20px; }
-.markdown-content li { margin: 4px 0; }
-.markdown-content code {
-  background: var(--bg-secondary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  color: var(--text-primary);
-}
-.markdown-content pre {
-  background: var(--bg-secondary);
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 8px 0;
-  border: 1px solid var(--border-light);
-}
-.markdown-content table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 8px 0;
-  font-size: 13px;
-}
-.markdown-content th, .markdown-content td {
-  padding: 12px 16px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-light);
-}
-.markdown-content th {
-  background: var(--bg-secondary);
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
+@media (max-width: 760px) {
+  .memory-sidebar { width: 160px; min-width: 160px; }
+  .markdown-content { max-width: none; }
 }
 
-/* ===== INLINE EDIT STYLES ===== */
+@media (max-width: 480px) {
+  #memoryMainContent {
+    flex-direction: column !important;
+  }
 
-[data-editable] {
-  cursor: pointer;
-  transition: background 0.15s ease, outline 0.15s ease;
-  border-radius: 4px;
-}
+  .memory-sidebar {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-1);
+  }
 
-[data-editable]:hover {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  outline: 1px dashed color-mix(in srgb, var(--accent) 30%, transparent);
-  outline-offset: -1px;
-}
+  .memory-sidebar-group-label { display: none; }
 
-[data-editable].editing {
-  background: var(--bg-secondary);
-  padding: 4px !important;
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  white-space: normal !important;
-  width: auto !important;
-}
+  .memory-tab {
+    flex-shrink: 0;
+    width: auto;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+  }
 
-[data-editable].editing input,
-[data-editable].editing textarea {
-  width: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 8px;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-family: inherit;
-  line-height: 1.4;
-  outline: none;
-  box-sizing: border-box;
-  display: block;
-}
+  .memory-tab.active {
+    border-bottom-color: var(--accent);
+    border-left-color: transparent;
+    background: var(--accent-muted);
+  }
 
-[data-editable].editing textarea {
-  min-height: 40px;
-  resize: vertical;
-}
+  .memory-content-area {
+    padding: var(--space-4) var(--space-3);
+  }
 
-[data-editable].editing input:focus,
-[data-editable].editing textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
-}
-
-.inline-edit-actions {
-  display: flex;
-  gap: 4px;
-  margin-top: 4px;
-  justify-content: flex-end;
-}
-
-.inline-edit-actions button {
-  padding: 3px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-}
-
-.inline-edit-actions .inline-edit-save {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-
-.inline-edit-actions .inline-edit-save:hover {
-  filter: brightness(1.1);
-}
-
-.inline-edit-actions .inline-edit-cancel:hover {
-  background: var(--bg-card);
-}
-
-@keyframes inline-edit-flash-success {
-  0% { background: color-mix(in srgb, #22c55e 25%, transparent); }
-  100% { background: transparent; }
-}
-
-@keyframes inline-edit-flash-error {
-  0% { background: color-mix(in srgb, #ef4444 25%, transparent); }
-  100% { background: transparent; }
-}
-
-.inline-edit-success {
-  animation: inline-edit-flash-success 1s ease-out;
-}
-
-.inline-edit-error {
-  animation: inline-edit-flash-error 1s ease-out;
-}
-
-/* Prevent hover styles while editing */
-.inline-editing [data-editable]:not(.editing):hover {
-  background: transparent;
-  outline: none;
+  .markdown-content { max-width: none; }
 }

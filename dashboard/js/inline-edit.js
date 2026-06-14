@@ -46,11 +46,12 @@ function activateEditor(element, event) {
   if (isLongText) {
     input = document.createElement('textarea');
     input.rows = 2;
+    input.className = 'inline-edit-textarea';
   } else {
     input = document.createElement('input');
     input.type = 'text';
+    input.className = 'inline-edit-input';
   }
-  input.className = 'inline-edit-input';
   input.value = originalText;
 
   // Create action buttons
@@ -186,11 +187,21 @@ async function saveEdit(element, originalText, inputElement) {
     // Re-render content only (preserve active tab)
     renderMemoryContent();
     showStatus('Saved ' + fileName);
+
+    // Flash success on the element (it may have been re-rendered, find by data attrs)
+    const successEl = document.querySelector(`[data-file-dir="${dir}"][data-file-name="${fileName}"]`) || element;
+    successEl.classList.add('inline-edit-success');
+    setTimeout(() => successEl.classList.remove('inline-edit-success'), 800);
   } catch (err) {
     showStatus('Error: ' + err.message);
     // Restore original on failure
     file.content = oldContent;
     file.parsed = parseMemoryMarkdown(oldContent);
+
+    // Flash error on element
+    element.classList.add('inline-edit-error');
+    setTimeout(() => element.classList.remove('inline-edit-error'), 800);
+
     cancelEdit();
   }
 }

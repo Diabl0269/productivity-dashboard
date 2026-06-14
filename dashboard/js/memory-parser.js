@@ -105,6 +105,18 @@ function renderMarkdownToHtml(md) {
     table += '</tbody></table>';
     return table;
   });
+  // Markdown links: [text](href)
+  // Brackets/parens are not HTML-special so they survive the earlier escapeHtml call intact.
+  // External links (http/https) → real <a> opening in new tab.
+  // Relative paths (.md files, etc.) → styled <span> only — no dead anchors in this SPA.
+  html = html.replace(/\[([^\]]*)\]\(([^)]*)\)/g, (_match, text, href) => {
+    const isExternal = /^https?:\/\//i.test(href);
+    if (isExternal) {
+      return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
+    }
+    // Relative path — render as styled text, no anchor
+    return '<span class="md-link-relative">' + text + '</span>';
+  });
   html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
   html = html.replace(/^(?!<[hupol]|<li|<table|<pre)(.+)$/gm, '<p>$1</p>');

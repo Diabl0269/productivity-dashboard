@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Productivity</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='2' width='24' height='28' rx='4' fill='%23faf9f5' stroke='%23D97757' stroke-width='2'/%3E%3Crect x='8' y='0' width='16' height='5' rx='2.5' fill='%23D97757'/%3E%3Cpath d='M9 13l3 3 5-5' fill='none' stroke='%23D97757' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='20' y='12' width='5' height='2' rx='1' fill='%23c4c4c2'/%3E%3Crect x='9' y='20' width='10' height='2' rx='1' fill='%23c4c4c2'/%3E%3Crect x='9' y='25' width='7' height='2' rx='1' fill='%23c4c4c2'/%3E%3C/svg%3E">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles/base.css">
   <link rel="stylesheet" href="./styles/tasks.css">
   <link rel="stylesheet" href="./styles/memory.css">
@@ -20,13 +17,13 @@
   <header>
     <div class="header-top">
       <div class="header-left">
-        <svg width="28" height="28" viewBox="0 0 32 32" style="margin-right: 12px; flex-shrink: 0;">
-          <rect x="4" y="2" width="24" height="28" rx="4" fill="#faf9f5" stroke="#D97757" stroke-width="2"/>
-          <rect x="8" y="0" width="16" height="5" rx="2.5" fill="#D97757"/>
+        <svg width="28" height="28" viewBox="0 0 32 32" style="flex-shrink: 0;">
+          <rect x="4" y="2" width="24" height="28" rx="4" style="fill: var(--surface-3)" stroke="#D97757" stroke-width="2"/>
+          <rect x="8" y="0" width="16" height="5" rx="2.5" style="fill: var(--accent)"/>
           <path d="M9 13l3 3 5-5" fill="none" stroke="#D97757" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <rect x="20" y="12" width="5" height="2" rx="1" fill="#c4c4c2"/>
-          <rect x="9" y="20" width="10" height="2" rx="1" fill="#c4c4c2"/>
-          <rect x="9" y="25" width="7" height="2" rx="1" fill="#c4c4c2"/>
+          <rect x="20" y="12" width="5" height="2" rx="1" style="fill: var(--text-tertiary)"/>
+          <rect x="9" y="20" width="10" height="2" rx="1" style="fill: var(--text-tertiary)"/>
+          <rect x="9" y="25" width="7" height="2" rx="1" style="fill: var(--text-tertiary)"/>
         </svg>
         <div>
           <h1>Productivity</h1>
@@ -34,35 +31,48 @@
         </div>
       </div>
       <div class="buttons">
-        <button id="themeToggle" title="Toggle dark mode" style="padding: 8px 10px; font-size: 18px; line-height: 1;">☀️</button>
+        <button id="themeToggle" aria-label="Switch to light mode" aria-pressed="false" title="Toggle theme">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
         <button id="openTaskBtn">Select File</button>
         <button id="openMemoryBtn" style="display: none;">Open Folder</button>
         <button id="saveBtn" class="primary" disabled style="display: none;">Save</button>
       </div>
     </div>
     <div class="header-nav">
-      <div class="view-toggle" id="mainTabToggle">
-        <button id="overviewTabBtn" class="active">Overview</button>
-        <button id="tasksTabBtn">Tasks</button>
-        <button id="memoryTabBtn">Memory</button>
-        <button id="globalMemoryTabBtn">Global Memory</button>
+      <div class="view-toggle" id="mainTabToggle" role="tablist">
+        <button id="overviewTabBtn" class="active" role="tab" aria-selected="true" aria-controls="overviewPanel">Overview</button>
+        <button id="tasksTabBtn" role="tab" aria-selected="false" aria-controls="tasksPanel">Tasks</button>
+        <button id="memoryTabBtn" role="tab" aria-selected="false" aria-controls="memoryPanel">Memory</button>
+        <button id="globalMemoryTabBtn" role="tab" aria-selected="false" aria-controls="globalMemoryPanel">Global Memory</button>
       </div>
       <div class="view-toggle" id="taskViewToggle" style="display: none;">
         <button id="boardViewBtn" class="active">Board</button>
         <button id="listViewBtn">List</button>
-        <button id="sortPriorityBtn" title="Sort by priority">&#8597; Priority</button>
       </div>
+      <button id="sortPriorityBtn" class="sort-action-btn hidden" title="Sort by priority">&#8597; Priority</button>
       <div class="unified-search" id="unifiedSearch" style="display: none;">
         <svg class="unified-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="unifiedSearchInput" placeholder="Search tasks..." autocomplete="off">
         <button class="unified-search-clear" id="unifiedSearchClear" style="display: none;">&times;</button>
-        <kbd class="unified-search-shortcut">⌘F</kbd>
+        <kbd class="unified-search-shortcut">&#8984;F</kbd>
       </div>
     </div>
   </header>
 
   <!-- OVERVIEW TAB PANEL -->
-  <div class="tab-panel active" id="overviewPanel">
+  <div class="tab-panel active" id="overviewPanel" role="tabpanel" aria-labelledby="overviewTabBtn">
     <div class="overview-grid">
       <!-- Sprint Info Widget -->
       <div class="widget-card">
@@ -81,19 +91,19 @@
         <h3>Task Summary</h3>
         <div class="widget-content" id="taskSummaryContent">
           <div class="task-summary-grid">
-            <div class="summary-stat">
+            <div class="summary-stat stat-cell-inprogress">
               <div class="stat-number" id="statInProgress">-</div>
               <div class="stat-label">In Progress</div>
             </div>
-            <div class="summary-stat">
+            <div class="summary-stat stat-cell-todo">
               <div class="stat-number" id="statTodo">-</div>
               <div class="stat-label">Todo</div>
             </div>
-            <div class="summary-stat">
+            <div class="summary-stat stat-cell-done">
               <div class="stat-number" id="statDone">-</div>
               <div class="stat-label">Done</div>
             </div>
-            <div class="summary-stat">
+            <div class="summary-stat stat-cell-blocked">
               <div class="stat-number" id="statBlocked">-</div>
               <div class="stat-label">High Priority</div>
             </div>
@@ -142,7 +152,7 @@
   </div>
 
   <!-- TASKS TAB PANEL -->
-  <div class="tab-panel" id="tasksPanel">
+  <div class="tab-panel" id="tasksPanel" role="tabpanel" aria-labelledby="tasksTabBtn">
     <div class="list-view" id="listView" style="display: none;"></div>
     <div class="board" id="board">
       <div class="empty-state" id="boardEmptyState" style="width: 100%;">
@@ -153,21 +163,19 @@
   </div>
 
   <!-- MEMORY TAB PANEL -->
-  <div class="tab-panel" id="memoryPanel">
+  <div class="tab-panel" id="memoryPanel" role="tabpanel" aria-labelledby="memoryTabBtn">
     <div id="memoryEmptyState" class="empty-state">
       <p style="margin-bottom: 24px; font-size: 18px; font-weight: 600; color: var(--text-primary);">Select your project folder</p>
       <button id="openMemoryBtnLarge">Select Folder</button>
     </div>
-    <div id="memoryMainContent" style="display: none; flex-direction: column; min-height: 0; flex: 1;">
-      <div class="memory-tabs" id="memoryTabsContainer"></div>
-      <div class="memory-content-area">
-        <div id="memoryContentContainer"></div>
-      </div>
+    <div id="memoryMainContent" style="display: none; flex-direction: row; flex: 1; min-height: 0; gap: 0; overflow: hidden;">
+      <nav id="memoryTabsContainer" class="memory-sidebar" role="tablist" aria-label="Memory files"></nav>
+      <div class="memory-content-area" id="memoryContentContainer"></div>
     </div>
   </div>
 
   <!-- GLOBAL MEMORY TAB PANEL -->
-  <div class="tab-panel" id="globalMemoryPanel">
+  <div class="tab-panel" id="globalMemoryPanel" role="tabpanel" aria-labelledby="globalMemoryTabBtn">
     <div id="globalMemoryEmptyState" class="empty-state">
       <p style="margin-bottom: 24px; font-size: 18px; font-weight: 600; color: var(--text-primary);">Loading global memory...</p>
     </div>
@@ -185,7 +193,13 @@
     <div class="modal">
       <div class="modal-header">
         <h3 id="modalTitle">Edit</h3>
-        <button class="modal-close" id="modalClose">&times;</button>
+        <button class="modal-close" id="modalClose" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer">

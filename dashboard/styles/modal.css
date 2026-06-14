@@ -1,102 +1,213 @@
-/* Modal */
+/* ══════════════════════════════════════════════════════
+   MODAL — Warm Editorial Polish — §9
+   ══════════════════════════════════════════════════════ */
+
 .modal-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: var(--modal-overlay-bg);
-  z-index: 100;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 200;
   align-items: center;
   justify-content: center;
+  opacity: 0;
 }
 
 .modal-overlay.visible {
   display: flex;
+  opacity: 1;
+  animation: overlay-in var(--transition-fast) both;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .modal {
-  background: var(--bg-card);
-  border-radius: 12px;
-  width: 90%;
-  max-width: 800px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  max-width: 680px;
+  width: calc(100% - var(--space-8));
   max-height: 85vh;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px var(--modal-shadow);
+  /* Ensure neutral baseline before animation */
+  opacity: 1;
+  transform: scale(1) translateY(0);
 }
+
+.modal-overlay.visible .modal {
+  animation: modal-in var(--transition-normal) both;
+}
+
+@keyframes modal-in {
+  from { transform: scale(0.97) translateY(10px); opacity: 0; }
+  to   { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay.visible .modal,
+  .modal-overlay.visible {
+    animation: none;
+  }
+}
+
+/* ── Header ── */
 
 .modal-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border);
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  flex-shrink: 0;
 }
 
+/* Editorial serif title */
 .modal-header h3 {
-  font-size: 18px;
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-display);
   color: var(--text-primary);
+  line-height: var(--leading-tight);
 }
 
+/* Close button — compact, clear ×, hover red hint */
 .modal-close {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 24px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   cursor: pointer;
+  font-size: var(--text-md);
   padding: 0;
-  line-height: 1;
+  flex-shrink: 0;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
-.modal-close:hover { color: var(--text-primary); }
+.modal-close:hover {
+  background: var(--surface-4);
+  color: var(--status-blocked);
+  border-color: var(--status-blocked);
+}
+
+.modal-close:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+/* ── Body ── */
 
 .modal-body {
-  padding: 20px;
+  padding: var(--space-6);
   overflow-y: auto;
   flex: 1;
 }
 
-.modal-footer {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+/* Prose inside modal body — comfortable reading width */
+.modal-body .markdown-content {
+  max-width: none; /* Modal is already constrained — don't double-constrain */
+  margin-bottom: var(--space-5);
 }
 
+/* ── Footer ── */
+
+.modal-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+/* ── Form elements inside modal ── */
+
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-5);
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
 }
 
 .form-group label {
   display: block;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.form-group textarea {
+/* Textarea — markdown editor */
+.form-group textarea,
+textarea.form-input {
   width: 100%;
-  background: var(--bg-secondary);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   color: var(--text-primary);
-  font-size: 13px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  line-height: 1.5;
-  min-height: 300px;
+  line-height: var(--leading-relaxed);
   resize: vertical;
+  min-height: 180px;
+  box-sizing: border-box;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
-.form-group textarea:focus {
-  outline: none;
+/* Text input — filename, one-line fields */
+input.form-input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: var(--leading-normal);
+  resize: none;
+  box-sizing: border-box;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+/* Focus — consistent accent ring for both */
+.form-group textarea:focus,
+textarea.form-input:focus,
+input.form-input:focus {
   border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+/* Placeholder text */
+input.form-input::placeholder,
+textarea.form-input::placeholder {
+  color: var(--text-tertiary);
 }

@@ -89,7 +89,7 @@ Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ..
 - `dashboard/js/tasks-parser.js` — parses markdown tasks (also used by `ch tasks export`)
 - `dashboard/js/tasks-board.js` — board view rendering, drag-drop, inline card editing
 - `dashboard/js/tasks-list.js` — list view rendering
-- `dashboard/js/memory-renderer.js` — memory tab rendering (overview, files, directories)
+- `dashboard/js/memory-renderer.js` — memory tab rendering (grouped sidebar nav, overview, files, directories)
 - `dashboard/js/memory-parser.js` — parses memory markdown files (fields, tables, sections)
 - `dashboard/js/memory-modal.js` — modal CRUD for people/projects pages
 - `dashboard/js/inline-edit.js` — inline editing for context page (fields, table cells, section lines)
@@ -97,9 +97,11 @@ Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ..
 - `dashboard/js/state.js` — shared state, tab switching, status bar
 - `dashboard/js/persistence.js` — IndexedDB handle storage for FileSystem API
 - `dashboard/js/overview.js` — overview tab widgets
-- `dashboard/js/theme.js` — dark/light theme toggle
-- `dashboard/styles/` — base.css, tasks.css, memory.css, modal.css, overview.css, misc.css
-- `serve.js` — Node.js dev server with `/api/save` (POST) and `/api/memory-manifest` (GET)
+- `dashboard/js/theme.js` — dark/light theme toggle (dark is the default theme)
+- `dashboard/styles/` — base.css, tasks.css, memory.css, modal.css, overview.css, misc.css, global-memory.css
+- `dashboard/styles/base.css` — design-token system: all colors/spacing/radius/type/shadow values are CSS custom properties (`--surface-0..4`, `--status-*`, `--priority-*`, `--space-*`, `--text-*`); dark tokens live in `:root`, light overrides in `[data-theme="light"]`. Restyle via tokens, not hardcoded values.
+- `serve.js` — Node.js dev server with `/api/save` (POST) and `/api/memory-manifest` (GET); port via `PORT` env or first CLI arg (default 3000)
+- UI conventions: semantic status colors (todo=blue, done=green, high-priority=red, in-progress=terracotta); accent reserved for interactive elements; focus rings via `--focus-ring` box-shadow; CSS classes referenced from JS (e.g. `inline-edit-input`, `priority-legend`, `gm-*`) are load-bearing — rename in both places or not at all
 
 ### Task Priority System
 - Priorities: `low` (blue), `medium` (yellow), `high` (red) — default is `medium`

@@ -17,6 +17,15 @@ function updateSprintInfo() {
   const sprintDaysEl = document.getElementById('sprintDays');
   const sprintProgressEl = document.getElementById('sprintProgress');
 
+  // Ensure progress-label span exists as sibling of progress-bar
+  let progressLabelEl = document.getElementById('sprintProgressLabel');
+  if (!progressLabelEl && sprintProgressEl) {
+    progressLabelEl = document.createElement('span');
+    progressLabelEl.id = 'sprintProgressLabel';
+    progressLabelEl.className = 'progress-label';
+    sprintProgressEl.parentElement.insertAdjacentElement('afterend', progressLabelEl);
+  }
+
   let currentSprint = null;
   let nextSprint = null;
 
@@ -34,20 +43,23 @@ function updateSprintInfo() {
   if (currentSprint) {
     const totalDays = Math.ceil((currentSprint.end - currentSprint.start) / (1000 * 60 * 60 * 24));
     const daysRemaining = Math.ceil((currentSprint.end - now) / (1000 * 60 * 60 * 24));
-    const progress = Math.max(0, Math.min(100, ((totalDays - daysRemaining) / totalDays) * 100));
+    const pct = Math.max(0, Math.min(100, ((totalDays - daysRemaining) / totalDays) * 100));
 
     sprintNameEl.textContent = currentSprint.name;
     sprintDaysEl.textContent = `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} remaining`;
-    sprintProgressEl.style.width = `${progress}%`;
+    sprintProgressEl.style.width = `${pct}%`;
+    if (progressLabelEl) progressLabelEl.textContent = Math.round(pct) + '%';
   } else if (nextSprint) {
     const daysUntil = Math.ceil((nextSprint.start - now) / (1000 * 60 * 60 * 24));
     sprintNameEl.textContent = 'Between Sprints';
     sprintDaysEl.textContent = `${nextSprint.name} starts in ${daysUntil} ${daysUntil === 1 ? 'day' : 'days'}`;
     sprintProgressEl.style.width = '0%';
+    if (progressLabelEl) progressLabelEl.textContent = '0%';
   } else {
     sprintNameEl.textContent = 'No Active Sprint';
     sprintDaysEl.textContent = 'Sprint schedule not available';
     sprintProgressEl.style.width = '0%';
+    if (progressLabelEl) progressLabelEl.textContent = '0%';
   }
 }
 
@@ -72,6 +84,22 @@ export function updateTaskSummary(parsed) {
   document.getElementById('statTodo').textContent = todo;
   document.getElementById('statDone').textContent = done;
   document.getElementById('statBlocked').textContent = highPriority;
+
+  // Update ARIA labels on stat cells
+  const statCells = [
+    { id: 'statInProgress', count: inProgress, label: 'in-progress tasks' },
+    { id: 'statTodo',       count: todo,        label: 'todo tasks' },
+    { id: 'statDone',       count: done,        label: 'done tasks' },
+    { id: 'statBlocked',    count: highPriority, label: 'high-priority tasks' }
+  ];
+  statCells.forEach(({ id, count, label }) => {
+    const cell = document.getElementById(id);
+    if (!cell) return;
+    const parent = cell.closest('.summary-stat');
+    if (parent) {
+      parent.setAttribute('aria-label', `Show ${count} ${label}`);
+    }
+  });
 }
 
 // Upcoming Deadlines Widget - extracts dates from task descriptions
@@ -147,27 +175,31 @@ export function updateDeadlines(parsed) {
   // Sort by date
   unique.sort((a, b) => a.date - b.date);
 
-  // Render (max 8)
+  // Render (max 8) — all urgency via CSS class, no inline hex
   const items = unique.slice(0, 8);
   if (items.length === 0) {
     container.innerHTML = '<div class="deadline-empty">No upcoming deadlines found</div>';
     return;
   }
 
-  container.innerHTML = items.map(d => {
+  container.innerHTML = '';
+  items.forEach(d => {
     const dateStr = d.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const isToday = d.diffDays === 0;
     const isSoon = d.diffDays <= 3;
     const urgencyClass = isToday ? 'deadline-today' : isSoon ? 'deadline-soon' : '';
     const label = isToday ? 'Today' : d.diffDays === 1 ? 'Tomorrow' : `in ${d.diffDays}d`;
-    return `
-      <div class="deadline-item ${urgencyClass}">
-        <div class="deadline-date">${dateStr}</div>
-        <div class="deadline-task">${d.task}</div>
-        <div class="deadline-badge">${label}</div>
-      </div>
+
+    const item = document.createElement('div');
+    item.className = 'deadline-item' + (urgencyClass ? ' ' + urgencyClass : '');
+    item.title = d.task;
+    item.innerHTML = `
+      <div class="deadline-date">${dateStr}</div>
+      <div class="deadline-task">${d.task}</div>
+      <div class="deadline-badge">${label}</div>
     `;
-  }).join('');
+    container.appendChild(item);
+  });
 }
 
 // 1:1 Topics Widget
@@ -198,7 +230,7 @@ function renderTopics() {
   topicsList.innerHTML = topics.map((topic, index) => `
     <div class="topic-item">
       <span>${topic}</span>
-      <button class="topic-delete" onclick="deleteTopic(${index})">×</button>
+      <button class="topic-delete" onclick="deleteTopic(${index})">&#215;</button>
     </div>
   `).join('');
 }
@@ -241,21 +273,23 @@ function saveWorkshops() {
   localStorage.setItem(WORKSHOPS_KEY, JSON.stringify(workshops));
 }
 
+// Map workshop status to CSS class key — no inline hex strings
+function wsStatusClass(status) {
+  if (status === 'in-progress') return 'ws-status--inprogress';
+  if (status === 'done') return 'ws-status--done';
+  return 'ws-status--planned';
+}
+
 function renderWorkshops() {
   const container = document.getElementById('workshopsContent');
   container.innerHTML = workshops.map((ws, index) => {
-    const statusColors = {
-      'planned': { bg: 'var(--bg-secondary)', text: 'var(--text-secondary)', label: 'Planned' },
-      'in-progress': { bg: '#f59e0b22', text: '#f59e0b', label: 'In Progress' },
-      'done': { bg: '#10b98122', text: '#10b981', label: 'Done' }
-    };
-    const s = statusColors[ws.status] || statusColors['planned'];
+    // CSS class drives all colour — no inline style hex
+    const cls = wsStatusClass(ws.status);
     return `
       <div class="workshop-item">
         <input type="text" class="workshop-name-input" value="${ws.name}"
           onchange="updateWorkshopName(${index}, this.value)">
-        <select class="workshop-status-select" onchange="updateWorkshopStatus(${index}, this.value)"
-          style="background: ${s.bg}; color: ${s.text};">
+        <select class="workshop-status-select ${cls}" onchange="updateWorkshopStatus(${index}, this.value)">
           <option value="planned" ${ws.status === 'planned' ? 'selected' : ''}>Planned</option>
           <option value="in-progress" ${ws.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
           <option value="done" ${ws.status === 'done' ? 'selected' : ''}>Done</option>
@@ -294,6 +328,16 @@ export function initOverview() {
   document.getElementById('topicAddBtn').addEventListener('click', addTopic);
   document.getElementById('topicInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addTopic();
+  });
+
+  // Add ARIA + keyboard accessibility to summary-stat cells
+  document.querySelectorAll('.summary-stat').forEach(cell => {
+    cell.setAttribute('role', 'button');
+    cell.setAttribute('tabindex', '0');
+    // aria-label will be set precisely after updateTaskSummary populates counts
+    if (!cell.getAttribute('aria-label')) {
+      cell.setAttribute('aria-label', 'Task stat');
+    }
   });
 
   updateSprintInfo();

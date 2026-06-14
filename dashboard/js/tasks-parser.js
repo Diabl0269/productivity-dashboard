@@ -9,6 +9,13 @@ export function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/** Days since task.updated (or task.created) date string, floored to integer. */
+export function daysSince(task) {
+  const dateStr = task.updated || task.created;
+  const d = new Date(dateStr + 'T00:00:00');
+  return Math.floor((new Date() - d) / (1000 * 60 * 60 * 24));
+}
+
 function parseMeta(text) {
   const metaMatch = text.match(/<!--\s*created:(\d{4}-\d{2}-\d{2})(?:\s+updated:(\d{4}-\d{2}-\d{2}))?(?:\s+priority:(low|medium|high))?(?:\s+id:(T\d+))?\s*-->$/);
   if (metaMatch) {
