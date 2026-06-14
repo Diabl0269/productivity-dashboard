@@ -1,9 +1,8 @@
 // memory-parser.js - Pure parsing/utility functions
 
+const _ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text || '';
-  return div.innerHTML;
+  return String(text == null ? '' : text).replace(/[&<>"]/g, c => _ESC[c]);
 }
 
 function parseMemoryMarkdown(content) {

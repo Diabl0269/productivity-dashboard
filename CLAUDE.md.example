@@ -50,14 +50,43 @@ List other teams you interact with
 
 See `memory/` for detailed profiles and context.
 
+## CLI Tools (ch) — prefer over Read/Edit for tasks & memory
+
+Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ...` from repo root.
+
+| Operation | Command |
+|-----------|---------|
+| Dump active tasks (JSON) | `ch tasks dump --active --json` |
+| Add a task | `ch tasks add "<title>" [--section todo] [--priority medium]` |
+| Move task to section | `ch tasks move <id> <section>` |
+| Mark done | `ch tasks done <id>` |
+| Update title/note/priority | `ch tasks update <id> --title "..." --note "..." --priority high` |
+| Next available id | `ch tasks next-id` |
+| Validate tasks.json | `ch tasks lint [--fix]` |
+| Markdown snapshot | `ch tasks export --md` |
+| Person fields | `ch mem person <slug> [--field slack_id,email] [--json]` |
+| Fuzzy person lookup | `ch mem whois "<name>"` |
+| Memory index (JSON) | `ch mem index --json` |
+| Session digest | `ch context [--json]` |
+| List pending gaps | `ch gaps list` |
+| Resolve a gap | `ch gaps resolve <n>` |
+
+**Rules:**
+- NEVER read `tasks.json` or `TASKS.md` directly — always use `ch tasks`.
+- NEVER `ls memory/people` to check existence — use `ch mem person exists <slug>` or `ch mem whois`.
+- `ch` enforces unique ids — do not guess the next id; call `ch tasks next-id`.
+- If `CH_HOME` is unset, the CLI walks up from cwd to find the repo root automatically.
+
 ## Dashboard
 - **Run with:** `node serve.js` (from project root) — opens at `http://localhost:3000/dashboard/`
-- TASKS.md and memory files auto-load via HTTP fetch on page load
-- Tasks poll every 2s for changes — edits via Claude Code appear automatically
+- **Tasks now live in `tasks.json`** (not TASKS.md). The dashboard reads and writes JSON; `ch tasks export --md` gives a markdown snapshot.
+- Memory files (people, projects, glossary) remain Markdown in `memory/`.
+- Tasks poll every 2s for changes — edits via `ch` or Claude Code appear automatically.
+- **FS-Access caveat:** users who previously opened a `TASKS.md` FileSystem handle must re-pick `tasks.json` once in the dashboard (the old handle is stale).
 
 ### Dashboard Architecture
 - `dashboard/js/main.js` — entry point, imports all modules, config loading
-- `dashboard/js/tasks-parser.js` — parses TASKS.md markdown into structured data
+- `dashboard/js/tasks-parser.js` — parses markdown tasks (also used by `ch tasks export`)
 - `dashboard/js/tasks-board.js` — board view rendering, drag-drop, inline card editing
 - `dashboard/js/tasks-list.js` — list view rendering
 - `dashboard/js/memory-renderer.js` — memory tab rendering (overview, files, directories)
@@ -74,6 +103,6 @@ See `memory/` for detailed profiles and context.
 
 ### Task Priority System
 - Priorities: `low` (blue), `medium` (yellow), `high` (red) — default is `medium`
-- Stored in TASKS.md HTML comments: `<\!-- created:2026-02-22 priority:medium -->`
+- Stored in `tasks.json` as `"priority": "medium"` on each task object.
 - Board shows clickable priority dots — click cycles low → medium → high
 - Notes use em-dash separator: `**Title** — note text`

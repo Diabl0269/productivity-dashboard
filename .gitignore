@@ -1,6 +1,7 @@
 # Personal data — never commit
 CLAUDE.md
 TASKS.md
+tasks.json
 memory/
 config.json
 
@@ -23,3 +24,6 @@ Thumbs.db
 
 # Node (future-proofing)
 node_modules/
+
+# CLI working drafts (user-specific, not for public template)
+cli/AUTOMATION_CHANGES.md

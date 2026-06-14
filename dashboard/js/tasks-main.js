@@ -1,6 +1,7 @@
 // tasks-main.js - Main orchestrator for tasks functionality
 
-import { parseTaskMarkdown, taskSectionId, toMarkdown, autoArchive } from './tasks-parser.js';
+import { taskSectionId, autoArchive } from './tasks-parser.js';
+import { loadTasksJson, serializeTasksJson } from './tasks-json.js';
 import { markChanged, startWatching, setIOCallbacks, setLastModified, autoSave } from './tasks-io.js';
 import { renderBoard, setBoardCallbacks } from './tasks-board.js';
 import { renderList, setListCallbacks } from './tasks-list.js';
@@ -31,7 +32,7 @@ export function renderTasks() {
 setIOCallbacks({
   stateFn: () => taskState,
   renderFn: () => renderTasks,
-  parseFn: () => parseTaskMarkdown
+  parseFn: () => loadTasksJson
 });
 
 setBoardCallbacks({
@@ -75,7 +76,7 @@ export async function loadTaskFromHandle(handle) {
   const file = await taskState.taskFileHandle.getFile();
   const content = await file.text();
   setLastModified(file.lastModified);
-  const result = parseTaskMarkdown(content);
+  const result = loadTasksJson(content);
   taskState.sections.length = 0;
   taskState.sections.push(...result.sections);
   for (const key of Object.keys(taskState.tasks)) delete taskState.tasks[key];
@@ -98,15 +99,15 @@ export function loadTaskFromHttp(parsed) {
   Object.assign(taskState.tasks, parsed.tasks);
   autoArchive(taskState.sections, taskState.tasks);
   switchTaskView('board');
-  taskState.taskFileName = 'TASKS.md';
-  if (activeMainTab === 'tasks') filePathEl.textContent = 'TASKS.md';
-  showStatus('Loaded TASKS.md via HTTP');
+  taskState.taskFileName = 'tasks.json';
+  if (activeMainTab === 'tasks') filePathEl.textContent = 'tasks.json';
+  showStatus('Loaded tasks.json via HTTP');
 }
 
 export async function openTaskFile() {
   try {
     [taskState.taskFileHandle] = await window.showOpenFilePicker({
-      types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }]
+      types: [{ description: 'Tasks JSON', accept: { 'application/json': ['.json'] } }]
     });
     await loadTaskFromHandle(taskState.taskFileHandle);
     await saveHandle('taskFile', taskState.taskFileHandle);
@@ -138,13 +139,13 @@ export function initTasks() {
 
   saveBtn.addEventListener('click', async () => {
     try {
-      const content = toMarkdown(taskState.sections, taskState.tasks);
+      const content = serializeTasksJson(taskState.sections, taskState.tasks);
       if (taskState.taskFileHandle) {
         const writable = await taskState.taskFileHandle.createWritable();
         await writable.write(content);
         await writable.close();
       } else {
-        await httpSave('TASKS.md', content);
+        await httpSave('tasks.json', content);
       }
       taskState.hasChanges = false;
       saveBtn.disabled = true;

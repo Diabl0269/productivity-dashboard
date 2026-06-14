@@ -10,5 +10,6 @@
   ],
   "defaultWorkshops": [
     { "name": "Example Workshop", "status": "planned" }
-  ]
+  ],
+  "team": ["jane-doe", "john-roe"]
 }

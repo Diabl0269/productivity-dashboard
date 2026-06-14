@@ -1,6 +1,6 @@
 // http-loader.js - HTTP fetch fallback for loading tasks and memory when FileSystem API is unavailable
 
-import { parseTaskMarkdown } from './tasks-parser.js';
+import { loadTasksJson } from './tasks-json.js';
 import { parseMemoryMarkdown } from './memory-parser.js';
 
 // Base path from dashboard/ to project root
@@ -10,15 +10,15 @@ let httpWatchInterval = null;
 let lastTaskContent = null;
 
 /**
- * Load TASKS.md via HTTP fetch
+ * Load tasks.json via HTTP fetch
  */
 export async function loadTasksViaHttp() {
   try {
-    const res = await fetch(`${BASE}/TASKS.md`);
+    const res = await fetch(`${BASE}/tasks.json`);
     if (!res.ok) return null;
     const content = await res.text();
     lastTaskContent = content;
-    return { content, parsed: parseTaskMarkdown(content) };
+    return { content, parsed: loadTasksJson(content) };
   } catch (e) {
     console.log('HTTP task load failed:', e.message);
     return null;
@@ -26,18 +26,18 @@ export async function loadTasksViaHttp() {
 }
 
 /**
- * Start polling TASKS.md for changes via HTTP
+ * Start polling tasks.json for changes via HTTP
  */
 export function startHttpTaskWatching(onUpdate) {
   if (httpWatchInterval) clearInterval(httpWatchInterval);
   httpWatchInterval = setInterval(async () => {
     try {
-      const res = await fetch(`${BASE}/TASKS.md`);
+      const res = await fetch(`${BASE}/tasks.json`);
       if (!res.ok) return;
       const content = await res.text();
       if (content !== lastTaskContent) {
         lastTaskContent = content;
-        onUpdate(parseTaskMarkdown(content));
+        onUpdate(loadTasksJson(content));
       }
     } catch (e) { /* silent */ }
   }, 2000);

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "sections": [
+    {
+      "id": "backlog",
+      "name": "Backlog",
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Evaluate monitoring tools",
+          "checked": false,
+          "priority": "low",
+          "created": "2026-01-15",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "todo",
+      "name": "Todo",
+      "tasks": [
+        {
+          "id": "T2",
+          "title": "Review PR for auth module",
+          "note": "Needs security sign-off before merge",
+          "checked": false,
+          "priority": "high",
+          "created": "2026-02-05",
+          "updated": null,
+          "subtasks": [
+            { "text": "Check input validation", "checked": true },
+            { "text": "Verify token expiry handling", "checked": false }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "in-progress",
+      "name": "In Progress",
+      "tasks": []
+    },
+    {
+      "id": "done",
+      "name": "Done",
+      "tasks": [
+        {
+          "id": "T3",
+          "title": "Configure development environment",
+          "checked": true,
+          "priority": "medium",
+          "created": "2026-01-10",
+          "updated": "2026-01-12",
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "archive",
+      "name": "Archive",
+      "tasks": []
+    }
+  ]
+}

@@ -86,9 +86,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req));
       const relPath = body.path;
-      if (!relPath || !relPath.endsWith('.md')) {
+      if (!relPath || (!relPath.endsWith('.md') && !relPath.endsWith('.json'))) {
         res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Only .md files allowed' }));
+        res.end(JSON.stringify({ error: 'Only .md and .json files allowed' }));
         return;
       }
       const absPath = path.resolve(ROOT, relPath);

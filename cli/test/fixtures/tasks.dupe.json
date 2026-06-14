@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "sections": [
+    {
+      "id": "todo",
+      "name": "Todo",
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Valid task",
+          "checked": false,
+          "priority": "medium",
+          "created": "2026-01-10",
+          "updated": null,
+          "subtasks": []
+        },
+        {
+          "id": "T5",
+          "title": "First T5 — will be duplicated",
+          "checked": false,
+          "priority": "low",
+          "created": "2026-01-10",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "in-progress",
+      "name": "In Progress",
+      "tasks": [
+        {
+          "id": "T5",
+          "checked": false,
+          "priority": "high",
+          "created": "2026-01-11",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    }
+  ]
+}
