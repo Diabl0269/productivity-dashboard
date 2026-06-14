@@ -1703,8 +1703,8 @@ The class name `.memory-tab` is preserved for JS coupling compatibility. Only it
 
 **JS change in `memory-renderer.js`:**
 - `renderMemoryTabs()` must build the vertical sidebar instead of horizontal pill strip.
-- Group nav items: "Core" (MEMORY, CLAUDE.md, Glossary, Pending-Gaps, Archived), "Feedback" (files with `feedback_` prefix), "Reference" (files with `reference_` prefix), "Directories" (Context, People, Projects, Archived sub-items).
-- Format display names: replace `_` with space, capitalize first letter: `feedback_memory_gap_detection` → "Memory Gap Detection". Underlying `data-file` attribute carries original name unchanged.
+- Group nav items: "Core" (MEMORY, CLAUDE.md, Glossary, Notes, Archived), "Feedback" (files with `feedback_` prefix), "Reference" (files with `reference_` prefix), "Directories" (Context, People, Projects, Archived sub-items).
+- Format display names: replace `_` with space, capitalize first letter: `feedback_example_topic` → "Example Topic". Underlying `data-file` attribute carries original name unchanged.
 - Emit `.memory-sidebar-group-label` spans as section headers.
 - Add `role="tab"` and `aria-selected="true/false"` to each `.memory-tab` button.
 

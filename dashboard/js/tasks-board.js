@@ -1,7 +1,7 @@
 // tasks-board.js - Board rendering, card creation, column creation, drag-drop for board view
 
 import { markChanged } from './tasks-io.js';
-import { taskSectionId, todayStr, renderLinks } from './tasks-parser.js';
+import { taskSectionId, todayStr, renderLinks, daysSince } from './tasks-parser.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -24,9 +24,7 @@ function createCard(task, isArchive = false) {
   let dateBadge = '';
   if (task.created) {
     if (task.checked && (task.updated || task.created)) {
-      const doneDate = new Date((task.updated || task.created) + 'T00:00:00');
-      const daysAgo = Math.floor((new Date() - doneDate) / (1000 * 60 * 60 * 24));
-      dateBadge = `<span class="date-badge">done ${daysAgo}d ago</span>`;
+      dateBadge = `<span class="date-badge">done ${daysSince(task)}d ago</span>`;
     } else {
       dateBadge = `<span class="date-badge">${task.created}</span>`;
     }

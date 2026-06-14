@@ -1,6 +1,7 @@
 /* ── Overview Tab Panel ── */
 .tab-panel#overviewPanel {
   padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
 }
 
 /* ── Overview Grid ── */
@@ -17,68 +18,98 @@
   }
 }
 
-/* ── Widget Card Shell ── */
+/* ═══════════════════════════════════════════════════
+   WIDGET CARD SHELL — hairline border + hover lift
+   ═══════════════════════════════════════════════════ */
 .widget-card {
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border);   /* hairline — was border-subtle, now border for crispness */
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   box-shadow: var(--shadow-sm);
+  /* Hover lift handled by base.css grouped rule */
 }
 
+/* ═══════════════════════════════════════════════════
+   WIDGET HEADINGS — editorial serif kicker
+   Before: font-sans, text-sm, weight-medium, color text-secondary, letter-spacing 0
+   After:  font-serif, text-md/18px visual, weight-semibold, color text-primary, tracking-tight
+   ═══════════════════════════════════════════════════ */
 .widget-card h3 {
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  font-size: var(--text-md);          /* 15px — readable but not oversized */
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);         /* was text-secondary; now full weight editorial */
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
   margin-bottom: var(--space-4);
-  letter-spacing: 0;
-  text-transform: none;
+  /* Subtle underline separator — feels like a magazine section divider */
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .widget-content {
   color: var(--text-primary);
 }
 
-/* ── Sprint Info Widget ── */
+/* ═══════════════════════════════════════════════════
+   SPRINT INFO WIDGET
+   ═══════════════════════════════════════════════════ */
 .sprint-name {
-  font-size: var(--text-xl);
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);           /* 22px — was text-xl already, keep */
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: var(--tracking-display);
   color: var(--text-primary);
+  line-height: var(--leading-tight);
   margin-bottom: var(--space-1);
 }
 
 .sprint-days {
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);       /* was space-3; more breathing room above bar */
 }
 
+/* Progress bar — refined track, crisp radius, consistent height */
 .progress-bar {
   height: 6px;
-  background: var(--surface-4);
+  background: var(--surface-4);        /* was surface-4 — keep, token-clean */
   border-radius: var(--radius-pill);
   overflow: hidden;
+  /* Subtle inset so bar reads as recessed track */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18); /* rgba OK: no token for track-shadow */
 }
 
 .progress-fill {
   height: 100%;
-  background: var(--progress-fill);  /* sage green — accomplishment-coded, not danger */
+  background: var(--progress-fill);   /* sage green — token-driven */
   border-radius: var(--radius-pill);
   transition: width var(--transition-slow);
-  min-width: 2px;  /* always show a sliver at 0% */
+  min-width: 2px;
+  /* Subtle inner glow on fill — color-mix keeps it token-driven across themes */
+  box-shadow: 0 0 6px color-mix(in srgb, var(--progress-fill) 35%, transparent);
+}
+
+[data-theme="light"] .progress-fill {
+  box-shadow: 0 0 6px color-mix(in srgb, var(--progress-fill) 30%, transparent);
 }
 
 .progress-label {
   font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;  /* tnum for % readout */
   color: var(--text-tertiary);
   text-align: right;
   display: block;
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);          /* was space-1; more separation */
+  font-weight: var(--weight-medium);
 }
 
-/* ── Task Summary Widget ── */
+/* ═══════════════════════════════════════════════════
+   TASK SUMMARY WIDGET — stat numbers as hero figures
+   Before: text-2xl/700, no font-serif, no tnum, simple center block
+   After:  font-serif display figures, text-2xl (stays), tnum, semantic colors retained
+   ═══════════════════════════════════════════════════ */
 .task-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -87,17 +118,21 @@
 
 .summary-stat {
   text-align: center;
-  padding: var(--space-3) var(--space-2);
+  padding: var(--space-4) var(--space-2);  /* was space-3 top/bottom; more hero room */
   background: var(--surface-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    background     var(--transition-fast),
+    box-shadow     var(--transition-fast),
+    border-color   var(--transition-fast);
 }
 
 .summary-stat:hover {
   background: var(--surface-4);
   box-shadow: var(--shadow-sm);
+  border-color: var(--border);
 }
 
 .summary-stat:focus-visible {
@@ -105,54 +140,74 @@
   outline: none;
 }
 
-/* Stat numbers — 28px/700, largest type on overview. Semantic color per stat. */
+/* Stat number — serif editorial figure, tabular-nums, display size */
 .stat-number {
-  font-size: var(--text-2xl);
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);          /* 28px — was text-2xl/700, now serif; bold stays via 700 */
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
-  margin-bottom: var(--space-1);
+  margin-bottom: var(--space-2);       /* was space-1; more air under number */
+  letter-spacing: var(--tracking-display);
 }
 
-/* Semantic color per stat — NOT all accent.
-   Driven by .stat-cell-* on the .summary-stat wrapper (IDs are on inner .stat-number for JS compat). */
+/* Semantic status colors per stat cell — DO NOT rename these selectors (JS-coupled IDs inside) */
 .stat-cell-inprogress .stat-number { color: var(--status-inprogress); }
 .stat-cell-todo       .stat-number { color: var(--text-secondary); }
 .stat-cell-done       .stat-number { color: var(--status-done); }
 .stat-cell-blocked    .stat-number { color: var(--status-blocked); }
 
+/* Stat label — quiet, small-caps character */
 .stat-label {
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);          /* was text-xs; stepped down to be truly subordinate */
   font-weight: var(--weight-medium);
   color: var(--text-tertiary);
-  text-transform: none;
-  letter-spacing: 0;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  line-height: 1.3;
 }
 
-/* ── Quick Links Widget ── */
+/* ═══════════════════════════════════════════════════
+   QUICK LINKS WIDGET — elegant list rows
+   ═══════════════════════════════════════════════════ */
 .quick-links-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;                              /* gap replaced by bottom border separators */
 }
 
 .quick-link {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 9px var(--space-3);
-  background: var(--surface-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  gap: var(--space-3);                 /* was space-2; more icon breathing room */
+  padding: var(--space-3) var(--space-3); /* was 9px/space-3; harmonised to tokens */
+  background: transparent;            /* was surface-3; cleaner on card background */
+  border: none;                       /* remove card-within-card border */
+  border-bottom: 1px solid var(--border-subtle); /* elegant row divider */
+  border-radius: 0;
   color: var(--text-primary);
   text-decoration: none;
   font-size: var(--text-sm);
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background     var(--transition-fast),
+    color          var(--transition-fast);
+}
+
+/* First item: round top corners; last item: round bottom + no border */
+.quick-link:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.quick-link:last-child  {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-bottom: none;
+}
+/* Single item: full radius, no bottom border */
+.quick-link:only-child  {
+  border-radius: var(--radius-md);
+  border-bottom: none;
 }
 
 .quick-link:hover {
-  background: var(--surface-4);
-  border-color: var(--border);
-  /* No translateX — reads as fidgety in a daily-use tool */
+  background: var(--surface-3);       /* gentle fill, not heavy card */
+  color: var(--accent);               /* terracotta on hover — editorial accent */
 }
 
 .quick-link:focus-visible {
@@ -165,33 +220,48 @@
   flex-shrink: 0;
   width: 20px;
   text-align: center;
+  opacity: 0.75;                      /* icons slightly muted so text is foreground */
 }
 
+.quick-link:hover .quick-link-icon {
+  opacity: 1;
+}
+
+/* Quick links empty state — dashed frame, quiet */
 .quick-links-empty {
   font-size: var(--text-sm);
+  font-style: italic;
   color: var(--text-tertiary);
   text-align: center;
-  padding: var(--space-7) var(--space-4);
+  padding: var(--space-7) var(--space-5);
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
+  line-height: var(--leading-relaxed);
 }
 
-/* ── 1:1 Topics Widget ── */
+/* ═══════════════════════════════════════════════════
+   1:1 TOPICS WIDGET
+   ═══════════════════════════════════════════════════ */
 .topics-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  gap: 0;                              /* row-separator pattern, like quick-links */
+  margin-bottom: var(--space-4);
 }
 
+/* Topics empty state — intentional, centered, dashed frame */
 .topics-empty {
   font-size: var(--text-sm);
+  font-style: italic;
   color: var(--text-tertiary);
   text-align: center;
-  padding: var(--space-7) var(--space-4);
+  padding: var(--space-6) var(--space-5);
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+  line-height: var(--leading-relaxed);
+  /* Comfortable spacious empty — reads as intentional, not broken */
+  background: transparent;
 }
 
 .topic-item {
@@ -199,11 +269,27 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--space-2) var(--space-3);
-  background: var(--surface-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
   font-size: var(--text-sm);
-  margin-bottom: var(--space-2);
+  margin-bottom: 0;
+  transition: background var(--transition-fast);
+}
+
+.topic-item:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.topic-item:last-child  {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-bottom: none;
+}
+.topic-item:only-child  {
+  border-radius: var(--radius-md);
+  border-bottom: none;
+}
+
+.topic-item:hover {
+  background: var(--surface-3);
 }
 
 .topic-delete {
@@ -214,10 +300,13 @@
   padding: var(--space-1) var(--space-2);
   font-size: var(--text-md);
   border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .topic-delete:hover {
   color: var(--status-blocked);
+  background: var(--urgency-today-bg);
 }
 
 .topic-input-group {
@@ -261,18 +350,25 @@
   border-color: var(--accent-hover);
 }
 
-/* ── Upcoming Deadlines Widget ── */
+/* ═══════════════════════════════════════════════════
+   UPCOMING DEADLINES WIDGET
+   ═══════════════════════════════════════════════════ */
 .deadlines-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;
 }
 
+/* Deadline empty — dashed frame, not a naked line */
 .deadline-empty {
   font-size: var(--text-sm);
+  font-style: italic;
   color: var(--text-tertiary);
   text-align: center;
-  padding: var(--space-5) var(--space-4);
+  padding: var(--space-6) var(--space-5);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  line-height: var(--leading-relaxed);
 }
 
 .deadline-item {
@@ -280,25 +376,47 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  background: var(--surface-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
   font-size: var(--text-sm);
-  margin-bottom: var(--space-2);
+  margin-bottom: 0;
+  transition: background var(--transition-fast);
 }
 
+.deadline-item:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.deadline-item:last-child  {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-bottom: none;
+}
+.deadline-item:only-child  {
+  border-radius: var(--radius-md);
+  border-bottom: none;
+}
+
+.deadline-item:hover { background: var(--surface-3); }
+
+/* Urgency overrides — accent left border retained, bg token-driven */
 .deadline-item.deadline-today {
   border-left: 3px solid var(--urgency-today);
   background: var(--urgency-today-bg);
+}
+.deadline-item.deadline-today:hover {
+  background: var(--urgency-today-bg);  /* keep urgency color on hover */
 }
 
 .deadline-item.deadline-soon {
   border-left: 3px solid var(--urgency-soon);
   background: var(--urgency-soon-bg);
 }
+.deadline-item.deadline-soon:hover {
+  background: var(--urgency-soon-bg);
+}
 
 .deadline-date {
   font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
   min-width: 56px;
   color: var(--text-secondary);
   font-size: var(--text-xs);
@@ -320,26 +438,38 @@
 }
 
 .deadline-today .deadline-badge {
-  background: rgba(224, 92, 92, 0.15);
+  background: rgba(224, 92, 92, 0.15);   /* urgency-today rgba intent */
   color: var(--urgency-today);
 }
 
 .deadline-soon .deadline-badge {
-  background: rgba(201, 154, 48, 0.15);
+  background: rgba(201, 154, 48, 0.15);  /* urgency-soon rgba intent */
   color: var(--urgency-soon);
 }
 
-/* ── Workshops Widget ── */
+/* ═══════════════════════════════════════════════════
+   WORKSHOPS WIDGET — elegant rows
+   ═══════════════════════════════════════════════════ */
 .workshop-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: var(--space-2) var(--space-3);
-  background: var(--surface-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-2);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  margin-bottom: 0;
+  transition: background var(--transition-fast);
 }
+
+.workshop-item:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.workshop-item:last-of-type {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-bottom: none;
+}
+
+.workshop-item:hover { background: var(--surface-3); }
 
 .workshop-name-input {
   background: transparent;
@@ -352,7 +482,7 @@
   font-family: var(--font-sans);
   flex: 1;
   min-width: 0;
-  transition: background var(--transition-fast);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .workshop-name-input:hover {
@@ -365,7 +495,7 @@
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-/* Workshop status badge classes — replaces all inline hex style assignments */
+/* Workshop status badge classes — DO NOT rename (JS-coupled) */
 .ws-status--planned    { background: var(--workshop-planned-bg);    color: var(--workshop-planned); }
 .ws-status--inprogress { background: var(--workshop-inprogress-bg); color: var(--workshop-inprogress); }
 .ws-status--done       { background: var(--workshop-done-bg);       color: var(--workshop-done); }
@@ -380,6 +510,7 @@
   font-family: var(--font-sans);
   appearance: none;
   -webkit-appearance: none;
+  flex-shrink: 0;
 }
 
 .workshop-status-select:focus-visible {
@@ -387,6 +518,7 @@
   outline: none;
 }
 
+/* "Add Workshop" dashed button */
 .workshop-add-btn {
   width: 100%;
   padding: var(--space-2) var(--space-3);
@@ -398,12 +530,49 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   font-family: var(--font-sans);
-  margin-top: var(--space-1);
-  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  margin-top: var(--space-3);          /* was space-1; more gap after last row */
+  transition:
+    border-color var(--transition-fast),
+    color        var(--transition-fast),
+    background   var(--transition-fast);
 }
 
 .workshop-add-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-muted);
+}
+
+/* ═══════════════════════════════════════════════════
+   OVERVIEW GRID — child stagger animation
+   The tab-panel auto-stagger targets .overview-grid as a single element.
+   We add a view-scoped rule animating each .widget-card with rise-in
+   + nth-child delays referencing the global keyframe.
+   Disabled under prefers-reduced-motion.
+   ═══════════════════════════════════════════════════ */
+.tab-panel.active .overview-grid > .widget-card {
+  animation: rise-in var(--stagger-base) var(--stagger-ease) both;
+}
+
+.tab-panel.active .overview-grid > .widget-card:nth-child(1) { animation-delay:  60ms; }
+.tab-panel.active .overview-grid > .widget-card:nth-child(2) { animation-delay: 110ms; }
+.tab-panel.active .overview-grid > .widget-card:nth-child(3) { animation-delay: 160ms; }
+.tab-panel.active .overview-grid > .widget-card:nth-child(4) { animation-delay: 210ms; }
+.tab-panel.active .overview-grid > .widget-card:nth-child(5) { animation-delay: 260ms; }
+.tab-panel.active .overview-grid > .widget-card:nth-child(6) { animation-delay: 310ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel.active .overview-grid > .widget-card {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════ */
+
+/* Mobile: task summary 2x2 */
+@media (max-width: 480px) {
+  .task-summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .tab-panel#overviewPanel { padding: var(--space-3) var(--space-3); }
 }

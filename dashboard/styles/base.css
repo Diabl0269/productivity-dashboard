@@ -68,10 +68,12 @@
   --badge-reference-bg:  rgba(160, 100, 240, 0.12); --badge-reference-fg: #A064F0;
   --badge-unknown-bg:    var(--surface-4);           --badge-unknown-fg:   var(--text-tertiary);
 
-  /* ── Shadows ── */
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.32);
-  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.40);
-  --shadow-lg:   0 16px 48px rgba(0, 0, 0, 0.56);
+  /* ── Shadows — single-layer, warm-tinted (editorial restraint) ── */
+  --shadow-sm:   0 1px 4px rgba(10, 7, 4, 0.28);
+  --shadow-md:   0 4px 18px rgba(10, 7, 4, 0.38);
+  --shadow-lg:   0 16px 48px rgba(10, 7, 4, 0.54);
+  /* Warm card hover lift — slightly raised with amber undertone */
+  --shadow-card-hover: 0 6px 24px rgba(10, 7, 4, 0.44), 0 1px 4px rgba(207, 106, 67, 0.06);
 
   /* ── Drag / Drop ── */
   --drag-over-bg: rgba(207, 106, 67, 0.07);
@@ -107,18 +109,23 @@
   --radius-xl:  16px;
   --radius-pill: 9999px;
 
-  /* ── Type Scale ── */
-  --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-serif: Georgia, "Times New Roman", serif;
+  /* ── Type Scale — refined with clear hierarchy ── */
+
+  /* Font stacks (offline-safe, no remote imports) */
+  --font-sans:  system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  /* DISPLAY serif — editorial / app title / big stat numbers */
+  --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Hoefler Text", serif;
   --font-mono:  ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
-  --text-2xs: 10px;
-  --text-xs:  11px;
-  --text-sm:  13px;
-  --text-md:  15px;
-  --text-lg:  17px;
-  --text-xl:  22px;
-  --text-2xl: 28px;
+  /* Size scale — rem-based, clear display → body → label steps */
+  --text-2xs:    0.625rem;   /*  10px */
+  --text-xs:     0.6875rem;  /*  11px */
+  --text-sm:     0.8125rem;  /*  13px */
+  --text-md:     0.9375rem;  /*  15px */
+  --text-lg:     1.0625rem;  /*  17px */
+  --text-xl:     1.375rem;   /*  22px */
+  --text-2xl:    1.75rem;    /*  28px */
+  --text-display: 2.25rem;   /*  36px — new, for big stat numbers / hero */
 
   --checkbox-size:   18px;
   --checkbox-indent: calc(var(--checkbox-size) + 10px);
@@ -127,11 +134,14 @@
   --weight-medium:   500;
   --weight-semibold: 600;
 
-  --tracking-tight:  -0.018em;
-  --tracking-normal:  0em;
-  --tracking-wide:    0.04em;
+  /* Tracking — tighter for large serif display, loose for labels */
+  --tracking-display: -0.03em;   /* new — crisp editorial serif heads  */
+  --tracking-tight:   -0.018em;
+  --tracking-normal:   0em;
+  --tracking-wide:     0.04em;
+  --tracking-label:    0.06em;   /* new — small-caps / label use       */
 
-  --leading-tight:   1.3;
+  --leading-tight:   1.25;
   --leading-normal:  1.5;
   --leading-relaxed: 1.65;
 
@@ -139,6 +149,11 @@
   --transition-fast:   120ms ease;
   --transition-normal: 200ms ease;
   --transition-slow:   300ms ease;
+
+  /* ── Page-load stagger timing (rise-in animation) ── */
+  --stagger-base:     280ms;    /* total duration of a stagger child    */
+  --stagger-ease:     cubic-bezier(0.22, 0.6, 0.36, 1);
+  --stagger-distance: 10px;     /* translateY start offset              */
 }
 
 /* ══════════════════════════════════════════════════════
@@ -198,9 +213,10 @@
   --badge-reference-bg:  rgba(120, 60, 200, 0.08);  --badge-reference-fg: #7830c8;
   --badge-unknown-bg:    var(--surface-4);           --badge-unknown-fg:   var(--text-tertiary);
 
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.07);
-  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.10);
-  --shadow-lg:   0 16px 48px rgba(0, 0, 0, 0.16);
+  --shadow-sm:   0 1px 3px rgba(40, 20, 8, 0.08);
+  --shadow-md:   0 4px 16px rgba(40, 20, 8, 0.12);
+  --shadow-lg:   0 16px 48px rgba(40, 20, 8, 0.18);
+  --shadow-card-hover: 0 6px 24px rgba(40, 20, 8, 0.16), 0 1px 4px rgba(192, 90, 48, 0.08);
 
   --drag-over-bg:     rgba(192, 90, 48, 0.05);
   --modal-overlay-bg: rgba(0, 0, 0, 0.40);
@@ -225,9 +241,21 @@
 /* ══════════════════════════════════════════════════════
    BASE RESET & BODY
    ══════════════════════════════════════════════════════ */
+
+/* ── Selection — translucent terracotta; color-mix keeps it token-driven ── */
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--text-primary);
+}
+
 body {
   font-family: var(--font-sans);
-  background: var(--surface-0);
+  /* Warm atmospheric gradient — distinct per theme, very low contrast */
+  background: radial-gradient(
+    ellipse 120% 80% at 30% 10%,
+    #1a1714 0%,
+    var(--surface-0) 55%
+  );
   color: var(--text-primary);
   height: 100vh;
   padding: 0;
@@ -235,6 +263,39 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+/* Light theme body gradient */
+[data-theme="light"] body {
+  background: radial-gradient(
+    ellipse 120% 80% at 30% 10%,
+    #f9f5ee 0%,
+    var(--surface-0) 60%
+  );
+}
+
+/* ── Atmospheric paper-grain texture layer ──
+   Ultra-faint fractal-noise SVG; fixed so it doesn't scroll.
+   pointer-events:none, z-index:-1 — behind all content.
+   Static texture (not animation) so prefers-reduced-motion doesn't apply,
+   but we keep it extremely subtle (2-4% opacity) to avoid mud.            */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* SVG fractal-noise grain as data-URI — offline, zero network */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23grain)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 300px 300px;
+  opacity: 0.040; /* dark: ~4% — barely perceptible warmth (no blend-mode) */
+}
+
+/* Light theme — slightly more visible grain on warm paper */
+[data-theme="light"] body::before {
+  opacity: 0.050;
 }
 
 /* ══════════════════════════════════════════════════════
@@ -260,7 +321,7 @@ h1 {
   font-family: var(--font-serif);
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: var(--tracking-display); /* tighter editorial crispness */
   color: var(--text-primary);
   line-height: 1.2;
 }
@@ -579,7 +640,7 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
 }
 
 /* ══════════════════════════════════════════════════════
-   TAB PANELS — fade-in animation
+   TAB PANELS — fade-in + stagger rise-in animation
    ══════════════════════════════════════════════════════ */
 .tab-panel {
   display: none;
@@ -594,6 +655,56 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
 @keyframes tab-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+/* ── Page-load / tab-switch stagger rise-in ──────────────────
+   Direct children of .tab-panel.active rise in with staggered
+   delays. Uses transform + opacity only — no layout reflow.
+   Pair with .stagger on any container for manual stagger contexts.
+   ──────────────────────────────────────────────────────────── */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--stagger-distance));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Apply stagger to top-level children when tab becomes active */
+.tab-panel.active > *,
+.stagger > * {
+  animation: rise-in var(--stagger-base) var(--stagger-ease) both;
+}
+
+/* Stagger delays: up to 6 children at 40ms increments */
+.tab-panel.active > *:nth-child(1),
+.stagger > *:nth-child(1) { animation-delay:   0ms; }
+.tab-panel.active > *:nth-child(2),
+.stagger > *:nth-child(2) { animation-delay:  40ms; }
+.tab-panel.active > *:nth-child(3),
+.stagger > *:nth-child(3) { animation-delay:  80ms; }
+.tab-panel.active > *:nth-child(4),
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.tab-panel.active > *:nth-child(5),
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.tab-panel.active > *:nth-child(6),
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+/* Children beyond 6 animate immediately with no delay */
+.tab-panel.active > *:nth-child(n+7),
+.stagger > *:nth-child(n+7) { animation-delay: 200ms; }
+
+/* ── Reduced motion: disable all non-essential animation ── */
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel.active > *,
+  .stagger > * {
+    animation: none;
+  }
+  .tab-panel.active {
+    animation: none;
+  }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -618,24 +729,6 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
   line-height: var(--leading-normal);
   font-size: var(--text-sm);
   min-height: 60px;
-}
-
-/* ══════════════════════════════════════════════════════
-   PRIORITY LEGEND
-   ══════════════════════════════════════════════════════ */
-.priority-legend {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6) var(--space-3);
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  pointer-events: none;
-}
-.priority-legend .priority-dot {
-  pointer-events: none;
-  cursor: default;
 }
 
 /* ══════════════════════════════════════════════════════
@@ -691,6 +784,75 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
   background: var(--surface-2);
   border-radius: var(--radius-lg);
   border: 1px dashed var(--border);
+}
+
+/* ══════════════════════════════════════════════════════
+   SCROLLBARS — warm, subtle webkit thin scrollbars
+   ══════════════════════════════════════════════════════ */
+
+/* Global thin scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-4);
+}
+
+/* Firefox thin scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* ── Scrollable content areas: ensure scrollbar visibility ── */
+.board-scroll,
+.memory-content,
+[class*="tab-panel"].active {
+  scrollbar-gutter: stable both-edges;
+}
+
+/* ══════════════════════════════════════════════════════
+   CARD HOVER LIFT — consolidated for all card types
+   translateY(-2px) + shadow lift shared by task-card,
+   list-item, widget-card, memory-card, gm-card.
+   Per-view hover effects (bg, border-color) remain in
+   their own stylesheets; only the lift is centralised.
+   ══════════════════════════════════════════════════════ */
+.task-card,
+.list-item,
+.widget-card,
+.memory-card,
+.gm-card {
+  transition:
+    transform  var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.task-card:hover,
+.list-item:hover,
+.widget-card:hover,
+.memory-card:hover,
+.gm-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-card:hover,
+  .list-item:hover,
+  .widget-card:hover,
+  .memory-card:hover,
+  .gm-card:hover {
+    transform: none;
+  }
 }
 
 /* ══════════════════════════════════════════════════════

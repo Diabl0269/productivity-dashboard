@@ -2,7 +2,7 @@
 
 import { markChanged } from './tasks-io.js';
 import { moveTask, deleteTask } from './tasks-board.js';
-import { taskSectionId, todayStr, renderLinks } from './tasks-parser.js';
+import { taskSectionId, todayStr, renderLinks, daysSince } from './tasks-parser.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -432,9 +432,7 @@ function createListItem(task, section) {
     const badge = document.createElement('span');
     badge.className = 'date-badge';
     if (task.checked && (task.updated || task.created)) {
-      const doneDate = new Date((task.updated || task.created) + 'T00:00:00');
-      const daysAgo = Math.floor((new Date() - doneDate) / (1000 * 60 * 60 * 24));
-      badge.textContent = `done ${daysAgo}d ago`;
+      badge.textContent = `done ${daysSince(task)}d ago`;
     } else {
       badge.textContent = task.created;
     }
@@ -669,9 +667,7 @@ function createArchiveListItem(task) {
   if (task.created) {
     const badge = document.createElement('span');
     badge.className = 'date-badge';
-    const doneDate = new Date((task.updated || task.created) + 'T00:00:00');
-    const daysAgo = Math.floor((new Date() - doneDate) / (1000 * 60 * 60 * 24));
-    badge.textContent = `done ${daysAgo}d ago`;
+    badge.textContent = `done ${daysSince(task)}d ago`;
     content.appendChild(badge);
   }
 

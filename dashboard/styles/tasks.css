@@ -1,4 +1,4 @@
-/* ===== TASKS STYLES ===== */
+/* ===== TASKS STYLES — Warm Editorial Workspace polish pass ===== */
 
 /* ── Board Container ── */
 .board {
@@ -26,20 +26,25 @@
   flex: 0 0 auto;
   width: clamp(300px, 22vw, 360px);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  /* Hairline border — quiet structural frame */
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 160px);
   box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-fast);
 }
 
 .column.dragging-column {
   opacity: 0.5;
 }
 
-/* Column identity stripe — set via --col-color CSS custom property from JS */
+/* ── Column identity stripe ──
+   --col-color set inline by JS; top accent gives columns personality.
+   Crisp 3px stripe with a subtle inner fade via gradient underlay.   */
 .column-header {
+  /* Solid top accent — intentional, not decorative */
   border-top: 3px solid var(--col-color, var(--border));
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   padding: var(--space-3) var(--space-4);
@@ -48,17 +53,27 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Faint warm gradient below the stripe for depth */
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--col-color, var(--border)) 6%, transparent),
+    transparent 28px
+  );
 }
 .column-header:active { cursor: grabbing; }
 
+/* ── Column Title — editorial kicker style ──
+   Medium-weight, label-caps treatment: uppercase + tracking-label.
+   Smaller than before (text-xs → --text-sm basis) but more authoritative. */
 .column-title {
-  font-size: var(--text-lg);
+  font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
-  color: var(--text-primary);
-  letter-spacing: var(--tracking-tight);
-  text-transform: none;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
   cursor: text;
   transition: color var(--transition-fast);
+  line-height: 1.4;
 }
 .column-title:hover {
   color: var(--accent);
@@ -66,14 +81,19 @@
   text-underline-offset: 3px;
 }
 
+/* ── Count Pill — refined token-based chip ── */
 .count {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  padding: 2px var(--space-2);
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
+  line-height: 1.4;
+  min-width: 20px;
+  text-align: center;
 }
 
 /* ── Cards Container ── */
@@ -92,29 +112,36 @@
 /* ── Task Card ── */
 .task-card {
   background: var(--surface-3);
+  /* Hairline border — quieter than before */
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-2);
   cursor: grab;
   box-shadow: var(--shadow-sm);
   position: relative;
-  transition: border-color var(--transition-fast),
-              box-shadow var(--transition-fast),
-              transform var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    background   var(--transition-fast);
   overflow: hidden;
 }
+
+/* Warm hover: bg + border change (lift/shadow via base.css) */
 .task-card:hover {
   background: var(--surface-4);
   border-color: var(--border);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
 }
 .task-card:active { cursor: grabbing; }
+
+/* Drag state — rotated ghost with glow */
 .task-card.dragging {
   transform: rotate(1.5deg) scale(1.02);
   opacity: 0.55;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 2px var(--accent-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-card.dragging { transform: none; }
 }
 
 /* Links inside cards */
@@ -302,20 +329,23 @@
   margin-top: 1px;
 }
 
-/* ── Priority Dots ── */
+/* ── Priority Dots — deliberate semantic chips ──
+   Slightly larger (11px → 12px) so they read as intentional status chips
+   rather than decorative punctuation. Hover scale preserved.            */
 .priority-dot {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: var(--radius-pill);
   flex-shrink: 0;
   cursor: pointer;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
-  margin-bottom: 0;
+  /* Slight inner warmth so dots feel painted, not flat */
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
 }
 .priority-dot:hover {
-  transform: scale(1.5);
-  box-shadow: 0 0 0 3px var(--accent-muted);
+  transform: scale(1.45);
+  box-shadow: 0 0 0 3px var(--accent-muted), inset 0 1px 2px rgba(0,0,0,0.2);
 }
 .priority-dot:focus-visible {
   box-shadow: var(--focus-ring);
@@ -326,28 +356,69 @@
 .priority-medium { background: var(--priority-medium); }
 .priority-high   { background: var(--priority-high); }
 
-/* ── Task ID Badge ── */
+/* ── Priority Legend — elegant row above board ──
+   Authoritative definition (base.css duplicate removed).
+   Dots aligned with board left padding.                */
+.priority-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Legend item: dot + label as a paired chip */
+.priority-legend .priority-dot {
+  pointer-events: none;
+  cursor: default;
+  /* Non-interactive dots are slightly smaller and non-hoverable */
+  width: 9px;
+  height: 9px;
+  box-shadow: none;
+}
+.priority-legend .priority-dot:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Legend label text: label-caps style */
+.priority-legend span:not(.priority-dot) {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* ── Task ID Badge — quiet metadata pill ── */
 .task-id {
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   color: var(--text-tertiary);
-  background: var(--surface-4);
+  background: var(--surface-0);
   border: 1px solid var(--border-subtle);
-  padding: 1px var(--space-1);
+  padding: 1px var(--space-2);
   border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
-/* ── Date Badge ── */
+/* ── Date Badge — quiet metadata pill with tabular nums ── */
 .date-badge {
   font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
-  background: var(--surface-4);
+  background: var(--surface-0);
   border: 1px solid var(--border-subtle);
   padding: 1px 7px;
   border-radius: var(--radius-sm);
   margin-top: var(--space-1);
   display: inline-block;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 /* ── Add Task Button ── */
@@ -397,7 +468,7 @@
   flex: 0 0 auto;
   width: clamp(200px, 14vw, 240px);
   min-height: 80px;
-  border: 2px dashed var(--border);
+  border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
@@ -421,22 +492,26 @@
   outline: none;
 }
 
-/* ── Empty Column State ── */
+/* ── Empty Column State — quiet dashed frame ── */
 .column-empty-state {
   padding: var(--space-7) var(--space-4);
   text-align: center;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin: var(--space-3);
 }
 
-/* ── Drag States ── */
+/* ── Drag States — polished tokenized indicators ── */
 .drop-indicator {
   height: 2px;
   background: var(--accent);
   border-radius: var(--radius-pill);
   margin: var(--space-1) 0;
-  box-shadow: 0 0 6px var(--accent-muted);
+  /* Warm glow: accent color at reduced opacity */
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .column-drop-indicator {
@@ -445,7 +520,15 @@
   border-radius: var(--radius-pill);
   margin: 0 -2px;
   min-height: 100px;
-  box-shadow: 0 0 8px var(--accent-muted);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Cards container drag-over highlight */
+.cards.drag-over {
+  background: var(--drag-over-bg);
+  border-radius: var(--radius-md);
+  /* Faint column glow on drag-over */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 /* ── Scrollbar styling for cards and list-view ── */
@@ -581,7 +664,7 @@
   padding-right: 12px;
 }
 
-/* ── Section Headers ── */
+/* ── Section Headers — label-caps editorial kickers ── */
 .list-section-header {
   display: flex;
   align-items: center;
@@ -591,24 +674,19 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* Section title: label-caps treatment — uppercase, tracked, small, authoritative */
 .section-title {
-  font-size: var(--text-sm);
+  font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
-  color: var(--text-secondary);
-  text-transform: none;
-  cursor: pointer;
-}
-.section-title:hover { color: var(--text-primary); }
-
-.list-section-header .count {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   color: var(--text-tertiary);
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color var(--transition-fast);
 }
+.section-title:hover { color: var(--text-secondary); }
+
+.list-section-header .count { padding: 1px 7px; }
 
 /* ── Task Rows ── */
 .list-item {
@@ -623,16 +701,13 @@
   box-shadow: var(--shadow-sm);
   cursor: grab;
   position: relative;
-  transition: border-color var(--transition-fast),
-              box-shadow var(--transition-fast),
-              transform var(--transition-fast),
-              background var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    background   var(--transition-fast);
 }
 .list-item:hover {
   background: var(--surface-4);
   border-color: var(--border);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
 }
 .list-item:active { cursor: grabbing; }
 .list-item.dragging {
@@ -820,17 +895,21 @@
   background: var(--accent);
   border-radius: var(--radius-pill);
   margin: var(--space-1) -12px;
-  box-shadow: 0 0 6px var(--accent-muted);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-/* ── Quick Add Bar ── */
+/* ── Quick Add Bar — refined affordance ── */
 .quick-add {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) 0;
   margin-bottom: var(--space-5);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: border-color var(--transition-fast);
+}
+.quick-add:focus-within {
+  border-color: var(--accent);
 }
 
 .quick-add-input {
@@ -842,7 +921,11 @@
   font-family: var(--font-sans);
   outline: none;
 }
-.quick-add-input::placeholder { color: var(--text-tertiary); }
+.quick-add-input::placeholder {
+  color: var(--text-tertiary);
+  /* Subtle italic for the "Add a task..." hint */
+  font-style: italic;
+}
 
 /* Ghost checkbox for quick-add */
 .checkbox--ghost { opacity: 0.3; }
@@ -850,14 +933,19 @@
 /* Section selector button in quick-add */
 .quick-add-section {
   font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   color: var(--text-tertiary);
   background: var(--surface-2);
   padding: 4px 10px;
   border-radius: var(--radius-md);
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
 }
-.quick-add-section:hover { border-color: var(--accent); }
+.quick-add-section:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* ── Section Picker Dropdown ── */
 .section-picker {
@@ -881,11 +969,11 @@
 }
 .section-picker button:hover { background: var(--surface-4); }
 
-/* ── Add Section Button (list) ── */
+/* ── Add Section Button (list) — quiet dashed affordance ── */
 .list-add-section {
   margin-top: var(--space-4);
   padding: var(--space-4);
-  border: 2px dashed var(--border);
+  border: 1px dashed var(--border);
   border-radius: var(--radius-md);
   text-align: center;
   cursor: pointer;
@@ -900,7 +988,7 @@
   background: var(--accent-muted);
 }
 
-/* ── Empty Section State (list) ── */
+/* ── Empty Section State — quiet dashed character ── */
 .list-section-empty {
   font-size: var(--text-sm);
   color: var(--text-tertiary);
