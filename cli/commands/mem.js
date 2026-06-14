@@ -19,7 +19,7 @@
  */
 
 import { parse } from '../lib/args.js';
-import { memoryPath, readText, exists, listMd, atomicWrite } from '../lib/io.js';
+import { memoryPath, readText, exists, listMd, atomicWrite, readConfig } from '../lib/io.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { extractFields, writeField, getSlugName } from '../lib/field-extractor.js';
 import { parseMemoryMarkdown, parseFrontmatter } from '../../dashboard/js/memory-parser.js';
@@ -197,6 +197,18 @@ function glossaryAppendRow(content, term, definition, tableSectionName) {
 // Fuzzy whois scoring
 // ---------------------------------------------------------------------------
 
+// Nickname spelling-equivalences for fuzzy whois matching, e.g. [["jon","jonathan"]].
+// Loaded from config.json ("nicknameAliases") so no real names live in committed source;
+// config.example.json ships a fictional placeholder. Memoized per process.
+let _nicknameAliases;
+function nicknameAliases() {
+  if (_nicknameAliases === undefined) {
+    const a = readConfig().nicknameAliases;
+    _nicknameAliases = Array.isArray(a) ? a : [];
+  }
+  return _nicknameAliases;
+}
+
 /**
  * Score how well query matches a person file's slug, name, email, and body text.
  * Higher = better match.
@@ -219,7 +231,7 @@ function scoreWhois(query, slug, content) {
   if (nameLc === q) score += 100;
   // Name contains query
   else if (nameLc.includes(q)) score += 60;
-  // Name word match (e.g. "noam" matching "naum" or body containing "Noam")
+  // Name word match (prefix overlap between the query and any name part, e.g. "jon" ~ "jonathan")
   else {
     const nameParts = nameLc.split(/\s+/);
     for (const part of nameParts) {
@@ -235,13 +247,8 @@ function scoreWhois(query, slug, content) {
   const bodyLc = content.toLowerCase();
   if (bodyLc.includes(q)) score += 20;
 
-  // Common nickname equivalents: noam <-> naum
-  const NICKNAMES = [
-    ['noam', 'naum'],
-    ['natan', 'nathan'],
-    ['yoni', 'yonatan'],
-  ];
-  for (const [a, b] of NICKNAMES) {
+  // Nickname spelling-equivalences (from config; e.g. "jon" <-> "jonathan")
+  for (const [a, b] of nicknameAliases()) {
     if ((q === a && (slugLc.includes(b) || nameLc.includes(b) || bodyLc.includes(b))) ||
         (q === b && (slugLc.includes(a) || nameLc.includes(a) || bodyLc.includes(a)))) {
       score += 70;
