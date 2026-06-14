@@ -1,6 +1,7 @@
 // tasks-io.js - Auto-save, file watching, markChanged
 
-import { toMarkdown, todayStr } from './tasks-parser.js';
+import { todayStr } from './tasks-parser.js';
+import { serializeTasksJson } from './tasks-json.js';
 import { showStatus } from './state.js';
 import { httpSave } from './http-loader.js';
 
@@ -39,7 +40,7 @@ export async function autoSave() {
   if (!state.hasChanges || isSaving) return;
   isSaving = true;
   try {
-    const content = toMarkdown(state.sections, state.tasks);
+    const content = serializeTasksJson(state.sections, state.tasks);
     if (state.taskFileHandle) {
       const writable = await state.taskFileHandle.createWritable();
       await writable.write(content);
@@ -47,7 +48,7 @@ export async function autoSave() {
       const file = await state.taskFileHandle.getFile();
       lastModified = file.lastModified;
     } else {
-      await httpSave('TASKS.md', content);
+      await httpSave('tasks.json', content);
     }
     state.hasChanges = false;
     document.getElementById('saveBtn').disabled = true;
@@ -81,6 +82,8 @@ export async function checkForExternalChanges() {
     console.log('Watch error:', e);
   }
 }
+// NOTE: getParseTaskMarkdown() is still wired via setIOCallbacks for the FS-Access
+// handle path. tasks-main.js now passes loadTasksJson as parseFn.
 
 export function startWatching() {
   if (watchInterval) clearInterval(watchInterval);
