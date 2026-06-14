@@ -418,9 +418,11 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
 #mainTabToggle {
   display: flex;
   align-items: center;
-  gap: 0;
   border-bottom: none;
-  padding: var(--space-1) 0 0;
+  /* Uniform inset so the active pill floats evenly inside the segmented
+     control — the old `var(--space-1) 0 0` left zero padding at the
+     bottom/sides, so the active tab bled to the container edge. */
+  padding: var(--space-1);
 }
 
 /* Main header tabs: looser spacing than the shared .view-toggle base */
