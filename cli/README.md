@@ -111,3 +111,13 @@ This is useful when invoking `ch` from outside the repo tree (e.g. from a schedu
 ## Memory files
 
 Person, project, and glossary data stays as plain Markdown in `memory/`. The CLI reads and writes these files directly — no database, no sync required. Only `tasks.json` uses structured JSON; all other data remains human-editable Markdown.
+
+## Nicknames (whois fuzzy matching)
+
+`ch mem whois` can use a per-user list of name spelling-equivalences (e.g. `Liz` ↔ `Elizabeth`). These are personal, so they live in a gitignored `nicknames.json` — copy the template to get started:
+
+```sh
+cp nicknames.example.json nicknames.json   # then edit with your own pairs
+```
+
+Format is a bare array of `[a, b]` pairs. The repo ships only the fictional `nicknames.example.json`; `nicknames.json` is never committed.

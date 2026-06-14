@@ -106,6 +106,30 @@ export function readConfig() {
   }
 }
 
+/** Absolute path to nicknames.json */
+export function nicknamesPath() {
+  return path.join(dataRoot(), 'nicknames.json');
+}
+
+/**
+ * Read nicknames.json — a gitignored, per-user list of name spelling-equivalence
+ * pairs for fuzzy whois matching, e.g. [["jon","jonathan"], ["liz","elizabeth"]].
+ * Accepts either a bare array of pairs or { "aliases": [...] }. Returns [] if
+ * missing/invalid. A fictional nicknames.example.json ships as the template.
+ */
+export function readNicknames() {
+  const p = nicknamesPath();
+  if (!fs.existsSync(p)) return [];
+  try {
+    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.aliases)) return data.aliases;
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Read a file as UTF-8 string. Throws a clean Error if missing.
  */
