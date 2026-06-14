@@ -11,6 +11,5 @@
   "defaultWorkshops": [
     { "name": "Example Workshop", "status": "planned" }
   ],
-  "team": ["jane-doe", "john-roe"],
-  "nicknameAliases": [["jon", "jonathan"], ["johnny", "john"]]
+  "team": ["jane-doe", "john-roe"]
 }

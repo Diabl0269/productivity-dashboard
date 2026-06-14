@@ -27,3 +27,4 @@ node_modules/
 
 # CLI working drafts (user-specific, not for public template)
 cli/AUTOMATION_CHANGES.md
+nicknames.json

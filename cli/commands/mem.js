@@ -19,7 +19,7 @@
  */
 
 import { parse } from '../lib/args.js';
-import { memoryPath, readText, exists, listMd, atomicWrite, readConfig } from '../lib/io.js';
+import { memoryPath, readText, exists, listMd, atomicWrite, readNicknames } from '../lib/io.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { extractFields, writeField, getSlugName } from '../lib/field-extractor.js';
 import { parseMemoryMarkdown, parseFrontmatter } from '../../dashboard/js/memory-parser.js';
@@ -198,12 +198,12 @@ function glossaryAppendRow(content, term, definition, tableSectionName) {
 // ---------------------------------------------------------------------------
 
 // Nickname spelling-equivalences for fuzzy whois matching, e.g. [["jon","jonathan"]].
-// Loaded from config.json ("nicknameAliases") so no real names live in committed source;
-// config.example.json ships a fictional placeholder. Memoized per process.
+// Loaded from the gitignored, per-user nicknames.json (template: nicknames.example.json)
+// so no real names live in committed source. Memoized per process.
 let _nicknameAliases;
 function nicknameAliases() {
   if (_nicknameAliases === undefined) {
-    const a = readConfig().nicknameAliases;
+    const a = readNicknames();
     _nicknameAliases = Array.isArray(a) ? a : [];
   }
   return _nicknameAliases;
