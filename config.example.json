@@ -11,5 +11,6 @@
   "defaultWorkshops": [
     { "name": "Example Workshop", "status": "planned" }
   ],
-  "team": ["jane-doe", "john-roe"]
+  "team": ["jane-doe", "john-roe"],
+  "slack_token": "xoxp-REPLACE_ME-slack-user-token (scopes: search:read, channels:history, groups:history, im:history, mpim:history, channels:read, groups:read, reactions:read, users:read)"
 }
