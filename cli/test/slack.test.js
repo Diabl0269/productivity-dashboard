@@ -441,10 +441,57 @@ test('slack recent: --query override path returns matches with custom match_type
 
 // ─── Token/arg error tests (via spawnSync — no network needed) ────────────────
 
-test('missing token: exit 2, stderr includes slack_token', () => {
-  const res = runSlack(['recent', '--days', '7', '--user', USER_ME], { chHome: tmpNoToken });
+test('missing token: exit 2, stderr includes "No Slack token"', () => {
+  const res = runSlack(['recent', '--days', '7', '--user', USER_ME], {
+    chHome: tmpNoToken,
+    extraEnv: { SLACK_TOKEN: '', SLACK_TOKEN_CMD: '' },
+  });
   assert.equal(res.status, 2, `expected exit 2, got ${res.status}. stderr: ${res.stderr}`);
-  assert.ok(res.stderr.includes('slack_token'), `stderr should mention 'slack_token', got: ${res.stderr}`);
+  assert.ok(res.stderr.includes('No Slack token'), `stderr should mention 'No Slack token', got: ${res.stderr}`);
+});
+
+test('token from SLACK_TOKEN env: token resolves, API call fails (not a token error)', () => {
+  // Create a temp dir with a config that has NO token fields
+  const tmpEnvTok = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-slack-envtok-'));
+  fs.writeFileSync(path.join(tmpEnvTok, 'config.json'), JSON.stringify({ other: 'value' }));
+  try {
+    const res = runSlack(['reactions', '--channel', 'C12345678', '--ts', '1700000000.000001'], {
+      chHome: tmpEnvTok,
+      extraEnv: { SLACK_TOKEN: 'xoxp-fromenv', SLACK_API_BASE: 'http://127.0.0.1:1/' },
+    });
+    assert.equal(res.status, 2, `expected exit 2, got ${res.status}. stderr: ${res.stderr}`);
+    // Token resolved fine; error must be from the refused API call, NOT a token config error
+    assert.ok(!res.stderr.includes('No Slack token'), `stderr should not mention token error, got: ${res.stderr}`);
+    assert.ok(!res.stderr.includes('slack_token'), `stderr should not mention 'slack_token', got: ${res.stderr}`);
+  } finally {
+    fs.rmSync(tmpEnvTok, { recursive: true, force: true });
+  }
+});
+
+test('slack_token_cmd resolves token from a command: token resolves, API call fails (not a token error)', () => {
+  // Create a fake executable: a shell script that prints the token
+  const tmpCmd = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-slack-cmd-'));
+  const fakeCmdScript = path.join(tmpCmd, 'get-token');
+  fs.writeFileSync(fakeCmdScript, '#!/bin/sh\nprintf \'xoxp-from-cmd\'\n');
+  fs.chmodSync(fakeCmdScript, 0o755);
+
+  // Config with slack_token_cmd (string form)
+  const tmpCmdHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-slack-cmdhome-'));
+  fs.writeFileSync(path.join(tmpCmdHome, 'config.json'), JSON.stringify({ slack_token_cmd: fakeCmdScript }));
+
+  try {
+    const res = runSlack(['reactions', '--channel', 'C12345678', '--ts', '1700000000.000001'], {
+      chHome: tmpCmdHome,
+      extraEnv: { SLACK_API_BASE: 'http://127.0.0.1:1/', SLACK_TOKEN: '', SLACK_TOKEN_CMD: '' },
+    });
+    assert.equal(res.status, 2, `expected exit 2, got ${res.status}. stderr: ${res.stderr}`);
+    // Token resolved fine via command; error must be from the refused API call, NOT a token config error
+    assert.ok(!res.stderr.includes('No Slack token'), `stderr should not mention token error, got: ${res.stderr}`);
+    assert.ok(!res.stderr.includes('slack_token_cmd'), `stderr should not mention 'slack_token_cmd', got: ${res.stderr}`);
+  } finally {
+    fs.rmSync(tmpCmd, { recursive: true, force: true });
+    fs.rmSync(tmpCmdHome, { recursive: true, force: true });
+  }
 });
 
 test('bad args: recent without --user -> exit 1', () => {

@@ -75,7 +75,7 @@ Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ..
 | Read a thread | `ch slack thread --channel <C> --ts <ts>` |
 | Check reactions | `ch slack reactions --channel <C> --ts <ts> [--user <U>]` |
 
-ch slack reads slack_token (xoxp- user token) from config.json; outputs JSON; zero LLM tokens.
+ch slack reads its token (priority: SLACK_TOKEN env -> config.json slack_token_cmd, a command that prints the token to stdout, resolved at runtime -> config.json slack_token literal); outputs JSON; zero LLM tokens. `recent` needs an xoxp- USER token (search:read).
 
 **Rules:**
 - NEVER read `tasks.json` or `TASKS.md` directly — always use `ch tasks`.

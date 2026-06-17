@@ -4,7 +4,7 @@
  *
  * Key design:
  *   - API base URL reads from process.env.SLACK_API_BASE (for test mocking) || 'https://slack.com/api/'
- *   - Token from config.json slack_token via getToken()
+ *   - Token from config.json slack_token (or a token command) via getToken()
  *   - All API calls via slackCall() with automatic rate-limit retry
  *   - Pagination helpers: searchAll, historyAll, repliesAll
  *   - Validation helpers: isUserId, isChannelId, isTs
@@ -13,6 +13,7 @@
  */
 
 import { readConfig } from './io.js';
+import { execFileSync } from 'node:child_process';
 
 /** Normalize a URL string to always end with '/'. */
 function normalizeBase(url) {
@@ -41,24 +42,62 @@ export function resetMemo() {
   _workspaceUrl = null;
 }
 
+// slack_token_cmd is operator-controlled local config (a credential-helper
+// pattern, like git's credential.helper) — run with execFileSync (no shell).
+function resolveTokenCmd(cmd) {
+  let parts;
+  if (Array.isArray(cmd)) parts = cmd.filter(s => typeof s === 'string' && s.length);
+  else if (typeof cmd === 'string' && cmd.trim()) parts = cmd.trim().split(/\s+/);
+  else { const e = new Error('slack_token_cmd is empty or invalid (expected a command string or array)'); e.code='NO_TOKEN'; throw e; }
+  try {
+    const out = execFileSync(parts[0], parts.slice(1), { encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
+    const token = (out || '').trim();
+    if (!token) { const e = new Error('slack_token_cmd produced no output'); e.code='NO_TOKEN'; throw e; }
+    return token;
+  } catch (e) {
+    if (e.code === 'NO_TOKEN') throw e;
+    if (e.code === 'ENOENT') { const er = new Error(`slack_token_cmd: command not found on PATH: ${parts[0]}`); er.code='NO_TOKEN'; throw er; }
+    const stderr = (e.stderr && e.stderr.toString().trim()) || e.message;
+    const er = new Error(`slack_token_cmd failed: ${stderr}`); er.code='NO_TOKEN'; throw er;
+  }
+}
+
 /**
- * Get the Slack token from config.json.
- * Throws an Error with .code='NO_TOKEN' if missing, empty, or not a string.
+ * Get the Slack token via 3-tier priority:
+ *   1. SLACK_TOKEN env var (trimmed, non-empty)
+ *   2. Token command from SLACK_TOKEN_CMD env or config.json slack_token_cmd (string or array)
+ *   3. Literal token from config.json slack_token
+ * Throws an Error with .code='NO_TOKEN' if no token is found.
  */
 export function getToken() {
+  // Tier 1: SLACK_TOKEN env var (trimmed, non-empty)
+  const envToken = (process.env.SLACK_TOKEN || '').trim();
+  if (envToken) return envToken;
+
+  // Tier 2: token command from env or config
   const cfg = readConfig();
+  const cmdEnv = (process.env.SLACK_TOKEN_CMD || '').trim();
+  const cmdCfg = cfg.slack_token_cmd;
+  const cmd = cmdEnv || cmdCfg;
+  if (cmd) return resolveTokenCmd(cmd);
+
+  // Tier 3: literal token from config
   const token = cfg.slack_token;
-  if (!token || typeof token !== 'string' || token.trim() === '') {
-    const err = new Error(
-      'slack_token is missing from config.json. ' +
-      'Add a Slack xoxp- user token with the following scopes: ' +
-      'search:read, channels:history, groups:history, im:history, mpim:history, ' +
-      'channels:read, groups:read, reactions:read, users:read.'
-    );
-    err.code = 'NO_TOKEN';
-    throw err;
+  if (token && typeof token === 'string' && token.trim() !== '') {
+    return token.trim();
   }
-  return token.trim();
+
+  const err = new Error(
+    'No Slack token configured. Provide one of: ' +
+    '(a) SLACK_TOKEN env var, ' +
+    '(b) slack_token_cmd in config.json — a command (string or array) that prints the token to stdout, resolved at runtime so nothing is stored on disk, ' +
+    'or (c) slack_token literal in config.json. ' +
+    'Note: `ch slack recent` uses search.messages, which requires a Slack xoxp- USER token with scope search:read ' +
+    '(a bot xoxb- token is rejected); the other subcommands also accept a bot token with ' +
+    'channels:history/groups:history/im:history/mpim:history/reactions:read/users:read.'
+  );
+  err.code = 'NO_TOKEN';
+  throw err;
 }
 
 /**
