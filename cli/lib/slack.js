@@ -14,6 +14,8 @@
 
 import { readConfig } from './io.js';
 import { execFileSync } from 'node:child_process';
+import http from 'node:http';
+import https from 'node:https';
 
 /** Normalize a URL string to always end with '/'. */
 function normalizeBase(url) {
@@ -28,6 +30,60 @@ function getApiBase() {
 /** Sleep for `ms` milliseconds. */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Make an HTTPS request through an HTTP CONNECT proxy tunnel.
+ * Forces IPv4 for "localhost" proxy hosts to avoid Node's IPv6-first
+ * resolution which breaks most local proxy servers.
+ */
+function proxyTunnelRequest(urlObj, { method = 'GET', headers = {}, timeoutMs = 20000 }) {
+  return new Promise((resolve, reject) => {
+    const proxy = new URL(process.env.HTTPS_PROXY || process.env.https_proxy);
+    const phost = proxy.hostname === 'localhost' ? '127.0.0.1' : proxy.hostname;
+    const port = Number(urlObj.port) || 443;
+    const cr = http.request({ host: phost, port: Number(proxy.port), method: 'CONNECT', path: `${urlObj.hostname}:${port}` });
+    cr.on('connect', (cres, socket) => {
+      if (cres.statusCode !== 200) { socket.destroy(); reject(new Error(`proxy CONNECT failed: HTTP ${cres.statusCode}`)); return; }
+      const r = https.request(
+        { host: urlObj.hostname, port, path: urlObj.pathname + urlObj.search, method, headers, socket, agent: false, servername: urlObj.hostname },
+        (resp) => {
+          let data = ''; resp.setEncoding('utf8');
+          resp.on('data', (c) => { data += c; });
+          resp.on('end', () => resolve({ status: resp.statusCode, header: (n) => resp.headers[String(n).toLowerCase()], text: data }));
+        }
+      );
+      r.on('error', reject);
+      r.setTimeout(timeoutMs, () => r.destroy(new Error('slack request timeout')));
+      r.end();
+    });
+    cr.on('error', reject);
+    cr.setTimeout(timeoutMs, () => cr.destroy(new Error('proxy CONNECT timeout')));
+    cr.end();
+  });
+}
+
+/**
+ * Unified HTTP request helper.
+ * Uses proxy tunnel when HTTPS_PROXY/https_proxy is set and URL is https:,
+ * otherwise falls through to global fetch (normal terminal use + http:// test mock).
+ *
+ * Returns a normalized response object: { status, header(name), text }
+ */
+async function httpRequest(urlObj, { method = 'GET', headers = {} } = {}) {
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  // Inside the sandbox, egress is via an HTTP proxy that global fetch ignores -> tunnel.
+  if (proxy && urlObj.protocol === 'https:') {
+    return proxyTunnelRequest(urlObj, { method, headers });
+  }
+  // Direct path: global fetch (normal terminal use + the http:// test mock).
+  const res = await fetch(urlObj, { method, headers });
+  // Use .text() when available (real fetch Response); fall back to .json() for
+  // test mocks that only implement json() and not text().
+  const text = typeof res.text === 'function'
+    ? await res.text()
+    : JSON.stringify(await res.json());
+  return { status: res.status, header: (n) => res.headers.get(n), text };
 }
 
 // Module-level memos (per process lifetime)
@@ -119,30 +175,35 @@ export async function slackCall(method, params = {}, opts = {}) {
     }
   }
 
+  const reqHeaders = {
+    Authorization: 'Bearer ' + token,
+    Accept: 'application/json',
+  };
+
   const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetch(url.toString(), {
-      headers: {
-        Authorization: 'Bearer ' + token,
-        Accept: 'application/json',
-      },
-    });
+    const res = await httpRequest(url, { method: 'GET', headers: reqHeaders });
 
     // Rate-limit: retry with Retry-After
     if (res.status === 429) {
       if (attempt < MAX_RETRIES) {
-        const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10);
+        const retryAfter = parseInt(res.header('retry-after') || '1', 10);
         await sleep((retryAfter + 0.5) * 1000);
         continue;
       }
     }
 
-    const data = await res.json();
+    let data;
+    try {
+      data = JSON.parse(res.text);
+    } catch {
+      throw new Error(`Slack API ${method}: invalid JSON response (HTTP ${res.status})`);
+    }
 
     // Slack returns ok:false and error:'ratelimited' in JSON too
     if (data.error === 'ratelimited') {
       if (attempt < MAX_RETRIES) {
-        const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10);
+        const retryAfter = parseInt(res.header('retry-after') || '1', 10);
         await sleep((retryAfter + 0.5) * 1000);
         continue;
       }
