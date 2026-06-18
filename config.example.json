@@ -11,5 +11,7 @@
   "defaultWorkshops": [
     { "name": "Example Workshop", "status": "planned" }
   ],
-  "team": ["jane-doe", "john-roe"]
+  "team": ["jane-doe", "john-roe"],
+  "slack_token_cmd": "your-secret-tool fetch SLACK_USER_TOKEN   (optional: a command that prints the Slack token to stdout; resolved at runtime, nothing secret stored here. Use an xoxp- USER token for `recent`.)",
+  "slack_token": "xoxp-... (literal user token; only needed if you are NOT using slack_token_cmd or the SLACK_TOKEN env var)"
 }

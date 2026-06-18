@@ -14,7 +14,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { print, printErr, die } from './lib/output.js';
 
-const GROUPS = ['tasks', 'mem', 'gaps', 'context', 'manifest'];
+const GROUPS = ['tasks', 'mem', 'gaps', 'context', 'manifest', 'slack'];
 
 const USAGE = `ch <group> [args...]
 
@@ -24,6 +24,7 @@ Groups:
   gaps      — pending memory gap questions
   context   — context/session artifacts
   manifest  — memory manifest operations
+  slack     — query Slack messages (recent, channels, thread, reactions)
 
 Options:
   --help    — show this help
