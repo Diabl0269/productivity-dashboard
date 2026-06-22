@@ -64,6 +64,20 @@ Assembles a compact digest of active tasks, team Slack/Atlassian IDs, glossary, 
 | `ch gaps clear` | Remove all resolved items |
 | `ch gaps add "<category>" "<text>"` | Append a new gap item |
 
+### `ch slack` — Slack queries (read-only)
+
+| Command | Description |
+|---------|-------------|
+| `ch slack recent --user <UID> --days <N> [--count 100] [--max-pages 5] [--query "<raw>"]` | Recent messages from/to/mentioning the user (3 search buckets, deduped) |
+| `ch slack awaiting --user <UID> --days <N> [--cap 10]` | Messages directed at the user with NO reply/reaction from them — verified server-side; returns a short ready-to-act list, no JSON post-processing needed |
+| `ch slack channels --ids <C1,C2,...> --days <N> [--limit 200] [--max-pages 5]` | Full message history for specific channels/DMs |
+| `ch slack thread --channel <C> --ts <ts>` | All replies in a thread |
+| `ch slack reactions --channel <C> --ts <ts> [--user <U>]` | Reactions on a message; `--user` adds a `reacted` boolean |
+
+All output JSON. Requires a Slack `xoxp-` user token via `config.json` `slack_token` / `slack_token_cmd`, or the `SLACK_TOKEN` env var. `recent`/`awaiting` use `search.messages` (needs scope `search:read`; a bot token is rejected).
+
+**How `awaiting` resolves a message** (drops it from the list): you sent any later message in that DM/thread, OR you reacted to it. DM replies are read from the `from:` search bucket (which captures your top-level AND thread replies); channel @mentions are thread-checked via one `conversations.replies` call each. Defunct/inaccessible channels are skipped as `unverifiable` (never flagged, never crash the run). Each result carries an advisory `looks_like_question` flag.
+
 ## tasks.json schema
 
 Tasks live in `tasks.json` at the repo root (gitignored). Copy `tasks.example.json` to get started.

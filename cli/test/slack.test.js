@@ -80,9 +80,14 @@ function runSlack(args, { chHome = tmpWithToken, extraEnv = {} } = {}) {
  */
 const CH1 = 'C01TESTCH1';
 const CH2 = 'C02TESTCH2';
-const DM1 = 'D01TESTDM1';
-const TS_FROM   = '1700000300.000100';
-const TS_DM     = '1700000200.000100';
+const CH3 = 'C03DEFUNCT';            // channel whose thread lookup fails -> unverifiable, skipped
+const DM1 = 'D01TESTDM1';            // answered DM: <user> replied later (resolved in-memory)
+const DM3 = 'D03TESTDM3';            // unanswered DM: no reply, no reaction -> awaiting
+const TS_FROM     = '1700000300.000100';
+const TS_DM       = '1700000200.000100';
+const TS_DM1_REPLY= '1700000260.000100'; // <user>'s reply in DM1 (later than the inbound)
+const TS_DM3      = '1700000220.000100';
+const TS_CH3      = '1700000110.000100';
 const TS_MENTION= '1700000100.000100';
 const TS_HIST   = '1700000500.000200';
 const TS_JOIN   = '1700000400.000000';
@@ -127,19 +132,46 @@ function installMockFetch() {
         const q = query.query || '';
         let matches = [];
         if (q.includes('from:')) {
-          matches = [{
-            type: 'message', user: 'U2', username: 'someone',
-            ts: TS_FROM, text: 'from msg',
-            permalink: `https://test.slack.com/archives/${CH1}/p1700000300000100`,
-            channel: { id: CH1, name: 'general', is_private: false },
-          }];
+          // from:@me -> the user's OWN messages (author == USER_ME), as Slack returns them.
+          // Includes <user>'s reply in DM1 -> exercises the in-memory DM reply resolution.
+          matches = [
+            {
+              type: 'message', user: USER_ME, username: 'tal.efronny',
+              ts: TS_FROM, text: 'from msg',
+              permalink: `https://test.slack.com/archives/${CH1}/p1700000300000100`,
+              channel: { id: CH1, name: 'general', is_private: false },
+            },
+            {
+              type: 'message', user: USER_ME, username: 'tal.efronny',
+              ts: TS_DM1_REPLY, text: 'sure, sounds good',
+              permalink: `https://test.slack.com/archives/${DM1}/p1700000260000100`,
+              channel: { id: DM1, name: 'directmessage', is_private: true },
+            },
+          ];
         } else if (q.includes('to:')) {
-          matches = [{
-            type: 'message', user: 'U3', username: 'other',
-            ts: TS_DM, text: 'dm msg',
-            permalink: `https://test.slack.com/archives/${DM1}/p1700000200000100`,
-            channel: { id: DM1, name: 'directmessage', is_private: true },
-          }];
+          matches = [
+            // Answered DM (DM1): <user> replied later -> resolved in-memory, NOT awaiting.
+            {
+              type: 'message', user: 'U3', username: 'other',
+              ts: TS_DM, text: 'dm msg',
+              permalink: `https://test.slack.com/archives/${DM1}/p1700000200000100`,
+              channel: { id: DM1, name: 'directmessage', is_private: true },
+            },
+            // Unanswered DM (DM3): no reply, no reaction -> AWAITING.
+            {
+              type: 'message', user: 'U8', username: 'pinger',
+              ts: TS_DM3, text: 'unanswered dm question?',
+              permalink: `https://test.slack.com/archives/${DM3}/p1700000220000100`,
+              channel: { id: DM3, name: 'directmessage', is_private: true },
+            },
+            // Slackbot notice -> bot author, must be excluded entirely (never awaiting).
+            {
+              type: 'message', user: 'USLACKBOT', username: 'slackbot',
+              ts: '1700000230.000100', text: 'Your request to install can now be used?',
+              permalink: `https://test.slack.com/archives/D04BOTDM/p1700000230000100`,
+              channel: { id: 'D04BOTDM', name: 'directmessage', is_private: true },
+            },
+          ];
         } else if (q === 'test query') {
           // custom query path
           matches = [{
@@ -156,6 +188,13 @@ function installMockFetch() {
               ts: TS_MENTION, text: 'mention msg',
               permalink: `https://test.slack.com/archives/${CH2}/p1700000100000100`,
               channel: { id: CH2, name: 'random', is_private: false },
+            },
+            // Channel mention whose thread lookup fails -> unverifiable, skipped (not awaiting).
+            {
+              type: 'message', user: 'U6', username: 'ghost',
+              ts: TS_CH3, text: 'defunct channel mention?',
+              permalink: `https://test.slack.com/archives/${CH3}/p1700000110000100`,
+              channel: { id: CH3, name: 'gone-channel', is_private: false },
             },
             // Duplicate: same channel+ts as from_user match -> tests dedupe + merged match_types
             {
@@ -182,21 +221,25 @@ function installMockFetch() {
         break;
 
       case 'conversations.replies':
-        body = {
-          ok: true,
-          messages: [
-            { user: 'U2', text: 'parent', ts: TS_PARENT, thread_ts: TS_PARENT },
-            { user: USER_ME, text: 'reply', ts: TS_REPLY, thread_ts: TS_PARENT },
-          ],
-          has_more: false,
-        };
+        if (query.channel === CH3) {
+          body = { ok: false, error: 'channel_not_found' };
+        } else {
+          body = {
+            ok: true,
+            messages: [
+              { user: 'U2', text: 'parent', ts: TS_PARENT, thread_ts: TS_PARENT },
+              { user: USER_ME, text: 'reply', ts: TS_REPLY, thread_ts: TS_PARENT },
+            ],
+            has_more: false,
+          };
+        }
         break;
 
       case 'reactions.get':
-        body = {
-          ok: true,
-          message: { reactions: [{ name: 'thumbsup', users: [USER_ME, 'U9'], count: 2 }] },
-        };
+        // Only the TS_PARENT message carries a reaction by USER_ME; others are bare.
+        body = (query.timestamp === TS_PARENT)
+          ? { ok: true, message: { reactions: [{ name: 'thumbsup', users: [USER_ME, 'U9'], count: 2 }] } }
+          : { ok: true, message: { reactions: [] } };
         break;
 
       default:
@@ -324,6 +367,55 @@ test('slack recent: JSON array, required fields, dedupe, sort descending', async
   } finally {
     restore();
   }
+});
+
+test('slack awaiting: only unresolved inbound (DM reply in-memory, thread reply, defunct skip, own msg ignored)', async () => {
+  const restore = installMockFetch();
+  try {
+    const { default: slackCmd } = await import('../commands/slack.js');
+    const result = await withChHome(tmpWithToken, () =>
+      capture(() => slackCmd(['awaiting', '--user', USER_ME, '--days', '5']))
+    );
+
+    assert.equal(result.exitCode, 0, `stderr: ${result.stderr}`);
+    const obj = JSON.parse(result.stdout);
+    assert.equal(obj.user, USER_ME);
+    assert.ok(Array.isArray(obj.awaiting), 'awaiting should be an array');
+
+    // DM3 (author U8): no reply, no reaction -> AWAITING.
+    const dmItem = obj.awaiting.find(a => a.channel === DM3);
+    assert.ok(dmItem, 'unanswered DM3 should be awaiting');
+    assert.equal(dmItem.author_id, 'U8');
+    assert.equal(dmItem.looks_like_question, true, "'...question?' should be flagged a question");
+    assert.ok('permalink' in dmItem, 'item should keep permalink');
+
+    // DM1 (author U3): <user> replied later (captured by from: bucket) -> RESOLVED in-memory.
+    // This is the key fix: a DM reply (incl. thread replies) must NOT be flagged awaiting.
+    assert.equal(obj.awaiting.some(a => a.channel === DM1), false, 'answered DM must resolve in-memory');
+
+    // CH2 (mention): <user> replied in-thread -> RESOLVED.
+    assert.equal(obj.awaiting.some(a => a.channel === CH2), false, 'in-thread reply should resolve CH2');
+
+    // CH3 (mention): thread lookup fails (channel_not_found) -> unverifiable, skipped, not flagged, no crash.
+    assert.equal(obj.awaiting.some(a => a.channel === CH3), false, 'defunct channel must be skipped, not flagged');
+    assert.ok(obj.unverifiable_count >= 1, 'defunct channel should count as unverifiable');
+
+    // CH1 (from:@me) authored by USER_ME -> never a candidate.
+    assert.equal(obj.awaiting.some(a => a.channel === CH1), false, 'own message must not be a candidate');
+
+    // Slackbot (USLACKBOT) -> bot author, excluded entirely.
+    assert.equal(obj.awaiting.some(a => a.author_id === 'USLACKBOT'), false, 'bot messages must be excluded');
+
+    assert.equal(obj.awaiting_count, obj.awaiting.length, 'awaiting_count matches array length');
+    assert.ok(obj.resolved_count >= 2, 'DM1 + CH2 should both count as resolved');
+  } finally {
+    restore();
+  }
+});
+
+test('slack awaiting: bad args (no --user) -> exit 1', () => {
+  const res = runSlack(['awaiting', '--days', '5']);
+  assert.equal(res.status, 1, `expected exit 1, got ${res.status}. stderr: ${res.stderr}`);
 });
 
 test('slack channels: JSON array, channel_join filtered, permalink correct, channel_name present', async () => {
