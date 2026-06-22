@@ -5,6 +5,7 @@
  *
  * Subcommands:
  *   recent    --days <N> --user <SLACK_USER_ID> [--count 100] [--max-pages 5] [--query "<raw>"]
+ *   awaiting  --user <SLACK_USER_ID> --days <N> [--count 100] [--max-pages 5] [--cap 10]
  *   channels  --ids <C1,C2,...> --days <N> [--limit 200] [--max-pages 5]
  *   thread    --channel <C> --ts <timestamp>
  *   reactions --channel <C> --ts <timestamp> [--user <U>]
@@ -57,11 +58,7 @@ async function cmdRecent(argv) {
   const token    = getToken();
   const username = await resolveUsername(user, token);
 
-  // Compute after:YYYY-MM-DD for the search query
-  const afterMs   = Date.now() - days * 86400 * 1000;
-  const afterDate = new Date(afterMs);
-  const pad       = n => String(n).padStart(2, '0');
-  const afterStr  = `${afterDate.getFullYear()}-${pad(afterDate.getMonth() + 1)}-${pad(afterDate.getDate())}`;
+  const { afterStr } = computeAfterStr(days);
 
   let results;
 
@@ -70,39 +67,55 @@ async function cmdRecent(argv) {
     const matches = await searchAll(values.query, { count, maxPages, token });
     results = matches.map(m => normalizeMatch(m, 'custom'));
   } else {
-    // Three buckets
-    const buckets = [
-      { tag: 'from_user', q: `from:@${username} after:${afterStr}` },
-      { tag: 'to_user',   q: `to:@${username} after:${afterStr}` },
-      { tag: 'mention',   q: `@${username} after:${afterStr}` },
-    ];
-
-    // Dedupe map: key = "channelId:ts"
-    const seen = new Map();
-
-    for (const { tag, q } of buckets) {
-      const matches = await searchAll(q, { count, maxPages, token });
-      for (const m of matches) {
-        const key = `${m.channel?.id}:${m.ts}`;
-        if (seen.has(key)) {
-          // Merge bucket tag if not already present
-          const existing = seen.get(key);
-          if (!existing.match_types.includes(tag)) {
-            existing.match_types.push(tag);
-          }
-        } else {
-          seen.set(key, normalizeMatch(m, tag));
-        }
-      }
-    }
-
-    results = Array.from(seen.values());
+    results = await fetchRecentBuckets(username, { count, maxPages, token, afterStr });
   }
 
   // Sort descending by timestamp (numeric)
   results.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
 
   jsonOut(results);
+}
+
+/** Compute the search `after:YYYY-MM-DD` string and its epoch-ms for a day window. */
+function computeAfterStr(days) {
+  const afterMs   = Date.now() - days * 86400 * 1000;
+  const afterDate = new Date(afterMs);
+  const pad       = n => String(n).padStart(2, '0');
+  const afterStr  = `${afterDate.getFullYear()}-${pad(afterDate.getMonth() + 1)}-${pad(afterDate.getDate())}`;
+  return { afterStr, afterMs };
+}
+
+/**
+ * Run the three search buckets (from_user / to_user / mention) for `username`,
+ * dedupe by channel:ts (merging match_types), and return the normalized matches.
+ * Shared by `recent` and `awaiting`.
+ */
+async function fetchRecentBuckets(username, { count, maxPages, token, afterStr }) {
+  const buckets = [
+    { tag: 'from_user', q: `from:@${username} after:${afterStr}` },
+    { tag: 'to_user',   q: `to:@${username} after:${afterStr}` },
+    { tag: 'mention',   q: `@${username} after:${afterStr}` },
+  ];
+
+  // Dedupe map: key = "channelId:ts"
+  const seen = new Map();
+
+  for (const { tag, q } of buckets) {
+    const matches = await searchAll(q, { count, maxPages, token });
+    for (const m of matches) {
+      const key = `${m.channel?.id}:${m.ts}`;
+      if (seen.has(key)) {
+        const existing = seen.get(key);
+        if (!existing.match_types.includes(tag)) {
+          existing.match_types.push(tag);
+        }
+      } else {
+        seen.set(key, normalizeMatch(m, tag));
+      }
+    }
+  }
+
+  return Array.from(seen.values());
 }
 
 function normalizeMatch(m, bucketTag) {
@@ -117,6 +130,178 @@ function normalizeMatch(m, bucketTag) {
     is_private:   m.channel?.is_private ?? null,
     match_types:  [bucketTag],
   };
+}
+
+// ─── awaiting ──────────────────────────────────────────────────────────────────
+
+/**
+ * DM-like conversations, where replies are top-level rather than threaded:
+ * 1:1 DMs (`D...`), legacy group DMs (`G...`), and modern multi-person DMs
+ * (which come back as `C...` ids but with an `mpdm-...` channel name).
+ */
+function isDmLike(channelId, channelName) {
+  return /^[DG]/.test(channelId || '') || /^mpdm-/.test(channelName || '');
+}
+
+/** Heuristic: does this text read like a question/request expecting a reply? (advisory only) */
+function looksLikeQuestion(text) {
+  const t = (text || '').toLowerCase();
+  if (t.includes('?')) return true;
+  return /\b(can|could|would|should|wdyt|pls|please|let me know|lmk|any update|following up|follow up|thoughts|approve|review|wanna|do you|did you)\b/.test(t);
+}
+
+/** Automated authors whose messages are never "awaiting a reply" (install/reminder notices, etc.). */
+const BOT_AUTHORS = new Set(['USLACKBOT']);
+
+/** True if `user` reacted to the message object (reactions inline on history/replies payloads). */
+function userReacted(msg, user) {
+  return (msg?.reactions || []).some(r => (r.users || []).includes(user));
+}
+
+/** Extract the `thread_ts` query param from a Slack permalink, or null if top-level. */
+function threadTsFromPermalink(permalink) {
+  const m = /[?&]thread_ts=([0-9]+\.[0-9]+)/.exec(permalink || '');
+  return m ? m[1] : null;
+}
+
+/**
+ * `ch slack awaiting --user <U> --days <N>`
+ *
+ * Find inbound messages directed at <U> (DMs, @mentions, to:user) over the window, then
+ * VERIFY each one server-side and return ONLY the UNRESOLVED ("awaiting") ones — fully
+ * verified, so the caller needs no JSON post-processing, no thread/reaction follow-up calls,
+ * and no ad-hoc scripts.
+ *
+ * Resolution (a candidate is "resolved" = NOT awaiting if any holds):
+ *   - DM-like (D.../G.../mpdm): <U> sent any later message in that conversation. We read this
+ *     straight from the `from:@<U>` search bucket already fetched — it captures every message
+ *     <U> authored in the window, INCLUDING thread replies. (This is why we do NOT use
+ *     conversations.history/`thread` for DMs: history omits thread replies and `thread` on a
+ *     DM question reports message_count 1, both of which falsely flag answered DMs.)
+ *   - Channel mention: <U> replied in that message's thread, or reacted to it. Verified with a
+ *     single conversations.replies call per candidate (thread root from the permalink).
+ *   - Reaction-only acknowledgement on a DM: confirmed with a bounded reactions.get fallback.
+ *
+ * A failed lookup (channel_not_found for a defunct/left DM, a deactivated user, an inaccessible
+ * channel) is non-fatal: the candidate is counted unverifiable and skipped, never flagged, and
+ * never aborts the run (mirrors the daily-summary per-item skip rule).
+ */
+async function cmdAwaiting(argv) {
+  const { values } = parse(argv, {
+    days:        { type: 'string' },
+    user:        { type: 'string' },
+    count:       { type: 'string' },
+    'max-pages': { type: 'string' },
+    cap:         { type: 'string' },
+    json:        { type: 'boolean', short: 'j' },
+  });
+
+  const user = values.user;
+  if (!user || !isUserId(user)) {
+    die('--user <SLACK_USER_ID> is required and must be a valid Slack user ID (e.g. U01ABCDEFG)', 1);
+  }
+
+  const days = parseInt(values.days || '7', 10);
+  if (isNaN(days) || days < 1) {
+    die('--days must be a positive integer', 1);
+  }
+
+  const count    = parseInt(values.count || '100', 10);
+  const maxPages = parseInt(values['max-pages'] || '5', 10);
+  const cap      = parseInt(values.cap || '10', 10);
+
+  const token    = getToken();
+  const username = await resolveUsername(user, token);
+  const { afterStr } = computeAfterStr(days);
+
+  const recent = await fetchRecentBuckets(username, { count, maxPages, token, afterStr });
+
+  // Index every recent message by channel — used for the in-memory DM reply check below.
+  const byChannel = new Map();
+  for (const m of recent) {
+    if (!byChannel.has(m.channel)) byChannel.set(m.channel, []);
+    byChannel.get(m.channel).push(m);
+  }
+
+  // Candidates: inbound (not from <user>, not a bot/automation), directed at <user>, with real text.
+  const candidates = recent.filter(m =>
+    m.author_id && m.author_id !== user && !BOT_AUTHORS.has(m.author_id) &&
+    (m.text || '').trim().length > 0 &&
+    (isDmLike(m.channel, m.channel_name) || m.match_types.includes('mention') || m.match_types.includes('to_user'))
+  );
+
+  const MAX_API_CALLS = 40; // bound per-candidate thread/reaction verification calls
+  let apiCalls = 0;
+  let resolvedCount = 0;
+  let unverifiableCount = 0;
+  const awaiting = [];
+
+  for (const c of candidates) {
+    const candTs = Number(c.timestamp);
+    const dmLike = isDmLike(c.channel, c.channel_name);
+    let resolved = false;
+    let unverifiable = false;
+
+    // Reply check.
+    if (dmLike) {
+      // In-memory: did <user> author any later message in this conversation? (zero API calls;
+      // the from:@<user> bucket includes <user>'s top-level AND thread messages.)
+      const msgs = byChannel.get(c.channel) || [];
+      resolved = msgs.some(m => m.author_id === user && Number(m.timestamp) > candTs);
+
+      // Reaction-only acknowledgement fallback (bounded).
+      if (!resolved && apiCalls < MAX_API_CALLS) {
+        apiCalls++;
+        try {
+          const data = await slackCall('reactions.get', { channel: c.channel, timestamp: c.timestamp, full: true }, { token });
+          if ((data.message?.reactions || []).some(r => (r.users || []).includes(user))) resolved = true;
+        } catch { /* reaction lookup failed — reply check already authoritative; treat as no-ack */ }
+      }
+    } else if (apiCalls < MAX_API_CALLS) {
+      // Channel mention: check the message's thread for a reply by <user> (or a reaction).
+      apiCalls++;
+      const root = threadTsFromPermalink(c.permalink) || c.timestamp;
+      try {
+        const thread = await repliesAll(c.channel, root, { token });
+        resolved =
+          thread.some(m => m.user === user && Number(m.ts) > candTs) ||
+          thread.some(m => m.ts === c.timestamp && userReacted(m, user));
+      } catch {
+        unverifiable = true; // lookup failed -> skip, don't flag
+      }
+    } else {
+      unverifiable = true; // verification budget exhausted -> skip (don't flag unverified)
+    }
+
+    if (unverifiable) { unverifiableCount++; continue; }
+    if (resolved)     { resolvedCount++; continue; }
+    awaiting.push({
+      author_id:           c.author_id,
+      author_name:         c.author_name,
+      text:                c.text,
+      channel:             c.channel,
+      channel_name:        c.channel_name,
+      is_private:          c.is_private,
+      timestamp:           c.timestamp,
+      permalink:           c.permalink,
+      match_types:         c.match_types,
+      looks_like_question: looksLikeQuestion(c.text),
+    });
+  }
+
+  awaiting.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+
+  jsonOut({
+    user,
+    username,
+    days,
+    after:               afterStr,
+    candidates_examined: candidates.length,
+    resolved_count:      resolvedCount,
+    unverifiable_count:  unverifiableCount,
+    awaiting_count:      awaiting.length,
+    awaiting:            awaiting.slice(0, cap),
+  });
 }
 
 // ─── channels ────────────────────────────────────────────────────────────────
@@ -278,9 +463,13 @@ const USAGE = `ch slack <subcommand> [args...]
 
 Subcommands:
   recent    --days <N> --user <UID> [--count 100] [--max-pages 5] [--query "<raw>"]
+  awaiting  --user <UID> --days <N> [--count 100] [--max-pages 5] [--cap 10]
   channels  --ids <C1,C2,...> --days <N> [--limit 200] [--max-pages 5]
   thread    --channel <C> --ts <timestamp>
   reactions --channel <C> --ts <timestamp> [--user <U>]
+
+awaiting: returns only messages directed at <UID> with NO reply/reaction from <UID> —
+fully verified server-side (no follow-up thread/reaction calls or JSON post-processing needed).
 
 All commands output JSON. Token: config.json slack_token (xoxp- user token).`;
 
@@ -297,6 +486,7 @@ export default async function slack(argv) {
   try {
     switch (sub) {
       case 'recent':    return await cmdRecent(rest);
+      case 'awaiting':  return await cmdAwaiting(rest);
       case 'channels':  return await cmdChannels(rest);
       case 'thread':    return await cmdThread(rest);
       case 'reactions': return await cmdReactions(rest);
