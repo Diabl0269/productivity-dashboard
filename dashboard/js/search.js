@@ -1,6 +1,7 @@
 // search.js - Unified search/filter for tasks and memory tabs
 
 import { activeMainTab } from './state.js';
+import { renderMemoryContent, renderMemorySearchResults } from './memory-renderer.js';
 
 let searchInput, clearBtn, container, shortcutHint;
 let currentTerm = '';
@@ -46,7 +47,7 @@ export function onTabSwitch(tab) {
   } else {
     container.style.display = 'flex';
     if (tab === 'tasks') searchInput.placeholder = 'Search tasks...';
-    else if (tab === 'memory') searchInput.placeholder = 'Search memory...';
+    else if (tab === 'memory') searchInput.placeholder = 'Search all memory...';
     else searchInput.placeholder = 'Search global memory...';
     clearSearch();
   }
@@ -133,31 +134,17 @@ function showAllTasks() {
 // ===== MEMORY FILTERING =====
 
 function filterMemory(term) {
-  // Grid cards (people, projects directories)
-  document.querySelectorAll('#memoryContentContainer .memory-card').forEach(card => {
-    const searchText = card.dataset.search || card.textContent.toLowerCase();
-    card.style.display = (!term || searchText.includes(term)) ? '' : 'none';
-  });
-
-  // Table rows in flat/context directories
-  document.querySelectorAll('#memoryContentContainer tr[data-search]').forEach(row => {
-    const searchText = row.dataset.search || '';
-    row.style.display = (!term || searchText.includes(term)) ? '' : 'none';
-  });
-
-  // File cards (non-directory content)
-  document.querySelectorAll('#memoryContentContainer .file-card').forEach(card => {
-    if (!card.closest('.memory-grid') && !card.querySelector('tr[data-search]')) {
-      const text = card.textContent.toLowerCase();
-      card.style.display = (!term || text.includes(term)) ? '' : 'none';
-    }
-  });
+  if (term) {
+    renderMemorySearchResults(term);
+  } else {
+    renderMemoryContent();
+  }
 }
 
 function showAllMemory() {
-  document.querySelectorAll('#memoryContentContainer .memory-card, #memoryContentContainer tr[data-search], #memoryContentContainer .file-card').forEach(el => {
-    el.style.display = '';
-  });
+  if (activeMainTab === 'memory') {
+    renderMemoryContent();
+  }
 }
 
 // ===== GLOBAL MEMORY FILTERING =====

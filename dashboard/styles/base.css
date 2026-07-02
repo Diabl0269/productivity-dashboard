@@ -230,11 +230,13 @@
   --focus-ring: 0 0 0 2px var(--accent);
 }
 
-/* System-dark auto-detect — :root is already dark, this is a no-op but documents intent */
+/* System-dark auto-detect — data-theme is always resolved to 'light' or 'dark' by JS
+   (theme.js applyTheme + anti-FOUC inline script in index.html <head>). When mode is
+   'system', JS reads matchMedia and sets the concrete data-theme attribute, so CSS never
+   needs to branch on system preference — this block is kept only for documentation. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    /* :root is already dark — this block is a no-op but kept for
-       explicit documentation of the dark-default intent */
+    /* :root is already dark — JS resolves system mode before paint; no CSS action needed */
   }
 }
 
