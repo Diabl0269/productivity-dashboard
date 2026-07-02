@@ -14,11 +14,6 @@ export const memoryState = {
   }
 };
 
-setMemoryInfoGetter(() => ({
-  handle: memoryState.memoryDirHandle,
-  name: memoryState.memoryDirHandle ? memoryState.memoryDirHandle.name : (memoryState.memoryData ? 'memory (read-only)' : '')
-}));
-
 const memoryEmptyState = document.getElementById('memoryEmptyState');
 const memoryMainContent = document.getElementById('memoryMainContent');
 const memoryTabsContainer = document.getElementById('memoryTabsContainer');
@@ -475,6 +470,14 @@ function renderMemoryDirectoryFlat(dirName, files) {
 }
 
 export function initMemory() {
+  // Registered here (not at module top level) so it runs after all modules have
+  // finished evaluating — avoids a TDZ error in the state.js <-> search.js <->
+  // memory-renderer.js import cycle (the setter touches a state.js `let` binding).
+  setMemoryInfoGetter(() => ({
+    handle: memoryState.memoryDirHandle,
+    name: memoryState.memoryDirHandle ? memoryState.memoryDirHandle.name : (memoryState.memoryData ? 'memory (read-only)' : '')
+  }));
+
   document.getElementById('openMemoryBtn').addEventListener('click', loadMemoryDirectory);
   document.getElementById('openMemoryBtnLarge').addEventListener('click', loadMemoryDirectory);
 }
@@ -487,6 +490,175 @@ function loadMemoryFromHttpData(data) {
   memoryMainContent.style.display = 'flex';
   if (activeMainTab === 'memory') filePathEl.textContent = 'memory (read-only)';
   showStatus('Loaded memory via HTTP');
+}
+
+/**
+ * Build a short highlighted snippet from rawText around the first occurrence
+ * of term. Returns an HTML string with <mark> wrapping the matched term.
+ * All text is escaped before injection.
+ */
+function buildSnippet(rawText, term, maxLen = 120) {
+  const escaped = escapeHtml(rawText);
+  const escapedTerm = escapeHtml(term);
+  // Regex-escape the (already HTML-escaped) term so special chars don't break RegExp
+  const reTerm = escapedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(reTerm, 'i');
+
+  // Find match index in the escaped text
+  const match = escaped.match(re);
+  if (!match) {
+    // Term not in escaped version — just return a plain snippet
+    return escaped.substring(0, maxLen) + (escaped.length > maxLen ? '…' : '');
+  }
+
+  const idx = escaped.indexOf(match[0]);
+  const start = Math.max(0, idx - 40);
+  const end = Math.min(escaped.length, idx + match[0].length + 80);
+  const slice = (start > 0 ? '…' : '') + escaped.substring(start, end) + (end < escaped.length ? '…' : '');
+
+  // Replace all occurrences of term (case-insensitive) with <mark> wrapped version
+  return slice.replace(new RegExp(reTerm, 'gi'), m => '<mark>' + m + '</mark>');
+}
+
+/**
+ * Render aggregated search results across ALL memory sources into
+ * #memoryContentContainer. Does NOT call renderMemoryContent — no loop.
+ */
+export function renderMemorySearchResults(term) {
+  if (!term) return;
+
+  const lTerm = term.toLowerCase();
+  const results = []; // { group, label, title, searchText, rawText, onClick }
+
+  // ── Overview (CLAUDE.md) ──
+  if (memoryState.memoryData.claudeMd) {
+    const { content } = memoryState.memoryData.claudeMd;
+    if ((content).toLowerCase().includes(lTerm)) {
+      results.push({
+        group: 'Overview',
+        label: 'Overview',
+        title: 'CLAUDE.md',
+        rawText: content,
+        onClick: () => window.openEditModal('CLAUDE.md', 'claudeMd')
+      });
+    }
+  }
+
+  // ── memoryFiles: Core / Feedback / Reference ──
+  const coreResults = [];
+  const feedbackResults = [];
+  const referenceResults = [];
+
+  for (const file of memoryState.memoryData.memoryFiles) {
+    const haystack = (file.name + ' ' + file.content).toLowerCase();
+    if (!haystack.includes(lTerm)) continue;
+    const entry = {
+      label: formatTabLabel(file.name),
+      title: getDisplayName(file.name),
+      rawText: file.content,
+      fileName: file.name,
+      onClick: () => window.openEditModal(file.name, 'memoryFile')
+    };
+    const cls = classifyFile(file.name);
+    if (cls === 'feedback') feedbackResults.push(entry);
+    else if (cls === 'reference') referenceResults.push(entry);
+    else coreResults.push(entry);
+  }
+
+  if (coreResults.length)     results.push(...coreResults.map(e => ({ ...e, group: 'Core' })));
+  if (feedbackResults.length) results.push(...feedbackResults.map(e => ({ ...e, group: 'Feedback' })));
+  if (referenceResults.length) results.push(...referenceResults.map(e => ({ ...e, group: 'Reference' })));
+
+  // ── memoryDirs: alphabetical ──
+  const dirNames = Object.keys(memoryState.memoryData.memoryDirs).sort();
+  for (const dirName of dirNames) {
+    const files = memoryState.memoryData.memoryDirs[dirName] || [];
+    for (const file of files) {
+      const p = file.parsed;
+      const title = p.title || getDisplayName(file.name);
+      const searchText = (title + ' ' + JSON.stringify(p.fields) + ' ' + p.rawContent).toLowerCase();
+      if (!searchText.includes(lTerm)) continue;
+      const dirLabel = dirName.charAt(0).toUpperCase() + dirName.slice(1);
+      results.push({
+        group: dirLabel,
+        label: dirLabel,
+        title,
+        rawText: p.rawContent,
+        dirName,
+        fileName: file.name,
+        onClick: () => window.openFileModal(dirName, file.name)
+      });
+    }
+  }
+
+  // ── Render ──
+  if (results.length === 0) {
+    memoryContentContainer.innerHTML =
+      '<div class="memory-search-empty">No memory entries match &#8220;' +
+      escapeHtml(term) +
+      '&#8221;</div>';
+    return;
+  }
+
+  // Group by group label, preserving insertion order
+  const groups = [];
+  const groupMap = {};
+  for (const r of results) {
+    if (!groupMap[r.group]) {
+      groupMap[r.group] = [];
+      groups.push(r.group);
+    }
+    groupMap[r.group].push(r);
+  }
+
+  let html = '<div class="memory-search-results">';
+  let flatIdx = 0;
+  for (const groupName of groups) {
+    const items = groupMap[groupName];
+    html += '<div class="memory-search-group">';
+    html += '<div class="memory-search-group-header">' +
+      escapeHtml(groupName) +
+      '<span class="memory-search-group-count">' + items.length + '</span>' +
+      '</div>';
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const snippet = buildSnippet(item.rawText, term);
+      html += '<div class="memory-search-result" tabindex="0" role="button"' +
+        ' aria-label="' + escapeHtml('Open ' + item.title) + '"' +
+        ' data-result-index="' + flatIdx + '">' +
+        '<div class="memory-search-result-breadcrumb">' + escapeHtml(item.label) + '</div>' +
+        '<div class="memory-search-result-title">' + escapeHtml(item.title) + '</div>' +
+        '<div class="memory-search-result-snippet">' + snippet + '</div>' +
+        '</div>';
+      flatIdx++;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  memoryContentContainer.innerHTML = html;
+
+  // Wire up click + keyboard activation for each result card
+  // Use a flat integer index so querySelector never needs to escape group names
+  let resultIdx = 0;
+  for (const groupName of groups) {
+    const items = groupMap[groupName];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const card = memoryContentContainer.querySelector(
+        '[data-result-index="' + resultIdx + '"]'
+      );
+      if (!card) { resultIdx++; continue; }
+      card.addEventListener('click', item.onClick);
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          item.onClick();
+        }
+      });
+      resultIdx++;
+    }
+  }
 }
 
 export { loadMemoryFromHandle, loadMemoryFromHttpData, loadMemoryDirectory, renderMemory, renderMemoryContent };
