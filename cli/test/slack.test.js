@@ -27,6 +27,7 @@ import {
   isChannelId,
   isTs,
   resetMemo,
+  proxyAuthHeader,
 } from '../lib/slack.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -641,4 +642,30 @@ test('isTs: accepts valid slack timestamps', () => {
   assert.equal(isTs('not-a-ts'), false, 'string should fail');
   assert.equal(isTs('1700000000'), false, 'no dot should fail');
   assert.equal(isTs(''), false, 'empty should fail');
+});
+
+test('proxyAuthHeader: builds Basic header from embedded credentials', () => {
+  const h = proxyAuthHeader('http://srt:s3cr3t@localhost:62721');
+  assert.equal(h, 'Basic ' + Buffer.from('srt:s3cr3t').toString('base64'));
+});
+
+test('proxyAuthHeader: null when proxy URL has no credentials', () => {
+  assert.equal(proxyAuthHeader('http://localhost:62721'), null);
+});
+
+test('proxyAuthHeader: percent-decodes credentials', () => {
+  const h = proxyAuthHeader('http://user:p%40ss%3Aword@host:8080');
+  assert.equal(h, 'Basic ' + Buffer.from('user:p@ss:word').toString('base64'));
+});
+
+test('proxyAuthHeader: accepts a URL object', () => {
+  const h = proxyAuthHeader(new URL('http://a:b@h:1'));
+  assert.equal(h, 'Basic ' + Buffer.from('a:b').toString('base64'));
+});
+
+test('proxyAuthHeader: falls back to raw value on unencoded % in credentials', () => {
+  // A literal, unencoded '%' would make decodeURIComponent throw; we must
+  // fall back to the raw credential rather than crash the whole request.
+  const h = proxyAuthHeader(new URL('http://user:50%off@host:8080'));
+  assert.equal(h, 'Basic ' + Buffer.from('user:50%off').toString('base64'));
 });
