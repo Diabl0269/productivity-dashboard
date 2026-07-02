@@ -33,6 +33,23 @@ function sleep(ms) {
 }
 
 /**
+ * Build an HTTP Basic `Proxy-Authorization` header value from a proxy URL's
+ * embedded credentials (http://user:pass@host:port), or null when the proxy
+ * URL carries no credentials. Values are percent-decoded per the URL spec.
+ * Exported for testing.
+ */
+export function proxyAuthHeader(proxyUrl) {
+  const u = typeof proxyUrl === 'string' ? new URL(proxyUrl) : proxyUrl;
+  if (!u.username && !u.password) return null;
+  // .username/.password are percent-encoded per the URL spec; decode them.
+  // Fall back to the raw value if a credential contains a literal, unencoded
+  // '%' (which decodeURIComponent would reject as malformed).
+  const dec = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+  const creds = `${dec(u.username)}:${dec(u.password)}`;
+  return 'Basic ' + Buffer.from(creds).toString('base64');
+}
+
+/**
  * Make an HTTPS request through an HTTP CONNECT proxy tunnel.
  * Forces IPv4 for "localhost" proxy hosts to avoid Node's IPv6-first
  * resolution which breaks most local proxy servers.
@@ -42,9 +59,19 @@ function proxyTunnelRequest(urlObj, { method = 'GET', headers = {}, timeoutMs = 
     const proxy = new URL(process.env.HTTPS_PROXY || process.env.https_proxy);
     const phost = proxy.hostname === 'localhost' ? '127.0.0.1' : proxy.hostname;
     const port = Number(urlObj.port) || 443;
-    const cr = http.request({ host: phost, port: Number(proxy.port), method: 'CONNECT', path: `${urlObj.hostname}:${port}` });
+    const connectHeaders = {};
+    const auth = proxyAuthHeader(proxy);
+    if (auth) connectHeaders['Proxy-Authorization'] = auth;
+    const cr = http.request({ host: phost, port: Number(proxy.port), method: 'CONNECT', path: `${urlObj.hostname}:${port}`, headers: connectHeaders });
     cr.on('connect', (cres, socket) => {
-      if (cres.statusCode !== 200) { socket.destroy(); reject(new Error(`proxy CONNECT failed: HTTP ${cres.statusCode}`)); return; }
+      if (cres.statusCode !== 200) {
+        socket.destroy();
+        const hint = cres.statusCode === 407
+          ? ' — proxy requires authentication; ensure HTTPS_PROXY includes credentials (http://user:pass@host:port)'
+          : '';
+        reject(new Error(`proxy CONNECT failed: HTTP ${cres.statusCode}${hint}`));
+        return;
+      }
       const r = https.request(
         { host: urlObj.hostname, port, path: urlObj.pathname + urlObj.search, method, headers, socket, agent: false, servername: urlObj.hostname },
         (resp) => {
