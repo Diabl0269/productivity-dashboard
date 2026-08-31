@@ -1,7 +1,7 @@
 name: CI
 
-# Run the zero-dependency Node test suite whenever the CLI, dashboard, or dev
-# server changes (on PRs and on pushes to main).
+# Always run on PRs so the "test" check can be a required status check on main.
+# Path filters on push avoid redundant main runs for unrelated file changes.
 on:
   push:
     branches: [main]
@@ -11,11 +11,6 @@ on:
       - 'serve.js'
       - '.github/workflows/ci.yml'
   pull_request:
-    paths:
-      - 'cli/**'
-      - 'dashboard/**'
-      - 'serve.js'
-      - '.github/workflows/ci.yml'
 
 jobs:
   test:
