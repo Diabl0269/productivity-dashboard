@@ -80,8 +80,9 @@ export async function autoSave() {
       return;
     }
     showStatus('Save failed: ' + e.message);
+  } finally {
+    isSaving = false;
   }
-  isSaving = false;
 }
 
 let watchInterval = null;
@@ -92,8 +93,11 @@ export async function checkForExternalChanges() {
   try {
     const file = await state.taskFileHandle.getFile();
     if (file.lastModified > lastModified) {
+      // Re-check after await — a save may have finished mid-flight.
+      if (state.hasChanges || isSaving) return;
       lastModified = file.lastModified;
       const content = await file.text();
+      if (state.hasChanges || isSaving) return;
       const result = getParseTaskMarkdown()(content);
       state.sections.length = 0;
       state.sections.push(...result.sections);

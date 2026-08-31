@@ -34,20 +34,27 @@ export async function loadTasksViaHttp() {
 }
 
 /**
- * Start polling tasks.json for changes via HTTP
+ * Start polling tasks.json for changes via HTTP.
+ * Ignores in-flight responses that race with a local save (stale body after
+ * lastTaskContent was updated), and never applies while shouldSkip() is true.
  */
 export function startHttpTaskWatching(onUpdate, { shouldSkip } = {}) {
   if (httpWatchInterval) clearInterval(httpWatchInterval);
   httpWatchInterval = setInterval(async () => {
     try {
+      if (shouldSkip && shouldSkip()) return;
+      const baseline = lastTaskContent;
       const res = await fetch(`${BASE}/tasks.json`);
       if (!res.ok) return;
+      if (shouldSkip && shouldSkip()) return;
       const content = await res.text();
-      if (content !== lastTaskContent) {
-        lastTaskContent = content;
-        if (shouldSkip && shouldSkip()) return;
-        onUpdate(loadTasksJson(content));
-      }
+      if (shouldSkip && shouldSkip()) return;
+      // Save (or another poll) updated lastTaskContent while we were fetching —
+      // drop stale responses that don't match the latest known content.
+      if (lastTaskContent !== baseline && content !== lastTaskContent) return;
+      if (content === lastTaskContent) return;
+      lastTaskContent = content;
+      onUpdate(loadTasksJson(content));
     } catch (e) { /* silent */ }
   }, 2000);
 }

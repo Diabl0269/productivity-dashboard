@@ -368,17 +368,6 @@ function buildTypeField() {
     typeSelect.appendChild(opt);
   });
 
-  const { swatch: typeSwatch } = makeColorControls({
-    color: resolveTaskColor(draft, types, state.tasks),
-    customColor: isHexColor(draft.color) ? draft.color : null,
-    inheritedColor: inheritedTaskColor(draft, types, state.tasks),
-    inheritFrom: inheritColorLabel(draft, types, state.tasks),
-    hasParent: !!draft.parentId,
-    onChange: (hex) => {
-      draft.color = hex;
-    },
-  });
-
   typeSelect.addEventListener('change', () => {
     draft.type = typeSelect.value;
     const stillValid = parentCandidates(types, state.tasks, draft.type, null)
@@ -387,13 +376,8 @@ function buildTypeField() {
     buildForm();
   });
 
-  const typeRow = document.createElement('div');
-  typeRow.className = 'td-type-row';
-  typeRow.appendChild(typeSelect);
-  typeRow.appendChild(typeSwatch);
-
   field.appendChild(tl);
-  field.appendChild(typeRow);
+  field.appendChild(typeSelect);
   return field;
 }
 
@@ -402,7 +386,10 @@ function buildColorField() {
   const types = normalizeTicketTypes(state.ticketTypes);
   const field = document.createElement('div');
   field.className = 'td-field td-field-color-override td-field-block';
-  const { override: colorOverride } = makeColorControls({
+  const label = document.createElement('span');
+  label.className = 'td-field-label';
+  label.textContent = 'Color';
+  const { swatch, override } = makeColorControls({
     color: resolveTaskColor(draft, types, state.tasks),
     customColor: isHexColor(draft.color) ? draft.color : null,
     inheritedColor: inheritedTaskColor(draft, types, state.tasks),
@@ -412,7 +399,12 @@ function buildColorField() {
       draft.color = hex;
     },
   });
-  field.appendChild(colorOverride);
+  const colorRow = document.createElement('div');
+  colorRow.className = 'td-color-row';
+  colorRow.appendChild(swatch);
+  colorRow.appendChild(override);
+  field.appendChild(label);
+  field.appendChild(colorRow);
   return field;
 }
 

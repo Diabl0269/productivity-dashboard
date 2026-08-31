@@ -335,6 +335,14 @@
   width: 100%;
 }
 
+.td-field-color-override .td-color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
 .task-color-override {
   display: inline-flex;
   align-items: center;
