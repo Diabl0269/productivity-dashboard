@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "ticketTypes": [
+    { "id": "epic", "name": "Epic", "color": "#8B5CF6" },
+    { "id": "task", "name": "Task", "color": "#3B82F6" },
+    { "id": "subtask", "name": "Subtask", "color": "#14B8A6" }
+  ],
+  "sections": [
+    {
+      "id": "backlog",
+      "name": "Backlog",
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Ship AI-assisted workflow",
+          "description": "End-to-end epic for the productivity board enhancements",
+          "checked": false,
+          "priority": "high",
+          "type": "epic",
+          "created": "2026-08-01",
+          "updated": null,
+          "subtasks": []
+        },
+        {
+          "id": "T8",
+          "title": "Explore search shortcuts",
+          "checked": false,
+          "priority": "low",
+          "type": "task",
+          "created": "2026-08-10",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "todo",
+      "name": "Todo",
+      "tasks": [
+        {
+          "id": "T2",
+          "title": "Task detail modal",
+          "description": "Full editor with type, parent, color, and checklist",
+          "checked": false,
+          "priority": "high",
+          "type": "task",
+          "parentId": "T1",
+          "created": "2026-08-05",
+          "updated": null,
+          "subtasks": [
+            { "text": "Priority + status controls", "checked": true },
+            { "text": "Parent picker + child links", "checked": true },
+            { "text": "Color override swatch", "checked": false }
+          ]
+        },
+        {
+          "id": "T4",
+          "title": "Wire color inheritance",
+          "checked": false,
+          "priority": "medium",
+          "type": "subtask",
+          "parentId": "T2",
+          "created": "2026-08-06",
+          "updated": null,
+          "subtasks": []
+        },
+        {
+          "id": "T5",
+          "title": "Ticket type settings",
+          "description": "Configure Epic → Task → Subtask colors",
+          "checked": false,
+          "priority": "medium",
+          "type": "task",
+          "parentId": "T1",
+          "created": "2026-08-07",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "in-progress",
+      "name": "In Progress",
+      "tasks": [
+        {
+          "id": "T3",
+          "title": "Hierarchy on the board",
+          "description": "Parent links and type badges on every card",
+          "checked": false,
+          "priority": "high",
+          "type": "task",
+          "parentId": "T1",
+          "color": "#F59E0B",
+          "created": "2026-08-08",
+          "updated": "2026-08-20",
+          "subtasks": [
+            { "text": "Parent chip opens parent modal", "checked": true },
+            { "text": "Custom color left border", "checked": false }
+          ]
+        },
+        {
+          "id": "T6",
+          "title": "Polish create-task flow",
+          "checked": false,
+          "priority": "medium",
+          "type": "subtask",
+          "parentId": "T3",
+          "created": "2026-08-12",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "name": "Done",
+      "tasks": [
+        {
+          "id": "T7",
+          "title": "Kanban drag and drop",
+          "checked": true,
+          "priority": "medium",
+          "type": "task",
+          "created": "2026-07-20",
+          "updated": "2026-08-01",
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "archive",
+      "name": "Archive",
+      "tasks": []
+    }
+  ]
+}

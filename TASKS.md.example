@@ -1,0 +1,32 @@
+<!--
+  Legacy markdown task format. Canonical store is tasks.json — copy
+  tasks.example.json and manage with `ch tasks`. Use `ch tasks export --md`
+  to regenerate a markdown snapshot.
+-->
+
+## Backlog
+
+- [ ] Research new CI/CD pipeline options
+  <!-- created:2026-01-15 priority:low -->
+- [ ] Evaluate monitoring tools
+  <!-- created:2026-01-20 priority:low -->
+
+## Todo
+
+- [ ] Set up project documentation
+  <!-- created:2026-02-01 priority:medium -->
+- [ ] Review PR for auth module — needs security review
+  <!-- created:2026-02-05 priority:high -->
+
+## In Progress
+
+- [ ] Implement user settings page
+  - Design approved, working on API integration
+  <!-- created:2026-02-10 priority:medium -->
+
+## Done
+
+- [x] Configure development environment
+  <!-- created:2026-01-10 priority:medium -->
+
+## Archive

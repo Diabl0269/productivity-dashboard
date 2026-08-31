@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "ticketTypes": [
+    { "id": "epic", "name": "Epic", "color": "#8B5CF6" },
+    { "id": "task", "name": "Task", "color": "#3B82F6" },
+    { "id": "subtask", "name": "Subtask", "color": "#14B8A6" }
+  ],
+  "meta": {
+    "dailyPlan": { "date": "2026-08-26", "taskIds": ["T6"], "carriedIds": [] },
+    "weeklyCapacityMinutes": 600,
+    "projects": [
+      { "id": "my-app", "name": "My App", "color": "#3B82F6" }
+    ],
+    "ideas": ["Try a weekly review ritual"],
+    "review": { "weeklyDate": null, "checks": {} }
+  },
+  "sections": [
+    {
+      "id": "inbox",
+      "name": "Inbox",
+      "tasks": [
+        {
+          "id": "T5",
+          "title": "Quick capture — triage later",
+          "checked": false,
+          "priority": "medium",
+          "type": "task",
+          "created": "2026-08-20",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "backlog",
+      "name": "Backlog",
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Evaluate monitoring tools",
+          "checked": false,
+          "priority": "low",
+          "type": "epic",
+          "project": "my-app",
+          "energy": "shallow",
+          "labels": ["research"],
+          "created": "2026-01-15",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "todo",
+      "name": "Todo",
+      "tasks": [
+        {
+          "id": "T4",
+          "title": "Document edge cases for expired refresh tokens",
+          "checked": false,
+          "priority": "medium",
+          "type": "subtask",
+          "parentId": "T2",
+          "project": "my-app",
+          "energy": "shallow",
+          "created": "2026-02-06",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "in-progress",
+      "name": "In Progress",
+      "tasks": [
+        {
+          "id": "T6",
+          "title": "Mock timer task for e2e",
+          "description": "Safe fixture task — not real data",
+          "checked": false,
+          "priority": "high",
+          "type": "task",
+          "project": "my-app",
+          "energy": "deep",
+          "estimateMinutes": 60,
+          "loggedMinutes": 0,
+          "timeEntries": [],
+          "dueDate": "2026-08-28",
+          "created": "2026-08-25",
+          "updated": null,
+          "subtasks": [
+            { "text": "Open timer panel", "checked": false },
+            { "text": "Verify pomodoro toggle", "checked": false }
+          ]
+        },
+        {
+          "id": "T2",
+          "title": "Review PR for auth module",
+          "description": "Needs security sign-off before merge",
+          "checked": false,
+          "priority": "high",
+          "type": "task",
+          "parentId": "T1",
+          "project": "my-app",
+          "energy": "deep",
+          "issueUrl": "https://github.com/example/repo/issues/42",
+          "dueDate": "2026-08-30",
+          "blocked": true,
+          "waitingOn": "security review",
+          "estimateMinutes": 120,
+          "labels": ["auth", "review"],
+          "links": [
+            { "label": "PR", "url": "https://github.com/example/repo/pull/42" }
+          ],
+          "created": "2026-02-05",
+          "updated": null,
+          "subtasks": [
+            { "text": "Check input validation", "checked": true },
+            { "text": "Verify token expiry handling", "checked": false }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "name": "Done",
+      "tasks": [
+        {
+          "id": "T3",
+          "title": "Configure development environment",
+          "checked": true,
+          "priority": "medium",
+          "type": "task",
+          "project": "my-app",
+          "loggedMinutes": 90,
+          "timeEntries": [
+            { "at": "2026-01-12T14:00:00.000Z", "minutes": 90, "note": "setup" }
+          ],
+          "created": "2026-01-10",
+          "updated": "2026-01-12",
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "archive",
+      "name": "Archive",
+      "tasks": []
+    }
+  ]
+}

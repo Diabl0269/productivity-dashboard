@@ -1,0 +1,54 @@
+# Dashboard
+
+Served by `node serve.js` from the repo root at `http://localhost:3000/dashboard/`.
+
+## Data loading
+- **Tasks live in `tasks.json`** (not TASKS.md). The dashboard reads and writes JSON; `ch tasks export --md` gives a markdown snapshot.
+- Memory files (people, projects, glossary) remain Markdown in `memory/`.
+- `serve.js` adds `/api/save` (POST) and `/api/memory-manifest` (GET) on top of static serving; port via `PORT` env or first CLI arg (default 3000).
+- Tasks poll every 2s for changes — edits via `ch` or the CLI appear automatically.
+- Falls back to static `memory/manifest.json` if the custom server isn't used.
+- **FS-Access caveat:** users who previously opened a `TASKS.md` FileSystem handle must re-pick `tasks.json` once in the dashboard (the old handle is stale).
+
+## Styling
+- `dashboard/styles/base.css` is a design-token system: colors/spacing/radius/type/shadow are CSS custom properties (`--surface-0..4`, `--status-*`, `--priority-*`, `--space-*`, `--focus-ring`). Dark tokens live in `:root`, light overrides in `[data-theme="light"]`. Dark is the default theme. Restyle via tokens, not hardcoded values.
+- Semantic status colors (todo=blue, done=green, high-priority=red, in-progress=terracotta); accent reserved for interactive elements; focus rings via `--focus-ring` box-shadow.
+- CSS classes referenced from JS (e.g. `inline-edit-input`, `priority-legend`, `gm-*`, `bulk-actions-bar`) are load-bearing — rename in both places or not at all.
+
+## Task fields (tasks.json)
+Keep CLI and dashboard in sync. Optional fields are omitted when empty/false.
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `priority` | `low` \| `medium` \| `high` | Default `medium`; clickable dots cycle |
+| `type` / `parentId` / `color` | hierarchy | Epic → Task → Subtask; color inherits |
+| `dueDate` | `YYYY-MM-DD` | Urgency badges; Overview deadlines prefer this |
+| `blocked` / `waitingOn` | bool / string | Card badge; Overview Blocked count |
+| `labels` | `string[]` | Free-form tags; filter pills |
+| `links` | `{label?, url}[]` | Generic URLs |
+| `blockedBy` | `string[]` | Peer task ids (not parent hierarchy) |
+| `assignee` | string | Free-text name/slug (corporate UI — hidden when Hide corporate is on) |
+| `jiraKey` | string | Legacy `PROJECT-123` (corporate; prefer `issueUrl`) |
+| `issueUrl` | HTTPS URL | Primary issue link (GitHub / Jira / etc.) |
+| `project` / `energy` / `snoozeUntil` | solo | Project slug, energy context, snooze date |
+| `estimateMinutes` | number | Minutes only — **not** story points. Display `30m` / `2h` / `1d` (1d = 8h) |
+| `history` | array | Activity log (moved/priority/blocked/…); capped at 50 |
+
+## Display prefs (Settings → Display)
+- `dashboard.hideCorporate` (`1` = hide; solo default on). Migrates legacy `dashboard.hideSprints`.
+- Hides sprints, Jira key fields/badges, assignee chips/filters. Mark with `data-corporate-ui`.
+
+## Board / list UX
+- Faceted filters (priority, type, due, parent, blocked, section, labels, project, energy; assignee when corporate shown) AND with text search
+- Bulk select + toolbar (move, priority, archive, label, block, delete); Esc clears selection/filters
+- Soft delete with Undo toast (~7s)
+- Keyboard (Tasks tab): `n` new, `j`/`k` navigate, `h`/`l` columns, `1`/`2`/`3` priority, `Enter` detail, `x` select, `⌫` delete, `Esc` clear, `?` hints
+- Swimlanes toggle: group by parent epic
+- WIP soft limit via `config.json` `wipLimit` / `wipLimits`
+
+## Inline Editing (Context Page)
+- Click any field value, table cell, or section line to edit in-place
+- Uses `data-editable` attributes with type (`field`, `table-cell`, `section-line`)
+- Saves via `httpSave()` → POST `/api/save` → writes to disk
+- Escape to cancel, Enter to save (Ctrl+Enter for textarea)
+- People/projects pages still use modal editing

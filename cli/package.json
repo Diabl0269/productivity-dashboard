@@ -1,0 +1,9 @@
+{
+  "name": "claudes-home-cli",
+  "version": "1.0.0",
+  "description": "ch — token-efficient CLI for tasks.json + memory operations in Claude's Home",
+  "type": "module",
+  "bin": {
+    "ch": "./index.js"
+  }
+}

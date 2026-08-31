@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "sections": [
+    {
+      "id": "todo",
+      "name": "Todo",
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Set up project scaffolding",
+          "checked": false,
+          "priority": "high",
+          "created": "2026-01-10",
+          "updated": null,
+          "subtasks": [
+            { "text": "Create directory structure", "checked": true },
+            { "text": "Add package.json", "checked": false }
+          ]
+        },
+        {
+          "id": "T2",
+          "title": "Write unit tests — cover edge cases",
+          "checked": false,
+          "priority": "medium",
+          "created": "2026-01-11",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "in-progress",
+      "name": "In Progress",
+      "tasks": [
+        {
+          "id": "T3",
+          "title": "Implement CLI parser",
+          "checked": false,
+          "priority": "high",
+          "created": "2026-01-12",
+          "updated": "2026-01-14",
+          "subtasks": [
+            { "text": "Parse flags", "checked": true },
+            { "text": "Handle unknown commands", "checked": true },
+            { "text": "Add --json output mode", "checked": false }
+          ]
+        },
+        {
+          "id": "T4",
+          "title": "Add memory search — fuzzy match on people",
+          "checked": false,
+          "priority": "low",
+          "created": "2026-01-13",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "name": "Done",
+      "tasks": [
+        {
+          "id": "T5",
+          "title": "Design schema for tasks.json",
+          "checked": true,
+          "priority": "medium",
+          "created": "2026-01-08",
+          "updated": "2026-01-10",
+          "subtasks": [
+            { "text": "Define section ids", "checked": true },
+            { "text": "Define priority values", "checked": true }
+          ]
+        },
+        {
+          "id": "T6",
+          "title": "Set up repo and initial commit",
+          "checked": true,
+          "priority": "low",
+          "created": "2026-01-07",
+          "updated": "2026-01-07",
+          "subtasks": []
+        }
+      ]
+    }
+  ]
+}

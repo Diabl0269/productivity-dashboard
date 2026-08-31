@@ -1,0 +1,50 @@
+name: CI
+
+# Run the zero-dependency Node test suite whenever the CLI, dashboard, or dev
+# server changes (on PRs and on pushes to main).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/**'
+      - 'dashboard/**'
+      - 'serve.js'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'cli/**'
+      - 'dashboard/**'
+      - 'serve.js'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No dependencies to install — the project is intentionally zero-dependency.
+      - name: Run CLI test suite
+        run: node --test "cli/test/*.test.js"
+
+      # Cheap coverage for the dashboard's JSON (de)serializer: a missing person
+      # file or schema drift would surface here too.
+      - name: Dashboard tasks.json round-trip smoke check
+        run: |
+          node --input-type=module -e '
+            import { loadTasksJson, serializeTasksJson } from "./dashboard/js/tasks-json.js";
+            import { readFileSync } from "node:fs";
+            const txt = readFileSync("cli/test/fixtures/tasks.sample.json", "utf8");
+            const mem = loadTasksJson(txt);
+            const out = serializeTasksJson(mem.sections, mem.tasks);
+            const ids = d => d.sections.flatMap(s => s.tasks.map(t => s.id + "/" + t.id)).sort();
+            if (JSON.stringify(ids(JSON.parse(txt))) !== JSON.stringify(ids(JSON.parse(out)))) {
+              console.error("tasks-json round-trip: id/section set mismatch");
+              process.exit(1);
+            }
+            console.log("tasks-json round-trip OK");
+          '

@@ -1,0 +1,1437 @@
+/* ══════════════════════════════════════════════════════
+   TASK DETAIL MODAL — click a task to open its full record
+   ══════════════════════════════════════════════════════
+   The modal is a small, extensible "task management" hub:
+   every panel is a .td-panel. Add a new panel to grow it.
+   ═══════════════════════════════════════════════════════ */
+
+.td-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--modal-overlay-bg, rgba(10, 7, 4, 0.55));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 210;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.td-overlay.visible {
+  display: flex;
+  opacity: 1;
+  animation: td-overlay-in var(--transition-fast) both;
+}
+
+@keyframes td-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.td-modal {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  width: min(640px, calc(100% - var(--space-8)));
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.td-overlay.visible .td-modal {
+  animation: td-modal-in var(--transition-normal) both;
+}
+
+@keyframes td-modal-in {
+  from { transform: scale(0.97) translateY(10px); opacity: 0; }
+  to   { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-overlay.visible .td-modal,
+  .td-overlay.visible { animation: none; }
+}
+
+/* ── Header ─────────────────────────────────── */
+
+.td-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  flex-shrink: 0;
+}
+
+.td-id {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-tertiary);
+  background: var(--surface-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-2);
+  line-height: 1;
+  min-width: 34px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.td-title-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  padding: var(--space-1) var(--space-2);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.td-title-input:focus {
+  outline: none;
+  border-color: var(--border);
+  background: var(--surface-3);
+}
+
+.td-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.td-close:hover {
+  background: var(--surface-4);
+  color: var(--status-blocked);
+  border-color: var(--status-blocked);
+}
+
+.td-close:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+
+/* ── Body / panels ──────────────────────────── */
+
+.td-body {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.td-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.td-panel-label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.td-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+}
+
+/* Inline meta field: label + value stacked or inline */
+.td-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.td-field-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-weight: var(--weight-medium);
+}
+
+.td-field-label-link {
+  appearance: none;
+  display: inline;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: var(--accent) !important;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
+.td-field-label-link:hover,
+.td-field-label-link:focus-visible {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  text-decoration-color: var(--accent);
+}
+
+.td-field-label-link::after {
+  content: ' \2192';
+  font-size: 0.95em;
+  opacity: 0.85;
+}
+
+.td-field-value {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+/* ── Priority segmented control ───────────────── */
+
+.td-priority {
+  display: inline-flex;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  gap: 2px;
+}
+
+.td-priority-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px var(--space-3);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.td-priority-btn:hover { color: var(--text-secondary); background: var(--surface-4); }
+
+.td-priority-btn.active {
+  background: var(--surface-4);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.td-priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.td-priority-btn.active .td-priority-dot { box-shadow: 0 0 0 2px var(--accent-muted); }
+
+/* ── Select ─────────────────────────────────── */
+
+.td-select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.td-select:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+
+/* ── Description (the primary feature) ────────────── */
+
+.td-notes-textarea {
+  width: 100%;
+  min-height: 160px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-primary);
+  resize: vertical;
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.td-notes-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.td-notes-textarea::placeholder { color: var(--text-tertiary); }
+
+.td-panel-hint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ── Subtasks ───────────────────────────────── */
+
+.td-subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.td-subtask {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.td-subtask .checkbox {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+}
+
+.td-subtask-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: 3px var(--space-1);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.td-subtask-input:hover { border-color: var(--border-subtle); }
+.td-subtask-input:focus { outline: none; border-color: var(--border); background: var(--surface-2); }
+
+.td-subtask.done .td-subtask-input {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+
+.td-subtask-remove {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: var(--text-md);
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+
+.td-subtask:hover .td-subtask-remove { opacity: 1; }
+.td-subtask-remove:hover { color: var(--status-blocked); background: var(--surface-4); }
+
+.td-add-subtask {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: 4px var(--space-3);
+  border-radius: var(--radius-md);
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.td-add-subtask:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.td-subtasks-empty {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ── Footer ─────────────────────────────────── */
+
+.td-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  flex-shrink: 0;
+}
+
+.td-footer-spacer { flex: 1; }
+
+.td-delete {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.td-delete:hover {
+  color: var(--status-blocked);
+  border-color: var(--status-blocked);
+}
+
+.td-delete:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+
+/* Buttons inherit .primary from base.css where available */
+.td-saved {
+  font-size: var(--text-xs);
+  color: var(--status-done);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  font-weight: var(--weight-medium);
+}
+
+.td-saved.show { opacity: 1; }
+
+.td-footer button.primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.td-footer button.primary:hover { background: var(--accent-hover); }
+.td-footer button.primary:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+
+/* ── Create-task modal tweaks ─────────────────── */
+
+.tc-modal .td-notes-textarea {
+  min-height: 100px;
+}
+
+.tc-field-error {
+  color: var(--status-blocked);
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
+}
+
+.tc-title-error {
+  border-color: var(--status-blocked) !important;
+}
+
+/* ── Create/detail field layout (pinned / unpinned) ──
+   Property-list pattern: one soft panel, one full-width row per field.
+   No mini-cards, no multi-column field wrapping → no overflow. */
+
+.td-essentials-layout,
+.td-essentials-fields,
+#tcBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.td-essentials-layout,
+.td-essentials-fields {
+  padding: var(--space-4) var(--space-5);
+}
+
+.td-essentials-layout .td-form-footer {
+  margin-top: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tc-field-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.tc-field-section-pinned {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.tc-field-section-unpinned {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.tc-field-section-unpinned:not(.is-collapsed) {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.tc-field-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+.tc-field-section-title { flex: 0 0 auto; }
+
+.tc-field-section-count {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.75;
+}
+
+.tc-field-section-hint { display: none; }
+
+.tc-field-section-toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+
+.tc-field-section-unpinned:not(.is-collapsed) .tc-field-section-toggle {
+  padding: 0 0 var(--space-1);
+}
+
+.tc-field-section-toggle:hover .tc-field-section-title {
+  color: var(--text-secondary);
+}
+
+.tc-field-section-chevron {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  transition: transform var(--transition-fast);
+}
+
+.tc-field-section-unpinned.is-collapsed .tc-field-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.tc-field-section-unpinned.is-collapsed .tc-field-list {
+  display: none;
+}
+
+.tc-field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.tc-field-list.td-field-drag-over {
+  outline: 1px dashed var(--border);
+  outline-offset: 4px;
+  border-radius: var(--radius-md);
+}
+
+/* Full-width property row — never shrink into multi-col cards */
+.td-field-shell,
+.td-field-shell-wide,
+.td-field-shell.is-pinned,
+.td-field-shell.is-unpinned {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 26px;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: none;
+  box-sizing: border-box;
+  padding: 8px 0;
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+.td-field-shell:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.td-field-shell:first-child {
+  padding-top: 0;
+}
+
+.td-field-shell:hover {
+  background: transparent;
+}
+
+.td-field-shell-wide {
+  align-items: start;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.td-field-shell-wide .td-field-drag-handle,
+.td-field-shell-wide .td-field-pin-btn {
+  margin-top: 4px;
+}
+
+.td-field-drag-handle {
+  cursor: grab;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: -1px;
+  padding: 0;
+  line-height: 1;
+  opacity: 0;
+  justify-self: center;
+}
+
+.td-field-shell:hover .td-field-drag-handle,
+.td-field-shell:focus-within .td-field-drag-handle {
+  opacity: 0.7;
+}
+
+.td-field-drag-handle:hover { opacity: 1; color: var(--text-secondary); }
+.td-field-drag-handle:active { cursor: grabbing; }
+
+.td-field-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0.45;
+}
+
+.td-field-shell:hover .td-field-pin-btn,
+.td-field-shell:focus-within .td-field-pin-btn {
+  opacity: 0.85;
+}
+
+.td-field-pin-btn:hover {
+  opacity: 1;
+  color: var(--text-secondary);
+  background: var(--surface-4);
+}
+
+.td-field-pin-btn.pinned {
+  opacity: 0.9;
+  color: var(--accent);
+}
+
+.td-field-pin-btn.pinned:hover {
+  background: var(--accent-muted);
+}
+
+.td-field-shell-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Label | control — always horizontal, never centered-above */
+.td-field-shell-content .td-field,
+.td-field-shell-content .td-field-block {
+  display: grid;
+  grid-template-columns: 4.75rem minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.td-field-shell-wide .td-field-block {
+  align-items: start;
+}
+
+.td-field-shell-wide .td-field-label {
+  padding-top: 7px;
+}
+
+.td-field-shell-content .td-field-label {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  line-height: 1.25;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* Hint as tooltip only — never layout text beside the row */
+.td-field-shell-content .td-form-hint {
+  display: none;
+}
+
+.td-field-shell-content .td-chip-list,
+.td-field-shell-content .td-links-list,
+.td-field-shell-content .td-notes-textarea,
+.td-field-shell-content .td-color-override-wrap,
+.td-field-shell-content .td-parent-jump,
+.td-field-shell-content .td-type-row,
+.td-field-shell-content .td-priority,
+.td-field-shell-content .td-select,
+.td-field-shell-content .td-text-input,
+.td-field-shell-content .td-date-wrap,
+.td-field-shell-content .td-toggle-btn,
+.td-field-shell-content .td-inline-add {
+  grid-column: 2;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.td-field-shell-content .td-select,
+.td-field-shell-content .td-text-input,
+.td-field-shell-content .td-date-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: var(--text-sm);
+}
+
+.td-field-shell-content .td-date-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  max-width: 11.5rem; /* date pickers shouldn't sprawl */
+}
+
+.td-field-shell-content .td-date-wrap .td-date-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.td-field-shell-content .td-priority {
+  display: inline-flex;
+  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.td-field-shell-content .td-priority-btn {
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  min-height: 30px;
+}
+
+.td-field-shell-content .td-toggle-btn {
+  width: fit-content;
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: var(--text-xs);
+}
+
+.td-field-shell-content .td-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.td-field-shell-content .td-type-row .td-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.td-field-shell-content .td-chip-list,
+.td-field-shell-content .td-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.td-field-shell-content .td-inline-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+}
+
+.td-field-shell-content .td-inline-add .td-text-input {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+/* Links add-row: stack so url/label never collide with the pin */
+.td-field-shell-content .td-link-add {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.td-field-shell-content .td-link-add .td-text-input {
+  flex: none;
+  width: 100%;
+}
+
+.td-field-shell-content .td-link-add .td-add-subtask {
+  align-self: flex-start;
+}
+
+.td-notes-textarea-compact {
+  min-height: 52px !important;
+  max-height: 140px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px !important;
+}
+
+.td-field-block {
+  width: 100%;
+}
+
+.td-parent-jump {
+  margin-top: 2px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: 0;
+  justify-self: start;
+}
+
+.td-parent-jump:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.td-recurrence-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.td-recurrence-freq,
+.td-recurrence-interval {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.td-field-dragging { opacity: 0.4; }
+
+.td-field-drag-over {
+  background: var(--accent-muted) !important;
+}
+
+/* ── Due / blocked / labels / links controls ── */
+
+.td-due-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.td-date-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.td-clear-btn,
+.td-toggle-btn {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  padding: 4px var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-4);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.td-clear-btn:hover:not(:disabled),
+.td-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.td-clear-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.td-toggle-btn.active {
+  background: var(--urgency-today-bg);
+  border-color: var(--status-blocked);
+  color: var(--status-blocked);
+}
+
+.td-text-input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: 6px var(--space-3);
+}
+
+.td-text-input:focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--accent);
+}
+
+.td-chip-list,
+.td-links-list,
+.td-blocked-by {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.td-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-4);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  width: fit-content;
+}
+
+.td-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: var(--text-md);
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.td-chip-remove:hover {
+  color: var(--status-blocked);
+}
+
+.td-inline-add {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.td-inline-add .td-text-input,
+.td-inline-add .td-select {
+  flex: 1;
+  min-width: 120px;
+}
+
+.td-link-add .td-text-input {
+  flex: 1;
+}
+
+.td-link-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.td-link-anchor {
+  color: var(--accent);
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+.td-field-hint {
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.td-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 200px;
+  overflow-y: auto;
+}
+.td-history-row {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.td-history-at {
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  min-width: 110px;
+}
+
+
+/* ── Structured body (tabs) ─────────────────── */
+
+.td-modal {
+  width: min(720px, calc(100% - var(--space-8)));
+  max-height: 90vh;
+}
+
+.td-body-structured {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 !important;
+}
+
+.td-focus-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.td-focus-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.td-focus-chip {
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-4);
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.td-focus-chip.td-focus-pri.priority-high { color: var(--priority-high); }
+.td-focus-chip.td-focus-pri.priority-medium { color: var(--priority-medium); }
+.td-focus-chip.td-focus-pri.priority-low { color: var(--priority-low); }
+.td-focus-project { color: var(--accent); }
+
+.td-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-3);
+  flex-shrink: 0;
+}
+
+.td-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.td-tab:hover { color: var(--text-secondary); }
+.td-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.td-tab-panes {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.td-tab-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.td-tab-pane[hidden] { display: none !important; }
+
+.td-timer-explainer {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.td-timer-live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.td-timer-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: td-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes td-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.td-time-entries {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.td-time-entry {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.td-time-note {
+  color: var(--text-secondary);
+  font-family: inherit;
+}
+
+/* ── Essentials form (calm stacked fields) ───── */
+
+.td-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.td-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.td-form-group-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.td-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-4);
+  align-items: start;
+}
+
+.td-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.td-form-field.td-span-2 { grid-column: span 2; }
+.td-form-field.td-span-3 { grid-column: 1 / -1; }
+
+.td-form-label {
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+}
+
+.td-form-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  opacity: 0.85;
+  line-height: 1.3;
+}
+
+.td-select-block,
+.td-form-field .td-text-input,
+.td-form-field .td-select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.td-form-field .td-text-input,
+.td-form-field .td-select,
+.td-form-field .td-date-input {
+  min-height: 36px;
+  padding: 8px 12px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.td-form-field .td-text-input:focus,
+.td-form-field .td-select:focus,
+.td-form-field .td-date-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  background: var(--surface-3);
+}
+
+.td-form-field .td-text-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Native date picker — keep dark, never flash white */
+.td-date-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.td-date-wrap .td-date-input {
+  width: 100%;
+  padding-right: 32px;
+  color-scheme: dark;
+}
+
+[data-theme="light"] .td-date-wrap .td-date-input {
+  color-scheme: light;
+}
+
+.td-date-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.td-date-clear:hover {
+  color: var(--text-primary);
+  background: var(--surface-4);
+}
+
+.td-type-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.td-type-row .td-select {
+  flex: 1;
+}
+
+.td-color-override-wrap {
+  padding-top: 2px;
+}
+
+.td-parent-jump {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.td-parent-jump:hover {
+  text-decoration: underline;
+}
+
+.td-parent-jump:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+  text-decoration: none;
+}
+
+.td-form-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.td-form-footer strong {
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.td-form-footer-sep {
+  opacity: 0.5;
+}
+
+.td-panel-soft {
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.td-panel-soft .td-panel-label {
+  margin-bottom: var(--space-1);
+  letter-spacing: 0.08em;
+}
+
+.td-form-field .td-toggle-btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 36px;
+}
+
+.td-form-field .td-priority {
+  width: 100%;
+  justify-content: stretch;
+}
+
+.td-form-field .td-priority-btn {
+  flex: 1;
+  justify-content: center;
+  padding: 8px var(--space-2);
+}
+
+@media (max-width: 560px) {
+  .td-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .td-form-field.td-span-2,
+  .td-form-field.td-span-3 {
+    grid-column: 1;
+  }
+}

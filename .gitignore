@@ -1,0 +1,52 @@
+# Personal data — never commit
+CLAUDE.md
+TASKS.md
+memory/
+config.json
+
+# Local Claude config
+.claude/settings.json
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Playwright CLI recordings
+.playwright-cli/
+
+# E2E mock runtime (writable copy of fixtures — never personal data)
+dashboard/e2e/runtime/
+# E2E fixtures are safe to commit (override personal-data ignores below)
+!dashboard/e2e/fixtures/
+!dashboard/e2e/fixtures/**
+
+# Actual daily-update script (has personal paths/IDs)
+scripts/daily-update.sh
+
+# Cron run logs (personal productivity data)
+.cron-runs/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node (future-proofing)
+node_modules/
+
+# Slack reply-queue watcher (personal Slack content + channel IDs)
+reply-queue.md
+scripts/watch-config.json
+scripts/__pycache__/
+
+# Engineering metrics suite (commits adoption + Jira delivery) — EXTRACTED 2026-06-10 into the
+# standalone project ../engineering-metrics/ (sibling of Claude's Home). No longer lives here.
+tasks.json
+!dashboard/e2e/fixtures/tasks.json
+
+# CLI working drafts (user-specific, not for public template)
+cli/AUTOMATION_CHANGES.md
+nicknames.json
+
+# Private backup automation + its own git repo (personal, not part of the template)
+.backup/

@@ -1,0 +1,302 @@
+/* Projects tab — solo project management */
+
+.pv-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) 1fr;
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.pv-sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pv-sidebar-head {
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pv-sidebar-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: var(--space-2);
+}
+
+.pv-project-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3) var(--space-3);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  transition: background var(--transition-fast);
+}
+
+.pv-project-btn:hover {
+  background: var(--surface-3);
+}
+
+.pv-project-btn.active {
+  background: var(--surface-3);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.pv-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pv-swatch-default {
+  background: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.pv-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-main {
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-7);
+  min-height: 0;
+}
+
+.pv-hero {
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pv-hero-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.pv-hero-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.pv-hero-title {
+  margin: 0;
+  font-size: var(--text-2xl, 1.5rem);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.pv-hero-sub {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.pv-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.pv-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pv-stat-n {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.pv-stat-l {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pv-hero-empty {
+  max-width: 28rem;
+  padding: var(--space-10) 0;
+}
+
+.pv-hero-empty h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-2xl, 1.5rem);
+}
+
+.pv-hero-empty p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.pv-empty {
+  padding: var(--space-6);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.pv-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.pv-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.pv-branch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-left: calc(var(--pv-depth, 0) * 0px + var(--space-5));
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.pv-row {
+  display: grid;
+  grid-template-columns: 72px 48px 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.pv-row:hover {
+  background: var(--surface-3);
+  border-color: var(--border);
+}
+
+.pv-row.pv-done {
+  opacity: 0.55;
+}
+
+.pv-row.pv-blocked .pv-title {
+  color: var(--status-blocked, var(--priority-high));
+}
+
+.pv-type {
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pv-color, var(--text-tertiary));
+}
+
+.pv-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.pv-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.pv-section {
+  text-transform: capitalize;
+}
+
+.pv-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 72px;
+}
+
+.pv-progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-4);
+  overflow: hidden;
+}
+
+.pv-progress-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.pv-progress-label {
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  min-width: 2em;
+}
+
+@media (max-width: 720px) {
+  .pv-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .pv-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 160px;
+  }
+  .pv-row {
+    grid-template-columns: 56px 40px 1fr;
+    grid-template-rows: auto auto;
+  }
+  .pv-meta, .pv-progress {
+    grid-column: 1 / -1;
+  }
+}

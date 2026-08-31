@@ -1,0 +1,88 @@
+# Memory
+
+## Me
+**YOUR_NAME**, YOUR_ROLE at YOUR_COMPANY.
+Jira: YOUR_JIRA_USERNAME | Project: YOUR_PROJECT | Board: YOUR_BOARD_ID
+
+## Team: YOUR_TEAM
+Focus: Your team's focus area
+| Who | Role | Notes |
+|-----|------|-------|
+| **Team Member 1** | Developer | |
+| **Team Member 2** | Designer | |
+
+## Key People
+| Who | Context |
+|-----|---------|
+| **Manager** | Your direct manager |
+| **Tech Lead** | Technical leadership |
+
+## Other Squads
+List other teams you interact with
+
+## Terms
+| Term | Meaning |
+|------|---------|
+| YOUR_ORG | Your organization name |
+| SDD | Software Design Document |
+| SP | Story Points |
+| FF | Feature Flag |
+
+## Projects
+| Name | What |
+|------|------|
+| **Project A** | Brief description |
+| **Project B** | Brief description |
+
+## Processes
+- Sprints: ~X weeks each
+- Release cycle: describe your release process
+
+## Current Focus
+- Current quarter objectives
+- Key initiatives
+
+## Task Tracking
+- Tasks live in `tasks.json` (manage with `ch tasks`). Optional markdown export: `ch tasks export --md`.
+
+## Known Issues
+- **Apostrophe in project path:** The path "Claude's Home" contains an apostrophe which can cause glob/search failures in subagents. When delegating file searches to subagents, ensure paths are properly quoted or escaped.
+
+See `memory/` for detailed profiles and context.
+
+## CLI Tools (ch) — prefer over Read/Edit for tasks & memory
+
+Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ...` from repo root.
+
+| Operation | Command |
+|-----------|---------|
+| Dump active tasks (JSON) | `ch tasks dump --active` |
+| Add a task | `ch tasks add "<title>" [--section todo] [--priority medium] [--due YYYY-MM-DD] [--estimate 2h] [--assignee name] [--label L] [--blocked]` |
+| Move task to section | `ch tasks move <id> <section>` |
+| Mark done | `ch tasks done <id>` |
+| Update fields | `ch tasks update <id> --title "..." --description "..." --priority high --due ... --estimate 30m --assignee ...` |
+| Next available id | `ch tasks next-id` |
+| Validate tasks.json | `ch tasks lint [--fix]` |
+| Markdown snapshot | `ch tasks export --md` |
+| Person fields | `ch mem person <slug> [--field slack_id,email] [--json]` |
+| Fuzzy person lookup | `ch mem whois "<name>"` |
+| Memory index (JSON) | `ch mem index --json` |
+| Session digest | `ch context [--json]` |
+| List pending gaps | `ch gaps list` |
+| Resolve a gap | `ch gaps resolve <n>` |
+| Recent Slack activity (JSON) | `ch slack recent --days <N> --user <UID>` |
+| Channel activity (JSON) | `ch slack channels --ids <C1,C2> --days <N>` |
+| Read a thread | `ch slack thread --channel <C> --ts <ts>` |
+| Check reactions | `ch slack reactions --channel <C> --ts <ts> [--user <U>]` |
+
+ch slack reads its token (priority: SLACK_TOKEN env -> config.json slack_token_cmd, a command that prints the token to stdout, resolved at runtime -> config.json slack_token literal); outputs JSON; zero LLM tokens. `recent` needs an xoxp- USER token (search:read).
+
+**Rules:**
+- NEVER read `tasks.json` or `TASKS.md` directly — always use `ch tasks`.
+- NEVER `ls memory/people` to check existence — use `ch mem person exists <slug>` or `ch mem whois`.
+- `ch` enforces unique ids — do not guess the next id; call `ch tasks next-id`.
+- If `CH_HOME` is unset, the CLI walks up from cwd to find the repo root automatically.
+
+## Dashboard
+- **Run with:** `node serve.js` (from project root) — opens at `http://localhost:3000/dashboard/`
+- Dashboard-specific conventions live in `dashboard/CLAUDE.md` — copy `dashboard/CLAUDE.md.example` to create it. It loads only when working under `dashboard/`, keeping it out of every other session.
