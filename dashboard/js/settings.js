@@ -133,6 +133,10 @@ export function renderSettingsTicketTypes() {
 
   container.querySelectorAll('.tt-color').forEach(input => {
     input.addEventListener('input', () => {
+      const swatch = input.parentElement.querySelector('.tt-color-swatch');
+      if (swatch) swatch.style.background = input.value;
+    });
+    input.addEventListener('change', () => {
       const i = parseInt(input.dataset.idx, 10);
       const color = input.value;
       state.ticketTypes[i].color = color;

@@ -636,28 +636,11 @@ function getEssentialsFieldFactories(task) {
         commit('Type set to ' + getTicketType(types, task.type).name);
         openTaskDetail(task, { focusTitle: false });
       });
-
-      const { swatch: typeSwatch } = makeColorControls({
-        color: resolveTaskColor(task, types, state.tasks),
-        customColor: isHexColor(task.color) ? task.color : null,
-        inheritedColor: inheritedTaskColor(task, types, state.tasks),
-        inheritFrom: inheritColorLabel(task, types, state.tasks),
-        hasParent: !!task.parentId,
-        onChange: (hex) => {
-          task.color = hex;
-          commit(hex ? 'Custom color set' : 'Color inherits from parent/type');
-          getRenderTasks && getRenderTasks()();
-        },
-      });
-      const typeRow = document.createElement('div');
-      typeRow.className = 'td-type-row';
-      typeRow.appendChild(typeSelect);
-      typeRow.appendChild(typeSwatch);
-      return essentialsField('Type', typeRow);
+      return essentialsField('Type', typeSelect);
     },
 
     color: () => {
-      const { override: colorOverride } = makeColorControls({
+      const { swatch, override } = makeColorControls({
         color: resolveTaskColor(task, types, state.tasks),
         customColor: isHexColor(task.color) ? task.color : null,
         inheritedColor: inheritedTaskColor(task, types, state.tasks),
@@ -666,13 +649,13 @@ function getEssentialsFieldFactories(task) {
         onChange: (hex) => {
           task.color = hex;
           commit(hex ? 'Custom color set' : 'Color inherits from parent/type');
-          getRenderTasks && getRenderTasks()();
         },
       });
-      const colorWrap = document.createElement('div');
-      colorWrap.className = 'td-color-override-wrap';
-      colorWrap.appendChild(colorOverride);
-      return essentialsField('Color', colorWrap, { block: true });
+      const colorRow = document.createElement('div');
+      colorRow.className = 'td-color-row';
+      colorRow.appendChild(swatch);
+      colorRow.appendChild(override);
+      return essentialsField('Color', colorRow, { block: true });
     },
 
     parent: () => {

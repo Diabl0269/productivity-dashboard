@@ -94,11 +94,11 @@ export function inheritColorLabel(task, ticketTypes, tasksBySection) {
 }
 
 /**
- * Inline color controls for create/detail modals.
+ * Inline color controls for the Color field in create/detail modals.
  *
- * Returns:
- *   swatch  — circular label that opens the native color picker (when override is on)
- *   override — checkbox label ("Override parent/type color") for the main form
+ * Returns (keep both in the same field so checkbox + picker share state):
+ *   swatch   — circular label that opens the native color picker (when override is on)
+ *   override — checkbox label ("Override parent/type color")
  *
  * @param {{
  *   color: string,
@@ -173,7 +173,15 @@ export function makeColorControls({
     onChange && onChange(isOverride ? draftHex : null);
   });
 
+  // Live preview only — native color inputs fire `input` continuously while
+  // dragging; persist on `change` (picker closed / value committed).
   input.addEventListener('input', () => {
+    if (!isOverride) return;
+    draftHex = input.value;
+    swatch.style.background = draftHex;
+  });
+
+  input.addEventListener('change', () => {
     if (!isOverride) return;
     draftHex = input.value;
     swatch.style.background = draftHex;

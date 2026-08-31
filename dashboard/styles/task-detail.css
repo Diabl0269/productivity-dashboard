@@ -751,7 +751,7 @@
 .td-field-shell-content .td-chip-list,
 .td-field-shell-content .td-links-list,
 .td-field-shell-content .td-notes-textarea,
-.td-field-shell-content .td-color-override-wrap,
+.td-field-shell-content .td-color-row,
 .td-field-shell-content .td-parent-jump,
 .td-field-shell-content .td-type-row,
 .td-field-shell-content .td-priority,
@@ -821,6 +821,15 @@
 .td-field-shell-content .td-type-row .td-select {
   flex: 1;
   min-width: 0;
+}
+
+.td-field-shell-content .td-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .td-field-shell-content .td-chip-list,
@@ -1351,8 +1360,12 @@
   flex: 1;
 }
 
-.td-color-override-wrap {
-  padding-top: 2px;
+.td-color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .td-parent-jump {
