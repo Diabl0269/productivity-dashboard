@@ -122,6 +122,27 @@ export function isTaskDetailOpen() {
   return overlay && overlay.classList.contains('visible');
 }
 
+/**
+ * After tasks are replaced from disk/HTTP, re-bind the open detail panel to the
+ * new object for the same taskId (or close if it disappeared).
+ */
+export function syncTaskDetailAfterReload(tasksBySection) {
+  if (!isTaskDetailOpen() || !activeTask) return;
+  const taskId = activeTask.taskId;
+  if (!taskId) {
+    closeTaskDetail();
+    return;
+  }
+  const next = findTaskByTaskId(tasksBySection, taskId);
+  if (!next) {
+    closeTaskDetail();
+    return;
+  }
+  if (next !== activeTask) {
+    openTaskDetail(next, { focusTitle: false });
+  }
+}
+
 /* ── Live-apply helpers ───────────────────────────────────────── */
 
 function commit(note = 'Saved') {

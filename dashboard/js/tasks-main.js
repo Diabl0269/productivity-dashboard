@@ -5,7 +5,7 @@ import { loadTasksJson, serializeTasksJson, defaultTasksMeta, normalizeTasksMeta
 import { markChanged, startWatching, setIOCallbacks, setLastModified, autoSave } from './tasks-io.js';
 import { renderBoard, setBoardCallbacks } from './tasks-board.js';
 import { renderList, setListCallbacks } from './tasks-list.js';
-import { setTaskDetailCallbacks } from './task-detail.js';
+import { setTaskDetailCallbacks, syncTaskDetailAfterReload } from './task-detail.js';
 import { setTaskCreateCallbacks } from './task-create.js';
 import { showStatus, filePathEl, setTaskInfoGetter, activeMainTab } from './state.js';
 import { saveHandle } from './persistence.js';
@@ -47,6 +47,7 @@ export function renderTasks() {
   reapplySearch();
   refreshOverviewTaskWidgets({ tasks: taskState.tasks, meta: taskState.meta });
   refreshProjectsView();
+  syncTaskDetailAfterReload(taskState.tasks);
 }
 
 // Register callbacks for other modules
@@ -218,8 +219,9 @@ export function loadTaskFromHttp(parsed) {
 
 export function startTasksHttpWatching() {
   startHttpTaskWatching((parsed) => {
-    loadTaskFromHttp(parsed);
-    refreshOverviewTaskWidgets(parsed);
+    // Quiet apply — do not go through loadTaskFromHttp (that forces board view + status).
+    applyLoadedTasks(parsed);
+    renderTasks();
   }, {
     shouldSkip: () => taskState.hasChanges || isSaving
   });
