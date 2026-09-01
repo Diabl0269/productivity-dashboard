@@ -40,11 +40,15 @@ export const taskState = {
   swimlanesByEpic: false,
 };
 
-export function renderTasks() {
+export function renderFilteredViews() {
   if (taskState.currentView === 'board') renderBoard();
   else renderList();
-  renderFilterBar();
   reapplySearch();
+}
+
+export function renderTasks() {
+  renderFilteredViews();
+  renderFilterBar();
   refreshOverviewTaskWidgets({ tasks: taskState.tasks, meta: taskState.meta });
   refreshProjectsView();
   syncTaskDetailAfterReload(taskState.tasks);
@@ -79,7 +83,8 @@ setTaskCreateCallbacks({
 
 setFilterCallbacks({
   stateFn: () => taskState,
-  renderFn: () => renderTasks
+  renderFn: () => renderTasks,
+  applyFn: () => renderFilteredViews,
 });
 
 setSelectionCallbacks({
