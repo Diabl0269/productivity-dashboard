@@ -32,9 +32,13 @@ export function serializeFacetState(state = facetState) {
     due: [...state.due],
     labels: [...state.labels],
     assignees: [...state.assignees],
+    projects: [...state.projects],
+    energy: [...state.energy],
     sections: [...state.sections],
     hasParent: state.hasParent,
     blocked: state.blocked,
+    stale: state.stale,
+    snoozed: state.snoozed,
     dueExact: state.dueExact ?? null,
   };
 }
@@ -47,9 +51,13 @@ export function applySerializedFacets(obj) {
   for (const d of (obj.due || [])) facetState.due.add(d);
   for (const l of (obj.labels || [])) facetState.labels.add(l);
   for (const a of (obj.assignees || [])) facetState.assignees.add(a);
+  for (const p of (obj.projects || [])) facetState.projects.add(p);
+  for (const e of (obj.energy || [])) facetState.energy.add(e);
   for (const s of (obj.sections || [])) facetState.sections.add(s);
   facetState.hasParent = obj.hasParent ?? null;
   facetState.blocked = obj.blocked ?? null;
+  facetState.stale = obj.stale ?? null;
+  facetState.snoozed = obj.snoozed ?? null;
   facetState.dueExact = obj.dueExact ?? null;
 }
 
