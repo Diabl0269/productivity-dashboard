@@ -9,13 +9,18 @@ const os = require('os');
 const PORT = process.env.PORT || process.argv[2] || 3000;
 const ROOT = __dirname;
 
-// Personal data (tasks.json, config.json, CLAUDE.md, memory/) normally lives
-// alongside the app, but CH_HOME lets it live anywhere on disk instead —
-// same env var the ch CLI already honors (cli/lib/io.js).
+// Personal data (tasks.json, config.json) normally lives alongside the app,
+// but CH_HOME lets it live anywhere on disk instead — same env var the ch
+// CLI already honors (cli/lib/io.js). Only tasks.json/config.json are
+// touched by the backup job, so only they follow CH_HOME; everything else
+// (nicknames.json, CLAUDE.md, TASKS.md, memory/) always lives in the repo root.
 const DATA_ROOT = process.env.CH_HOME ? path.resolve(process.env.CH_HOME) : ROOT;
-const DATA_PATHS = ['tasks.json', 'config.json', 'nicknames.json', 'CLAUDE.md', 'TASKS.md', 'memory/'];
+const BACKUP_DATA_PATHS = ['tasks.json', 'config.json'];
+const PROJECT_DATA_PATHS = ['nicknames.json', 'CLAUDE.md', 'TASKS.md', 'memory/'];
 function rootFor(relPath) {
-  return DATA_PATHS.some(p => relPath === p || relPath.startsWith(p)) ? DATA_ROOT : ROOT;
+  if (BACKUP_DATA_PATHS.some(p => relPath === p || relPath.startsWith(p))) return DATA_ROOT;
+  if (PROJECT_DATA_PATHS.some(p => relPath === p || relPath.startsWith(p))) return ROOT;
+  return ROOT;
 }
 
 const MIME_TYPES = {
@@ -78,8 +83,8 @@ const server = http.createServer(async (req, res) => {
 
   // Dynamic memory manifest endpoint
   if (url.pathname === '/api/memory-manifest') {
-    const memoryDir = path.join(DATA_ROOT, 'memory');
-    const claudeMdExists = fs.existsSync(path.join(DATA_ROOT, 'CLAUDE.md'));
+    const memoryDir = path.join(ROOT, 'memory');
+    const claudeMdExists = fs.existsSync(path.join(ROOT, 'CLAUDE.md'));
     const scan = fs.existsSync(memoryDir) ? scanDir(memoryDir, 'memory') : { files: [], dirs: {} };
     const manifest = {
       claudeMd: claudeMdExists ? 'CLAUDE.md' : null,

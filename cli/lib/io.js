@@ -4,6 +4,7 @@
  *
  * Exports:
  *   dataRoot(): string
+ *   projectRoot(): string
  *   tasksJsonPath(): string
  *   tasksMdPath(): string
  *   memoryPath(...sub): string
@@ -37,6 +38,7 @@ const _cliDir = path.dirname(fileURLToPath(import.meta.url));
 const _cliParent = path.dirname(path.dirname(_cliDir));
 
 let _cachedRoot = null;
+let _cachedProjectRoot = null;
 
 /**
  * Returns the repo data root (absolute path).
@@ -71,6 +73,33 @@ export function dataRoot() {
   return _cachedRoot;
 }
 
+/**
+ * Returns the repo project root (absolute path) — never CH_HOME-aware.
+ * Priority:
+ *   1. Walk up from process.cwd() for serve.js + dashboard
+ *   2. Walk up from cli/ location for serve.js + dashboard
+ *   3. cli/.. (fallback)
+ */
+export function projectRoot() {
+  if (_cachedProjectRoot) return _cachedProjectRoot;
+
+  const fromCwd = _findRoot(process.cwd());
+  if (fromCwd) {
+    _cachedProjectRoot = fromCwd;
+    return _cachedProjectRoot;
+  }
+
+  const fromCli = _findRoot(_cliParent);
+  if (fromCli) {
+    _cachedProjectRoot = fromCli;
+    return _cachedProjectRoot;
+  }
+
+  // Fallback: cli/..
+  _cachedProjectRoot = _cliParent;
+  return _cachedProjectRoot;
+}
+
 /** Absolute path to tasks.json */
 export function tasksJsonPath() {
   return path.join(dataRoot(), 'tasks.json');
@@ -78,12 +107,12 @@ export function tasksJsonPath() {
 
 /** Absolute path to TASKS.md */
 export function tasksMdPath() {
-  return path.join(dataRoot(), 'TASKS.md');
+  return path.join(projectRoot(), 'TASKS.md');
 }
 
 /** Absolute path inside memory/ */
 export function memoryPath(...sub) {
-  return path.join(dataRoot(), 'memory', ...sub);
+  return path.join(projectRoot(), 'memory', ...sub);
 }
 
 /** Absolute path to config.json */
@@ -108,7 +137,7 @@ export function readConfig() {
 
 /** Absolute path to nicknames.json */
 export function nicknamesPath() {
-  return path.join(dataRoot(), 'nicknames.json');
+  return path.join(projectRoot(), 'nicknames.json');
 }
 
 /**
