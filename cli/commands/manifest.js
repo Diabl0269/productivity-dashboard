@@ -12,7 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { dataRoot, memoryPath, exists } from '../lib/io.js';
+import { projectRoot, memoryPath, exists } from '../lib/io.js';
 import { print, printErr, ok, die, jsonOut } from '../lib/output.js';
 import { parse } from '../lib/args.js';
 
@@ -56,10 +56,8 @@ function scanDir(dir, base = '') {
  * Returns { claudeMd: string|null, files: string[], dirs: {...} }
  */
 function buildManifest() {
-  const root = dataRoot();
-
   // Check for CLAUDE.md
-  const claudeMdPath = path.join(root, 'CLAUDE.md');
+  const claudeMdPath = path.join(projectRoot(), 'CLAUDE.md');
   const claudeMd = exists(claudeMdPath) ? 'CLAUDE.md' : null;
 
   // Scan memory/ directory
