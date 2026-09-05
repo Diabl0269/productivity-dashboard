@@ -110,9 +110,9 @@ export function tasksMdPath() {
   return path.join(projectRoot(), 'TASKS.md');
 }
 
-/** Absolute path inside memory/ */
+/** Absolute path inside memory/ (follows CH_HOME when set, like tasks.json). */
 export function memoryPath(...sub) {
-  return path.join(projectRoot(), 'memory', ...sub);
+  return path.join(dataRoot(), 'memory', ...sub);
 }
 
 /** Absolute path to config.json */
