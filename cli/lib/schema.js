@@ -132,10 +132,17 @@ export function isHttpsUrl(value) {
 
 /** Default ticket-type hierarchy (order = hierarchy level, top first). */
 export const DEFAULT_TICKET_TYPES = [
-  { id: 'epic', name: 'Epic', color: '#8B5CF6' },
-  { id: 'task', name: 'Task', color: '#3B82F6' },
-  { id: 'subtask', name: 'Subtask', color: '#14B8A6' },
+  { id: 'epic', name: 'Epic', color: '#8B5CF6', parentTypes: [] },
+  { id: 'feature', name: 'Feature', color: '#F59E0B', parentTypes: ['epic'] },
+  { id: 'task', name: 'Task', color: '#3B82F6', parentTypes: ['epic', 'feature'] },
+  { id: 'bug', name: 'Bug', color: '#EF4444', parentTypes: ['epic', 'feature', 'task'] },
 ];
+
+export const BUILT_IN_TICKET_TYPE_IDS = DEFAULT_TICKET_TYPES.map(t => t.id);
+
+export function isBuiltInTicketType(typeId) {
+  return BUILT_IN_TICKET_TYPE_IDS.includes(typeId);
+}
 
 /** Default type assigned when a task omits `type`. */
 export const DEFAULT_TICKET_TYPE_ID = 'task';
@@ -423,14 +430,63 @@ export function normalizeTasksDoc(doc) {
  * @returns {{id: string, name: string, color: string}[]}
  */
 export function normalizeTicketTypes(types) {
+  let list;
   if (!Array.isArray(types) || types.length === 0) {
-    return DEFAULT_TICKET_TYPES.map(t => ({ ...t }));
+    list = DEFAULT_TICKET_TYPES.map(t => ({
+      ...t,
+      parentTypes: [...t.parentTypes],
+    }));
+  } else {
+    list = types.map((t, idx, all) => {
+      const row = {
+        id: String(t.id || ''),
+        name: String(t.name || t.id || ''),
+        color: String(t.color || '#888888'),
+      };
+      if (Array.isArray(t.parentTypes)) {
+        row.parentTypes = t.parentTypes.map(id => String(id));
+      } else {
+        row.parentTypes = idx > 0
+          ? all.slice(0, idx).map(x => String(x.id || '')).filter(Boolean)
+          : [];
+      }
+      return row;
+    });
   }
-  return types.map(t => ({
-    id: String(t.id || ''),
-    name: String(t.name || t.id || ''),
-    color: String(t.color || '#888888'),
-  }));
+  return ensureBuiltInTicketTypes(list);
+}
+
+export function ensureBuiltInTicketTypes(types) {
+  const byId = new Map((types || []).map(t => [t.id, t]));
+  const builtIn = DEFAULT_TICKET_TYPES.map(def => {
+    const existing = byId.get(def.id);
+    if (!existing) {
+      return { ...def, parentTypes: [...def.parentTypes] };
+    }
+    return {
+      id: existing.id,
+      name: existing.name || def.name,
+      color: existing.color || def.color,
+      parentTypes: Array.isArray(existing.parentTypes)
+        ? [...existing.parentTypes]
+        : [...def.parentTypes],
+    };
+  });
+  const custom = (types || []).filter(t => !isBuiltInTicketType(t.id));
+  return [...builtIn, ...custom];
+}
+
+/** Type ids a child may link under. */
+export function allowedParentTypeIds(ticketTypes, childTypeId) {
+  const list = normalizeTicketTypes(ticketTypes);
+  const child = list.find(t => t.id === (childTypeId || DEFAULT_TICKET_TYPE_ID));
+  if (!child) return [];
+  const known = new Set(list.map(t => t.id));
+  return (child.parentTypes || []).filter(id => known.has(id) && id !== child.id);
+}
+
+export function canLinkParentType(ticketTypes, childTypeId, parentTypeId) {
+  return allowedParentTypeIds(ticketTypes, childTypeId).includes(parentTypeId);
 }
 
 const TASK_ID_RE = /^T\d+$/;
@@ -509,6 +565,30 @@ export function validateTasksDoc(doc) {
         if (typeof tt.color !== 'string' || !COLOR_RE.test(tt.color)) {
           errors.push(`${ref}.color "${tt.color}" must be a hex color like #RRGGBB`);
         }
+        if (tt.parentTypes !== undefined && tt.parentTypes !== null) {
+          if (!Array.isArray(tt.parentTypes)) {
+            errors.push(`${ref}.parentTypes must be an array`);
+          } else {
+            for (let pi = 0; pi < tt.parentTypes.length; pi++) {
+              const pid = tt.parentTypes[pi];
+              if (typeof pid !== 'string' || !TYPE_ID_RE.test(pid)) {
+                errors.push(`${ref}.parentTypes[${pi}] "${pid}" must match /^[a-z][a-z0-9-]*$/`);
+              } else if (pid === tt.id) {
+                errors.push(`${ref}.parentTypes cannot include its own id "${pid}"`);
+              }
+            }
+          }
+        }
+      }
+      const normalizedTypes = normalizeTicketTypes(doc.ticketTypes);
+      for (let i = 0; i < normalizedTypes.length; i++) {
+        const tt = normalizedTypes[i];
+        const ref = `ticketTypes[${i}]`;
+        for (const pid of tt.parentTypes || []) {
+          if (!typeIds.has(pid)) {
+            errors.push(`${ref}.parentTypes references unknown type "${pid}"`);
+          }
+        }
       }
     }
   } else {
@@ -524,6 +604,7 @@ export function validateTasksDoc(doc) {
   const seenIds = new Map(); // id -> first section id
   const parentRefs = []; // { ref, taskId, parentId }
   const blockedByRefs = []; // { ref, taskId, blockedById }
+  const taskTypeById = new Map();
 
   for (let si = 0; si < doc.sections.length; si++) {
     const section = doc.sections[si];
@@ -615,6 +696,9 @@ export function validateTasksDoc(doc) {
           const known = [...typeIds].join(', ') || '(none)';
           errors.push(`${ref} (id=${task.id ?? '?'}) .type "${task.type}" must be one of ${known}`);
         }
+      }
+      if (typeof task.id === 'string' && TASK_ID_RE.test(task.id)) {
+        taskTypeById.set(task.id, task.type || DEFAULT_TICKET_TYPE_ID);
       }
 
       // parentId (optional)
@@ -880,9 +964,19 @@ export function validateTasksDoc(doc) {
     }
   }
 
-  for (const { ref, parentId } of parentRefs) {
+  const normalizedTicketTypes = normalizeTicketTypes(doc.ticketTypes);
+
+  for (const { ref, taskId, parentId } of parentRefs) {
     if (!seenIds.has(parentId)) {
       errors.push(`${ref}.parentId "${parentId}" does not exist`);
+      continue;
+    }
+    const childType = taskTypeById.get(taskId) || DEFAULT_TICKET_TYPE_ID;
+    const parentType = taskTypeById.get(parentId);
+    if (parentType && !canLinkParentType(normalizedTicketTypes, childType, parentType)) {
+      errors.push(
+        `${ref}.parentId parent type "${parentType}" is not allowed for child type "${childType}"`,
+      );
     }
   }
 

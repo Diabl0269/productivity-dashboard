@@ -1,9 +1,10 @@
 {
   "version": 1,
   "ticketTypes": [
-    { "id": "epic", "name": "Epic", "color": "#8B5CF6" },
-    { "id": "task", "name": "Task", "color": "#3B82F6" },
-    { "id": "subtask", "name": "Subtask", "color": "#14B8A6" }
+    { "id": "epic", "name": "Epic", "color": "#8B5CF6", "parentTypes": [] },
+    { "id": "feature", "name": "Feature", "color": "#F59E0B", "parentTypes": ["epic"] },
+    { "id": "task", "name": "Task", "color": "#3B82F6", "parentTypes": ["epic", "feature"] },
+    { "id": "bug", "name": "Bug", "color": "#EF4444", "parentTypes": ["epic", "feature", "task"] }
   ],
   "meta": {
     "dailyPlan": { "date": null, "taskIds": [], "carriedIds": [] },
