@@ -5,6 +5,7 @@ import { escapeHtml, normalizeTicketTypes } from './ticket-types.js';
 import { showStatus } from './state.js';
 import { applyCorporateVisibility } from './overview.js';
 import { applyPomodoroVisibility, readShowPomodoro, writeShowPomodoro } from './task-timer.js';
+import { syncUrl, isRoutingReady } from './routing.js';
 
 const HIDE_CORPORATE_KEY = 'dashboard.hideCorporate';
 const LEGACY_HIDE_SPRINTS_KEY = 'dashboard.hideSprints';
@@ -47,7 +48,13 @@ export function applyDisplayPrefs() {
   applyPomodoroVisibility(readShowPomodoro());
 }
 
-function switchSettingsSubtab(subtab) {
+let activeSettingsSubtab = 'display';
+
+export function getSettingsSubtab() {
+  return activeSettingsSubtab;
+}
+
+export function switchSettingsSubtab(subtab, opts = {}) {
   const tabs = document.querySelectorAll('#settingsPanel .settings-sub-tab');
   const panels = document.querySelectorAll('#settingsPanel [data-settings-panel]');
   tabs.forEach(btn => {
@@ -59,6 +66,8 @@ function switchSettingsSubtab(subtab) {
     const match = panel.dataset.settingsPanel === subtab;
     panel.hidden = !match;
   });
+  activeSettingsSubtab = subtab;
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
 function initDisplayPrefs() {

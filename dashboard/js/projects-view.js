@@ -14,6 +14,7 @@ import {
   resolveTaskColor,
 } from './ticket-types.js';
 import { openTaskDetail } from './task-detail.js';
+import { syncUrl, isRoutingReady } from './routing.js';
 
 const SELECTED_KEY = 'dashboard.selectedProject';
 
@@ -38,6 +39,16 @@ function writeSelected(id) {
     if (id) localStorage.setItem(SELECTED_KEY, id);
     else localStorage.removeItem(SELECTED_KEY);
   } catch { /* ignore */ }
+}
+
+export function getSelectedProjectId() {
+  return readSelected();
+}
+
+export function selectProject(projectId, opts = {}) {
+  if (projectId) writeSelected(projectId);
+  renderProjectsView();
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
 function flatTasks(tasksBySection) {
@@ -146,8 +157,7 @@ function renderSidebar(projects, selectedId) {
       : '<span class="pv-swatch pv-swatch-default"></span>';
     btn.innerHTML = `${swatch}<span class="pv-project-name">${escapeHtml(p.name)}</span>`;
     btn.addEventListener('click', () => {
-      writeSelected(p.id);
-      renderProjectsView();
+      selectProject(p.id);
     });
     nav.appendChild(btn);
   });
@@ -273,9 +283,8 @@ export function renderProjectsView() {
 }
 
 export function openProject(projectId) {
-  if (projectId) writeSelected(projectId);
+  selectProject(projectId);
   switchMainTab('projects');
-  renderProjectsView();
 }
 
 export function initProjectsView() {

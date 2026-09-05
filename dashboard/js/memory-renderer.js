@@ -4,6 +4,7 @@ import { escapeHtml, parseMemoryMarkdown, getPreview, getDisplayName, renderMark
 import { showStatus, filePathEl, setMemoryInfoGetter, activeMainTab } from './state.js';
 import { saveHandle } from './persistence.js';
 import { reapplySearch } from './search.js';
+import { syncUrl, isRoutingReady, parseRoute } from './routing.js';
 
 export const memoryState = {
   memoryDirHandle: null,
@@ -219,15 +220,35 @@ function renderMemoryTabs() {
   // Wire up click handlers
   memoryTabsContainer.querySelectorAll('.memory-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      memoryTabsContainer.querySelectorAll('.memory-tab').forEach(t => {
-        t.classList.remove('active');
-        t.setAttribute('aria-selected', 'false');
-      });
-      tab.classList.add('active');
-      tab.setAttribute('aria-selected', 'true');
-      renderMemoryContent();
+      selectMemoryTab(tab.dataset.tab);
     });
   });
+
+  // Re-apply memory tab from URL after tabs are rebuilt (e.g. after load)
+  const route = parseRoute();
+  if (route.tab === 'memory' && route.memoryTab) {
+    selectMemoryTab(route.memoryTab, { fromRoute: true });
+  }
+}
+
+export function getActiveMemoryTab() {
+  const active = memoryTabsContainer?.querySelector('.memory-tab.active');
+  return active?.dataset.tab || null;
+}
+
+export function selectMemoryTab(tabId, opts = {}) {
+  if (!memoryTabsContainer) return false;
+  const btn = memoryTabsContainer.querySelector(`[data-tab="${tabId}"]`);
+  if (!btn) return false;
+  memoryTabsContainer.querySelectorAll('.memory-tab').forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+  });
+  btn.classList.add('active');
+  btn.setAttribute('aria-selected', 'true');
+  renderMemoryContent();
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
+  return true;
 }
 
 /**

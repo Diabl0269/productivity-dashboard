@@ -24,6 +24,7 @@ import { setKeyboardCallbacks, initTaskKeyboard } from './task-keyboard.js';
 import { initTaskTimer, setTimerCallbacks } from './task-timer.js';
 import { setProjectsViewCallbacks, refreshProjectsView } from './projects-view.js';
 import { computeNextTaskId, appendHistory } from './task-fields.js';
+import { syncUrl, isRoutingReady } from './routing.js';
 
 // ===== Shared mutable state =====
 export const taskState = {
@@ -167,7 +168,7 @@ function initCaptureBar() {
   });
 }
 
-export function switchTaskView(view) {
+export function switchTaskView(view, opts = {}) {
   const listView = document.getElementById('listView');
   const board = document.getElementById('board');
   const listViewBtn = document.getElementById('listViewBtn');
@@ -193,6 +194,8 @@ export function switchTaskView(view) {
   if (legend) legend.classList.toggle('hidden', view !== 'board');
 
   renderTasks();
+
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
 export async function loadTaskFromHandle(handle) {

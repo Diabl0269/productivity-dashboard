@@ -2,6 +2,7 @@
 
 import { showStatus } from './state.js';
 import { renderMarkdownToHtml, getPreview, escapeHtml, parseFrontmatter } from './memory-parser.js';
+import { syncUrl, isRoutingReady } from './routing.js';
 
 const state = {
   globalClaudeMd: null,
@@ -11,6 +12,25 @@ const state = {
   activeProjectFilter: null,  // null = all
   editing: false
 };
+
+export function getGlobalMemorySubtab() {
+  return state.activeSubTab;
+}
+
+export function switchGlobalMemorySubtab(subtab, opts = {}) {
+  const subTabsContainer = document.getElementById('globalMemorySubTabs');
+  if (!subTabsContainer) return;
+  const btn = subTabsContainer.querySelector(`.gm-sub-tab[data-subtab="${subtab}"]`);
+  if (!btn) return;
+  state.activeSubTab = subtab;
+  state.editing = false;
+  subTabsContainer.querySelectorAll('.gm-sub-tab').forEach(b => {
+    b.classList.toggle('active', b === btn);
+    b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+  });
+  renderContent();
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
+}
 
 export function initGlobalMemory() {
   // Make openGlobalMemoryModal globally available for click handlers
@@ -23,13 +43,7 @@ export function initGlobalMemory() {
     subTabsContainer.addEventListener('click', (e) => {
       const btn = e.target.closest('.gm-sub-tab');
       if (!btn) return;
-      state.activeSubTab = btn.dataset.subtab;
-      state.editing = false;
-      subTabsContainer.querySelectorAll('.gm-sub-tab').forEach(b => {
-        b.classList.toggle('active', b === btn);
-        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
-      });
-      renderContent();
+      switchGlobalMemorySubtab(btn.dataset.subtab);
     });
   }
 }

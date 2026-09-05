@@ -269,6 +269,20 @@ const server = http.createServer(async (req, res) => {
 
   fs.stat(filePath, (err, stats) => {
     if (err || !stats.isFile()) {
+      const ext = path.extname(url.pathname);
+      const isAssetRequest = ext && ext !== '.html';
+      if (!isAssetRequest && url.pathname.startsWith('/dashboard/')) {
+        const spaIndex = path.join(ROOT, 'dashboard', 'index.html');
+        if (fs.existsSync(spaIndex)) {
+          res.writeHead(200, {
+            ...corsHeaders,
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-store',
+          });
+          fs.createReadStream(spaIndex).pipe(res);
+          return;
+        }
+      }
       res.writeHead(404);
       res.end('Not found');
       return;
