@@ -719,14 +719,8 @@ function buildDescriptionField() {
   textarea.value = draft.description || '';
   textarea.setAttribute('aria-label', 'Description');
 
-  const resize = () => {
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.max(100, textarea.scrollHeight) + 'px';
-  };
-  setTimeout(resize, 0);
   textarea.addEventListener('input', () => {
     draft.description = textarea.value;
-    resize();
   });
 
   wrap.appendChild(textarea);

@@ -944,12 +944,6 @@ function buildDescriptionFieldContent(task) {
   textarea.placeholder = 'Optional description…';
   textarea.value = task.description || '';
   textarea.setAttribute('aria-label', 'Description');
-  const resize = () => {
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.max(56, Math.min(160, textarea.scrollHeight)) + 'px';
-  };
-  setTimeout(resize, 0);
-  textarea.addEventListener('input', resize);
   let saved = false;
   const save = () => {
     if (saved) return;
