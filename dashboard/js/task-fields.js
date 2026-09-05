@@ -87,7 +87,7 @@ export function unresolvedBlockedBy(task, tasksBySection) {
   return deps.filter(id => {
     const dep = byId.get(id);
     if (!dep) return true; // missing = still blocking
-    if (dep.checked) return false;
+    if (isTaskDone(dep)) return false;
     const sec = dep.section || '';
     return sec !== 'done' && sec !== 'archive';
   });
@@ -97,6 +97,31 @@ export function unresolvedBlockedBy(task, tasksBySection) {
 export function isEffectivelyBlocked(task, tasksBySection) {
   if (task.blocked) return true;
   return unresolvedBlockedBy(task, tasksBySection).length > 0;
+}
+
+/** True when a task is finished (checkbox or done/archive column). */
+export function isTaskDone(task) {
+  if (!task) return false;
+  if (task.checked) return true;
+  const sec = task.section || '';
+  return sec === 'done' || sec === 'archive';
+}
+
+/**
+ * Keep checked and section aligned when a task moves columns.
+ * Checkbox toggle sets checked before moveTask; drag/status only change section.
+ */
+export function syncTaskCompletionWithSection(task, toSectionId, prevSectionId) {
+  const finishing = toSectionId === 'done' || toSectionId === 'archive';
+  const wasFinished = prevSectionId === 'done' || prevSectionId === 'archive';
+  if (finishing && !task.checked) {
+    task.checked = true;
+    if (toSectionId === 'done' && prevSectionId !== 'done') {
+      task.updated = todayYmd();
+    }
+  } else if (!finishing && wasFinished && task.checked) {
+    task.checked = false;
+  }
 }
 
 export function labelsHtml(task) {

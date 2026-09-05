@@ -27,6 +27,8 @@ import {
   ensureTaskFieldDefaults,
   blockedByCandidates,
   unresolvedBlockedBy,
+  isEffectivelyBlocked,
+  isTaskDone,
   appendHistory,
   appendNote,
   parseEstimate,
@@ -140,6 +142,34 @@ export function syncTaskDetailAfterReload(tasksBySection) {
   }
   if (next !== activeTask) {
     openTaskDetail(next, { focusTitle: false });
+  }
+}
+
+/**
+ * Rebuild the open detail modal when the changed task is what's shown, one of its
+ * children, or its parent (so epic children panels stay live without a page refresh).
+ */
+export function refreshTaskDetailIfAffected(changedTask) {
+  if (!isTaskDetailOpen() || !activeTask || !changedTask?.taskId) return;
+  const state = getState();
+  if (!state?.tasks) return;
+
+  const openId = activeTask.taskId;
+  const changedId = changedTask.taskId;
+
+  if (changedId === openId) {
+    openTaskDetail(changedTask, { focusTitle: false });
+    return;
+  }
+
+  if (childTasks(state.tasks, openId).some(c => c.taskId === changedId)) {
+    const fresh = findTaskByTaskId(state.tasks, openId);
+    if (fresh) openTaskDetail(fresh, { focusTitle: false });
+    return;
+  }
+
+  if (activeTask.parentId === changedId) {
+    openTaskDetail(activeTask, { focusTitle: false });
   }
 }
 
@@ -502,13 +532,9 @@ function getEssentialsFieldFactories(task) {
       });
       select.addEventListener('change', () => {
         const target = select.value;
-        if (target && target !== task.section) {
-          task.updated = task.checked ? todayStr() : task.updated;
-          moveTask(task.id, target, -1);
-          flashSaved();
-          return;
-        }
-        commit('Moved to ' + (sections.find(s => s.id === target)?.name || target));
+        if (!target || target === task.section) return;
+        moveTask(task.id, target, -1);
+        showStatus('Moved to ' + (sections.find(s => s.id === target)?.name || target));
       });
       return essentialsField('Status', select);
     },
@@ -693,7 +719,10 @@ function getEssentialsFieldFactories(task) {
       if (parentForLabel) {
         lab.type = 'button';
         lab.title = `Open parent ${parentForLabel.taskId}`;
-        lab.addEventListener('click', () => openTaskDetail(parentForLabel, { focusTitle: false }));
+        lab.addEventListener('click', () => {
+          const parent = findTaskByTaskId(getState()?.tasks, task.parentId);
+          if (parent) openTaskDetail(parent, { focusTitle: false });
+        });
       }
       const parentSelect = document.createElement('select');
       parentSelect.className = 'td-select';
@@ -1371,6 +1400,42 @@ function buildBlockedByPanel(task, body) {
   body.appendChild(sectionPanel('Blocked by (peer deps)', wrap));
 }
 
+function childBlockedHint(child, tasks) {
+  if (!isEffectivelyBlocked(child, tasks)) return '';
+  if (child.waitingOn) {
+    const w = String(child.waitingOn);
+    return w.length > 20 ? `${w.slice(0, 18)}…` : w;
+  }
+  const deps = unresolvedBlockedBy(child, tasks);
+  if (deps.length) {
+    const show = deps.slice(0, 2).join(', ');
+    return deps.length > 2 ? `↳ ${show} +${deps.length - 2}` : `↳ ${show}`;
+  }
+  return 'Blocked';
+}
+
+function childBlockedTitle(child, tasks) {
+  if (!isEffectivelyBlocked(child, tasks)) return '';
+  if (child.waitingOn) return `Waiting on ${child.waitingOn}`;
+  const deps = unresolvedBlockedBy(child, tasks);
+  if (deps.length) return `Blocked by ${deps.join(', ')}`;
+  return 'Blocked';
+}
+
+function childMetaHtml(child, tasks) {
+  const parts = [];
+  if (child.estimateMinutes) {
+    const est = formatEstimate(child.estimateMinutes);
+    parts.push(`<span class="td-child-est" title="Estimate ${escapeHtml(est)}">${escapeHtml(est)}</span>`);
+  }
+  const blocked = childBlockedHint(child, tasks);
+  if (blocked) {
+    parts.push(`<span class="td-child-blocked" title="${escapeHtml(childBlockedTitle(child, tasks))}">${escapeHtml(blocked)}</span>`);
+  }
+  if (!parts.length) return '';
+  return `<span class="td-child-meta">${parts.join('')}</span>`;
+}
+
 function buildChildrenPanel(task, body) {
   const state = getState() || {};
   const types = normalizeTicketTypes(state.ticketTypes);
@@ -1386,16 +1451,23 @@ function buildChildrenPanel(task, body) {
     list.appendChild(empty);
   } else {
     children.forEach(child => {
+      const done = isTaskDone(child);
+      const blocked = isEffectivelyBlocked(child, state.tasks);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'task-parent-link td-child-link';
+      btn.className = 'task-parent-link td-child-link'
+        + (done ? ' td-child-done' : '')
+        + (blocked ? ' td-child-link-blocked' : '');
       const cColor = resolveTaskColor(child, types, state.tasks);
       const cType = getTicketType(types, child.type);
+      const pri = child.priority || 'medium';
       btn.innerHTML = `<span class="task-parent-swatch" style="background:${cColor}"></span>`
-        + `<span class="task-parent-id">${child.taskId || '—'}</span>`
-        + `<span class="td-child-type">${cType.name}</span>`
-        + `<span class="task-parent-title">${child.title || ''}</span>`;
-      btn.title = `Open ${child.taskId}`;
+        + `<span class="priority-dot priority-${escapeHtml(pri)} td-child-priority" title="${escapeHtml(pri)} priority"></span>`
+        + `<span class="task-parent-id">${escapeHtml(child.taskId || '—')}</span>`
+        + `<span class="td-child-type">${escapeHtml(cType.name)}</span>`
+        + `<span class="task-parent-title">${escapeHtml(child.title || '')}</span>`
+        + childMetaHtml(child, state.tasks);
+      btn.title = `Open ${child.taskId || 'child'}`;
       btn.addEventListener('click', () => openTaskDetail(child));
       list.appendChild(btn);
     });
