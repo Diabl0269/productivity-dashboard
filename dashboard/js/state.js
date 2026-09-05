@@ -1,6 +1,7 @@
 // ===== SHARED STATE =====
 
 import { onTabSwitch } from './search.js';
+import { syncUrl, isRoutingReady } from './routing.js';
 
 export let activeMainTab = 'overview'; // overview | tasks | projects | memory | global-memory | settings
 
@@ -55,7 +56,7 @@ export function setMemoryInfoGetter(fn) { getMemoryInfo = fn; }
 
 // ===== MAIN TAB SWITCHING =====
 
-export function switchMainTab(tab) {
+export function switchMainTab(tab, opts = {}) {
   activeMainTab = tab;
 
   const overviewTabBtn = document.getElementById('overviewTabBtn');
@@ -142,6 +143,8 @@ export function switchMainTab(tab) {
   }
 
   onTabSwitch(tab);
+
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
 export function initStateListeners() {
@@ -158,7 +161,4 @@ export function initStateListeners() {
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   globalMemoryTabBtn.addEventListener('click', () => switchMainTab('global-memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
-
-  // Initialize header state on page load
-  switchMainTab('overview');
 }

@@ -41,6 +41,7 @@ import {
 import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
 import { mountFieldLayoutSections } from './task-field-layout.js';
+import { syncUrl, isRoutingReady } from './routing.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -109,14 +110,21 @@ export function openTaskDetail(task, opts = {}) {
       titleInput.select();
     }
   });
+
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
-function closeTaskDetail() {
+export function closeTaskDetail(opts = {}) {
   const overlay = document.getElementById('taskDetailOverlay');
   if (!overlay) return;
   overlay.classList.remove('visible');
   overlay.hidden = true;
   activeTask = null;
+  if (!opts.fromRoute && isRoutingReady()) syncUrl();
+}
+
+export function getOpenTaskId() {
+  return activeTask?.taskId || null;
 }
 
 export function isTaskDetailOpen() {

@@ -69,7 +69,12 @@ function makeTmpMemory() {
  */
 function runCli(args, tmpDir) {
   const result = spawnSync(process.execPath, [CH_SCRIPT, ...args], {
-    env: { ...process.env, CH_HOME: tmpDir },
+    env: {
+      PATH: process.env.PATH || '',
+      HOME: process.env.HOME || os.homedir(),
+      CH_HOME: tmpDir,
+    },
+    cwd: tmpDir,
     encoding: 'utf8',
   });
   return {

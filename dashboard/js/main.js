@@ -7,15 +7,28 @@ import { initOverview, refreshOverviewTaskWidgets } from './overview.js';
 import { initTasks, loadTaskFromHandle, loadTaskFromHttp, startTasksHttpWatching } from './tasks-main.js';
 import { initTaskDetail } from './task-detail.js';
 import { initTaskCreate } from './task-create.js';
-import { initMemory, loadMemoryFromHandle, loadMemoryFromHttpData } from './memory-renderer.js';
+import { initMemory, loadMemoryFromHandle, loadMemoryFromHttpData, selectMemoryTab, getActiveMemoryTab } from './memory-renderer.js';
 import { initGlobalMemory, loadGlobalMemory } from './global-memory.js';
 import { initModal } from './memory-modal.js';
 import { initInlineEdit } from './inline-edit.js';
 import { loadTasksViaHttp, loadMemoryViaHttp } from './http-loader.js';
 import { initSearch } from './search.js';
-import { initSettings, applyDisplayPrefs } from './settings.js';
+import { initSettings, applyDisplayPrefs, switchSettingsSubtab, getSettingsSubtab } from './settings.js';
 import { initProjectsView } from './projects-view.js';
 import { initPwa } from './pwa.js';
+import { initRouting, flushPendingRoute, parseRoute } from './routing.js';
+import { activeMainTab, switchMainTab } from './state.js';
+import { taskState, switchTaskView } from './tasks-main.js';
+import {
+  openTaskDetail, closeTaskDetail, isTaskDetailOpen, getOpenTaskId,
+} from './task-detail.js';
+import { findTaskByTaskId } from './ticket-types.js';
+import {
+  selectProject, getSelectedProjectId,
+} from './projects-view.js';
+import {
+  switchGlobalMemorySubtab, getGlobalMemorySubtab,
+} from './global-memory.js';
 
 // Load dashboard config (gitignored — personal quick links, sprints, etc.)
 async function loadConfig() {
@@ -60,6 +73,26 @@ initSearch();
 initSettings();
 initProjectsView();
 initPwa();
+
+initRouting({
+  activeMainTab: () => activeMainTab,
+  switchMainTab,
+  switchTaskView,
+  openTaskDetail,
+  closeTaskDetail,
+  isTaskDetailOpen,
+  getOpenTaskId,
+  findTaskById: (id) => findTaskByTaskId(taskState?.tasks, id),
+  selectProject,
+  getSelectedProjectId,
+  selectMemoryTab,
+  getActiveMemoryTab,
+  switchSettingsSubtab,
+  getSettingsSubtab,
+  switchGlobalMemorySubtab,
+  getGlobalMemorySubtab,
+  getTaskView: () => taskState?.currentView || 'board',
+});
 
 // Auto-restore file handles, fall back to HTTP fetch
 let tasksLoaded = false;
@@ -116,3 +149,13 @@ try {
   await loadGlobalMemory();
   console.log('Global memory loaded');
 } catch (e) { console.log('Global memory load failed:', e.message); }
+
+flushPendingRoute();
+
+const routeAfterLoad = parseRoute();
+if (routeAfterLoad.tab === 'projects' && routeAfterLoad.projectId) {
+  selectProject(routeAfterLoad.projectId, { fromRoute: true });
+}
+if (routeAfterLoad.tab === 'global-memory' && routeAfterLoad.globalSubtab) {
+  switchGlobalMemorySubtab(routeAfterLoad.globalSubtab, { fromRoute: true });
+}
