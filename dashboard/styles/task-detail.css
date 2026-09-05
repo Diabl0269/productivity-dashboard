@@ -284,6 +284,8 @@
 .td-notes-textarea {
   width: 100%;
   min-height: 160px;
+  height: 160px;
+  max-height: 60vh;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -294,8 +296,31 @@
   color: var(--text-primary);
   resize: vertical;
   box-sizing: border-box;
-  overflow: hidden;
+  field-sizing: fixed;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-tertiary) var(--surface-3);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.td-notes-textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+.td-notes-textarea::-webkit-scrollbar-track {
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+}
+
+.td-notes-textarea::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  min-height: 28px;
+}
+
+.td-notes-textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
 
 .td-notes-textarea:focus {
@@ -468,6 +493,7 @@
 
 .tc-modal .td-notes-textarea {
   min-height: 100px;
+  height: 100px;
 }
 
 .tc-field-error {
@@ -871,11 +897,17 @@
 }
 
 .td-notes-textarea-compact {
-  min-height: 52px !important;
-  max-height: 140px;
+  min-height: 80px;
+  height: 120px;
+  max-height: 40vh;
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px !important;
+  field-sizing: fixed;
+}
+
+.td-field-shell[data-field-id="description"] .td-field-shell-content {
+  overflow: visible;
 }
 
 .td-field-block {
