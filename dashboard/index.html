@@ -395,10 +395,13 @@
     </div>
     <div class="settings-section" id="settingsTicketTypesSection" data-settings-panel="ticket-types" hidden>
       <p class="settings-section-desc">
-        Hierarchy order is top-down: Epic → Task → Subtask. Children can link to a parent of a higher type.
-        Change the default color with the picker — it appears on cards and parent links.
+        List order controls how types appear in dropdowns. Use <strong>Link under</strong> to choose which types can be parents
+        (e.g. a Bug can link under Epic or Task, or stay standalone with none checked). Changes save to <code>tasks.json</code>.
       </p>
       <div class="tt-list" id="settingsTicketTypesList"></div>
+      <div class="tt-toolbar">
+        <button type="button" class="tt-add-btn" id="settingsTicketTypeAdd">+ Add type</button>
+      </div>
     </div>
   </div>
 

@@ -120,7 +120,9 @@ See `memory.example/` for the expected format.
 - Alternative to the board for quick scanning
 
 ### Ticket Types (Settings)
-- Configure hierarchy levels and default colors (Epic → Task → Subtask)
+- Configure types with colors and **which types can be parents** (Link under checkboxes)
+- A Bug can link under Epic or Task, or stay standalone — not forced into a single linear chain
+- Add, rename, reorder, or remove types in Settings → Ticket Types (saved to `tasks.json`)
 - Colors flow onto cards, parent chips, and the detail/create modals
 
 ### Memory Viewer
