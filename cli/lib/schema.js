@@ -580,12 +580,18 @@ export function validateTasksDoc(doc) {
           }
         }
       }
+      // normalizeTicketTypes() always injects the built-in types (ensureBuiltInTicketTypes) even
+      // when the file only lists a subset — so the cross-reference check below must accept
+      // built-in ids too, or every injected built-in whose parentTypes cites another injected
+      // built-in absent from the raw file (e.g. "bug" -> "feature") reads as unknown.
       const normalizedTypes = normalizeTicketTypes(doc.ticketTypes);
+      const knownAfterNormalize = new Set(typeIds);
+      for (const t of DEFAULT_TICKET_TYPES) knownAfterNormalize.add(t.id);
       for (let i = 0; i < normalizedTypes.length; i++) {
         const tt = normalizedTypes[i];
         const ref = `ticketTypes[${i}]`;
         for (const pid of tt.parentTypes || []) {
-          if (!typeIds.has(pid)) {
+          if (!knownAfterNormalize.has(pid)) {
             errors.push(`${ref}.parentTypes references unknown type "${pid}"`);
           }
         }
