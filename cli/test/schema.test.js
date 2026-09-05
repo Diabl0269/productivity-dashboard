@@ -11,6 +11,7 @@ import {
   PRIORITIES,
   DEFAULT_TICKET_TYPES,
   normalizeTicketTypes,
+  allowedParentTypeIds,
   isSectionId,
   isPriority,
   validateTasksDoc,
@@ -276,21 +277,32 @@ test('validateTasksDoc: null/undefined input returns invalid', () => {
 // Ticket types + hierarchy
 // ---------------------------------------------------------------------------
 
-test('DEFAULT_TICKET_TYPES has epic/task/subtask', () => {
-  assert.deepEqual(DEFAULT_TICKET_TYPES.map(t => t.id), ['epic', 'task', 'subtask']);
+test('DEFAULT_TICKET_TYPES has epic/feature/task/bug', () => {
+  assert.deepEqual(
+    DEFAULT_TICKET_TYPES.map(t => t.id),
+    ['epic', 'feature', 'task', 'bug'],
+  );
 });
 
 test('normalizeTicketTypes returns defaults for empty input', () => {
-  assert.equal(normalizeTicketTypes(null).length, 3);
+  assert.equal(normalizeTicketTypes(null).length, 4);
   assert.equal(normalizeTicketTypes([])[0].id, 'epic');
+});
+
+test('normalizeTicketTypes re-injects missing built-in types', () => {
+  const types = normalizeTicketTypes([
+    { id: 'spike', name: 'Spike', color: '#111111', parentTypes: [] },
+  ]);
+  assert.deepEqual(types.map(t => t.id), ['epic', 'feature', 'task', 'bug', 'spike']);
 });
 
 test('validateTasksDoc: custom ticketTypes with hierarchy passes', () => {
   const doc = makeValidDoc({
     ticketTypes: [
-      { id: 'epic', name: 'Epic', color: '#8B5CF6' },
-      { id: 'task', name: 'Task', color: '#3B82F6' },
-      { id: 'subtask', name: 'Subtask', color: '#14B8A6' },
+      { id: 'epic', name: 'Epic', color: '#8B5CF6', parentTypes: [] },
+      { id: 'feature', name: 'Feature', color: '#F59E0B', parentTypes: ['epic'] },
+      { id: 'task', name: 'Task', color: '#3B82F6', parentTypes: ['epic', 'feature'] },
+      { id: 'bug', name: 'Bug', color: '#EF4444', parentTypes: ['epic', 'feature', 'task'] },
     ],
   });
   doc.sections[0].tasks.push({
@@ -298,7 +310,7 @@ test('validateTasksDoc: custom ticketTypes with hierarchy passes', () => {
     title: 'Child',
     checked: false,
     priority: 'low',
-    type: 'subtask',
+    type: 'bug',
     parentId: 'T1',
     created: '2026-01-02',
     updated: null,
@@ -335,11 +347,58 @@ test('validateTasksDoc: self parentId rejected', () => {
 
 test('validateTasksDoc: bad ticket type color rejected', () => {
   const doc = makeValidDoc({
-    ticketTypes: [{ id: 'epic', name: 'Epic', color: 'purple' }],
+    ticketTypes: [{ id: 'epic', name: 'Epic', color: 'purple', parentTypes: [] }],
   });
   const result = validateTasksDoc(doc);
   assert.equal(result.valid, false);
   assert.ok(result.errors.some(e => e.includes('color')));
+});
+
+test('validateTasksDoc: parent type link must be allowed', () => {
+  const doc = makeValidDoc({
+    ticketTypes: [
+      { id: 'epic', name: 'Epic', color: '#8B5CF6', parentTypes: [] },
+      { id: 'task', name: 'Task', color: '#3B82F6', parentTypes: ['epic'] },
+      { id: 'bug', name: 'Bug', color: '#EF4444', parentTypes: ['epic'] },
+    ],
+  });
+  doc.sections[0].tasks[0].type = 'epic';
+  doc.sections[0].tasks.push({
+    id: 'T2',
+    title: 'Work item',
+    checked: false,
+    priority: 'medium',
+    type: 'task',
+    parentId: 'T1',
+    created: '2026-01-02',
+    updated: null,
+    subtasks: [],
+  });
+  doc.sections[0].tasks.push({
+    id: 'T3',
+    title: 'Regression',
+    checked: false,
+    priority: 'high',
+    type: 'bug',
+    parentId: 'T2',
+    created: '2026-01-03',
+    updated: null,
+    subtasks: [],
+  });
+  const bad = validateTasksDoc(doc);
+  assert.equal(bad.valid, false);
+  assert.ok(bad.errors.some(e => e.includes('not allowed')));
+});
+
+test('allowedParentTypeIds: legacy list order when parentTypes omitted', () => {
+  const types = normalizeTicketTypes([
+    { id: 'epic', name: 'Epic', color: '#8B5CF6' },
+    { id: 'task', name: 'Task', color: '#3B82F6' },
+    { id: 'spike', name: 'Spike', color: '#14B8A6' },
+  ]);
+  assert.deepEqual(allowedParentTypeIds(types, 'spike'), ['epic', 'task']);
+  assert.deepEqual(allowedParentTypeIds(types, 'task'), ['epic']);
+  assert.deepEqual(allowedParentTypeIds(types, 'epic'), []);
 });
 
 // ---------------------------------------------------------------------------

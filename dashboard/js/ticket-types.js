@@ -1,23 +1,84 @@
 // ticket-types.js — Shared helpers for ticket-type hierarchy + colors
 
 export const DEFAULT_TICKET_TYPES = [
-  { id: 'epic', name: 'Epic', color: '#8B5CF6' },
-  { id: 'task', name: 'Task', color: '#3B82F6' },
-  { id: 'subtask', name: 'Subtask', color: '#14B8A6' },
+  { id: 'epic', name: 'Epic', color: '#8B5CF6', parentTypes: [] },
+  { id: 'feature', name: 'Feature', color: '#F59E0B', parentTypes: ['epic'] },
+  { id: 'task', name: 'Task', color: '#3B82F6', parentTypes: ['epic', 'feature'] },
+  { id: 'bug', name: 'Bug', color: '#EF4444', parentTypes: ['epic', 'feature', 'task'] },
+];
+
+/** Built-in types are always present and cannot be removed from Settings. */
+export const BUILT_IN_TICKET_TYPE_IDS = DEFAULT_TICKET_TYPES.map(t => t.id);
+
+export function isBuiltInTicketType(typeId) {
+  return BUILT_IN_TICKET_TYPE_IDS.includes(typeId);
+}
+
+/** Valid ticket-type id: lowercase slug (a-z, digits, hyphens). */
+export const TYPE_ID_RE = /^[a-z][a-z0-9-]*$/;
+
+/** Palette for auto-picking colors when adding a type in Settings. */
+export const TYPE_COLOR_PALETTE = [
+  '#8B5CF6', '#F59E0B', '#3B82F6', '#EF4444', '#14B8A6',
+  '#EC4899', '#10B981', '#6366F1', '#F97316', '#06B6D4',
 ];
 
 export const DEFAULT_TICKET_TYPE_ID = 'task';
 
-/** Deep-clone defaults or normalize a stored list. */
+/** Deep-clone defaults or normalize a stored list. Re-injects missing built-in types. */
 export function normalizeTicketTypes(types) {
+  let list;
   if (!Array.isArray(types) || types.length === 0) {
-    return DEFAULT_TICKET_TYPES.map(t => ({ ...t }));
+    list = DEFAULT_TICKET_TYPES.map(t => ({
+      ...t,
+      parentTypes: [...t.parentTypes],
+    }));
+  } else {
+    list = types.map((t, idx, all) => {
+      const row = {
+        id: String(t.id || ''),
+        name: String(t.name || t.id || ''),
+        color: String(t.color || '#888888'),
+      };
+      if (Array.isArray(t.parentTypes)) {
+        row.parentTypes = t.parentTypes.map(id => String(id));
+      } else {
+        row.parentTypes = idx > 0
+          ? all.slice(0, idx).map(x => String(x.id || '')).filter(Boolean)
+          : [];
+      }
+      return row;
+    });
   }
-  return types.map(t => ({
-    id: String(t.id || ''),
-    name: String(t.name || t.id || ''),
-    color: String(t.color || '#888888'),
-  }));
+  return ensureBuiltInTicketTypes(list);
+}
+
+/** Keep built-in types in canonical order, then append custom types. */
+export function ensureBuiltInTicketTypes(types) {
+  const byId = new Map((types || []).map(t => [t.id, t]));
+  const builtIn = DEFAULT_TICKET_TYPES.map(def => {
+    const existing = byId.get(def.id);
+    if (!existing) {
+      return { ...def, parentTypes: [...def.parentTypes] };
+    }
+    return {
+      id: existing.id,
+      name: existing.name || def.name,
+      color: existing.color || def.color,
+      parentTypes: Array.isArray(existing.parentTypes)
+        ? [...existing.parentTypes]
+        : [...def.parentTypes],
+    };
+  });
+  const custom = (types || []).filter(t => !isBuiltInTicketType(t.id));
+  return [...builtIn, ...custom];
+}
+
+/** Whether Settings may delete this type. */
+export function canRemoveTicketType(typeId, types, tasksBySection) {
+  if (isBuiltInTicketType(typeId)) return false;
+  if ((types || []).length <= 1) return false;
+  return countTasksWithType(tasksBySection, typeId) === 0;
 }
 
 /** Look up a ticket type by id (falls back to default task type). */
@@ -193,7 +254,76 @@ export function makeColorControls({
   return { swatch: wrap, override };
 }
 
-/** Index of a type in the hierarchy (lower = higher in tree). */
+/** True if id matches the ticket-type slug pattern. */
+export function isValidTypeId(id) {
+  return typeof id === 'string' && TYPE_ID_RE.test(id);
+}
+
+/** Turn a display name into a slug id. */
+export function slugifyTypeId(name) {
+  const slug = String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+  return slug || 'type';
+}
+
+/** Pick an unused id, appending -2, -3, … when needed. */
+export function uniqueTypeId(base, usedIds) {
+  const used = new Set(usedIds);
+  const root = slugifyTypeId(base) || 'type';
+  if (!used.has(root)) return root;
+  let n = 2;
+  while (used.has(`${root}-${n}`)) n++;
+  return `${root}-${n}`;
+}
+
+/** Next palette color not already used by existing types. */
+export function pickNextTypeColor(types) {
+  const used = new Set((types || []).map(t => String(t.color || '').toLowerCase()));
+  for (const color of TYPE_COLOR_PALETTE) {
+    if (!used.has(color.toLowerCase())) return color;
+  }
+  return TYPE_COLOR_PALETTE[(types || []).length % TYPE_COLOR_PALETTE.length];
+}
+
+/** Count tasks assigned to a ticket type across all sections. */
+export function countTasksWithType(tasksBySection, typeId) {
+  let count = 0;
+  for (const list of Object.values(tasksBySection || {})) {
+    for (const task of list || []) {
+      if (task.type === typeId) count++;
+    }
+  }
+  return count;
+}
+
+/** Reorder ticket types (returns a new array). */
+export function moveTicketType(types, fromIdx, toIdx) {
+  const list = [...types];
+  if (fromIdx < 0 || fromIdx >= list.length || toIdx < 0 || toIdx >= list.length) return list;
+  const [item] = list.splice(fromIdx, 1);
+  list.splice(toIdx, 0, item);
+  return list;
+}
+
+/** Type ids this child may link under (empty = standalone only). */
+export function allowedParentTypeIds(ticketTypes, childTypeId) {
+  const list = normalizeTicketTypes(ticketTypes);
+  const child = list.find(t => t.id === (childTypeId || DEFAULT_TICKET_TYPE_ID));
+  if (!child) return [];
+  const known = new Set(list.map(t => t.id));
+  return (child.parentTypes || []).filter(id => known.has(id) && id !== child.id);
+}
+
+/** True when a task of parentTypeId may be a hierarchy parent for childTypeId. */
+export function canLinkParentType(ticketTypes, childTypeId, parentTypeId) {
+  return allowedParentTypeIds(ticketTypes, childTypeId).includes(parentTypeId);
+}
+
+/** Index of a type in the list (display order only). */
 export function typeIndex(types, typeId) {
   const list = normalizeTicketTypes(types);
   const idx = list.findIndex(t => t.id === (typeId || DEFAULT_TICKET_TYPE_ID));
@@ -217,16 +347,16 @@ export function childTasks(tasksBySection, parentTaskId) {
 
 /**
  * Valid parent candidates for a child of the given type:
- * any ticket whose type sits above this type in the hierarchy, excluding self.
+ * tasks whose type is in this type's allowed parentTypes list.
  */
 export function parentCandidates(ticketTypes, tasksBySection, childTypeId, excludeTaskId) {
-  const childIdx = typeIndex(ticketTypes, childTypeId);
-  if (childIdx <= 0) return [];
+  const allowed = new Set(allowedParentTypeIds(ticketTypes, childTypeId));
+  if (!allowed.size) return [];
   const out = [];
   for (const list of Object.values(tasksBySection || {})) {
     for (const t of list || []) {
       if (!t.taskId || t.taskId === excludeTaskId) continue;
-      if (typeIndex(ticketTypes, t.type) < childIdx) out.push(t);
+      if (allowed.has(t.type)) out.push(t);
     }
   }
   return out;

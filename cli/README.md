@@ -60,6 +60,34 @@ Valid energy: `deep`, `shallow`, `errands`, `creative`.
 | `ch mem index [--json]` | Count people, projects, glossary terms |
 | `ch mem self [--field X]` | Print your own profile fields from memory/context/company.md |
 
+#### Person/project file formats
+
+Field extraction is format-tolerant — memory files were hand-written over time, so
+`ch mem person`/`project` read all of these shapes:
+
+| Shape | Example |
+|-------|---------|
+| `**Contact:**` block | `**Contact:**` then `- Slack ID: U123` |
+| `## Contact` section | `## Contact` then `- Slack ID: U123` |
+| Markdown table | `| Slack ID | U123 |` |
+| Bold bullet | `- **Epic:** DEMO-1` |
+| Top-level kv | `**Role:** Developer` |
+| Bare bullet | `- Slack: handle (U123)` |
+| Single-value section | `## Role` then `Developer` |
+
+Two rules keep prose out of the field map:
+
+- A plain `- Label: value` bullet is only read as a field when the label is a
+  **known** one (Slack ID, Email, GitHub, Role, Team, …) or it sits in a contact
+  block/section. Otherwise `- Note: he prefers X` would become a field.
+- A **free-form** label is only trusted above the first `## Heading` (the file's
+  metadata header) or in a contact scope. Under `## Notes`, `- **Some lead-in:** …`
+  is a sentence, not a field.
+
+A Slack ID buried in prose is recovered as a last resort, but only from a line that
+also mentions "slack" — so a colleague's ID quoted in the notes is not misattributed.
+`handle (U123)` is split into `slack_id` + `slack_username`.
+
 ### `ch context [--json]` — session digest
 
 Assembles a compact digest of active tasks, team Slack/Atlassian IDs, glossary, and memory index — optimised for pasting into a new Claude session as context.
@@ -94,7 +122,7 @@ Tasks live in `tasks.json` at the repo root (gitignored). Copy `tasks.example.js
 ```jsonc
 {
   "version": 1,
-  "ticketTypes": [            // optional; defaults to epic/task/subtask
+  "ticketTypes": [            // optional; defaults to epic/feature/task/bug (built-in, always restored)
     { "id": "epic", "name": "Epic", "color": "#8B5CF6" }
   ],
   "sections": [
