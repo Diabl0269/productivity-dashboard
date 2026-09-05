@@ -421,6 +421,10 @@
   text-overflow: ellipsis;
 }
 
+.td-child-link-blocked .task-parent-title {
+  color: var(--status-blocked);
+}
+
 .td-child-type {
   font-size: var(--text-xs);
   color: var(--text-tertiary);

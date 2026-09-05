@@ -2,7 +2,7 @@
 
 import { markChanged } from './tasks-io.js';
 import { taskSectionId, todayStr, renderLinks, daysSince } from './tasks-parser.js';
-import { openTaskDetail } from './task-detail.js';
+import { openTaskDetail, refreshTaskDetailIfAffected } from './task-detail.js';
 import { openCreateTaskModal } from './task-create.js';
 import {
   getTicketType, findTaskByTaskId, escapeHtml, resolveTaskColor,
@@ -12,7 +12,7 @@ import {
   wipLimitFor, appendHistory, estimateBadgeHtml, assigneeChipHtml,
   jiraKeyBadgeHtml, recurrenceBadgeHtml, loggedBadgeHtml,
   spawnRecurringFollowUp, staleBadgeHtml, snoozeBadgeHtml, energyBadgeHtml,
-  isSnoozed,
+  isSnoozed, syncTaskCompletionWithSection,
 } from './task-fields.js';
 import { taskPassesFacets, hasActiveFacets } from './task-filters.js';
 import { isSelected, toggleSelect } from './task-selection.js';
@@ -679,6 +679,7 @@ export function moveTask(taskId, toSectionId, dropIndex = -1, opts = {}) {
   if (!task) return;
   const prevSection = fromSectionId || task.section;
   task.section = toSectionId;
+  syncTaskCompletionWithSection(task, toSectionId, prevSection);
   if (prevSection !== toSectionId) {
     appendHistory(task, { event: 'moved', from: prevSection, to: toSectionId });
   }
@@ -693,6 +694,7 @@ export function moveTask(taskId, toSectionId, dropIndex = -1, opts = {}) {
   }
   markChanged();
   if (!skipRender) getRenderTasks()();
+  refreshTaskDetailIfAffected(task);
 }
 
 export function deleteTask(task) {

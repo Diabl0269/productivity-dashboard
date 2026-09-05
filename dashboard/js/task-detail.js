@@ -28,6 +28,7 @@ import {
   blockedByCandidates,
   unresolvedBlockedBy,
   isEffectivelyBlocked,
+  isTaskDone,
   appendHistory,
   appendNote,
   parseEstimate,
@@ -141,6 +142,34 @@ export function syncTaskDetailAfterReload(tasksBySection) {
   }
   if (next !== activeTask) {
     openTaskDetail(next, { focusTitle: false });
+  }
+}
+
+/**
+ * Rebuild the open detail modal when the changed task is what's shown, one of its
+ * children, or its parent (so epic children panels stay live without a page refresh).
+ */
+export function refreshTaskDetailIfAffected(changedTask) {
+  if (!isTaskDetailOpen() || !activeTask || !changedTask?.taskId) return;
+  const state = getState();
+  if (!state?.tasks) return;
+
+  const openId = activeTask.taskId;
+  const changedId = changedTask.taskId;
+
+  if (changedId === openId) {
+    openTaskDetail(changedTask, { focusTitle: false });
+    return;
+  }
+
+  if (childTasks(state.tasks, openId).some(c => c.taskId === changedId)) {
+    const fresh = findTaskByTaskId(state.tasks, openId);
+    if (fresh) openTaskDetail(fresh, { focusTitle: false });
+    return;
+  }
+
+  if (activeTask.parentId === changedId) {
+    openTaskDetail(activeTask, { focusTitle: false });
   }
 }
 
@@ -503,13 +532,9 @@ function getEssentialsFieldFactories(task) {
       });
       select.addEventListener('change', () => {
         const target = select.value;
-        if (target && target !== task.section) {
-          task.updated = task.checked ? todayStr() : task.updated;
-          moveTask(task.id, target, -1);
-          flashSaved();
-          return;
-        }
-        commit('Moved to ' + (sections.find(s => s.id === target)?.name || target));
+        if (!target || target === task.section) return;
+        moveTask(task.id, target, -1);
+        showStatus('Moved to ' + (sections.find(s => s.id === target)?.name || target));
       });
       return essentialsField('Status', select);
     },
@@ -694,7 +719,10 @@ function getEssentialsFieldFactories(task) {
       if (parentForLabel) {
         lab.type = 'button';
         lab.title = `Open parent ${parentForLabel.taskId}`;
-        lab.addEventListener('click', () => openTaskDetail(parentForLabel, { focusTitle: false }));
+        lab.addEventListener('click', () => {
+          const parent = findTaskByTaskId(getState()?.tasks, task.parentId);
+          if (parent) openTaskDetail(parent, { focusTitle: false });
+        });
       }
       const parentSelect = document.createElement('select');
       parentSelect.className = 'td-select';
@@ -1423,13 +1451,13 @@ function buildChildrenPanel(task, body) {
     list.appendChild(empty);
   } else {
     children.forEach(child => {
-      const done = child.checked || child.section === 'done';
+      const done = isTaskDone(child);
       const blocked = isEffectivelyBlocked(child, state.tasks);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'task-parent-link td-child-link'
         + (done ? ' td-child-done' : '')
-        + (blocked ? ' td-child-blocked' : '');
+        + (blocked ? ' td-child-link-blocked' : '');
       const cColor = resolveTaskColor(child, types, state.tasks);
       const cType = getTicketType(types, child.type);
       const pri = child.priority || 'medium';
