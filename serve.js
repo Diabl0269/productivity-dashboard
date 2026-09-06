@@ -370,7 +370,7 @@ const server = http.createServer(async (req, res) => {
     }
     const ext = path.extname(filePath);
     const mime = MIME_TYPES[ext] || 'application/octet-stream';
-    const noCache = ['.html', '.js', '.css'].includes(ext);
+    const noCache = ['.html', '.js', '.css', '.json'].includes(ext);
     res.writeHead(200, { ...corsHeaders, 'Content-Type': mime, ...(noCache && { 'Cache-Control': 'no-store' }) });
     fs.createReadStream(filePath).pipe(res);
   });

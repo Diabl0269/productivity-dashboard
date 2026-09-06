@@ -22,7 +22,7 @@ export function setLastTaskContent(content) {
  */
 export async function loadTasksViaHttp() {
   try {
-    const res = await fetch(`${BASE}/tasks.json`);
+    const res = await fetch(`${BASE}/tasks.json`, { cache: 'no-store' });
     if (!res.ok) return null;
     const content = await res.text();
     lastTaskContent = content;
@@ -44,7 +44,7 @@ export function startHttpTaskWatching(onUpdate, { shouldSkip } = {}) {
     try {
       if (shouldSkip && shouldSkip()) return;
       const baseline = lastTaskContent;
-      const res = await fetch(`${BASE}/tasks.json`);
+      const res = await fetch(`${BASE}/tasks.json`, { cache: 'no-store' });
       if (!res.ok) return;
       if (shouldSkip && shouldSkip()) return;
       const content = await res.text();

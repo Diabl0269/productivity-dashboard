@@ -1,7 +1,7 @@
 /* Service worker — caches the dashboard shell for offline / installable PWA use.
    API routes and tasks.json are network-only (they need the live server). */
 
-const CACHE = 'productivity-shell-v5';
+const CACHE = 'productivity-shell-v6';
 const SHELL = [
   './',
   './index.html',
@@ -46,6 +46,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   // Never cache API / live data
   if (url.pathname.startsWith('/api/')) return;
+  // Live data files — always fetch from network (stale cache caused move flicker)
+  if (url.pathname.endsWith('/tasks.json') || url.pathname.endsWith('/config.json')) return;
 
   // Navigations: network first, fall back to cached shell
   if (req.mode === 'navigate') {

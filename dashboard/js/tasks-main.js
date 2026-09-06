@@ -9,7 +9,7 @@ import { setTaskDetailCallbacks, syncTaskDetailAfterReload } from './task-detail
 import { setTaskCreateCallbacks } from './task-create.js';
 import { showStatus, filePathEl, setTaskInfoGetter, activeMainTab } from './state.js';
 import { saveHandle } from './persistence.js';
-import { httpSave, startHttpTaskWatching } from './http-loader.js';
+import { httpSave, startHttpTaskWatching, setLastTaskContent, getLastTaskContent } from './http-loader.js';
 import { isSaving } from './tasks-io.js';
 import { reapplySearch } from './search.js';
 import { normalizeTicketTypes, DEFAULT_TICKET_TYPE_ID } from './ticket-types.js';
@@ -352,7 +352,8 @@ export function initTasks() {
         await writable.write(content);
         await writable.close();
       } else {
-        await httpSave('tasks.json', content);
+        await httpSave('tasks.json', content, { baseContent: getLastTaskContent() });
+        setLastTaskContent(content);
       }
       taskState.hasChanges = false;
       saveBtn.disabled = true;
