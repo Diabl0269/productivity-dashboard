@@ -12,6 +12,7 @@ import {
   isSnoozed,
   isCorporateUiHidden,
   taskMatchesFacets,
+  taskUnderEpic,
 } from './task-fields.js';
 import { renderSavedViewsBar } from './saved-views.js';
 import { normalizeTicketTypes } from './ticket-types.js';
@@ -44,6 +45,7 @@ const knownLabels = new Set();
 const knownEnergies = new Set();
 const knownProjects = new Set();
 const knownAssignees = new Set();
+const knownEpics = new Set();
 
 /** Active facet state. Sets are OR within a facet; facets AND together. */
 export const facetState = {
@@ -55,6 +57,7 @@ export const facetState = {
   projects: new Set(),
   energy: new Set(),
   sections: new Set(),
+  parentEpics: new Set(),
   hasParent: null, // null | true
   blocked: null,   // null | true
   stale: null,     // null | true
@@ -81,6 +84,7 @@ export function hasActiveFacets() {
     || facetState.projects.size > 0
     || facetState.energy.size > 0
     || facetState.sections.size > 0
+    || facetState.parentEpics.size > 0
     || facetState.hasParent != null
     || facetState.blocked != null
     || facetState.stale != null
@@ -97,6 +101,7 @@ export function clearFacets() {
   facetState.projects.clear();
   facetState.energy.clear();
   facetState.sections.clear();
+  facetState.parentEpics.clear();
   facetState.hasParent = null;
   facetState.blocked = null;
   facetState.stale = null;
@@ -158,6 +163,15 @@ function countMatching(predicate) {
   return n;
 }
 
+function flatTaskById(tasksBySection, taskId) {
+  for (const list of Object.values(tasksBySection || {})) {
+    for (const t of list || []) {
+      if (t.taskId === taskId) return t;
+    }
+  }
+  return null;
+}
+
 function collectEnergies(tasksBySection) {
   const set = new Set();
   for (const list of Object.values(tasksBySection || {})) {
@@ -173,6 +187,11 @@ function absorbKnown(state) {
   for (const e of collectEnergies(state.tasks)) knownEnergies.add(e);
   for (const p of collectProjects(state.tasks, state.meta?.projects)) knownProjects.add(p);
   for (const a of collectAssignees(state.tasks)) knownAssignees.add(a);
+  for (const list of Object.values(state.tasks || {})) {
+    for (const t of list || []) {
+      if ((t.type || '') === 'epic' && t.taskId) knownEpics.add(t.taskId);
+    }
+  }
 }
 
 function activeFacetCount() {
@@ -183,7 +202,8 @@ function activeFacetCount() {
     + facetState.assignees.size
     + facetState.projects.size
     + facetState.energy.size
-    + facetState.sections.size;
+    + facetState.sections.size
+    + facetState.parentEpics.size;
   if (facetState.hasParent != null) n++;
   if (facetState.blocked != null) n++;
   if (facetState.stale != null) n++;
@@ -206,6 +226,7 @@ function activeSummaryLabels(state) {
   for (const e of facetState.energy) out.push(e);
   for (const l of facetState.labels) out.push(l);
   for (const p of facetState.projects) out.push(p);
+  for (const e of facetState.parentEpics) out.push('Epic ' + e);
   for (const a of facetState.assignees) out.push('@' + a);
   if (facetState.hasParent) out.push('Has parent');
   if (facetState.blocked) out.push('Blocked');
@@ -271,6 +292,7 @@ function fieldDefs(state) {
   const energies = [...knownEnergies].sort((a, b) => a.localeCompare(b));
   const projects = [...knownProjects].sort((a, b) => a.localeCompare(b));
   const assignees = [...knownAssignees].sort((a, b) => a.localeCompare(b));
+  const epics = [...knownEpics].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   const defs = [
     {
@@ -352,6 +374,24 @@ function fieldDefs(state) {
         count: countMatching(t => t.project === pid),
       })),
       emptyHint: 'No projects yet',
+    },
+    {
+      id: 'epic',
+      label: 'Epic',
+      selected: facetState.parentEpics,
+      always: true,
+      options: epics.map(epicId => {
+        const epicTask = flatTaskById(state.tasks, epicId);
+        const label = epicTask
+          ? `${epicId} — ${epicTask.title || ''}`
+          : epicId;
+        return {
+          id: epicId,
+          label,
+          count: countMatching(t => taskUnderEpic(t, epicId, state.tasks)),
+        };
+      }),
+      emptyHint: 'No epics yet',
     },
   ];
 

@@ -35,6 +35,7 @@ export function serializeFacetState(state = facetState) {
     projects: [...state.projects],
     energy: [...state.energy],
     sections: [...state.sections],
+    parentEpics: [...state.parentEpics],
     hasParent: state.hasParent,
     blocked: state.blocked,
     stale: state.stale,
@@ -54,6 +55,7 @@ export function applySerializedFacets(obj) {
   for (const p of (obj.projects || [])) facetState.projects.add(p);
   for (const e of (obj.energy || [])) facetState.energy.add(e);
   for (const s of (obj.sections || [])) facetState.sections.add(s);
+  for (const e of (obj.parentEpics || [])) facetState.parentEpics.add(e);
   facetState.hasParent = obj.hasParent ?? null;
   facetState.blocked = obj.blocked ?? null;
   facetState.stale = obj.stale ?? null;

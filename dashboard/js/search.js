@@ -3,7 +3,7 @@
 import { activeMainTab } from './state.js';
 import { renderMemoryContent, renderMemorySearchResults } from './memory-renderer.js';
 import { hasActiveFacets, renderFilterBar } from './task-filters.js';
-import { scheduleFilterUrlSync } from './url-filters.js';
+import { scheduleFilterUrlSync, isUrlFilterBootstrapping } from './url-filters.js';
 
 let searchInput, clearBtn, container, shortcutHint;
 let currentTerm = '';
@@ -81,7 +81,7 @@ export function onTabSwitch(tab) {
     if (filters) filters.style.display = 'none';
     if (savedViews) savedViews.style.display = 'none';
     if (templates) templates.style.display = 'none';
-    clearSearch();
+    if (!isUrlFilterBootstrapping()) clearSearch({ skipUrl: false });
   } else {
     container.style.display = 'flex';
     if (tab === 'tasks') {
@@ -92,6 +92,9 @@ export function onTabSwitch(tab) {
       }
       if (savedViews) savedViews.style.display = 'flex';
       if (templates) templates.style.display = 'flex';
+      if (hasActiveFacets() || currentTerm) {
+        import('./tasks-main.js').then(m => m.renderFilteredViews()).catch(() => {});
+      }
     } else {
       if (filters) filters.style.display = 'none';
       if (savedViews) savedViews.style.display = 'none';

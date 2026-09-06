@@ -34,6 +34,7 @@ import {
   migrateTaskToProjectInState,
 } from '../../shared/task-rename.js';
 import { createTasksBackup } from './tasks-backup.js';
+import { mountTicketPicker } from './ticket-picker.js';
 
 const SELECTED_KEY = 'dashboard.selectedProject';
 const PROJECT_ID_RE = /^[a-z][a-z0-9-]*$/;
@@ -266,10 +267,8 @@ function unlinkTask(state, taskId) {
 }
 
 function showProjectForm(mode, project, onDone, state) {
-  const overlay = document.createElement('div');
-  overlay.className = 'pv-form-overlay';
   const isNew = mode === 'new';
-  const title = isNew ? 'New project' : 'Edit project';
+  const modalTitle = isNew ? 'New project' : 'Edit project';
   const defaultId = isNew ? '' : project.id;
   const defaultName = isNew ? '' : project.name;
   const defaultColor = isNew ? '#3B82F6' : (project.color || '#3B82F6');
@@ -285,48 +284,62 @@ function showProjectForm(mode, project, onDone, state) {
   }
   const parentOptions = metaProjects
     .filter(p => !excludeIds.has(p.id))
-    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id))
-    .map(p => `<option value="${escapeHtml(p.id)}" ${p.id === defaultParent ? 'selected' : ''}>${escapeHtml(p.name || p.id)}</option>`)
-    .join('');
+    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
 
+  const overlay = document.createElement('div');
+  overlay.className = 'td-overlay';
   overlay.innerHTML = `
-    <form class="pv-form" role="dialog" aria-label="${escapeHtml(title)}">
-      <h3 class="pv-form-title">${escapeHtml(title)}</h3>
-      <label class="pv-form-field">
-        <span>Name</span>
-        <input type="text" name="name" required value="${escapeHtml(defaultName)}" placeholder="My App">
-      </label>
-      <label class="pv-form-field">
-        <span>ID (slug)</span>
-        <input type="text" name="id" ${isNew ? '' : 'readonly'} value="${escapeHtml(defaultId)}" placeholder="my-app" pattern="[a-z][a-z0-9-]*">
-      </label>
-      <label class="pv-form-field">
-        <span>Parent project</span>
-        <select name="parentId">
-          <option value="">None (top-level)</option>
-          ${parentOptions}
-        </select>
-      </label>
-      <label class="pv-form-field">
-        <span>Ticket prefix</span>
-        <input type="text" name="prefix" value="${escapeHtml(defaultPrefix)}" placeholder="APP" maxlength="6" style="text-transform:uppercase">
-        <span class="pv-form-hint">Leave blank to inherit from parent or derive from slug</span>
-      </label>
-      <label class="pv-form-field pv-form-color">
-        <span>Color</span>
-        <input type="color" name="color" value="${escapeHtml(defaultColor)}">
-      </label>
-      <div class="pv-form-actions">
-        <button type="button" class="pv-form-cancel">Cancel</button>
+    <form class="td-modal tc-modal pv-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(modalTitle)}">
+      <div class="td-header">
+        <span class="td-id">${isNew ? 'New' : escapeHtml(project.id)}</span>
+        <input type="text" class="td-title-input" name="name" required value="${escapeHtml(defaultName)}" placeholder="Project name" aria-label="Project name">
+        <button type="button" class="td-close pv-modal-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="td-body pv-modal-body">
+        <label class="td-field td-field-block">
+          <span class="td-field-label">ID (slug)</span>
+          <input type="text" class="td-text-input" name="id" ${isNew ? '' : 'readonly'} value="${escapeHtml(defaultId)}" placeholder="my-app" pattern="[a-z][a-z0-9-]*">
+        </label>
+        <label class="td-field td-field-block">
+          <span class="td-field-label">Parent project</span>
+          <select class="td-select" name="parentId">
+            <option value="">None (top-level)</option>
+            ${parentOptions.map(p => `<option value="${escapeHtml(p.id)}" ${p.id === defaultParent ? 'selected' : ''}>${escapeHtml(p.name || p.id)}</option>`).join('')}
+          </select>
+        </label>
+        <label class="td-field td-field-block">
+          <span class="td-field-label">Ticket prefix</span>
+          <input type="text" class="td-text-input" name="prefix" value="${escapeHtml(defaultPrefix)}" placeholder="APP" maxlength="6" style="text-transform:uppercase">
+          <span class="pv-form-hint">Leave blank to inherit from parent or derive from slug</span>
+        </label>
+        <label class="td-field td-field-block pv-form-color">
+          <span class="td-field-label">Color</span>
+          <input type="color" name="color" value="${escapeHtml(defaultColor)}">
+        </label>
+      </div>
+      <div class="td-footer">
+        <button type="button" class="pv-modal-cancel">Cancel</button>
+        <div class="td-footer-spacer"></div>
         <button type="submit" class="primary">${isNew ? 'Create' : 'Save'}</button>
       </div>
     </form>
   `;
 
-  const form = overlay.querySelector('.pv-form');
+  const form = overlay.querySelector('form');
   const nameInput = form.querySelector('[name="name"]');
   const idInput = form.querySelector('[name="id"]');
   const prefixInput = form.querySelector('[name="prefix"]');
+
+  const close = () => {
+    overlay.classList.remove('visible');
+    overlay.hidden = true;
+    setTimeout(() => overlay.remove(), 200);
+  };
 
   if (isNew) {
     nameInput.addEventListener('input', () => {
@@ -341,8 +354,9 @@ function showProjectForm(mode, project, onDone, state) {
     prefixInput.addEventListener('input', () => { prefixInput.dataset.touched = '1'; });
   }
 
-  overlay.querySelector('.pv-form-cancel').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('.pv-modal-cancel').addEventListener('click', close);
+  overlay.querySelector('.pv-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -372,10 +386,13 @@ function showProjectForm(mode, project, onDone, state) {
     }
     const color = form.querySelector('[name="color"]').value;
     onDone({ id, name, color, prefix, parentId });
-    overlay.remove();
+    close();
   });
 
   document.body.appendChild(overlay);
+  overlay.hidden = false;
+  void overlay.offsetWidth;
+  overlay.classList.add('visible');
   nameInput.focus();
 }
 
@@ -487,17 +504,24 @@ function renderLinkPanel(state, project) {
   panel.innerHTML = `
     <h4 class="pv-link-title">Link existing ticket</h4>
     <div class="pv-link-row">
-      <select class="pv-link-select" aria-label="Select ticket to link">
-        <option value="">Choose a ticket…</option>
-        ${candidates.map(t => `<option value="${escapeHtml(t.taskId)}">${escapeHtml(t.taskId)} — ${escapeHtml(t.title || '')}</option>`).join('')}
-      </select>
+      <div class="pv-link-picker"></div>
       <button type="button" class="pv-link-btn">Link</button>
     </div>
   `;
 
-  const select = panel.querySelector('.pv-link-select');
+  let selectedTaskId = null;
+  const pickerEl = panel.querySelector('.pv-link-picker');
+  const picker = mountTicketPicker(pickerEl, {
+    tasks: candidates,
+    value: null,
+    allowNone: false,
+    placeholder: 'Search tickets to link…',
+    ariaLabel: 'Select ticket to link',
+    onChange: (id) => { selectedTaskId = id; },
+  });
+
   panel.querySelector('.pv-link-btn').addEventListener('click', async () => {
-    const taskId = select.value;
+    const taskId = selectedTaskId;
     if (!taskId) return;
     const metaProjects = ensureMeta(state).projects;
     const willMigrate = needsPrefixMigration(taskId, project.id, metaProjects);
@@ -514,6 +538,8 @@ function renderLinkPanel(state, project) {
       }
     }
     const result = linkTask(state, taskId, project.id);
+    picker.setValue(null);
+    selectedTaskId = null;
     getRenderTasks?.()();
     if (result?.migrated) {
       showStatus(`Linked ${result.oldId} → ${result.newId} in ${project.name}`);
@@ -523,6 +549,7 @@ function renderLinkPanel(state, project) {
   });
 
   if (candidates.length === 0) {
+    picker.destroy();
     panel.querySelector('.pv-link-row').innerHTML = '<p class="pv-empty">All tickets are already in this project or none exist.</p>';
   }
 

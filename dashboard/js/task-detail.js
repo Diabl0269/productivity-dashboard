@@ -41,6 +41,8 @@ import {
 import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
 import { mountFieldLayoutSections } from './task-field-layout.js';
+import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
+import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
 let getState = null;
@@ -70,6 +72,7 @@ export function openTaskDetail(task, opts = {}) {
 
   if (!task.type) task.type = DEFAULT_TICKET_TYPE_ID;
   ensureTaskFieldDefaults(task);
+  if (task.taskId) touchRecentTicket(task.taskId);
 
   activeTask = task;
   titleEditCancelled = false;
@@ -732,37 +735,28 @@ function getEssentialsFieldFactories(task) {
           if (parent) openTaskDetail(parent, { focusTitle: false });
         });
       }
-      const parentSelect = document.createElement('select');
-      parentSelect.className = 'td-select';
-      const none = document.createElement('option');
-      none.value = '';
-      none.textContent = 'None';
-      parentSelect.appendChild(none);
+      const pickerHost = document.createElement('div');
+      pickerHost.className = 'td-ticket-picker-host';
       const candidates = parentCandidates(types, state.tasks, task.type || DEFAULT_TICKET_TYPE_ID, task.taskId);
-      candidates.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.taskId;
-        opt.textContent = `${p.taskId} — ${p.title || ''}`;
-        if (p.taskId === task.parentId) opt.selected = true;
-        parentSelect.appendChild(opt);
-      });
       if (task.parentId && !candidates.some(p => p.taskId === task.parentId)) {
         const orphan = findTaskByTaskId(state.tasks, task.parentId);
-        const opt = document.createElement('option');
-        opt.value = task.parentId;
-        opt.selected = true;
-        opt.textContent = orphan
-          ? `${task.parentId} — ${orphan.title || ''}`
-          : `${task.parentId} (missing)`;
-        parentSelect.appendChild(opt);
+        if (orphan) candidates.unshift(orphan);
       }
-      parentSelect.addEventListener('change', () => {
-        task.parentId = parentSelect.value || null;
-        commit(task.parentId ? 'Parent set to ' + task.parentId : 'Parent cleared');
-        openTaskDetail(task, { focusTitle: false });
+      mountTicketPicker(pickerHost, {
+        tasks: candidates,
+        value: task.parentId,
+        allowNone: true,
+        noneLabel: 'None',
+        placeholder: 'Search parent ticket…',
+        ariaLabel: 'Parent ticket',
+        onChange: (id) => {
+          task.parentId = id;
+          commit(id ? 'Parent set to ' + id : 'Parent cleared');
+          openTaskDetail(task, { focusTitle: false });
+        },
       });
       wrap.appendChild(lab);
-      wrap.appendChild(parentSelect);
+      wrap.appendChild(pickerHost);
       return wrap;
     },
 

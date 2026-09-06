@@ -18,6 +18,9 @@ let deps = {
   selectMemoryTab: null,
   switchSettingsSubtab: null,
   switchGlobalMemorySubtab: null,
+  applyFiltersFromUrl: null,
+  refreshTaskViews: null,
+  getActiveMainTab: null,
 };
 
 /** @returns {string} e.g. "/dashboard" */
@@ -227,6 +230,9 @@ export function initRouting(callbacks) {
 
   window.addEventListener('popstate', () => {
     applyRoute(parseRoute());
+    deps.applyFiltersFromUrl?.();
+    const tab = deps.getActiveMainTab?.() || 'overview';
+    if (tab === 'tasks') deps.refreshTaskViews?.();
   });
 
   routingReady = true;

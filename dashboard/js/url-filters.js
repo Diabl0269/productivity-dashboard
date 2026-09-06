@@ -6,6 +6,8 @@ import { isRoutingReady } from './routing.js';
 
 let applyingFromUrl = false;
 let syncScheduled = false;
+/** True until tasks have loaded and URL state is fully restored. */
+let urlFilterBootstrapping = true;
 
 const SET_KEYS = [
   ['priority', 'priorities'],
@@ -16,6 +18,7 @@ const SET_KEYS = [
   ['project', 'projects'],
   ['energy', 'energy'],
   ['assignee', 'assignees'],
+  ['epic', 'parentEpics'],
 ];
 
 function readParams() {
@@ -68,6 +71,29 @@ export function applyFiltersFromUrl() {
   }
 }
 
+/** Read URL into facet/search state as early as possible (before tasks load). */
+export function initUrlFiltersEarly() {
+  if (!hasUrlFilterState()) return;
+  applyFiltersFromUrl();
+}
+
+/**
+ * After tasks.json is loaded, re-apply URL filters and refresh task views.
+ * @param {{ renderFn?: () => void, shouldRender?: boolean }} [opts]
+ */
+export function finalizeUrlFiltersAfterTasksLoad(opts = {}) {
+  if (hasUrlFilterState()) {
+    applyFiltersFromUrl();
+  }
+  const shouldRender = opts.shouldRender !== false;
+  if (shouldRender && opts.renderFn) opts.renderFn();
+  urlFilterBootstrapping = false;
+}
+
+export function isUrlFilterBootstrapping() {
+  return urlFilterBootstrapping;
+}
+
 /** Build query string for active filters/search (empty string when none). */
 export function buildFilterQueryString() {
   const params = new URLSearchParams();
@@ -91,7 +117,7 @@ export function buildFilterQueryString() {
 
 /** Push filter/search state into the URL without changing pathname. */
 export function syncFilterUrl() {
-  if (!isRoutingReady() || applyingFromUrl) return;
+  if (!isRoutingReady() || applyingFromUrl || urlFilterBootstrapping) return;
 
   const qs = buildFilterQueryString();
   const path = window.location.pathname;
@@ -103,7 +129,7 @@ export function syncFilterUrl() {
 }
 
 export function scheduleFilterUrlSync() {
-  if (applyingFromUrl) return;
+  if (applyingFromUrl || urlFilterBootstrapping) return;
   if (syncScheduled) return;
   syncScheduled = true;
   requestAnimationFrame(() => {
