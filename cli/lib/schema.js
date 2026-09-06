@@ -1,21 +1,16 @@
 /**
  * cli/lib/schema.js
  * Schema definitions and validation for tasks.json documents.
- *
- * Exports:
- *   SECTIONS: [{id, name}]
- *   SECTION_IDS: string[]
- *   PRIORITIES: string[]
- *   DEFAULT_TICKET_TYPES: [{id, name, color}]
- *   DEFAULT_TICKET_TYPE_ID: string
- *   normalizeTicketTypes(types): [{id, name, color}]
- *   isSectionId(id): boolean
- *   isPriority(p): boolean
- *   isHexColor(c): boolean
- *   normalizeTask(task): task
- *   normalizeTasksDoc(doc): doc
- *   validateTasksDoc(doc): {valid: boolean, errors: string[], duplicateIds: string[]}
  */
+
+import {
+  TASK_ID_RE,
+  PREFIX_RE,
+  derivePrefixFromSlug,
+  normalizePrefix,
+  collectKnownPrefixes,
+  isValidTaskId,
+} from '../../shared/task-ids.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -69,10 +64,10 @@ export function normalizeMeta(meta) {
     ? dailyPlan.date
     : null;
   const taskIds = Array.isArray(dailyPlan.taskIds)
-    ? dailyPlan.taskIds.map(id => String(id).trim()).filter(id => TASK_ID_RE.test(id))
+    ? dailyPlan.taskIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta?.projects)))
     : [];
   const carriedIds = Array.isArray(dailyPlan.carriedIds)
-    ? dailyPlan.carriedIds.map(id => String(id).trim()).filter(id => TASK_ID_RE.test(id))
+    ? dailyPlan.carriedIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta?.projects)))
     : [];
 
   let weeklyCapacityMinutes = base.weeklyCapacityMinutes;
@@ -89,6 +84,8 @@ export function normalizeMeta(meta) {
           name: String(p.name || p.id).trim() || String(p.id).trim(),
         };
         if (typeof p.color === 'string' && COLOR_RE.test(p.color)) row.color = p.color;
+        const prefix = normalizePrefix(p.prefix);
+        if (prefix) row.prefix = prefix;
         return row;
       })
     : [];
@@ -489,10 +486,11 @@ export function canLinkParentType(ticketTypes, childTypeId, parentTypeId) {
   return allowedParentTypeIds(ticketTypes, childTypeId).includes(parentTypeId);
 }
 
-const TASK_ID_RE = /^T\d+$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const TYPE_ID_RE = /^[a-z][a-z0-9-]*$/;
+
+export { TASK_ID_RE };
 
 /**
  * Validate a tasks document (parsed JSON).
@@ -502,7 +500,7 @@ const TYPE_ID_RE = /^[a-z][a-z0-9-]*$/;
  *   - doc.sections is an array
  *   - each section.id is in SECTION_IDS
  *   - each task:
- *       id matches /^T\d+$/ and is unique across ALL sections (collect dups)
+ *       id matches /^[A-Z][A-Z0-9]{0,5}\\d+$/ and is unique across ALL sections
  *       title is a string
  *       checked is boolean
  *       priority is in PRIORITIES
@@ -531,6 +529,8 @@ export function validateTasksDoc(doc) {
   if (!doc || typeof doc !== 'object') {
     return { valid: false, errors: ['doc must be an object'], duplicateIds: [] };
   }
+
+  const knownPrefixes = collectKnownPrefixes(doc.meta?.projects);
 
   // version
   if (typeof doc.version !== 'number') {
@@ -639,8 +639,8 @@ export function validateTasksDoc(doc) {
       }
 
       // id
-      if (typeof task.id !== 'string' || !TASK_ID_RE.test(task.id)) {
-        errors.push(`${ref}.id "${task.id}" must match /^T\\d+$/`);
+      if (typeof task.id !== 'string' || !isValidTaskId(task.id, knownPrefixes)) {
+        errors.push(`${ref}.id "${task.id}" must match /^[A-Z][A-Z0-9]{0,5}\\d+$/`);
       } else {
         if (seenIds.has(task.id)) {
           if (!duplicateIds.includes(task.id)) {
@@ -703,14 +703,14 @@ export function validateTasksDoc(doc) {
           errors.push(`${ref} (id=${task.id ?? '?'}) .type "${task.type}" must be one of ${known}`);
         }
       }
-      if (typeof task.id === 'string' && TASK_ID_RE.test(task.id)) {
+      if (typeof task.id === 'string' && isValidTaskId(task.id, knownPrefixes)) {
         taskTypeById.set(task.id, task.type || DEFAULT_TICKET_TYPE_ID);
       }
 
       // parentId (optional)
       if (task.parentId !== undefined && task.parentId !== null && task.parentId !== '') {
-        if (typeof task.parentId !== 'string' || !TASK_ID_RE.test(task.parentId)) {
-          errors.push(`${ref} (id=${task.id ?? '?'}) .parentId "${task.parentId}" must match /^T\\d+$/`);
+        if (typeof task.parentId !== 'string' || !isValidTaskId(task.parentId, knownPrefixes)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .parentId "${task.parentId}" must be a valid task id`);
         } else if (task.id && task.parentId === task.id) {
           errors.push(`${ref} (id=${task.id}) .parentId cannot reference itself`);
         } else if (task.id) {
@@ -877,8 +877,8 @@ export function validateTasksDoc(doc) {
         } else {
           for (let bi = 0; bi < task.blockedBy.length; bi++) {
             const depId = task.blockedBy[bi];
-            if (typeof depId !== 'string' || !TASK_ID_RE.test(depId)) {
-              errors.push(`${ref} (id=${task.id ?? '?'}) .blockedBy[${bi}] "${depId}" must match /^T\\d+$/`);
+            if (typeof depId !== 'string' || !isValidTaskId(depId, knownPrefixes)) {
+              errors.push(`${ref} (id=${task.id ?? '?'}) .blockedBy[${bi}] "${depId}" must be a valid task id`);
             } else if (task.id && depId === task.id) {
               errors.push(`${ref} (id=${task.id}) .blockedBy cannot reference itself`);
             } else if (task.id) {
@@ -1021,6 +1021,33 @@ export function validateTasksDoc(doc) {
       }
       if (doc.meta.projects != null && !Array.isArray(doc.meta.projects)) {
         errors.push('doc.meta.projects must be an array');
+      } else if (Array.isArray(doc.meta.projects)) {
+        const seenProjectIds = new Set();
+        const seenPrefixes = new Set();
+        for (let pi = 0; pi < doc.meta.projects.length; pi++) {
+          const p = doc.meta.projects[pi];
+          const ref = `meta.projects[${pi}]`;
+          if (!p || typeof p !== 'object') {
+            errors.push(`${ref} must be an object`);
+            continue;
+          }
+          if (typeof p.id !== 'string' || !TYPE_ID_RE.test(p.id)) {
+            errors.push(`${ref}.id "${p.id}" must match /^[a-z][a-z0-9-]*$/`);
+          } else if (seenProjectIds.has(p.id)) {
+            errors.push(`${ref}.id "${p.id}" is duplicated`);
+          } else {
+            seenProjectIds.add(p.id);
+          }
+          if (p.prefix != null && p.prefix !== '' && !normalizePrefix(p.prefix)) {
+            errors.push(`${ref}.prefix "${p.prefix}" must match /^[A-Z][A-Z0-9]{0,5}$/`);
+          }
+          const eff = normalizePrefix(p.prefix) || derivePrefixFromSlug(p.id || '');
+          if (seenPrefixes.has(eff)) {
+            errors.push(`${ref} prefix "${eff}" conflicts with another project`);
+          } else {
+            seenPrefixes.add(eff);
+          }
+        }
       }
       if (doc.meta.ideas != null && !Array.isArray(doc.meta.ideas)) {
         errors.push('doc.meta.ideas must be an array');

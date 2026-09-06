@@ -1,6 +1,9 @@
 // task-fields.js — Shared helpers for due dates, blocked state, labels, links, WIP.
 
 import { escapeHtml, findTaskByTaskId } from './ticket-types.js';
+import { nextTaskIdFromState, projectPrefix, derivePrefixFromSlug } from '../../shared/task-ids.js';
+
+export { projectPrefix, derivePrefixFromSlug };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -713,19 +716,9 @@ export function blockedByCandidates(tasksBySection, excludeTaskId) {
   return out.sort((a, b) => a.taskId.localeCompare(b.taskId, undefined, { numeric: true }));
 }
 
-/** Next T{n} id from all section tasks. */
-export function computeNextTaskId(state) {
-  let maxId = 0;
-  const { sections = [], tasks = {} } = state || {};
-  sections.forEach(section => {
-    (tasks[section.id] || []).forEach(t => {
-      if (t.taskId) {
-        const num = parseInt(t.taskId.substring(1), 10);
-        if (!isNaN(num) && num > maxId) maxId = num;
-      }
-    });
-  });
-  return `T${maxId + 1}`;
+/** Next T{n} id from all section tasks (optionally scoped to a project prefix). */
+export function computeNextTaskId(state, projectId = null) {
+  return nextTaskIdFromState(state, projectId);
 }
 
 const JIRA_KEY_RE = /^[A-Za-z][A-Za-z0-9]+-\d+$/;

@@ -5,10 +5,10 @@ import {
   DEFAULT_TICKET_TYPE_ID,
   isHexColor,
 } from './ticket-types.js';
+import { isValidTaskId, collectKnownPrefixes } from '../../shared/task-ids.js';
 
 const ENERGY_VALUES = new Set(['deep', 'shallow', 'errands', 'creative']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TASK_ID_RE = /^T\d+$/;
 
 /** Prefer description; fall back to legacy note. */
 function readDescription(t) {
@@ -121,10 +121,10 @@ export function normalizeTasksMeta(meta) {
     ? dailyPlan.date
     : null;
   const taskIds = Array.isArray(dailyPlan.taskIds)
-    ? dailyPlan.taskIds.map(id => String(id).trim()).filter(id => TASK_ID_RE.test(id))
+    ? dailyPlan.taskIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta.projects)))
     : [];
   const carriedIds = Array.isArray(dailyPlan.carriedIds)
-    ? dailyPlan.carriedIds.map(id => String(id).trim()).filter(id => TASK_ID_RE.test(id))
+    ? dailyPlan.carriedIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta.projects)))
     : [];
 
   let weeklyCapacityMinutes = base.weeklyCapacityMinutes;
@@ -143,6 +143,9 @@ export function normalizeTasksMeta(meta) {
           name: String(p.name || p.id).trim() || String(p.id).trim(),
         };
         if (typeof p.color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(p.color)) row.color = p.color;
+        if (typeof p.prefix === 'string' && /^[A-Z][A-Z0-9]{0,5}$/.test(p.prefix.trim().toUpperCase())) {
+          row.prefix = p.prefix.trim().toUpperCase();
+        }
         return row;
       })
     : [];

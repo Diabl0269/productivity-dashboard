@@ -42,8 +42,9 @@ export function isTaskCreateOpen() {
 /**
  * Open the create-task modal.
  * @param {string} [sectionId] Prefill status from the column that was clicked.
+ * @param {{ projectId?: string }} [opts]
  */
-export function openCreateTaskModal(sectionId) {
+export function openCreateTaskModal(sectionId, opts = {}) {
   const overlay = document.getElementById('taskCreateOverlay');
   if (!overlay || !getState) return;
 
@@ -67,7 +68,7 @@ export function openCreateTaskModal(sectionId) {
     startDate: null,
     jiraKey: '',
     issueUrl: '',
-    project: '',
+    project: opts.projectId || '',
     energy: null,
     snoozeUntil: null,
     blocked: false,
@@ -80,7 +81,7 @@ export function openCreateTaskModal(sectionId) {
     recurrenceInterval: 1,
   };
 
-  const nextId = computeNextTaskId(state);
+  const nextId = computeNextTaskId(state, draft.project || null);
   const idEl = document.getElementById('tcTaskId');
   if (idEl) idEl.textContent = nextId;
 
@@ -744,7 +745,8 @@ function submitCreate() {
   const sectionId = draft.section || 'todo';
   if (!tasks[sectionId]) tasks[sectionId] = [];
 
-  const taskId = computeNextTaskId(state);
+  const projectId = (draft.project || '').trim() || null;
+  const taskId = computeNextTaskId(state, projectId);
   const estimateMinutes = draft.estimate ? parseEstimate(draft.estimate) : null;
   if (draft.estimate && estimateMinutes == null) {
     showStatus('Invalid estimate — try 30m, 2h, or 1d');
