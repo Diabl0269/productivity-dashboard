@@ -90,7 +90,8 @@ export async function restoreFromFile(file) {
       setLastTaskContent(content);
     }
     state.hasChanges = false;
-    document.getElementById('saveBtn')?.disabled = true;
+    const saveBtn = document.getElementById('saveBtn');
+    if (saveBtn) saveBtn.disabled = true;
   } catch (e) {
     showStatus('Restore loaded — save failed: ' + e.message);
     getRenderTasks?.()();
