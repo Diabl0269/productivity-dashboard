@@ -5,7 +5,7 @@ import { moveTask } from './tasks-board.js';
 import { softDeleteTasks } from './task-undo.js';
 import { appendHistory, ensureTaskFieldDefaults } from './task-fields.js';
 import { showStatus } from './state.js';
-import { clearFacets, renderFilterBar } from './task-filters.js';
+import { clearFiltersAndSearch } from './url-filters.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -195,9 +195,7 @@ export function escapeClearsSelectionOrFilters() {
     getRenderTasks && getRenderTasks()();
     return true;
   }
-  // Clear facets if any
-  clearFacets();
-  renderFilterBar();
+  clearFiltersAndSearch();
   getRenderTasks && getRenderTasks()();
   return true;
 }

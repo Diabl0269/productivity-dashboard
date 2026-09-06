@@ -3,10 +3,33 @@
 import { activeMainTab } from './state.js';
 import { renderMemoryContent, renderMemorySearchResults } from './memory-renderer.js';
 import { hasActiveFacets, renderFilterBar } from './task-filters.js';
+import { scheduleFilterUrlSync } from './url-filters.js';
 
 let searchInput, clearBtn, container, shortcutHint;
 let currentTerm = '';
 let includeArchiveNotes = false;
+
+export function getSearchTerm() {
+  return currentTerm;
+}
+
+/**
+ * Set the search box + filter tasks (optionally skip URL sync).
+ * @param {string} term
+ * @param {{ skipUrl?: boolean }} [opts]
+ */
+export function setSearchTerm(term, opts = {}) {
+  if (!searchInput) {
+    currentTerm = String(term || '').trim().toLowerCase();
+    return;
+  }
+  currentTerm = String(term || '').trim().toLowerCase();
+  searchInput.value = term || '';
+  if (clearBtn) clearBtn.style.display = currentTerm ? '' : 'none';
+  if (container) container.classList.toggle('has-value', !!currentTerm);
+  if (activeMainTab === 'tasks') filterTasks(currentTerm);
+  if (!opts.skipUrl) scheduleFilterUrlSync();
+}
 
 export function initSearch() {
   container = document.getElementById('unifiedSearch');
@@ -20,6 +43,7 @@ export function initSearch() {
     clearBtn.style.display = currentTerm ? '' : 'none';
     container.classList.toggle('has-value', !!currentTerm);
     applyFilter();
+    scheduleFilterUrlSync();
   });
 
   archiveToggle?.addEventListener('change', () => {
@@ -74,8 +98,8 @@ export function onTabSwitch(tab) {
       if (templates) templates.style.display = 'none';
       if (tab === 'memory') searchInput.placeholder = 'Search all memory...';
       else searchInput.placeholder = 'Search global memory...';
+      clearSearch();
     }
-    clearSearch();
   }
 }
 
@@ -89,15 +113,9 @@ export function reapplySearch() {
 
 /** Programmatically set the tasks search term (e.g. from Overview widgets). */
 export function setTaskSearch(term) {
-  if (!searchInput) return;
-  currentTerm = String(term || '').trim().toLowerCase();
-  searchInput.value = term || '';
-  if (clearBtn) clearBtn.style.display = currentTerm ? '' : 'none';
-  if (container) container.classList.toggle('has-value', !!currentTerm);
-  if (activeMainTab === 'tasks') filterTasks(currentTerm);
+  setSearchTerm(term);
 }
-
-function clearSearch() {
+export function clearSearch(opts = {}) {
   currentTerm = '';
   if (searchInput) searchInput.value = '';
   if (clearBtn) clearBtn.style.display = 'none';
@@ -105,6 +123,7 @@ function clearSearch() {
   showAllTasks();
   showAllMemory();
   showAllGlobalMemory();
+  if (!opts.skipUrl) scheduleFilterUrlSync();
 }
 
 function applyFilter() {

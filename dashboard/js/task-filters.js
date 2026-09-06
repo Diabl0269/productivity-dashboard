@@ -15,6 +15,7 @@ import {
 } from './task-fields.js';
 import { renderSavedViewsBar } from './saved-views.js';
 import { normalizeTicketTypes } from './ticket-types.js';
+import { scheduleFilterUrlSync } from './url-filters.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -258,6 +259,7 @@ function onFacetChanged() {
   if (openFieldId) openOrRefreshMenu(openFieldId, state);
   applyViews();
   renderSavedViewsBar();
+  scheduleFilterUrlSync();
 }
 
 function fieldDefs(state) {
@@ -744,9 +746,15 @@ function ensureShell(bar) {
   clearBtn.textContent = 'Clear all';
   clearBtn.hidden = true;
   clearBtn.addEventListener('click', () => {
-    clearFacets();
-    closeMenu();
-    onFacetChanged();
+    import('./url-filters.js').then(m => {
+      m.clearFiltersAndSearch();
+      closeMenu();
+      applyViews();
+    }).catch(() => {
+      clearFacets();
+      closeMenu();
+      onFacetChanged();
+    });
   });
 
   header.appendChild(toggle);

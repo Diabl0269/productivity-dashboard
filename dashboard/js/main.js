@@ -17,8 +17,9 @@ import { initSettings, applyDisplayPrefs, switchSettingsSubtab, getSettingsSubta
 import { initProjectsView } from './projects-view.js';
 import { initPwa } from './pwa.js';
 import { initRouting, flushPendingRoute, parseRoute } from './routing.js';
+import { applyFiltersFromUrl, hasUrlFilterState } from './url-filters.js';
 import { activeMainTab, switchMainTab } from './state.js';
-import { taskState, switchTaskView } from './tasks-main.js';
+import { taskState, switchTaskView, renderFilteredViews } from './tasks-main.js';
 import {
   openTaskDetail, closeTaskDetail, isTaskDetailOpen, getOpenTaskId,
 } from './task-detail.js';
@@ -158,4 +159,10 @@ if (routeAfterLoad.tab === 'projects' && routeAfterLoad.projectId) {
 }
 if (routeAfterLoad.tab === 'global-memory' && routeAfterLoad.globalSubtab) {
   switchGlobalMemorySubtab(routeAfterLoad.globalSubtab, { fromRoute: true });
+}
+if (tasksLoaded && hasUrlFilterState()) {
+  applyFiltersFromUrl();
+  if (routeAfterLoad.tab === 'tasks' || activeMainTab === 'tasks') {
+    renderFilteredViews();
+  }
 }
