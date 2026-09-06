@@ -2,7 +2,6 @@
 
 import { switchMainTab, showStatus } from './state.js';
 import {
-  collectProjects,
   formatEstimate,
   dueBadgeHtml,
   isEffectivelyBlocked,
@@ -24,6 +23,17 @@ import { markChanged } from './tasks-io.js';
 import { todayStr } from './tasks-parser.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 import { normalizePrefix } from '../../shared/task-ids.js';
+import {
+  mergedProjectList,
+  buildProjectTree,
+  isProjectAncestor,
+  wouldCreateProjectCycle,
+} from '../../shared/projects.js';
+import {
+  needsPrefixMigration,
+  migrateTaskToProjectInState,
+} from '../../shared/task-rename.js';
+import { createTasksBackup } from './tasks-backup.js';
 
 const SELECTED_KEY = 'dashboard.selectedProject';
 const PROJECT_ID_RE = /^[a-z][a-z0-9-]*$/;
@@ -98,21 +108,12 @@ function uniqueProjectId(base, projects) {
 }
 
 function projectList(state) {
+  return mergedProjectList(state.tasks, ensureMeta(state).projects);
+}
+
+function projectTree(state) {
   const meta = ensureMeta(state);
-  const fromMeta = (meta.projects || []).map(p => ({
-    id: p.id,
-    name: p.name || p.id,
-    color: p.color || null,
-    prefix: p.prefix || null,
-  }));
-  const ids = new Set(fromMeta.map(p => p.id));
-  for (const id of collectProjects(state.tasks, meta.projects)) {
-    if (!ids.has(id)) {
-      fromMeta.push({ id, name: id, color: null, prefix: null });
-      ids.add(id);
-    }
-  }
-  return fromMeta.sort((a, b) => a.name.localeCompare(b.name));
+  return buildProjectTree(projectList(state));
 }
 
 function tasksForProject(state, projectId) {
@@ -176,15 +177,16 @@ function progressFor(task, childrenMap) {
   return { done, total, pct: Math.round((done / total) * 100) };
 }
 
-function createProject(state, { id, name, color, prefix }) {
+function createProject(state, { id, name, color, prefix, parentId }) {
   const meta = ensureMeta(state);
   const row = {
     id,
     name: name || id,
   };
   if (color) row.color = color;
-  const pfx = normalizePrefix(prefix) || derivePrefixFromSlug(id);
+  const pfx = normalizePrefix(prefix);
   if (pfx) row.prefix = pfx;
+  if (parentId) row.parentId = parentId;
   meta.projects.push(row);
   markChanged();
   return row;
@@ -207,6 +209,10 @@ function updateProjectMeta(state, projectId, updates) {
     if (pfx) row.prefix = pfx;
     else delete row.prefix;
   }
+  if (updates.parentId !== undefined) {
+    if (updates.parentId) row.parentId = updates.parentId;
+    else delete row.parentId;
+  }
   markChanged();
   return row;
 }
@@ -214,6 +220,9 @@ function updateProjectMeta(state, projectId, updates) {
 function deleteProjectMeta(state, projectId) {
   const meta = ensureMeta(state);
   meta.projects = meta.projects.filter(p => p.id !== projectId);
+  for (const p of meta.projects) {
+    if (p.parentId === projectId) delete p.parentId;
+  }
   for (const list of Object.values(state.tasks || {})) {
     for (const t of list || []) {
       if (t.project === projectId) {
@@ -226,14 +235,15 @@ function deleteProjectMeta(state, projectId) {
 }
 
 function linkTask(state, taskId, projectId) {
+  const result = migrateTaskToProjectInState(state, taskId, projectId);
+  const finalId = result.newId;
   for (const list of Object.values(state.tasks || {})) {
     for (const t of list || []) {
-      if (t.taskId === taskId) {
-        t.project = projectId;
+      if (t.taskId === finalId) {
         t.updated = todayStr();
         appendHistory(t, { event: 'project', to: projectId });
         markChanged(t);
-        return t;
+        return { task: t, ...result };
       }
     }
   }
@@ -255,7 +265,7 @@ function unlinkTask(state, taskId) {
   return null;
 }
 
-function showProjectForm(mode, project, onDone) {
+function showProjectForm(mode, project, onDone, state) {
   const overlay = document.createElement('div');
   overlay.className = 'pv-form-overlay';
   const isNew = mode === 'new';
@@ -263,7 +273,21 @@ function showProjectForm(mode, project, onDone) {
   const defaultId = isNew ? '' : project.id;
   const defaultName = isNew ? '' : project.name;
   const defaultColor = isNew ? '#3B82F6' : (project.color || '#3B82F6');
-  const defaultPrefix = isNew ? '' : (project.prefix || projectPrefix(project));
+  const metaProjects = ensureMeta(state).projects;
+  const defaultPrefix = isNew ? '' : (project.prefix || projectPrefix(project, metaProjects));
+  const defaultParent = isNew ? '' : (project.parentId || '');
+  const excludeIds = new Set();
+  if (!isNew && project?.id) {
+    excludeIds.add(project.id);
+    for (const p of metaProjects) {
+      if (isProjectAncestor(metaProjects, project.id, p.id)) excludeIds.add(p.id);
+    }
+  }
+  const parentOptions = metaProjects
+    .filter(p => !excludeIds.has(p.id))
+    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id))
+    .map(p => `<option value="${escapeHtml(p.id)}" ${p.id === defaultParent ? 'selected' : ''}>${escapeHtml(p.name || p.id)}</option>`)
+    .join('');
 
   overlay.innerHTML = `
     <form class="pv-form" role="dialog" aria-label="${escapeHtml(title)}">
@@ -277,8 +301,16 @@ function showProjectForm(mode, project, onDone) {
         <input type="text" name="id" ${isNew ? '' : 'readonly'} value="${escapeHtml(defaultId)}" placeholder="my-app" pattern="[a-z][a-z0-9-]*">
       </label>
       <label class="pv-form-field">
+        <span>Parent project</span>
+        <select name="parentId">
+          <option value="">None (top-level)</option>
+          ${parentOptions}
+        </select>
+      </label>
+      <label class="pv-form-field">
         <span>Ticket prefix</span>
         <input type="text" name="prefix" value="${escapeHtml(defaultPrefix)}" placeholder="APP" maxlength="6" style="text-transform:uppercase">
+        <span class="pv-form-hint">Leave blank to inherit from parent or derive from slug</span>
       </label>
       <label class="pv-form-field pv-form-color">
         <span>Color</span>
@@ -333,13 +365,34 @@ function showProjectForm(mode, project, onDone) {
       showStatus('Prefix must be 1–6 uppercase letters/digits');
       return;
     }
+    const parentId = form.querySelector('[name="parentId"]').value.trim() || null;
+    if (parentId && wouldCreateProjectCycle(ensureMeta(getState()).projects, isNew ? id : project.id, parentId)) {
+      showStatus('Invalid parent — would create a cycle');
+      return;
+    }
     const color = form.querySelector('[name="color"]').value;
-    onDone({ id, name, color, prefix });
+    onDone({ id, name, color, prefix, parentId });
     overlay.remove();
   });
 
   document.body.appendChild(overlay);
   nameInput.focus();
+}
+
+function renderSidebarNode(p, selectedId, state, depth) {
+  const metaProjects = ensureMeta(state).projects;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pv-project-btn' + (p.id === selectedId ? ' active' : '');
+  btn.dataset.projectId = p.id;
+  btn.style.setProperty('--pv-proj-depth', String(depth));
+  const swatch = p.color
+    ? `<span class="pv-swatch" style="background:${escapeHtml(p.color)}"></span>`
+    : '<span class="pv-swatch pv-swatch-default"></span>';
+  const prefix = projectPrefix(p, metaProjects);
+  btn.innerHTML = `${swatch}<span class="pv-project-name">${escapeHtml(p.name)}</span><span class="pv-project-prefix">${escapeHtml(prefix)}</span>`;
+  btn.addEventListener('click', () => selectProject(p.id));
+  return btn;
 }
 
 function renderSidebar(projects, selectedId, state) {
@@ -359,7 +412,7 @@ function renderSidebar(projects, selectedId, state) {
         selectProject(data.id);
         getRenderTasks?.()();
         showStatus(`Created project ${data.name}`);
-      });
+      }, state);
     });
     head.appendChild(btn);
   }
@@ -369,21 +422,15 @@ function renderSidebar(projects, selectedId, state) {
     nav.innerHTML = '<div class="pv-empty">No projects yet. Click <strong>+ New</strong> to create one.</div>';
     return;
   }
-  projects.forEach(p => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pv-project-btn' + (p.id === selectedId ? ' active' : '');
-    btn.dataset.projectId = p.id;
-    const swatch = p.color
-      ? `<span class="pv-swatch" style="background:${escapeHtml(p.color)}"></span>`
-      : '<span class="pv-swatch pv-swatch-default"></span>';
-    const prefix = projectPrefix(p);
-    btn.innerHTML = `${swatch}<span class="pv-project-name">${escapeHtml(p.name)}</span><span class="pv-project-prefix">${escapeHtml(prefix)}</span>`;
-    btn.addEventListener('click', () => {
-      selectProject(p.id);
-    });
-    nav.appendChild(btn);
-  });
+
+  const { roots } = buildProjectTree(projects);
+  const walk = (nodes, depth) => {
+    for (const n of nodes) {
+      nav.appendChild(renderSidebarNode(n, selectedId, state, depth));
+      if (n.children?.length) walk(n.children, depth + 1);
+    }
+  };
+  walk(roots, 0);
 }
 
 function renderTreeNode(task, childrenMap, types, state, depth) {
@@ -449,12 +496,30 @@ function renderLinkPanel(state, project) {
   `;
 
   const select = panel.querySelector('.pv-link-select');
-  panel.querySelector('.pv-link-btn').addEventListener('click', () => {
+  panel.querySelector('.pv-link-btn').addEventListener('click', async () => {
     const taskId = select.value;
     if (!taskId) return;
-    linkTask(state, taskId, project.id);
+    const metaProjects = ensureMeta(state).projects;
+    const willMigrate = needsPrefixMigration(taskId, project.id, metaProjects);
+    if (willMigrate) {
+      const targetPrefix = projectPrefix(project, metaProjects);
+      const msg = `${taskId} will be renamed to use prefix ${targetPrefix} when linked.\n\nCreate a backup first?`;
+      const choice = confirm(msg + '\n\nOK = backup & link · Cancel = abort');
+      if (!choice) return;
+      try {
+        await createTasksBackup();
+        showStatus('Backup created');
+      } catch (e) {
+        if (!confirm(`Backup failed (${e.message}). Link anyway?`)) return;
+      }
+    }
+    const result = linkTask(state, taskId, project.id);
     getRenderTasks?.()();
-    showStatus(`Linked ${taskId} to ${project.name}`);
+    if (result?.migrated) {
+      showStatus(`Linked ${result.oldId} → ${result.newId} in ${project.name}`);
+    } else {
+      showStatus(`Linked ${taskId} to ${project.name}`);
+    }
   });
 
   if (candidates.length === 0) {
@@ -485,7 +550,11 @@ function renderMain(state, project) {
   const totalLogged = tasks.reduce((s, t) => s + (t.loggedMinutes || 0), 0);
   const active = tasks.filter(t => t.section === 'todo' || t.section === 'in-progress').length;
   const done = tasks.filter(t => t.checked || t.section === 'done').length;
-  const prefix = projectPrefix(project);
+  const prefix = projectPrefix(project, ensureMeta(state).projects);
+  const parent = project.parentId
+    ? projectList(state).find(p => p.id === project.parentId)
+    : null;
+  const parentLine = parent ? ` · parent <code>${escapeHtml(parent.name)}</code>` : '';
 
   main.innerHTML = '';
   const header = document.createElement('div');
@@ -498,7 +567,7 @@ function renderMain(state, project) {
       <span class="pv-hero-swatch" style="${swatch}"></span>
       <div class="pv-hero-text">
         <h2 class="pv-hero-title">${escapeHtml(project.name)}</h2>
-        <p class="pv-hero-sub">${escapeHtml(project.id)} · prefix <code>${escapeHtml(prefix)}</code> · ${tasks.length} tickets</p>
+        <p class="pv-hero-sub">${escapeHtml(project.id)} · prefix <code>${escapeHtml(prefix)}</code>${parentLine} · ${tasks.length} tickets</p>
       </div>
       <div class="pv-hero-actions">
         <button type="button" class="pv-action-btn" data-action="edit">Edit</button>
@@ -519,7 +588,7 @@ function renderMain(state, project) {
       updateProjectMeta(state, project.id, data);
       getRenderTasks?.()();
       showStatus('Project updated');
-    });
+    }, state);
   });
 
   header.querySelector('[data-action="new-task"]').addEventListener('click', () => {

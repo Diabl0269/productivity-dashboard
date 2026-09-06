@@ -362,6 +362,7 @@
     <div class="settings-sub-tabs" role="tablist" aria-label="Settings sections">
       <button class="settings-sub-tab active" data-subtab="display" role="tab" aria-selected="true">Display</button>
       <button class="settings-sub-tab" data-subtab="ticket-types" role="tab" aria-selected="false">Ticket Types</button>
+      <button class="settings-sub-tab" data-subtab="data" role="tab" aria-selected="false">Data</button>
     </div>
     <div class="settings-section" id="settingsDisplaySection" data-settings-panel="display">
       <p class="settings-section-desc">
@@ -402,6 +403,22 @@
       <div class="tt-toolbar">
         <button type="button" class="tt-add-btn" id="settingsTicketTypeAdd">+ Add type</button>
       </div>
+    </div>
+    <div class="settings-section" id="settingsDataSection" data-settings-panel="data" hidden>
+      <p class="settings-section-desc">
+        Back up <code>tasks.json</code> before linking tickets to a project (IDs may be renamed).
+        Server backups live in <code>.backup/tasks/</code>; you can also download or restore from a local file.
+      </p>
+      <div class="settings-backup-actions">
+        <button type="button" class="settings-backup-btn primary" id="settingsBackupCreate">Create backup</button>
+        <button type="button" class="settings-backup-btn" id="settingsBackupDownload">Download backup</button>
+        <label class="settings-backup-btn settings-backup-file-label">
+          Restore from file
+          <input type="file" id="settingsBackupFile" accept=".json,application/json" hidden>
+        </label>
+      </div>
+      <p class="settings-backup-status" id="settingsBackupStatus" aria-live="polite"></p>
+      <div class="settings-backup-list" id="settingsBackupList"></div>
     </div>
   </div>
 

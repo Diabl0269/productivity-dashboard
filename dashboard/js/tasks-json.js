@@ -6,6 +6,7 @@ import {
   isHexColor,
 } from './ticket-types.js';
 import { isValidTaskId, collectKnownPrefixes } from '../../shared/task-ids.js';
+import { normalizeProjectRow } from '../../shared/projects.js';
 
 const ENERGY_VALUES = new Set(['deep', 'shallow', 'errands', 'creative']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -137,17 +138,7 @@ export function normalizeTasksMeta(meta) {
   const projects = Array.isArray(meta.projects)
     ? meta.projects
       .filter(p => p && typeof p === 'object' && typeof p.id === 'string' && p.id.trim())
-      .map(p => {
-        const row = {
-          id: String(p.id).trim(),
-          name: String(p.name || p.id).trim() || String(p.id).trim(),
-        };
-        if (typeof p.color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(p.color)) row.color = p.color;
-        if (typeof p.prefix === 'string' && /^[A-Z][A-Z0-9]{0,5}$/.test(p.prefix.trim().toUpperCase())) {
-          row.prefix = p.prefix.trim().toUpperCase();
-        }
-        return row;
-      })
+      .map(p => normalizeProjectRow(p))
     : [];
 
   const ideas = Array.isArray(meta.ideas)

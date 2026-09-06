@@ -47,6 +47,8 @@ import {
   ensureSections, normalizeMeta, defaultMeta,
 } from '../lib/schema.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
+import { createTasksBackup, listTasksBackups, restoreTasksBackup } from '../lib/backup.js';
+import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -704,7 +706,7 @@ function cmdUpdate(argv) {
     json:            { type: 'boolean', short: 'j' },
   });
 
-  const id = positionals[0];
+  let id = positionals[0];
   if (!id) die('usage: ch tasks update <id> [--title "..."] [--due YYYY-MM-DD] [--blocked] [--add-label L] [--add-link URL] [--add-blocked-by T1] ...');
 
   if (values.priority && !isPriority(values.priority)) {
@@ -827,9 +829,18 @@ function cmdUpdate(argv) {
     delete task.project;
     changed = true;
   } else if (values.project !== undefined) {
-    task.project = values.project.trim();
-    if (!task.project) delete task.project;
-    changed = true;
+    const projectId = values.project.trim();
+    if (!projectId) {
+      delete task.project;
+      changed = true;
+    } else {
+      const result = migrateTaskToProjectInDoc(doc, id, projectId);
+      changed = true;
+      appendHistory(task, { event: 'project', to: projectId });
+      if (result.migrated) {
+        id = result.newId;
+      }
+    }
   }
 
   if (values['clear-energy']) {
@@ -1514,6 +1525,34 @@ function cmdArchiveDone(argv) {
   ok(`archive-done: archived ${toMove.length} task(s) -> archive`);
 }
 
+async function cmdBackup(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const result = createTasksBackup();
+  if (values.json) jsonOut(result);
+  else ok(`backup: ${result.name} (${result.path})`);
+}
+
+async function cmdBackups(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const backups = listTasksBackups();
+  if (values.json) jsonOut({ backups });
+  else if (backups.length === 0) ok('backups: (none)');
+  else {
+    for (const b of backups) print(`${b.name}  ${b.mtime}  ${b.size}b`);
+  }
+}
+
+async function cmdRestore(argv) {
+  const { positionals, values } = parse(argv, {
+    json: { type: 'boolean', short: 'j' },
+  });
+  const name = positionals[0];
+  if (!name) die('usage: ch tasks restore <backup-name>');
+  const result = restoreTasksBackup(name);
+  if (values.json) jsonOut(result);
+  else ok(`restore: ${result.name}`);
+}
+
 // ---------------------------------------------------------------------------
 // Usage / dispatch
 // ---------------------------------------------------------------------------
@@ -1554,7 +1593,10 @@ Subcommands:
   dump [--active]
   export [--md]
   lint [--fix]
-  archive-done`;
+  archive-done
+  backup [--json]
+  backups [--json]
+  restore <backup-name> [--json]`;
 
 const SUBCOMMANDS = {
   list:          cmdList,
@@ -1571,6 +1613,9 @@ const SUBCOMMANDS = {
   export:        cmdExport,
   lint:          cmdLint,
   'archive-done': cmdArchiveDone,
+  backup:        cmdBackup,
+  backups:       cmdBackups,
+  restore:       cmdRestore,
 };
 
 export default async function tasks(argv) {

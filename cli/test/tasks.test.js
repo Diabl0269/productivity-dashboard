@@ -590,10 +590,14 @@ test('tasks capture: adds to inbox', () => {
 test('tasks update: issue project energy snooze decision', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
+    const doc = readTasks(tmpDir);
+    doc.meta = doc.meta || {};
+    doc.meta.projects = [{ id: 'cli', name: 'CLI Tools', prefix: 'CLI' }];
+    fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc, null, 2) + '\n');
+
     let result = runCli([
       'tasks', 'update', 'T2',
       '--issue', 'https://github.com/org/repo/issues/9',
-      '--project', 'cli',
       '--energy', 'deep',
       '--snooze', '2026-12-01',
       '--decision', 'Ship without feature X',
@@ -602,13 +606,18 @@ test('tasks update: issue project energy snooze decision', () => {
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
     const out = JSON.parse(result.stdout.trim());
     assert.equal(out.issueUrl, 'https://github.com/org/repo/issues/9');
-    assert.equal(out.project, 'cli');
     assert.equal(out.energy, 'deep');
     assert.equal(out.snoozeUntil, '2026-12-01');
     assert.equal(out.decisions[0].text, 'Ship without feature X');
 
+    result = runCli(['tasks', 'update', 'T2', '--project', 'cli', '--json'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const migrated = JSON.parse(result.stdout.trim());
+    assert.equal(migrated.id, 'CLI1');
+    assert.equal(migrated.project, 'cli');
+
     result = runCli([
-      'tasks', 'update', 'T2',
+      'tasks', 'update', migrated.id,
       '--clear-issue', '--clear-project', '--clear-energy', '--clear-snooze',
       '--json',
     ], tmpDir);

@@ -39,13 +39,35 @@ export function normalizePrefix(value) {
 
 /**
  * Effective prefix for a project meta row.
- * @param {{ id?: string, prefix?: string }} project
+ * Walks parentId chain when metaProjects is provided — child inherits parent's prefix
+ * unless the child sets an explicit prefix.
+ * @param {{ id?: string, prefix?: string, parentId?: string }} project
+ * @param {Array<{ id?: string, prefix?: string, parentId?: string }>} [metaProjects]
  * @returns {string}
  */
-export function projectPrefix(project) {
+export function projectPrefix(project, metaProjects = null) {
   if (!project) return DEFAULT_TASK_PREFIX;
-  const custom = normalizePrefix(project.prefix);
-  if (custom) return custom;
+  if (!metaProjects?.length) {
+    const custom = normalizePrefix(project.prefix);
+    if (custom) return custom;
+    return derivePrefixFromSlug(project.id || '');
+  }
+  const byId = new Map(metaProjects.map(p => [p.id, p]));
+  const seen = new Set();
+  let current = project;
+  while (current) {
+    if (current.id) {
+      if (seen.has(current.id)) break;
+      seen.add(current.id);
+    }
+    const custom = normalizePrefix(current.prefix);
+    if (custom) return custom;
+    if (current.parentId && byId.has(current.parentId)) {
+      current = byId.get(current.parentId);
+      continue;
+    }
+    return derivePrefixFromSlug(current.id || project.id || '');
+  }
   return derivePrefixFromSlug(project.id || '');
 }
 
@@ -57,7 +79,23 @@ export function projectPrefix(project) {
 export function collectKnownPrefixes(metaProjects = []) {
   const set = new Set([DEFAULT_TASK_PREFIX]);
   for (const p of metaProjects || []) {
-    set.add(projectPrefix(p));
+    set.add(projectPrefix(p, metaProjects));
+  }
+  return [...set].sort((a, b) => b.length - a.length);
+}
+
+/**
+ * Known prefixes from meta.projects plus any task.project slugs (orphan projects).
+ * @param {Array} metaProjects
+ * @param {Array<{ project?: string }>} [tasks]
+ */
+export function collectKnownPrefixesWithTasks(metaProjects = [], tasks = []) {
+  const set = new Set(collectKnownPrefixes(metaProjects));
+  for (const t of tasks || []) {
+    const pid = t.project;
+    if (!pid) continue;
+    const proj = (metaProjects || []).find(p => p.id === pid) || { id: pid };
+    set.add(projectPrefix(proj, metaProjects));
   }
   return [...set].sort((a, b) => b.length - a.length);
 }
@@ -115,7 +153,7 @@ export function nextTaskId(flatTasks, projectId, metaProjects = []) {
   let prefix = DEFAULT_TASK_PREFIX;
   if (projectId) {
     const proj = (metaProjects || []).find(p => p.id === projectId);
-    prefix = proj ? projectPrefix(proj) : derivePrefixFromSlug(projectId);
+    prefix = proj ? projectPrefix(proj, metaProjects) : derivePrefixFromSlug(projectId);
     if (!known.includes(prefix)) known.push(prefix);
     known.sort((a, b) => b.length - a.length);
   }

@@ -23,6 +23,7 @@ import { setUndoCallbacks } from './task-undo.js';
 import { setKeyboardCallbacks, initTaskKeyboard } from './task-keyboard.js';
 import { initTaskTimer, setTimerCallbacks } from './task-timer.js';
 import { setProjectsViewCallbacks, refreshProjectsView } from './projects-view.js';
+import { setBackupCallbacks, initTasksBackup } from './tasks-backup.js';
 import { computeNextTaskId, appendHistory } from './task-fields.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
@@ -106,6 +107,11 @@ setKeyboardCallbacks({
 setSettingsCallbacks({
   stateFn: () => taskState,
   renderFn: () => renderTasks
+});
+
+setBackupCallbacks({
+  stateFn: () => taskState,
+  renderFn: () => renderTasks,
 });
 
 setTimerCallbacks({
@@ -303,6 +309,7 @@ export function initTasks() {
   setTimerCallbacks({ stateFn: () => taskState, renderFn: () => renderTasks });
   setProjectsViewCallbacks({ stateFn: () => taskState, renderFn: () => renderTasks });
   initTaskTimer();
+  initTasksBackup();
 
   listViewBtn.addEventListener('click', () => switchTaskView('list'));
   boardViewBtn.addEventListener('click', () => switchTaskView('board'));

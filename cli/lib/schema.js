@@ -9,8 +9,15 @@ import {
   derivePrefixFromSlug,
   normalizePrefix,
   collectKnownPrefixes,
+  collectKnownPrefixesWithTasks,
   isValidTaskId,
+  projectPrefix,
 } from '../../shared/task-ids.js';
+import {
+  isProjectAncestor,
+  projectPrefixConflicts,
+  normalizeProjectRow,
+} from '../../shared/projects.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -78,16 +85,7 @@ export function normalizeMeta(meta) {
   const projects = Array.isArray(meta.projects)
     ? meta.projects
       .filter(p => p && typeof p === 'object' && typeof p.id === 'string' && p.id.trim())
-      .map(p => {
-        const row = {
-          id: String(p.id).trim(),
-          name: String(p.name || p.id).trim() || String(p.id).trim(),
-        };
-        if (typeof p.color === 'string' && COLOR_RE.test(p.color)) row.color = p.color;
-        const prefix = normalizePrefix(p.prefix);
-        if (prefix) row.prefix = prefix;
-        return row;
-      })
+      .map(p => normalizeProjectRow(p))
     : [];
 
   const ideas = Array.isArray(meta.ideas)
@@ -530,7 +528,11 @@ export function validateTasksDoc(doc) {
     return { valid: false, errors: ['doc must be an object'], duplicateIds: [] };
   }
 
-  const knownPrefixes = collectKnownPrefixes(doc.meta?.projects);
+  const allTasks = [];
+  for (const section of doc.sections || []) {
+    for (const task of section.tasks || []) allTasks.push(task);
+  }
+  const knownPrefixes = collectKnownPrefixesWithTasks(doc.meta?.projects, allTasks);
 
   // version
   if (typeof doc.version !== 'number') {
@@ -1023,7 +1025,8 @@ export function validateTasksDoc(doc) {
         errors.push('doc.meta.projects must be an array');
       } else if (Array.isArray(doc.meta.projects)) {
         const seenProjectIds = new Set();
-        const seenPrefixes = new Set();
+        const seenExplicitPrefixes = new Set();
+        const projectRows = [];
         for (let pi = 0; pi < doc.meta.projects.length; pi++) {
           const p = doc.meta.projects[pi];
           const ref = `meta.projects[${pi}]`;
@@ -1038,14 +1041,45 @@ export function validateTasksDoc(doc) {
           } else {
             seenProjectIds.add(p.id);
           }
+          if (p.parentId != null && p.parentId !== '') {
+            if (typeof p.parentId !== 'string' || !TYPE_ID_RE.test(p.parentId)) {
+              errors.push(`${ref}.parentId "${p.parentId}" must match /^[a-z][a-z0-9-]*$/`);
+            } else if (p.parentId === p.id) {
+              errors.push(`${ref}.parentId cannot reference itself`);
+            }
+          }
           if (p.prefix != null && p.prefix !== '' && !normalizePrefix(p.prefix)) {
             errors.push(`${ref}.prefix "${p.prefix}" must match /^[A-Z][A-Z0-9]{0,5}$/`);
           }
-          const eff = normalizePrefix(p.prefix) || derivePrefixFromSlug(p.id || '');
-          if (seenPrefixes.has(eff)) {
-            errors.push(`${ref} prefix "${eff}" conflicts with another project`);
-          } else {
-            seenPrefixes.add(eff);
+          const explicit = normalizePrefix(p.prefix);
+          if (explicit) {
+            if (seenExplicitPrefixes.has(explicit)) {
+              errors.push(`${ref}.prefix "${explicit}" is duplicated`);
+            } else {
+              seenExplicitPrefixes.add(explicit);
+            }
+          }
+          projectRows.push(p);
+        }
+        for (let pi = 0; pi < projectRows.length; pi++) {
+          const p = projectRows[pi];
+          const ref = `meta.projects[${pi}]`;
+          if (p.parentId && !seenProjectIds.has(p.parentId)) {
+            errors.push(`${ref}.parentId "${p.parentId}" does not exist`);
+          }
+          if (p.parentId && isProjectAncestor(doc.meta.projects, p.id, p.parentId)) {
+            errors.push(`${ref}.parentId would create a cycle`);
+          }
+        }
+        for (let ai = 0; ai < projectRows.length; ai++) {
+          for (let bi = ai + 1; bi < projectRows.length; bi++) {
+            const a = projectRows[ai];
+            const b = projectRows[bi];
+            if (projectPrefixConflicts(a, b, doc.meta.projects)) {
+              errors.push(
+                `meta.projects prefix "${projectPrefix(a, doc.meta.projects)}" conflicts between "${a.id}" and "${b.id}"`,
+              );
+            }
           }
         }
       }

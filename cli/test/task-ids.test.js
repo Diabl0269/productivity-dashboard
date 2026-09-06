@@ -27,6 +27,14 @@ test('projectPrefix uses custom or derived', () => {
   assert.equal(projectPrefix({ id: 'my-app' }), 'MYA');
 });
 
+test('projectPrefix inherits from parent', () => {
+  const meta = [
+    { id: 'platform', prefix: 'PLT' },
+    { id: 'mobile', parentId: 'platform' },
+  ];
+  assert.equal(projectPrefix(meta[1], meta), 'PLT');
+});
+
 test('nextTaskId scopes by project prefix', () => {
   const meta = [{ id: 'my-app', name: 'My App', prefix: 'APP' }];
   const flat = [{ id: 'T1' }, { id: 'T2' }, { id: 'APP3' }];
