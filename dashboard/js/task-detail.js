@@ -42,7 +42,6 @@ import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
 import { mountFieldLayoutSections } from './task-field-layout.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
-import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
 let getState = null;
