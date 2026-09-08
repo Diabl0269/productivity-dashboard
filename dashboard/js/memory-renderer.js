@@ -3,7 +3,7 @@
 import { escapeHtml, parseMemoryMarkdown, getPreview, getDisplayName, renderMarkdownToHtml } from './memory-parser.js';
 import { showStatus, filePathEl, setMemoryInfoGetter, activeMainTab } from './state.js';
 import { saveHandle } from './persistence.js';
-import { reapplySearch } from './search.js';
+import { reapplyMemorySearch } from './search.js';
 import { syncUrl, isRoutingReady, parseRoute } from './routing.js';
 
 export const memoryState = {
@@ -285,7 +285,7 @@ function renderMemoryContent() {
     const dirName = tabId.replace('dir-', '');
     renderMemoryDirectory(dirName);
   }
-  reapplySearch();
+  reapplyMemorySearch();
 }
 
 function renderMemoryOverview() {

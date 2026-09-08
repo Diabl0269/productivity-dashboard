@@ -107,10 +107,22 @@ export function onTabSwitch(tab) {
 }
 
 export function reapplySearch() {
-  if (currentTerm || hasActiveFacets()) applyFilter();
-  else {
+  const shouldFilterTasks = activeMainTab === 'tasks' && (currentTerm || hasActiveFacets());
+  const shouldFilterMemory = activeMainTab === 'memory' && currentTerm;
+  const shouldFilterGlobalMemory = activeMainTab === 'global-memory' && currentTerm;
+
+  if (shouldFilterTasks || shouldFilterMemory || shouldFilterGlobalMemory) {
+    applyFilter();
+  } else {
     updateColumnCounts('');
     updateSectionCounts('');
+  }
+}
+
+/** Re-apply an active memory text search after tab content re-renders. */
+export function reapplyMemorySearch() {
+  if (activeMainTab === 'memory' && currentTerm) {
+    renderMemorySearchResults(currentTerm);
   }
 }
 
