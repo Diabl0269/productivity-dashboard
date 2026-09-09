@@ -76,14 +76,24 @@ export function onTabSwitch(tab) {
   const filters = document.getElementById('tasksFilters');
   const savedViews = document.getElementById('savedViewsBar');
   const templates = document.getElementById('taskTemplatesBar');
+  const searchFilters = document.getElementById('searchFilters');
   if (tab === 'overview' || tab === 'settings' || tab === 'projects') {
+    container.style.display = 'none';
+    if (filters) filters.style.display = 'none';
+    if (searchFilters) searchFilters.style.display = 'none';
+    if (savedViews) savedViews.style.display = 'none';
+    if (templates) templates.style.display = 'none';
+    if (!isUrlFilterBootstrapping()) clearSearch({ skipUrl: false });
+  } else if (tab === 'search') {
     container.style.display = 'none';
     if (filters) filters.style.display = 'none';
     if (savedViews) savedViews.style.display = 'none';
     if (templates) templates.style.display = 'none';
-    if (!isUrlFilterBootstrapping()) clearSearch({ skipUrl: false });
+    if (searchFilters) searchFilters.style.display = 'flex';
+    clearSearch({ skipUrl: false });
   } else {
     container.style.display = 'flex';
+    if (searchFilters) searchFilters.style.display = 'none';
     if (tab === 'tasks') {
       searchInput.placeholder = 'Search tasks...';
       if (filters) {

@@ -568,19 +568,19 @@ test('validateTasksDoc: bad energy rejected', () => {
   assert.ok(result.errors.some(e => e.includes('energy')));
 });
 
-test('validateTasksDoc: valid modelEffort passes', () => {
+test('validateTasksDoc: valid model passes', () => {
   const doc = makeValidDoc();
-  doc.sections[0].tasks[0].modelEffort = 'heavy';
+  doc.sections[0].tasks[0].model = 'claude-sonnet';
   const result = validateTasksDoc(doc);
   assert.ok(result.valid, result.errors.join('; '));
 });
 
-test('validateTasksDoc: bad modelEffort rejected', () => {
+test('validateTasksDoc: bad model type rejected', () => {
   const doc = makeValidDoc();
-  doc.sections[0].tasks[0].modelEffort = 'turbo';
+  doc.sections[0].tasks[0].model = 42;
   const result = validateTasksDoc(doc);
   assert.equal(result.valid, false);
-  assert.ok(result.errors.some(e => e.includes('modelEffort')));
+  assert.ok(result.errors.some(e => e.includes('.model')));
 });
 
 test('ensureSections adds inbox and orders sections', async () => {

@@ -683,36 +683,9 @@
   text-transform: capitalize;
 }
 
-.td-child-model.model-effort-light {
+.td-child-model {
   color: var(--text-secondary);
-}
-
-.td-child-model.model-effort-standard {
-  color: var(--accent);
-}
-
-.td-child-model.model-effort-heavy {
-  color: var(--status-blocked);
-  font-weight: var(--weight-medium);
-}
-
-.model-effort-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-  background: var(--surface-raised);
-  color: var(--text-secondary);
-}
-
-.model-effort-badge.model-effort-standard {
-  color: var(--accent);
-}
-
-.model-effort-badge.model-effort-heavy {
-  color: var(--status-blocked);
+  font-size: var(--text-xs);
 }
 
 .task-card {
@@ -922,4 +895,111 @@
 .settings-backup-loading {
   font-size: var(--text-sm);
   color: var(--text-secondary);
+}
+
+/* Task fields settings */
+.settings-fields-heading {
+  margin: var(--space-5) 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.settings-fields-empty {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-3);
+}
+
+.settings-custom-fields-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.settings-custom-field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.settings-custom-field-label {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.settings-custom-field-id {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.settings-custom-field-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.settings-custom-field-remove:hover { color: var(--status-blocked); }
+
+.settings-fields-add {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.settings-fields-input {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.settings-fields-add-btn {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.settings-fields-add-btn:hover { border-color: var(--accent); }
+
+.settings-hidden-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-2);
+}
+
+.settings-hidden-field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.settings-hidden-field-cb {
+  accent-color: var(--accent);
+  margin: 0;
 }

@@ -16,7 +16,15 @@ import {
   escapeHtml,
 } from './ticket-types.js';
 import { parseEstimate, appendHistory, computeNextTaskId, normalizeJiraKey, markCorporateUi, isCorporateUiHidden } from './task-fields.js';
-import { MODEL_EFFORT_VALUES, formatModelEffort } from '../../shared/model-effort.js';
+import { normalizeModel, collectModels } from '../../shared/model.js';
+import {
+  readCustomFields,
+  isFieldVisible,
+  readCustomValue,
+  writeCustomValue,
+  customFieldKey,
+  parseCustomFieldKey,
+} from './custom-fields.js';
 import { memoryState } from './memory-renderer.js';
 import {
   mountFieldLayoutSections,
@@ -72,7 +80,7 @@ export function openCreateTaskModal(sectionId, opts = {}) {
     issueUrl: '',
     project: opts.projectId || '',
     energy: null,
-    modelEffort: null,
+    model: null,
     snoozeUntil: null,
     blocked: false,
     waitingOn: '',
@@ -132,7 +140,7 @@ function buildForm() {
 }
 
 function getFieldFactories() {
-  return {
+  const factories = {
     priority: buildPriorityField,
     status: buildStatusField,
     due: buildDueField,
@@ -141,7 +149,7 @@ function getFieldFactories() {
     issueUrl: buildIssueUrlField,
     project: buildProjectField,
     energy: buildEnergyField,
-    modelEffort: buildModelEffortField,
+    model: buildModelField,
     snoozeUntil: buildSnoozeField,
     type: buildTypeField,
     color: buildColorField,
@@ -155,6 +163,15 @@ function getFieldFactories() {
     links: buildLinksField,
     description: buildDescriptionField,
   };
+  for (const cf of readCustomFields()) {
+    factories[customFieldKey(cf.id)] = () => buildCustomField(cf);
+  }
+  const wrapped = {};
+  for (const [id, fn] of Object.entries(factories)) {
+    const fieldId = parseCustomFieldKey(id) ? id : id;
+    wrapped[id] = () => (isFieldVisible(fieldId) ? fn() : null);
+  }
+  return wrapped;
 }
 
 function buildPriorityField() {
@@ -338,29 +355,48 @@ function buildEnergyField() {
   return field;
 }
 
-function buildModelEffortField() {
+function buildModelField() {
   const field = document.createElement('div');
   field.className = 'td-field';
   const ml = document.createElement('span');
   ml.className = 'td-field-label';
-  ml.textContent = 'Model effort';
-  const select = document.createElement('select');
-  select.className = 'td-select';
-  select.title = 'Suggested agent model tier for future auto-delegation';
-  const none = document.createElement('option');
-  none.value = '';
-  none.textContent = '—';
-  select.appendChild(none);
-  MODEL_EFFORT_VALUES.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v;
-    opt.textContent = formatModelEffort(v);
-    if ((draft.modelEffort || '') === v) opt.selected = true;
-    select.appendChild(opt);
-  });
-  select.addEventListener('change', () => { draft.modelEffort = select.value || null; });
+  ml.textContent = 'Model';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'td-text-input';
+  input.placeholder = 'e.g. claude-sonnet';
+  input.setAttribute('list', 'tcModelList');
+  input.value = draft.model || '';
+  input.title = 'Agent model for this task';
+  let modelList = document.getElementById('tcModelList');
+  if (!modelList) {
+    modelList = document.createElement('datalist');
+    modelList.id = 'tcModelList';
+    document.body.appendChild(modelList);
+  }
+  const state = getState() || {};
+  modelList.innerHTML = collectModels(state.tasks)
+    .map(m => `<option value="${escapeHtml(m)}"></option>`)
+    .join('');
+  input.addEventListener('input', () => { draft.model = normalizeModel(input.value); });
   field.appendChild(ml);
-  field.appendChild(select);
+  field.appendChild(input);
+  return field;
+}
+
+function buildCustomField(cf) {
+  const field = document.createElement('div');
+  field.className = 'td-field';
+  const lbl = document.createElement('span');
+  lbl.className = 'td-field-label';
+  lbl.textContent = cf.label;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'td-text-input';
+  input.value = readCustomValue(draft, cf.id);
+  input.addEventListener('input', () => writeCustomValue(draft, cf.id, input.value));
+  field.appendChild(lbl);
+  field.appendChild(input);
   return field;
 }
 
@@ -814,7 +850,8 @@ function submitCreate() {
     issueUrl: (draft.issueUrl || '').trim() || null,
     project: (draft.project || '').trim() || null,
     energy: draft.energy || null,
-    modelEffort: draft.modelEffort || null,
+    model: normalizeModel(draft.model),
+    custom: draft.custom && Object.keys(draft.custom).length ? { ...draft.custom } : undefined,
     snoozeUntil: draft.snoozeUntil || null,
     blocked: !!draft.blocked,
     waitingOn: (draft.waitingOn || '').trim() || null,
@@ -902,7 +939,7 @@ export function applyTemplateToDraft(tplDraft) {
   const keys = [
     'title', 'description', 'priority', 'section', 'type', 'parentId', 'color',
     'dueDate', 'startDate', 'jiraKey', 'blocked', 'waitingOn', 'assignee',
-    'estimate', 'energy', 'modelEffort', 'recurrenceFreq', 'recurrenceInterval',
+    'estimate', 'energy', 'model', 'recurrenceFreq', 'recurrenceInterval',
   ];
   for (const k of keys) {
     if (tplDraft[k] !== undefined) draft[k] = tplDraft[k];

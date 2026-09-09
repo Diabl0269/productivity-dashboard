@@ -18,10 +18,7 @@ import {
   projectPrefixConflicts,
   normalizeProjectRow,
 } from '../../shared/projects.js';
-import {
-  MODEL_EFFORT_VALUES,
-  isModelEffort,
-} from '../../shared/model-effort.js';
+import { normalizeModel } from '../../shared/model.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -42,7 +39,6 @@ export const PRIORITIES = ['low', 'medium', 'high'];
 /** Valid energy contexts for solo focus filtering. */
 export const ENERGY_VALUES = ['deep', 'shallow', 'errands', 'creative'];
 
-export { MODEL_EFFORT_VALUES, isModelEffort };
 
 /** Max timeEntries kept per task. */
 export const TIME_ENTRIES_MAX = 100;
@@ -239,8 +235,29 @@ export function normalizeTask(task) {
   if (task.energy === '' || task.energy == null) delete task.energy;
   else if (typeof task.energy === 'string' && !ENERGY_VALUES.includes(task.energy)) delete task.energy;
 
-  if (task.modelEffort === '' || task.modelEffort == null) delete task.modelEffort;
-  else if (typeof task.modelEffort === 'string' && !isModelEffort(task.modelEffort)) delete task.modelEffort;
+  if (task.model === '' || task.model == null) delete task.model;
+  else if (typeof task.model === 'string') task.model = normalizeModel(task.model) || undefined;
+  if (task.model == null) delete task.model;
+  // Legacy field — migrate to model on normalize
+  if (task.modelEffort && !task.model && typeof task.modelEffort === 'string') {
+    const migrated = normalizeModel(task.modelEffort);
+    if (migrated) task.model = migrated;
+  }
+  delete task.modelEffort;
+
+  if (task.custom != null) {
+    if (typeof task.custom !== 'object' || Array.isArray(task.custom)) {
+      delete task.custom;
+    } else {
+      const clean = {};
+      for (const [k, v] of Object.entries(task.custom)) {
+        if (!/^[a-z][a-z0-9-]*$/.test(k)) continue;
+        if (typeof v === 'string' && v.trim()) clean[k] = v.trim();
+      }
+      if (Object.keys(clean).length) task.custom = clean;
+      else delete task.custom;
+    }
+  }
 
   if (task.snoozeUntil === '' || task.snoozeUntil == null) delete task.snoozeUntil;
 
@@ -782,10 +799,25 @@ export function validateTasksDoc(doc) {
         }
       }
 
-      // modelEffort (optional — suggested agent model tier)
-      if (task.modelEffort !== undefined && task.modelEffort !== null && task.modelEffort !== '') {
-        if (!isModelEffort(task.modelEffort)) {
-          errors.push(`${ref} (id=${task.id ?? '?'}) .modelEffort "${task.modelEffort}" must be one of ${MODEL_EFFORT_VALUES.join(', ')}`);
+      // model (optional — free-text agent model)
+      if (task.model !== undefined && task.model !== null && task.model !== '') {
+        if (typeof task.model !== 'string') {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .model must be a string`);
+        }
+      }
+
+      // custom (optional — user-defined text fields)
+      if (task.custom !== undefined && task.custom !== null) {
+        if (typeof task.custom !== 'object' || Array.isArray(task.custom)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .custom must be an object`);
+        } else {
+          for (const [k, v] of Object.entries(task.custom)) {
+            if (!/^[a-z][a-z0-9-]*$/.test(k)) {
+              errors.push(`${ref} (id=${task.id ?? '?'}) .custom key "${k}" must be lowercase slug`);
+            } else if (typeof v !== 'string') {
+              errors.push(`${ref} (id=${task.id ?? '?'}) .custom.${k} must be a string`);
+            }
+          }
         }
       }
 
