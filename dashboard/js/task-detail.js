@@ -33,11 +33,17 @@ import {
   appendNote,
   parseEstimate,
   formatEstimate,
+  formatDueLabel,
   normalizeJiraKey,
   todayYmd,
   markCorporateUi,
   isCorporateUiHidden,
 } from './task-fields.js';
+import {
+  MODEL_EFFORT_VALUES,
+  formatModelEffort,
+  modelEffortShort,
+} from '../../shared/model-effort.js';
 import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
 import { mountFieldLayoutSections } from './task-field-layout.js';
@@ -303,6 +309,7 @@ function buildFocusStrip(task) {
   if (task.project) bits.push(`<span class="td-focus-chip td-focus-project">${escapeHtml(task.project)}</span>`);
   if (task.dueDate) bits.push(`<span class="td-focus-chip">Due ${escapeHtml(task.dueDate)}</span>`);
   if (task.energy) bits.push(`<span class="td-focus-chip">${escapeHtml(task.energy)}</span>`);
+  if (task.modelEffort) bits.push(`<span class="td-focus-chip">Model ${escapeHtml(formatModelEffort(task.modelEffort))}</span>`);
   if (task.estimateMinutes) bits.push(`<span class="td-focus-chip">Est ${escapeHtml(formatEstimate(task.estimateMinutes))}</span>`);
   if (task.loggedMinutes) bits.push(`<span class="td-focus-chip">Logged ${escapeHtml(formatEstimate(task.loggedMinutes))}</span>`);
   chips.innerHTML = bits.join('');
@@ -620,6 +627,33 @@ function getEssentialsFieldFactories(task) {
         getRenderTasks && getRenderTasks()();
       });
       return essentialsField('Energy', energySelect);
+    },
+
+    modelEffort: () => {
+      const select = document.createElement('select');
+      select.className = 'td-select';
+      select.title = 'Suggested agent model tier for future auto-delegation';
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = '—';
+      select.appendChild(none);
+      MODEL_EFFORT_VALUES.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = formatModelEffort(v);
+        if ((task.modelEffort || '') === v) opt.selected = true;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', () => {
+        task.modelEffort = select.value || null;
+        commit(task.modelEffort
+          ? 'Model effort: ' + formatModelEffort(task.modelEffort)
+          : 'Model effort cleared');
+        getRenderTasks && getRenderTasks()();
+      });
+      return essentialsField('Model effort', select, {
+        hint: 'Suggested agent model tier for future auto-delegation',
+      });
     },
 
     issueUrl: () => {
@@ -1417,18 +1451,17 @@ function childBlockedTitle(child, tasks) {
   return 'Blocked';
 }
 
-function childMetaHtml(child, tasks) {
-  const parts = [];
-  if (child.estimateMinutes) {
-    const est = formatEstimate(child.estimateMinutes);
-    parts.push(`<span class="td-child-est" title="Estimate ${escapeHtml(est)}">${escapeHtml(est)}</span>`);
-  }
-  const blocked = childBlockedHint(child, tasks);
-  if (blocked) {
-    parts.push(`<span class="td-child-blocked" title="${escapeHtml(childBlockedTitle(child, tasks))}">${escapeHtml(blocked)}</span>`);
-  }
-  if (!parts.length) return '';
-  return `<span class="td-child-meta">${parts.join('')}</span>`;
+function sectionNameFor(child, sections) {
+  const sec = child.section || '';
+  const row = (sections || []).find(s => s.id === sec);
+  return row?.name || sec || '—';
+}
+
+function childFieldCell(value, { title = '', className = '', empty = '—' } = {}) {
+  const text = value != null && value !== '' ? String(value) : empty;
+  const cls = 'td-child-cell' + (className ? ` ${className}` : '') + (text === empty ? ' td-child-cell-empty' : '');
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+  return `<span class="${cls}"${titleAttr}>${escapeHtml(text)}</span>`;
 }
 
 function buildChildrenPanel(task, body) {
@@ -1445,27 +1478,65 @@ function buildChildrenPanel(task, body) {
     empty.textContent = 'No child tickets linked to this one';
     list.appendChild(empty);
   } else {
+    const grid = document.createElement('div');
+    grid.className = 'td-children-grid';
+    grid.innerHTML = `
+      <div class="td-children-head" aria-hidden="true">
+        <span class="td-child-col td-child-col-main">Ticket</span>
+        <span class="td-child-col">Status</span>
+        <span class="td-child-col">Due</span>
+        <span class="td-child-col">Est</span>
+        <span class="td-child-col">Energy</span>
+        <span class="td-child-col">Model</span>
+        <span class="td-child-col">Blocked</span>
+      </div>
+    `;
+
     children.forEach(child => {
       const done = isTaskDone(child);
       const blocked = isEffectivelyBlocked(child, state.tasks);
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'task-parent-link td-child-link'
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'td-children-row'
         + (done ? ' td-child-done' : '')
         + (blocked ? ' td-child-link-blocked' : '');
       const cColor = resolveTaskColor(child, types, state.tasks);
       const cType = getTicketType(types, child.type);
       const pri = child.priority || 'medium';
-      btn.innerHTML = `<span class="task-parent-swatch" style="background:${cColor}"></span>`
-        + `<span class="priority-dot priority-${escapeHtml(pri)} td-child-priority" title="${escapeHtml(pri)} priority"></span>`
-        + `<span class="task-parent-id">${escapeHtml(child.taskId || '—')}</span>`
-        + `<span class="td-child-type">${escapeHtml(cType.name)}</span>`
-        + `<span class="task-parent-title">${escapeHtml(child.title || '')}</span>`
-        + childMetaHtml(child, state.tasks);
-      btn.title = `Open ${child.taskId || 'child'}`;
-      btn.addEventListener('click', () => openTaskDetail(child));
-      list.appendChild(btn);
+      const dueLabel = child.dueDate ? formatDueLabel(child.dueDate) : '';
+      const estLabel = child.estimateMinutes ? formatEstimate(child.estimateMinutes) : '';
+      const blockedHint = childBlockedHint(child, state.tasks);
+      const blockedTitle = childBlockedTitle(child, state.tasks);
+      const modelLabel = child.modelEffort ? modelEffortShort(child.modelEffort) : '';
+
+      row.innerHTML = `
+        <span class="td-child-col td-child-col-main td-child-main">
+          <span class="task-parent-swatch" style="background:${cColor}"></span>
+          <span class="priority-dot priority-${escapeHtml(pri)} td-child-priority" title="${escapeHtml(pri)} priority"></span>
+          <span class="task-parent-id">${escapeHtml(child.taskId || '—')}</span>
+          <span class="td-child-type">${escapeHtml(cType.name)}</span>
+          <span class="task-parent-title">${escapeHtml(child.title || '')}</span>
+        </span>
+        ${childFieldCell(sectionNameFor(child, state.sections), { className: 'td-child-status' })}
+        ${childFieldCell(dueLabel, { title: child.dueDate ? `Due ${child.dueDate}` : '', className: 'td-child-due' })}
+        ${childFieldCell(estLabel, { title: estLabel ? `Estimate ${estLabel}` : '', className: 'td-child-est' })}
+        ${childFieldCell(child.energy || '', { title: child.energy ? `Energy: ${child.energy}` : '', className: 'td-child-energy' })}
+        ${childFieldCell(modelLabel, {
+          title: child.modelEffort ? `Model effort: ${formatModelEffort(child.modelEffort)}` : '',
+          className: child.modelEffort ? `td-child-model model-effort-${escapeHtml(child.modelEffort)}` : 'td-child-model',
+        })}
+        ${childFieldCell(blockedHint, {
+          title: blockedTitle,
+          className: blockedHint ? 'td-child-blocked' : 'td-child-blocked td-child-cell-empty',
+          empty: '—',
+        })}
+      `;
+      row.title = `Open ${child.taskId || 'child'}`;
+      row.addEventListener('click', () => openTaskDetail(child));
+      grid.appendChild(row);
     });
+
+    list.appendChild(grid);
   }
 
   body.appendChild(sectionPanel(`Children (${children.length})`, list));

@@ -16,6 +16,7 @@ import {
   escapeHtml,
 } from './ticket-types.js';
 import { parseEstimate, appendHistory, computeNextTaskId, normalizeJiraKey, markCorporateUi, isCorporateUiHidden } from './task-fields.js';
+import { MODEL_EFFORT_VALUES, formatModelEffort } from '../../shared/model-effort.js';
 import { memoryState } from './memory-renderer.js';
 import {
   mountFieldLayoutSections,
@@ -71,6 +72,7 @@ export function openCreateTaskModal(sectionId, opts = {}) {
     issueUrl: '',
     project: opts.projectId || '',
     energy: null,
+    modelEffort: null,
     snoozeUntil: null,
     blocked: false,
     waitingOn: '',
@@ -139,6 +141,7 @@ function getFieldFactories() {
     issueUrl: buildIssueUrlField,
     project: buildProjectField,
     energy: buildEnergyField,
+    modelEffort: buildModelEffortField,
     snoozeUntil: buildSnoozeField,
     type: buildTypeField,
     color: buildColorField,
@@ -332,6 +335,32 @@ function buildEnergyField() {
   energySelect.addEventListener('change', () => { draft.energy = energySelect.value || null; });
   field.appendChild(el);
   field.appendChild(energySelect);
+  return field;
+}
+
+function buildModelEffortField() {
+  const field = document.createElement('div');
+  field.className = 'td-field';
+  const ml = document.createElement('span');
+  ml.className = 'td-field-label';
+  ml.textContent = 'Model effort';
+  const select = document.createElement('select');
+  select.className = 'td-select';
+  select.title = 'Suggested agent model tier for future auto-delegation';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = '—';
+  select.appendChild(none);
+  MODEL_EFFORT_VALUES.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = formatModelEffort(v);
+    if ((draft.modelEffort || '') === v) opt.selected = true;
+    select.appendChild(opt);
+  });
+  select.addEventListener('change', () => { draft.modelEffort = select.value || null; });
+  field.appendChild(ml);
+  field.appendChild(select);
   return field;
 }
 
@@ -785,6 +814,7 @@ function submitCreate() {
     issueUrl: (draft.issueUrl || '').trim() || null,
     project: (draft.project || '').trim() || null,
     energy: draft.energy || null,
+    modelEffort: draft.modelEffort || null,
     snoozeUntil: draft.snoozeUntil || null,
     blocked: !!draft.blocked,
     waitingOn: (draft.waitingOn || '').trim() || null,
@@ -872,7 +902,7 @@ export function applyTemplateToDraft(tplDraft) {
   const keys = [
     'title', 'description', 'priority', 'section', 'type', 'parentId', 'color',
     'dueDate', 'startDate', 'jiraKey', 'blocked', 'waitingOn', 'assignee',
-    'estimate', 'recurrenceFreq', 'recurrenceInterval',
+    'estimate', 'energy', 'modelEffort', 'recurrenceFreq', 'recurrenceInterval',
   ];
   for (const k of keys) {
     if (tplDraft[k] !== undefined) draft[k] = tplDraft[k];

@@ -18,6 +18,10 @@ import {
   projectPrefixConflicts,
   normalizeProjectRow,
 } from '../../shared/projects.js';
+import {
+  MODEL_EFFORT_VALUES,
+  isModelEffort,
+} from '../../shared/model-effort.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -37,6 +41,8 @@ export const PRIORITIES = ['low', 'medium', 'high'];
 
 /** Valid energy contexts for solo focus filtering. */
 export const ENERGY_VALUES = ['deep', 'shallow', 'errands', 'creative'];
+
+export { MODEL_EFFORT_VALUES, isModelEffort };
 
 /** Max timeEntries kept per task. */
 export const TIME_ENTRIES_MAX = 100;
@@ -232,6 +238,9 @@ export function normalizeTask(task) {
 
   if (task.energy === '' || task.energy == null) delete task.energy;
   else if (typeof task.energy === 'string' && !ENERGY_VALUES.includes(task.energy)) delete task.energy;
+
+  if (task.modelEffort === '' || task.modelEffort == null) delete task.modelEffort;
+  else if (typeof task.modelEffort === 'string' && !isModelEffort(task.modelEffort)) delete task.modelEffort;
 
   if (task.snoozeUntil === '' || task.snoozeUntil == null) delete task.snoozeUntil;
 
@@ -770,6 +779,13 @@ export function validateTasksDoc(doc) {
       if (task.energy !== undefined && task.energy !== null && task.energy !== '') {
         if (!isEnergy(task.energy)) {
           errors.push(`${ref} (id=${task.id ?? '?'}) .energy "${task.energy}" must be one of ${ENERGY_VALUES.join(', ')}`);
+        }
+      }
+
+      // modelEffort (optional — suggested agent model tier)
+      if (task.modelEffort !== undefined && task.modelEffort !== null && task.modelEffort !== '') {
+        if (!isModelEffort(task.modelEffort)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .modelEffort "${task.modelEffort}" must be one of ${MODEL_EFFORT_VALUES.join(', ')}`);
         }
       }
 

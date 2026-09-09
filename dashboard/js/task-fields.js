@@ -1,6 +1,7 @@
 // task-fields.js — Shared helpers for due dates, blocked state, labels, links, WIP.
 
 import { escapeHtml, findTaskByTaskId } from './ticket-types.js';
+import { formatModelEffort } from '../../shared/model-effort.js';
 import { nextTaskIdFromState, projectPrefix, derivePrefixFromSlug } from '../../shared/task-ids.js';
 
 export { projectPrefix, derivePrefixFromSlug };
@@ -305,6 +306,7 @@ export function ensureTaskFieldDefaults(task) {
   if (task.issueUrl == null) task.issueUrl = null;
   if (task.project == null) task.project = null;
   if (task.energy == null) task.energy = null;
+  if (task.modelEffort == null) task.modelEffort = null;
   if (task.snoozeUntil == null) task.snoozeUntil = null;
   if (!Array.isArray(task.timeEntries)) task.timeEntries = [];
   if (!Array.isArray(task.decisions)) task.decisions = [];
@@ -482,6 +484,12 @@ export function snoozeBadgeHtml(task) {
 export function energyBadgeHtml(task) {
   if (!task.energy) return '';
   return `<span class="energy-badge energy-${escapeHtml(task.energy)}" title="Energy: ${escapeHtml(task.energy)}">${escapeHtml(task.energy)}</span>`;
+}
+
+export function modelEffortBadgeHtml(task) {
+  if (!task.modelEffort) return '';
+  const label = formatModelEffort(task.modelEffort);
+  return `<span class="model-effort-badge model-effort-${escapeHtml(task.modelEffort)}" title="Model effort: ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 
 /** Workload rows by project slug. */
@@ -800,6 +808,7 @@ export function spawnRecurringFollowUp(completedTask, state) {
     issueUrl: completedTask.issueUrl || null,
     project: completedTask.project || null,
     energy: completedTask.energy || null,
+    modelEffort: completedTask.modelEffort || null,
     snoozeUntil: null,
     timeEntries: [],
     decisions: [],

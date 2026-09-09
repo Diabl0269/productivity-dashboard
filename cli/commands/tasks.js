@@ -43,7 +43,8 @@ import {
 import {
   SECTION_IDS, PRIORITIES, DEFAULT_TICKET_TYPE_ID, normalizeTicketTypes,
   isSectionId, isPriority, isHexColor, validateTasksDoc, normalizeTasksDoc,
-  appendHistory, isJiraKey, RECURRENCE_FREQS, ENERGY_VALUES, isEnergy, isHttpsUrl,
+  appendHistory, isJiraKey, RECURRENCE_FREQS, ENERGY_VALUES, isEnergy,
+  MODEL_EFFORT_VALUES, isModelEffort, isHttpsUrl,
   ensureSections, normalizeMeta, defaultMeta,
 } from '../lib/schema.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
@@ -158,6 +159,7 @@ function spawnRecurringNext(doc, completedTask, today) {
   if (completedTask.issueUrl) newTask.issueUrl = completedTask.issueUrl;
   if (completedTask.project) newTask.project = completedTask.project;
   if (completedTask.energy) newTask.energy = completedTask.energy;
+  if (completedTask.modelEffort) newTask.modelEffort = completedTask.modelEffort;
   if (completedTask.assignee) newTask.assignee = completedTask.assignee;
   if (completedTask.estimateMinutes) newTask.estimateMinutes = completedTask.estimateMinutes;
   if (completedTask.blocked) newTask.blocked = true;
@@ -270,6 +272,7 @@ function docToDashboardShape(doc) {
       issueUrl: t.issueUrl || null,
       project: t.project || null,
       energy: t.energy || null,
+      modelEffort: t.modelEffort || null,
       snoozeUntil: t.snoozeUntil || null,
       loggedMinutes: t.loggedMinutes ?? null,
       recurrence: t.recurrence || null,
@@ -348,6 +351,7 @@ function cmdGet(argv) {
   if (task.issueUrl) print(`  issue: ${task.issueUrl}`);
   if (task.project) print(`  project: ${task.project}`);
   if (task.energy) print(`  energy: ${task.energy}`);
+  if (task.modelEffort) print(`  modelEffort: ${task.modelEffort}`);
   if (task.snoozeUntil) print(`  snoozeUntil: ${task.snoozeUntil}`);
   if (task.estimateMinutes) print(`  estimate: ${formatEstimate(task.estimateMinutes)} (${task.estimateMinutes}m)`);
   if (task.loggedMinutes) print(`  logged: ${formatEstimate(task.loggedMinutes)} (${task.loggedMinutes}m)`);
@@ -408,6 +412,7 @@ function cmdAdd(argv) {
     issue:         { type: 'string' },
     project:       { type: 'string' },
     energy:        { type: 'string' },
+    'model-effort': { type: 'string' },
     snooze:        { type: 'string' },
     decision:      { type: 'string' },
     'log-time':    { type: 'string' },
@@ -461,6 +466,9 @@ function cmdAdd(argv) {
   if (values.energy && !isEnergy(values.energy)) {
     die(`invalid --energy "${values.energy}". Valid: ${ENERGY_VALUES.join(', ')}`);
   }
+  if (values['model-effort'] && !isModelEffort(values['model-effort'])) {
+    die(`invalid --model-effort "${values['model-effort']}". Valid: ${MODEL_EFFORT_VALUES.join(', ')}`);
+  }
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
 
@@ -508,6 +516,7 @@ function cmdAdd(argv) {
   if (values.issue) task.issueUrl = values.issue.trim();
   if (values.project) task.project = values.project.trim();
   if (values.energy) task.energy = values.energy;
+  if (values['model-effort']) task.modelEffort = values['model-effort'];
   if (values.snooze) task.snoozeUntil = values.snooze;
   if (values.decision) {
     task.decisions = [{ at: new Date().toISOString(), text: values.decision.trim() }];
@@ -668,6 +677,8 @@ function cmdUpdate(argv) {
     'clear-project': { type: 'boolean' },
     energy:          { type: 'string' },
     'clear-energy':  { type: 'boolean' },
+    'model-effort':  { type: 'string' },
+    'clear-model-effort': { type: 'boolean' },
     snooze:          { type: 'string' },
     'clear-snooze':  { type: 'boolean' },
     decision:        { type: 'string' },
@@ -723,6 +734,9 @@ function cmdUpdate(argv) {
   }
   if (values.energy && !isEnergy(values.energy)) {
     die(`invalid --energy "${values.energy}". Valid: ${ENERGY_VALUES.join(', ')}`);
+  }
+  if (values['model-effort'] && !isModelEffort(values['model-effort'])) {
+    die(`invalid --model-effort "${values['model-effort']}". Valid: ${MODEL_EFFORT_VALUES.join(', ')}`);
   }
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
@@ -848,6 +862,14 @@ function cmdUpdate(argv) {
     changed = true;
   } else if (values.energy !== undefined) {
     task.energy = values.energy;
+    changed = true;
+  }
+
+  if (values['clear-model-effort']) {
+    delete task.modelEffort;
+    changed = true;
+  } else if (values['model-effort'] !== undefined) {
+    task.modelEffort = values['model-effort'];
     changed = true;
   }
 
@@ -1152,6 +1174,7 @@ function cmdDump(argv) {
     issueUrl: t.issueUrl || null,
     project: t.project || null,
     energy: t.energy || null,
+    modelEffort: t.modelEffort || null,
     snoozeUntil: t.snoozeUntil || null,
     blocked: !!t.blocked,
     waitingOn: t.waitingOn || null,
@@ -1566,7 +1589,8 @@ Subcommands:
   plan [--pin T1] [--unpin T1] [--carry] [--json]
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
-      [--project slug] [--energy deep|shallow|errands|creative] [--snooze YYYY-MM-DD]
+      [--project slug] [--energy deep|shallow|errands|creative]
+      [--model-effort light|standard|heavy] [--snooze YYYY-MM-DD]
       [--decision "..."] [--log-time 30m|2h]
       [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
       [--estimate 2h|30m|1d] [--assignee name] [--blocked] [--waiting-on "..."]
@@ -1578,6 +1602,7 @@ Subcommands:
              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
              [--jira PROJECT-123] [--clear-jira] [--issue URL] [--clear-issue]
              [--project slug] [--clear-project] [--energy E] [--clear-energy]
+             [--model-effort light|standard|heavy] [--clear-model-effort]
              [--snooze YYYY-MM-DD] [--clear-snooze] [--decision "..."]
              [--log-time 30m|2h] [--set-logged 2h] [--clear-logged]
              [--recur daily|weekly|monthly] [--recur-interval N] [--clear-recur] [--add-note "..."]

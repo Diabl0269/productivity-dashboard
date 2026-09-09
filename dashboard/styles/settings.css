@@ -605,6 +605,116 @@
   flex-shrink: 0;
 }
 
+.td-children-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.td-children-head,
+.td-children-row {
+  display: grid;
+  grid-template-columns:
+    minmax(12rem, 2.2fr)
+    minmax(4.5rem, 0.7fr)
+    minmax(4.5rem, 0.65fr)
+    minmax(3rem, 0.45fr)
+    minmax(4rem, 0.55fr)
+    minmax(3rem, 0.45fr)
+    minmax(4.5rem, 0.7fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 36rem;
+}
+
+.td-children-head {
+  padding: 0 8px 4px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.td-children-row {
+  margin: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.td-children-row:hover {
+  background: var(--surface-hover);
+}
+
+.td-child-col {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-child-col-main,
+.td-child-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.td-child-cell {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.td-child-cell-empty {
+  color: var(--text-tertiary);
+}
+
+.td-child-status {
+  text-transform: capitalize;
+}
+
+.td-child-model.model-effort-light {
+  color: var(--text-secondary);
+}
+
+.td-child-model.model-effort-standard {
+  color: var(--accent);
+}
+
+.td-child-model.model-effort-heavy {
+  color: var(--status-blocked);
+  font-weight: var(--weight-medium);
+}
+
+.model-effort-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+}
+
+.model-effort-badge.model-effort-standard {
+  color: var(--accent);
+}
+
+.model-effort-badge.model-effort-heavy {
+  color: var(--status-blocked);
+}
+
 .task-card {
   border-left: 3px solid transparent;
 }

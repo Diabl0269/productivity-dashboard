@@ -6,7 +6,7 @@ const LEGACY_STORAGE_KEY = 'dashboard.taskCreateFieldLayout';
 /** All pinable field ids (title stays in the modal header). */
 export const ALL_FIELD_IDS = [
   'priority', 'status', 'due', 'start', 'jiraKey', 'issueUrl', 'project', 'energy',
-  'snoozeUntil', 'type', 'color', 'parent', 'blocked', 'waitingOn', 'assignee',
+  'modelEffort', 'snoozeUntil', 'type', 'color', 'parent', 'blocked', 'waitingOn', 'assignee',
   'estimate', 'recurrence', 'labels', 'links', 'description',
 ];
 

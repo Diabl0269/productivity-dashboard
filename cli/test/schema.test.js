@@ -568,6 +568,21 @@ test('validateTasksDoc: bad energy rejected', () => {
   assert.ok(result.errors.some(e => e.includes('energy')));
 });
 
+test('validateTasksDoc: valid modelEffort passes', () => {
+  const doc = makeValidDoc();
+  doc.sections[0].tasks[0].modelEffort = 'heavy';
+  const result = validateTasksDoc(doc);
+  assert.ok(result.valid, result.errors.join('; '));
+});
+
+test('validateTasksDoc: bad modelEffort rejected', () => {
+  const doc = makeValidDoc();
+  doc.sections[0].tasks[0].modelEffort = 'turbo';
+  const result = validateTasksDoc(doc);
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some(e => e.includes('modelEffort')));
+});
+
 test('ensureSections adds inbox and orders sections', async () => {
   const { ensureSections, SECTION_IDS } = await import('../lib/schema.js');
   const doc = makeValidDoc();
