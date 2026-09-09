@@ -1,6 +1,9 @@
 // task-fields.js — Shared helpers for due dates, blocked state, labels, links, WIP.
 
 import { escapeHtml, findTaskByTaskId } from './ticket-types.js';
+import { nextTaskIdFromState, projectPrefix, derivePrefixFromSlug } from '../../shared/task-ids.js';
+
+export { projectPrefix, derivePrefixFromSlug };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -608,10 +611,25 @@ export function dependencyEdges(tasksBySection) {
   return edges;
 }
 
+/** True when `task` is the epic or a direct/indirect child of `epicId`. */
+export function taskUnderEpic(task, epicId, tasksBySection) {
+  if (!task || !epicId) return false;
+  if (task.taskId === epicId) return true;
+  const byId = indexTasksById(tasksBySection);
+  let cur = task;
+  const seen = new Set();
+  while (cur?.parentId && !seen.has(cur.parentId)) {
+    if (cur.parentId === epicId) return true;
+    seen.add(cur.parentId);
+    cur = byId.get(cur.parentId);
+  }
+  return false;
+}
+
 /**
  * Match task against active facet filters (AND). Empty filters = match all.
  * filters: { priorities:Set, types:Set, due:Set, labels:Set, sections:Set,
- *            hasParent:bool|null, blocked:bool|null }
+ *            hasParent:bool|null, blocked:bool|null, parentEpics:Set }
  */
 export function taskMatchesFacets(task, filters, tasksBySection) {
   if (!filters) return true;
@@ -664,6 +682,13 @@ export function taskMatchesFacets(task, filters, tasksBySection) {
   if (filters.stale === false && isStale(task, filters.staleDays || 14)) return false;
   if (filters.snoozed === true && !isSnoozed(task)) return false;
   if (filters.snoozed === false && isSnoozed(task)) return false;
+  if (filters.parentEpics && filters.parentEpics.size > 0) {
+    let ok = false;
+    for (const epicId of filters.parentEpics) {
+      if (taskUnderEpic(task, epicId, tasksBySection)) { ok = true; break; }
+    }
+    if (!ok) return false;
+  }
 
   return true;
 }
@@ -713,19 +738,9 @@ export function blockedByCandidates(tasksBySection, excludeTaskId) {
   return out.sort((a, b) => a.taskId.localeCompare(b.taskId, undefined, { numeric: true }));
 }
 
-/** Next T{n} id from all section tasks. */
-export function computeNextTaskId(state) {
-  let maxId = 0;
-  const { sections = [], tasks = {} } = state || {};
-  sections.forEach(section => {
-    (tasks[section.id] || []).forEach(t => {
-      if (t.taskId) {
-        const num = parseInt(t.taskId.substring(1), 10);
-        if (!isNaN(num) && num > maxId) maxId = num;
-      }
-    });
-  });
-  return `T${maxId + 1}`;
+/** Next T{n} id from all section tasks (optionally scoped to a project prefix). */
+export function computeNextTaskId(state, projectId = null) {
+  return nextTaskIdFromState(state, projectId);
 }
 
 const JIRA_KEY_RE = /^[A-Za-z][A-Za-z0-9]+-\d+$/;

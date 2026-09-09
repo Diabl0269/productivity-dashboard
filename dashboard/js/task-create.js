@@ -20,6 +20,7 @@ import { memoryState } from './memory-renderer.js';
 import {
   mountFieldLayoutSections,
 } from './task-field-layout.js';
+import { mountTicketPicker } from './ticket-picker.js';
 
 const PRIORITIES = ['low', 'medium', 'high'];
 
@@ -42,8 +43,9 @@ export function isTaskCreateOpen() {
 /**
  * Open the create-task modal.
  * @param {string} [sectionId] Prefill status from the column that was clicked.
+ * @param {{ projectId?: string }} [opts]
  */
-export function openCreateTaskModal(sectionId) {
+export function openCreateTaskModal(sectionId, opts = {}) {
   const overlay = document.getElementById('taskCreateOverlay');
   if (!overlay || !getState) return;
 
@@ -67,7 +69,7 @@ export function openCreateTaskModal(sectionId) {
     startDate: null,
     jiraKey: '',
     issueUrl: '',
-    project: '',
+    project: opts.projectId || '',
     energy: null,
     snoozeUntil: null,
     blocked: false,
@@ -80,7 +82,7 @@ export function openCreateTaskModal(sectionId) {
     recurrenceInterval: 1,
   };
 
-  const nextId = computeNextTaskId(state);
+  const nextId = computeNextTaskId(state, draft.project || null);
   const idEl = document.getElementById('tcTaskId');
   if (idEl) idEl.textContent = nextId;
 
@@ -412,37 +414,31 @@ function buildParentField() {
   const state = getState() || {};
   const types = normalizeTicketTypes(state.ticketTypes);
   const field = document.createElement('div');
-  field.className = 'td-field';
+  field.className = 'td-field td-field-block';
   const pl = document.createElement('span');
   pl.className = 'td-field-label';
   pl.textContent = 'Parent';
-  const parentSelect = document.createElement('select');
-  parentSelect.className = 'td-select';
-  parentSelect.setAttribute('aria-label', 'Parent ticket');
 
-  const none = document.createElement('option');
-  none.value = '';
-  none.textContent = '— None —';
-  parentSelect.appendChild(none);
+  const pickerHost = document.createElement('div');
+  pickerHost.className = 'td-ticket-picker-host';
 
   const candidates = parentCandidates(types, state.tasks, draft.type, null);
-  candidates.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.taskId;
-    const pType = getTicketType(types, p.type);
-    opt.textContent = `${p.taskId} · ${p.title} (${pType.name})`;
-    if (p.taskId === draft.parentId) opt.selected = true;
-    parentSelect.appendChild(opt);
-  });
-
-  parentSelect.disabled = candidates.length === 0;
-  parentSelect.addEventListener('change', () => {
-    draft.parentId = parentSelect.value || null;
-    buildForm();
+  mountTicketPicker(pickerHost, {
+    tasks: candidates,
+    value: draft.parentId,
+    allowNone: true,
+    noneLabel: '— None —',
+    placeholder: 'Search parent ticket…',
+    ariaLabel: 'Parent ticket',
+    disabled: candidates.length === 0,
+    onChange: (id) => {
+      draft.parentId = id;
+      buildForm();
+    },
   });
 
   field.appendChild(pl);
-  field.appendChild(parentSelect);
+  field.appendChild(pickerHost);
   return field;
 }
 
@@ -744,7 +740,8 @@ function submitCreate() {
   const sectionId = draft.section || 'todo';
   if (!tasks[sectionId]) tasks[sectionId] = [];
 
-  const taskId = computeNextTaskId(state);
+  const projectId = (draft.project || '').trim() || null;
+  const taskId = computeNextTaskId(state, projectId);
   const estimateMinutes = draft.estimate ? parseEstimate(draft.estimate) : null;
   if (draft.estimate && estimateMinutes == null) {
     showStatus('Invalid estimate — try 30m, 2h, or 1d');

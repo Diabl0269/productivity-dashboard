@@ -17,8 +17,9 @@ import { initSettings, applyDisplayPrefs, switchSettingsSubtab, getSettingsSubta
 import { initProjectsView } from './projects-view.js';
 import { initPwa } from './pwa.js';
 import { initRouting, flushPendingRoute, parseRoute } from './routing.js';
+import { applyFiltersFromUrl, initUrlFiltersEarly, finalizeUrlFiltersAfterTasksLoad } from './url-filters.js';
 import { activeMainTab, switchMainTab } from './state.js';
-import { taskState, switchTaskView } from './tasks-main.js';
+import { taskState, switchTaskView, renderFilteredViews } from './tasks-main.js';
 import {
   openTaskDetail, closeTaskDetail, isTaskDetailOpen, getOpenTaskId,
 } from './task-detail.js';
@@ -92,7 +93,12 @@ initRouting({
   switchGlobalMemorySubtab,
   getGlobalMemorySubtab,
   getTaskView: () => taskState?.currentView || 'board',
+  applyFiltersFromUrl,
+  refreshTaskViews: renderFilteredViews,
+  getActiveMainTab: () => activeMainTab,
 });
+
+initUrlFiltersEarly();
 
 // Auto-restore file handles, fall back to HTTP fetch
 let tasksLoaded = false;
@@ -158,4 +164,13 @@ if (routeAfterLoad.tab === 'projects' && routeAfterLoad.projectId) {
 }
 if (routeAfterLoad.tab === 'global-memory' && routeAfterLoad.globalSubtab) {
   switchGlobalMemorySubtab(routeAfterLoad.globalSubtab, { fromRoute: true });
+}
+
+if (tasksLoaded) {
+  finalizeUrlFiltersAfterTasksLoad({
+    shouldRender: routeAfterLoad.tab === 'tasks' || activeMainTab === 'tasks',
+    renderFn: renderFilteredViews,
+  });
+} else {
+  finalizeUrlFiltersAfterTasksLoad({ shouldRender: false });
 }

@@ -5,6 +5,18 @@ import { syncUrl, isRoutingReady } from './routing.js';
 
 export let activeMainTab = 'overview'; // overview | tasks | projects | memory | global-memory | settings
 
+const MAIN_TAB_ORDER = [
+  'overview', 'tasks', 'projects', 'memory', 'global-memory', 'settings',
+];
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (el.isContentEditable) return true;
+  return false;
+}
+
 const statusEl = document.getElementById('status');
 export const filePathEl = document.getElementById('filePath');
 
@@ -116,8 +128,8 @@ export function switchMainTab(tab, opts = {}) {
   // Show/hide appropriate buttons
   openTaskBtn.style.display = tab === 'tasks' ? 'inline-flex' : 'none';
   openMemoryBtn.style.display = tab === 'memory' ? 'inline-flex' : 'none';
-  // Save is available on Tasks (task edits) and Settings (ticket-type edits → tasks.json)
-  saveBtn.style.display = (tab === 'tasks' || tab === 'settings') ? 'inline-flex' : 'none';
+  // Save is available on Tasks (task edits), Projects (meta), and Settings (ticket-type edits → tasks.json)
+  saveBtn.style.display = (tab === 'tasks' || tab === 'settings' || tab === 'projects') ? 'inline-flex' : 'none';
 
   // Update file path display
   const taskInfo = getTaskInfo();
@@ -161,4 +173,14 @@ export function initStateListeners() {
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   globalMemoryTabBtn.addEventListener('click', () => switchMainTab('global-memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
+
+  document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (isTypingTarget(e.target)) return;
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= MAIN_TAB_ORDER.length) {
+      e.preventDefault();
+      switchMainTab(MAIN_TAB_ORDER[n - 1]);
+    }
+  });
 }

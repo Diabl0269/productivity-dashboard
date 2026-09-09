@@ -248,7 +248,7 @@ test('validateTasksDoc: bad task id format errors', () => {
   doc.sections[0].tasks[0].id = 'task-1';
   const result = validateTasksDoc(doc);
   assert.equal(result.valid, false);
-  assert.ok(result.errors.some(e => e.includes('T\\d+')), result.errors.join('; '));
+  assert.ok(result.errors.some(e => e.includes('valid task id') || e.includes('A-Z')), result.errors.join('; '));
 });
 
 test('validateTasksDoc: subtask missing text errors', () => {

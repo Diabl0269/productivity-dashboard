@@ -34,6 +34,10 @@ import { parse } from '../lib/args.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { readJson, tasksJsonPath } from '../lib/io.js';
 import {
+  isValidTaskId,
+  collectKnownPrefixes,
+} from '../../shared/task-ids.js';
+import {
   load, save, nextId, findTask, findAll, sectionById, flatTasks, todayStr,
 } from '../lib/tasks-store.js';
 import {
@@ -43,6 +47,8 @@ import {
   ensureSections, normalizeMeta, defaultMeta,
 } from '../lib/schema.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
+import { createTasksBackup, listTasksBackups, restoreTasksBackup } from '../lib/backup.js';
+import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,7 +62,6 @@ function taskDescription(task) {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TASK_ID_RE = /^T\d+$/;
 
 function assertDueDate(value, flag) {
   if (value && !DATE_RE.test(value)) {
@@ -64,9 +69,10 @@ function assertDueDate(value, flag) {
   }
 }
 
-function assertTaskId(value, flag) {
-  if (!TASK_ID_RE.test(value)) {
-    die(`invalid ${flag} "${value}". Must match T<number>`);
+function assertTaskId(value, flag, doc = null) {
+  const known = doc ? collectKnownPrefixes(doc.meta?.projects) : undefined;
+  if (!isValidTaskId(value, known)) {
+    die(`invalid ${flag} "${value}". Must be a valid task id (e.g. T1, APP2)`);
   }
 }
 
@@ -128,7 +134,7 @@ function spawnRecurringNext(doc, completedTask, today) {
   const todoSection = sectionById(doc, 'todo');
   if (!todoSection) return null;
 
-  const newId = nextId(doc);
+  const newId = nextId(doc, completedTask.project || null);
   const newTask = {
     id: newId,
     title: completedTask.title,
@@ -468,7 +474,7 @@ function cmdAdd(argv) {
 
   const blockedByIds = values['blocked-by'] || [];
   for (const depId of blockedByIds) {
-    assertTaskId(depId, '--blocked-by');
+    assertTaskId(depId, '--blocked-by', doc);
     if (!findTask(doc, depId)) {
       die(`blocked-by task ${depId} not found. Try: ch tasks list`);
     }
@@ -479,7 +485,8 @@ function cmdAdd(argv) {
     loggedMinutes = parseLoggedMinutes(values['log-time'], '--log-time');
   }
 
-  const id = nextId(doc);
+  const projectId = values.project?.trim() || null;
+  const id = nextId(doc, projectId);
   const description = values.description ?? values.note;
 
   const task = {
@@ -699,7 +706,7 @@ function cmdUpdate(argv) {
     json:            { type: 'boolean', short: 'j' },
   });
 
-  const id = positionals[0];
+  let id = positionals[0];
   if (!id) die('usage: ch tasks update <id> [--title "..."] [--due YYYY-MM-DD] [--blocked] [--add-label L] [--add-link URL] [--add-blocked-by T1] ...');
 
   if (values.priority && !isPriority(values.priority)) {
@@ -822,9 +829,18 @@ function cmdUpdate(argv) {
     delete task.project;
     changed = true;
   } else if (values.project !== undefined) {
-    task.project = values.project.trim();
-    if (!task.project) delete task.project;
-    changed = true;
+    const projectId = values.project.trim();
+    if (!projectId) {
+      delete task.project;
+      changed = true;
+    } else {
+      const result = migrateTaskToProjectInDoc(doc, id, projectId);
+      changed = true;
+      appendHistory(task, { event: 'project', to: projectId });
+      if (result.migrated) {
+        id = result.newId;
+      }
+    }
   }
 
   if (values['clear-energy']) {
@@ -963,7 +979,7 @@ function cmdUpdate(argv) {
     if (values['add-blocked-by'] && values['add-blocked-by'].length) {
       if (!Array.isArray(task.blockedBy)) task.blockedBy = [];
       for (const depId of values['add-blocked-by']) {
-        assertTaskId(depId, '--add-blocked-by');
+        assertTaskId(depId, '--add-blocked-by', doc);
         if (depId === id) die('blocked-by cannot be the task itself');
         if (!findTask(doc, depId)) {
           die(`blocked-by task ${depId} not found. Try: ch tasks list`);
@@ -1099,11 +1115,12 @@ function cmdSetPriority(argv) {
 
 function cmdNextId(argv) {
   const { values } = parse(argv, {
+    project: { type: 'string' },
     json: { type: 'boolean', short: 'j' },
   });
 
   const doc = load();
-  const id = nextId(doc);
+  const id = nextId(doc, values.project?.trim() || null);
 
   if (values.json) {
     jsonOut({ nextId: id });
@@ -1399,7 +1416,7 @@ function cmdPlan(argv) {
   if (values.pin && values.pin.length) {
     if (!Array.isArray(plan.taskIds)) plan.taskIds = [];
     for (const id of values.pin) {
-      assertTaskId(id, '--pin');
+      assertTaskId(id, '--pin', doc);
       if (!findTask(doc, id)) die(`task ${id} not found. Try: ch tasks list`);
       if (!plan.taskIds.includes(id)) plan.taskIds.push(id);
     }
@@ -1508,6 +1525,34 @@ function cmdArchiveDone(argv) {
   ok(`archive-done: archived ${toMove.length} task(s) -> archive`);
 }
 
+async function cmdBackup(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const result = createTasksBackup();
+  if (values.json) jsonOut(result);
+  else ok(`backup: ${result.name} (${result.path})`);
+}
+
+async function cmdBackups(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const backups = listTasksBackups();
+  if (values.json) jsonOut({ backups });
+  else if (backups.length === 0) ok('backups: (none)');
+  else {
+    for (const b of backups) print(`${b.name}  ${b.mtime}  ${b.size}b`);
+  }
+}
+
+async function cmdRestore(argv) {
+  const { positionals, values } = parse(argv, {
+    json: { type: 'boolean', short: 'j' },
+  });
+  const name = positionals[0];
+  if (!name) die('usage: ch tasks restore <backup-name>');
+  const result = restoreTasksBackup(name);
+  if (values.json) jsonOut(result);
+  else ok(`restore: ${result.name}`);
+}
+
 // ---------------------------------------------------------------------------
 // Usage / dispatch
 // ---------------------------------------------------------------------------
@@ -1548,7 +1593,10 @@ Subcommands:
   dump [--active]
   export [--md]
   lint [--fix]
-  archive-done`;
+  archive-done
+  backup [--json]
+  backups [--json]
+  restore <backup-name> [--json]`;
 
 const SUBCOMMANDS = {
   list:          cmdList,
@@ -1565,6 +1613,9 @@ const SUBCOMMANDS = {
   export:        cmdExport,
   lint:          cmdLint,
   'archive-done': cmdArchiveDone,
+  backup:        cmdBackup,
+  backups:       cmdBackups,
+  restore:       cmdRestore,
 };
 
 export default async function tasks(argv) {

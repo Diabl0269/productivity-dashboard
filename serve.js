@@ -133,6 +133,87 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Tasks backup endpoints
+  const BACKUP_TASKS_DIR = path.join(DATA_ROOT, '.backup', 'tasks');
+
+  function backupTimestamp(d = new Date()) {
+    return d.toISOString().replace(/:/g, '-').replace(/\.\d{3}Z$/, 'Z');
+  }
+
+  function ensureTasksBackupDir() {
+    if (!fs.existsSync(BACKUP_TASKS_DIR)) fs.mkdirSync(BACKUP_TASKS_DIR, { recursive: true });
+    return BACKUP_TASKS_DIR;
+  }
+
+  if (url.pathname === '/api/tasks-backups' && req.method === 'GET') {
+    try {
+      const dir = ensureTasksBackupDir();
+      const backups = fs.readdirSync(dir)
+        .filter(f => f.startsWith('tasks-') && f.endsWith('.json'))
+        .map(name => {
+          const full = path.join(dir, name);
+          const stat = fs.statSync(full);
+          return { name, size: stat.size, mtime: stat.mtime.toISOString() };
+        })
+        .sort((a, b) => b.mtime.localeCompare(a.mtime));
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ backups }));
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/tasks-backup' && req.method === 'POST') {
+    try {
+      const src = path.join(DATA_ROOT, 'tasks.json');
+      if (!fs.existsSync(src)) {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'tasks.json not found' }));
+        return;
+      }
+      const createdAt = new Date().toISOString();
+      const name = `tasks-${backupTimestamp(new Date(createdAt))}.json`;
+      const dir = ensureTasksBackupDir();
+      const dest = path.join(dir, name);
+      fs.copyFileSync(src, dest);
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ name, createdAt, size: fs.statSync(dest).size }));
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/tasks-restore' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      const name = path.basename(body.name || '');
+      if (!name.startsWith('tasks-') || !name.endsWith('.json')) {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid backup name' }));
+        return;
+      }
+      const src = path.join(BACKUP_TASKS_DIR, name);
+      if (!fs.existsSync(src)) {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'backup not found' }));
+        return;
+      }
+      const content = fs.readFileSync(src, 'utf8');
+      const dest = path.join(DATA_ROOT, 'tasks.json');
+      fs.writeFileSync(dest, content, 'utf8');
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, name, content }));
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Global memory endpoint
   if (url.pathname === '/api/global-memory') {
     const claudeDir = path.join(os.homedir(), '.claude');

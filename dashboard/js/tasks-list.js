@@ -16,6 +16,7 @@ import {
   estimateBadgeHtml, assigneeChipHtml, appendHistory,
   jiraKeyBadgeHtml, recurrenceBadgeHtml, loggedBadgeHtml,
   staleBadgeHtml, snoozeBadgeHtml, energyBadgeHtml, isSnoozed,
+  computeNextTaskId,
 } from './task-fields.js';
 import { taskPassesFacets, hasActiveFacets } from './task-filters.js';
 import { isSelected, toggleSelect } from './task-selection.js';
@@ -76,17 +77,7 @@ export function renderList() {
       if (!tasks[currentSection]) tasks[currentSection] = [];
 
       // Auto-assign next task ID
-      let maxId = 0;
-      sections.forEach(section => {
-        const sectionTasks = tasks[section.id] || [];
-        sectionTasks.forEach(t => {
-          if (t.taskId) {
-            const num = parseInt(t.taskId.substring(1));
-            if (!isNaN(num) && num > maxId) maxId = num;
-          }
-        });
-      });
-      const nextTaskId = `T${maxId + 1}`;
+      const nextTaskId = computeNextTaskId(getState());
 
       tasks[currentSection].unshift({
         id: Date.now() + Math.random(),

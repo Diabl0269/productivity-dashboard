@@ -5,10 +5,11 @@ import {
   DEFAULT_TICKET_TYPE_ID,
   isHexColor,
 } from './ticket-types.js';
+import { isValidTaskId, collectKnownPrefixes } from '../../shared/task-ids.js';
+import { normalizeProjectRow } from '../../shared/projects.js';
 
 const ENERGY_VALUES = new Set(['deep', 'shallow', 'errands', 'creative']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TASK_ID_RE = /^T\d+$/;
 
 /** Prefer description; fall back to legacy note. */
 function readDescription(t) {
@@ -121,10 +122,10 @@ export function normalizeTasksMeta(meta) {
     ? dailyPlan.date
     : null;
   const taskIds = Array.isArray(dailyPlan.taskIds)
-    ? dailyPlan.taskIds.map(id => String(id).trim()).filter(id => TASK_ID_RE.test(id))
+    ? dailyPlan.taskIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta.projects)))
     : [];
   const carriedIds = Array.isArray(dailyPlan.carriedIds)
-    ? dailyPlan.carriedIds.map(id => String(id).trim()).filter(id => TASK_ID_RE.test(id))
+    ? dailyPlan.carriedIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta.projects)))
     : [];
 
   let weeklyCapacityMinutes = base.weeklyCapacityMinutes;
@@ -137,14 +138,7 @@ export function normalizeTasksMeta(meta) {
   const projects = Array.isArray(meta.projects)
     ? meta.projects
       .filter(p => p && typeof p === 'object' && typeof p.id === 'string' && p.id.trim())
-      .map(p => {
-        const row = {
-          id: String(p.id).trim(),
-          name: String(p.name || p.id).trim() || String(p.id).trim(),
-        };
-        if (typeof p.color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(p.color)) row.color = p.color;
-        return row;
-      })
+      .map(p => normalizeProjectRow(p))
     : [];
 
   const ideas = Array.isArray(meta.ideas)

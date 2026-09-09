@@ -18,6 +18,9 @@ let deps = {
   selectMemoryTab: null,
   switchSettingsSubtab: null,
   switchGlobalMemorySubtab: null,
+  applyFiltersFromUrl: null,
+  refreshTaskViews: null,
+  getActiveMainTab: null,
 };
 
 /** @returns {string} e.g. "/dashboard" */
@@ -128,13 +131,15 @@ export function routeFromState() {
 export function navigateToRoute(route, opts = {}) {
   if (!routingReady || applyingRoute) return;
   const path = buildPath(route);
-  const current = window.location.pathname;
-  if (path === current) return;
+  const search = window.location.search || '';
+  const target = path + search;
+  const current = window.location.pathname + window.location.search;
+  if (target === current) return;
   const state = { dashboardRoute: route };
   if (opts.replace) {
-    window.history.replaceState(state, '', path);
+    window.history.replaceState(state, '', target);
   } else {
-    window.history.pushState(state, '', path);
+    window.history.pushState(state, '', target);
   }
 }
 
@@ -220,10 +225,14 @@ export function initRouting(callbacks) {
 
   const initial = parseRoute();
   applyRoute(initial);
-  window.history.replaceState({ dashboardRoute: initial }, '', buildPath(initial));
+  const initialSearch = window.location.search || '';
+  window.history.replaceState({ dashboardRoute: initial }, '', buildPath(initial) + initialSearch);
 
   window.addEventListener('popstate', () => {
     applyRoute(parseRoute());
+    deps.applyFiltersFromUrl?.();
+    const tab = deps.getActiveMainTab?.() || 'overview';
+    if (tab === 'tasks') deps.refreshTaskViews?.();
   });
 
   routingReady = true;

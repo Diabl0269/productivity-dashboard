@@ -15,6 +15,7 @@
 
 import { readJson, tasksJsonPath, atomicWrite } from './io.js';
 import { validateTasksDoc, normalizeTasksDoc } from './schema.js';
+import { nextTaskId } from '../../shared/task-ids.js';
 
 /**
  * Load tasks.json, normalize legacy fields, validate, and return the document.
@@ -45,17 +46,19 @@ export function save(doc) {
 
 /**
  * Return the next available task ID string ('T1' if none exist).
- * Scans all tasks across all sections for the max numeric id.
+ * When projectId is set, uses that project's ticket prefix from meta.projects.
+ * @param {object} doc
+ * @param {string|null} [projectId]
  */
-export function nextId(doc) {
-  let max = 0;
+export function nextId(doc, projectId = null) {
+  const flat = [];
   for (const section of doc.sections) {
     for (const task of section.tasks) {
-      const n = parseInt(task.id.slice(1), 10);
-      if (!isNaN(n) && n > max) max = n;
+      flat.push(task);
     }
   }
-  return `T${max + 1}`;
+  const metaProjects = doc.meta?.projects || [];
+  return nextTaskId(flat, projectId, metaProjects);
 }
 
 /**

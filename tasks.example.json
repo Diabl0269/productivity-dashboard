@@ -10,7 +10,7 @@
     "dailyPlan": { "date": null, "taskIds": [], "carriedIds": [] },
     "weeklyCapacityMinutes": 600,
     "projects": [
-      { "id": "my-app", "name": "My App", "color": "#3B82F6" }
+      { "id": "my-app", "name": "My App", "color": "#3B82F6", "prefix": "APP" }
     ],
     "ideas": ["Try a weekly review ritual"],
     "review": { "weeklyDate": null, "checks": {} }
