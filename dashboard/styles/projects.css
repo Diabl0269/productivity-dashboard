@@ -316,6 +316,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  max-width: 38rem;
 }
 
 .pv-subproj {
@@ -397,6 +398,58 @@
   letter-spacing: 0.05em;
   color: var(--text-tertiary);
   margin: var(--space-4) 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-subtle);
+}
+
+.pv-drag-handle {
+  flex-shrink: 0;
+  width: 22px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: grab;
+  font-size: 10px;
+  letter-spacing: -2px;
+  padding: 0;
+  line-height: 1;
+}
+
+.pv-drag-handle:active {
+  cursor: grabbing;
+}
+
+.pv-drag-handle:hover {
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}
+
+.pv-node.pv-dragging {
+  opacity: 0.55;
+}
+
+.pv-subproj.pv-drop-active,
+.pv-epic-node.pv-drop-active,
+.pv-loose-head.pv-drop-active {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.pv-epic-drop-hint {
+  margin-left: var(--space-6);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.pv-epic-node > .pv-row-wrap .pv-row {
+  border-left: 3px solid var(--pv-accent, var(--accent));
 }
 
 /* Task tree */
@@ -446,6 +499,8 @@
   z-index: 1200;
   min-width: 220px;
   max-width: min(92vw, 320px);
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -538,12 +593,12 @@
 
 .pv-row {
   display: grid;
-  grid-template-columns: 72px 52px 1fr auto auto;
+  grid-template-columns: 46px 40px minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--surface-1);
@@ -552,6 +607,10 @@
   text-align: left;
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.pv-row.pv-has-children {
+  grid-template-columns: 46px 40px minmax(0, 1fr) auto auto;
 }
 
 .pv-row-wrap .pv-row {

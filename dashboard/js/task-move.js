@@ -57,6 +57,29 @@ export function confirmAndRenameTaskId(state, task, newId, onDone) {
   return true;
 }
 
+function positionPopover(pop, anchor) {
+  const margin = 8;
+  const rect = anchor.getBoundingClientRect();
+  const popW = pop.offsetWidth;
+  const popH = pop.offsetHeight;
+
+  let top = rect.bottom + 4;
+  if (top + popH > window.innerHeight - margin) {
+    top = rect.top - popH - 4;
+  }
+  if (top < margin) {
+    top = margin;
+    pop.style.maxHeight = `${window.innerHeight - margin * 2}px`;
+    pop.style.overflowY = 'auto';
+  }
+
+  let left = rect.right - popW;
+  left = Math.max(margin, Math.min(left, window.innerWidth - popW - margin));
+
+  pop.style.top = `${top}px`;
+  pop.style.left = `${left}px`;
+}
+
 export function showTaskMovePopover(anchor, task, state, onDone) {
   document.querySelectorAll('.pv-move-popover').forEach(el => el.remove());
 
@@ -81,7 +104,7 @@ export function showTaskMovePopover(anchor, task, state, onDone) {
     btn.className = 'pv-move-project-opt';
     btn.innerHTML = `<span class="pv-swatch" style="background:${escapeHtml(p.color || '#3B82F6')}"></span>${escapeHtml(p.name)}`;
     btn.addEventListener('click', async () => {
-      await moveTaskToProject(state, task, p.id, onDone);
+      await applyMoveToProject(state, task, p.id, onDone);
       pop.remove();
     });
     projectList.appendChild(btn);
@@ -103,7 +126,7 @@ export function showTaskMovePopover(anchor, task, state, onDone) {
     ariaLabel: 'Move under epic',
     onChange: (epicId) => {
       if (!epicId) return;
-      moveTaskToEpic(state, task, epicId, onDone);
+      applyMoveToEpic(state, task, epicId, onDone);
       pop.remove();
     },
   });
@@ -120,14 +143,16 @@ export function showTaskMovePopover(anchor, task, state, onDone) {
   });
 
   pop.querySelector('[data-action="clear-epic"]').addEventListener('click', () => {
-    moveTaskToEpic(state, task, null, onDone);
+    applyMoveToEpic(state, task, null, onDone);
     pop.remove();
   });
 
+  pop.style.visibility = 'hidden';
   document.body.appendChild(pop);
-  const rect = anchor.getBoundingClientRect();
-  pop.style.top = `${rect.bottom + 4}px`;
-  pop.style.left = `${Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8)}px`;
+  requestAnimationFrame(() => {
+    positionPopover(pop, anchor);
+    pop.style.visibility = 'visible';
+  });
 
   const close = (e) => {
     if (!pop.contains(e.target) && e.target !== anchor) {
@@ -138,19 +163,19 @@ export function showTaskMovePopover(anchor, task, state, onDone) {
   setTimeout(() => document.addEventListener('click', close), 0);
 }
 
-async function moveTaskToProject(state, task, projectId, onDone) {
+export async function applyMoveToProject(state, task, projectId, onDone) {
   const metaProjects = state.meta?.projects || [];
   const project = mergedProjectList(state.tasks, metaProjects).find(p => p.id === projectId);
   const willMigrate = needsPrefixMigration(task.taskId, projectId, metaProjects);
   if (willMigrate) {
     const targetPrefix = projectPrefix(project || { id: projectId }, metaProjects);
     const msg = `${task.taskId} will be renamed to prefix ${targetPrefix}.\n\nCreate a backup first?`;
-    if (!confirm(msg + '\n\nOK = backup & move · Cancel = abort')) return;
+    if (!confirm(msg + '\n\nOK = backup & move · Cancel = abort')) return false;
     try {
       await createTasksBackup();
       showStatus('Backup created');
     } catch (e) {
-      if (!confirm(`Backup failed (${e.message}). Move anyway?`)) return;
+      if (!confirm(`Backup failed (${e.message}). Move anyway?`)) return false;
     }
   }
   const result = migrateTaskToProjectInState(state, task.taskId, projectId);
@@ -164,6 +189,7 @@ async function moveTaskToProject(state, task, projectId, onDone) {
   showStatus(result.migrated
     ? `Moved ${result.oldId} → ${result.newId} (${project?.name || projectId})`
     : `Moved to ${project?.name || projectId}`);
+  return true;
 }
 
 function findUpdatedTask(state, taskId) {
@@ -175,9 +201,9 @@ function findUpdatedTask(state, taskId) {
   return null;
 }
 
-function moveTaskToEpic(state, task, epicId, onDone) {
+export function applyMoveToEpic(state, task, epicId, onDone) {
   const result = moveTaskToEpicInState(state, task.taskId, epicId);
-  if (!result) return;
+  if (!result) return false;
   result.task.updated = todayStr();
   appendHistory(result.task, {
     event: 'parent',
@@ -186,5 +212,7 @@ function moveTaskToEpic(state, task, epicId, onDone) {
   });
   markChanged(result.task);
   onDone?.({ action: 'epic', result });
+  if (onDone) return true;
   showStatus(epicId ? `Moved under ${epicId}` : 'Removed from epic');
+  return true;
 }

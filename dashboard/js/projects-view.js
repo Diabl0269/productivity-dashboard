@@ -37,6 +37,7 @@ import { createTasksBackup } from './tasks-backup.js';
 import { mountTicketPicker } from './ticket-picker.js';
 import { renderProjectDocsPanel, clearProjectDocsCache } from './project-docs.js';
 import { showTaskMovePopover } from './task-move.js';
+import { attachTaskDragHandle, bindProjectsDragDrop } from './project-drag.js';
 
 const SELECTED_KEY = 'dashboard.selectedProject';
 const COLLAPSE_KEY = 'dashboard.projects.collapsed';
@@ -482,14 +483,15 @@ function collapseBtn(key, label) {
 
 function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   const wrap = document.createElement('div');
-  wrap.className = 'pv-node';
+  wrap.className = 'pv-node' + ((task.type || 'task') === 'epic' ? ' pv-epic-node' : '');
   wrap.style.setProperty('--pv-depth', String(depth));
   if (accentColor) wrap.style.setProperty('--pv-accent', accentColor);
+  if ((task.type || 'task') === 'epic') wrap.dataset.pvEpicId = task.taskId;
 
   const kids = childrenMap.get(task.taskId) || [];
   const isEpic = (task.type || 'task') === 'epic';
   const collapseKey = `epic:${task.taskId}`;
-  const collapsed = isEpic && kids.length && isCollapsed(collapseKey);
+  const collapsed = isEpic && isCollapsed(collapseKey);
   const prog = progressFor(task, childrenMap);
   const tt = getTicketType(types, task.type || 'task');
   const color = resolveTaskColor(task, types, state.tasks);
@@ -499,7 +501,17 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   const row = document.createElement('div');
   row.className = 'pv-row-wrap';
 
-  if (isEpic && kids.length) row.appendChild(collapseBtn(collapseKey, task.title || task.taskId));
+  const dragHandle = document.createElement('button');
+  dragHandle.type = 'button';
+  dragHandle.className = 'pv-drag-handle';
+  dragHandle.draggable = true;
+  dragHandle.title = 'Drag to move';
+  dragHandle.setAttribute('aria-label', 'Drag to move ticket');
+  dragHandle.textContent = '⋮⋮';
+  attachTaskDragHandle(dragHandle, task, wrap);
+  row.appendChild(dragHandle);
+
+  if (isEpic) row.appendChild(collapseBtn(collapseKey, task.title || task.taskId));
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -548,6 +560,11 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
     branch.className = 'pv-branch';
     kids.forEach(k => branch.appendChild(renderTaskRow(k, childrenMap, types, state, depth + 1, accentColor)));
     wrap.appendChild(branch);
+  } else if (isEpic && !collapsed && kids.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'pv-epic-drop-hint';
+    empty.textContent = 'Drop tickets here';
+    wrap.appendChild(empty);
   }
   return wrap;
 }
@@ -573,7 +590,8 @@ function renderTaskForest(tasks, types, state, accentColor) {
     if (epics.length) {
       const looseHead = document.createElement('div');
       looseHead.className = 'pv-loose-head';
-      looseHead.textContent = 'Other tickets';
+      looseHead.dataset.pvUnlinkEpic = '1';
+      looseHead.textContent = 'Other tickets — drop here to remove from epic';
       container.appendChild(looseHead);
     }
     for (const t of loose) {
@@ -595,6 +613,7 @@ function renderSubProjectSection(section, types, state, filters) {
 
   const sectionEl = document.createElement('section');
   sectionEl.className = 'pv-subproj';
+  sectionEl.dataset.pvProjectId = sub.id;
   sectionEl.style.setProperty('--pv-sub-color', color);
 
   const head = document.createElement('header');
@@ -932,20 +951,21 @@ function renderMain(state, project) {
   content.className = 'pv-content';
 
   if (grouped.mode === 'grouped') {
-    for (const section of grouped.sections) {
-      content.appendChild(renderSubProjectSection(section, types, state, filters));
-    }
     const directTasks = filterTasks(grouped.direct, filters);
     if (directTasks.length) {
       const directSection = document.createElement('section');
       directSection.className = 'pv-subproj pv-subproj-direct';
+      directSection.dataset.pvProjectId = project.id;
       directSection.style.setProperty('--pv-sub-color', color);
-      directSection.innerHTML = `<header class="pv-subproj-head pv-subproj-head-static"><span class="pv-subproj-swatch" style="background:${escapeHtml(color)}"></span><div class="pv-subproj-title-wrap"><h3 class="pv-subproj-title">Direct on ${escapeHtml(project.name)}</h3><p class="pv-subproj-meta">${directTasks.length} tickets not assigned to a sub-project</p></div></header>`;
+      directSection.innerHTML = `<header class="pv-subproj-head pv-subproj-head-static"><span class="pv-subproj-swatch" style="background:${escapeHtml(color)}"></span><div class="pv-subproj-title-wrap"><h3 class="pv-subproj-title">${escapeHtml(project.name)}</h3><p class="pv-subproj-meta">${directTasks.length} ticket(s) on this project · epics first</p></div></header>`;
       const body = document.createElement('div');
       body.className = 'pv-subproj-body';
       body.appendChild(renderTaskForest(directTasks, types, state, color));
       directSection.appendChild(body);
       content.appendChild(directSection);
+    }
+    for (const section of grouped.sections) {
+      content.appendChild(renderSubProjectSection(section, types, state, filters));
     }
     if (grouped.sections.every(s => filterTasks(s.tasks, filters).length === 0) && directTasks.length === 0) {
       content.innerHTML = '<div class="pv-empty">No tickets match your filters. Adjust filters above or create tickets in sub-projects.</div>';
@@ -960,6 +980,9 @@ function renderMain(state, project) {
   }
 
   main.appendChild(content);
+  bindProjectsDragDrop(content, state, () => {
+    getRenderTasks?.()();
+  });
 }
 
 export function renderProjectsView() {
