@@ -113,7 +113,41 @@ export function normalizeProjectRow(p) {
   if (typeof p.parentId === 'string' && p.parentId.trim()) {
     row.parentId = p.parentId.trim();
   }
+  if (typeof p.memorySlug === 'string' && p.memorySlug.trim()) {
+    row.memorySlug = p.memorySlug.trim();
+  }
+  if (Array.isArray(p.docs)) {
+    const docs = p.docs.map(d => String(d).trim()).filter(Boolean).filter(d => !d.includes('..'));
+    if (docs.length) row.docs = docs;
+  }
   return row;
+}
+
+/** Direct child project ids for a parent. */
+export function getProjectChildIds(metaProjects = [], parentId) {
+  return (metaProjects || [])
+    .filter(p => p.parentId === parentId)
+    .map(p => p.id);
+}
+
+/**
+ * All descendant project ids (children, grandchildren, …) for roll-ups.
+ */
+export function getProjectDescendantIds(metaProjects = [], projectId) {
+  const out = [];
+  const walk = (pid) => {
+    for (const childId of getProjectChildIds(metaProjects, pid)) {
+      out.push(childId);
+      walk(childId);
+    }
+  };
+  walk(projectId);
+  return out;
+}
+
+/** Collect project id + all descendants (for task filtering). */
+export function projectScopeIds(metaProjects = [], projectId) {
+  return [projectId, ...getProjectDescendantIds(metaProjects, projectId)];
 }
 
 /**
@@ -142,6 +176,8 @@ export function mergedProjectList(tasksBySection, metaProjects = []) {
     color: p.color || null,
     prefix: p.prefix || null,
     parentId: p.parentId || null,
+    memorySlug: p.memorySlug || null,
+    docs: Array.isArray(p.docs) ? [...p.docs] : null,
   }));
   const ids = new Set(fromMeta.map(p => p.id));
   for (const id of orphanProjectIds(tasksBySection, metaProjects)) {

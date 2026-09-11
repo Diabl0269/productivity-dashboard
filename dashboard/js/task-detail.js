@@ -62,6 +62,7 @@ import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task
 import { mountFieldLayoutSections } from './task-field-layout.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import { syncUrl, isRoutingReady } from './routing.js';
+import { confirmAndRenameTaskId } from './task-move.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -99,7 +100,16 @@ export function openTaskDetail(task, opts = {}) {
   const refresh = overlay.classList.contains('visible');
 
   const idEl = document.getElementById('tdTaskId');
-  if (idEl) idEl.textContent = task.taskId || '\u2014';
+  if (idEl) {
+    if (idEl.tagName === 'INPUT') {
+      idEl.value = task.taskId || '';
+      idEl.title = task.originalId && task.originalId !== task.taskId
+        ? `Original ID: ${task.originalId}`
+        : 'Ticket ID — blur to rename';
+    } else {
+      idEl.textContent = task.taskId || '\u2014';
+    }
+  }
 
   overlay.hidden = false;
   // Force reflow before adding .visible so the enter animation plays.
@@ -1936,5 +1946,30 @@ export function initTaskDetail() {
       if (e.key === 'Enter') { e.preventDefault(); titleInput.blur(); }
     });
     titleInput.addEventListener('blur', saveTitle);
+  }
+
+  const idInput = document.getElementById('tdTaskId');
+  if (idInput) {
+    idInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); idInput.blur(); }
+    });
+    idInput.addEventListener('blur', () => {
+      if (!activeTask) return;
+      const next = idInput.value.trim().toUpperCase();
+      if (!next || next === activeTask.taskId) {
+        idInput.value = activeTask.taskId || '';
+        return;
+      }
+      const state = getState();
+      if (!state) return;
+      const ok = confirmAndRenameTaskId(state, activeTask, next, (result) => {
+        activeTask = result.task;
+        idInput.value = result.newId;
+        commit(`Renamed to ${result.newId}`);
+        getRenderTasks?.()();
+        if (isRoutingReady()) syncUrl();
+      });
+      if (!ok) idInput.value = activeTask.taskId || '';
+    });
   }
 }

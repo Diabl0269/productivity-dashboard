@@ -85,6 +85,19 @@
   letter-spacing: 0.02em;
 }
 
+.td-id-input {
+  width: 4.5rem;
+  font: inherit;
+  color: inherit;
+  background: inherit;
+}
+
+.td-id-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
 .td-title-input {
   flex: 1;
   min-width: 0;

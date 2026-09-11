@@ -214,6 +214,61 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Project documentation manifest
+  if (url.pathname === '/api/project-docs') {
+    try {
+      const slug = url.searchParams.get('slug') || '';
+      const memorySlug = url.searchParams.get('memorySlug') || slug;
+      const extraDocs = (url.searchParams.get('docs') || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const entries = [];
+      const seen = new Set();
+      const add = (relPath, name, kind = 'doc') => {
+        const norm = relPath.replace(/\\/g, '/');
+        if (seen.has(norm)) return;
+        seen.add(norm);
+        entries.push({ path: norm, name, kind });
+      };
+      const exists = (rel) => fs.existsSync(path.join(ROOT, rel));
+      const walkDir = (absDir, relBase) => {
+        if (!fs.existsSync(absDir)) return;
+        for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+          if (entry.name.startsWith('.')) continue;
+          const rel = `${relBase}/${entry.name}`;
+          const abs = path.join(absDir, entry.name);
+          if (entry.isFile() && /\.(md|txt|json)$/i.test(entry.name)) {
+            add(rel, entry.name.replace(/\.(md|txt|json)$/i, ''), 'doc');
+          } else if (entry.isDirectory()) {
+            walkDir(abs, rel);
+          }
+        }
+      };
+
+      const memSlug = memorySlug || slug;
+      if (memSlug) {
+        const mainMd = `memory/projects/${memSlug}.md`;
+        if (exists(mainMd)) add(mainMd, 'Overview', 'overview');
+        walkDir(path.join(ROOT, 'memory', 'projects', memSlug), `memory/projects/${memSlug}`);
+      }
+      for (const rel of extraDocs) {
+        if (rel.includes('..')) continue;
+        if (exists(rel)) {
+          add(rel, rel.split('/').pop().replace(/\.(md|txt|json)$/i, ''), 'link');
+        }
+      }
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ slug, entries }));
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Global memory endpoint
   if (url.pathname === '/api/global-memory') {
     const claudeDir = path.join(os.homedir(), '.claude');

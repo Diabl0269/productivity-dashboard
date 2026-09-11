@@ -224,6 +224,7 @@ export function loadTasksJson(text) {
       recurrence: readRecurrence(t),
       notes: readNotes(t),
       history: readHistory(t),
+      originalId: (typeof t.originalId === 'string' && t.originalId.trim()) ? t.originalId.trim() : null,
       created: t.created || null,
       updated: t.updated || null,
       subtasks: Array.isArray(t.subtasks) ? t.subtasks.map(st => ({ text: st.text || '', checked: !!st.checked })) : [],
@@ -300,6 +301,9 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (notes.length) row.notes = notes.slice(-100);
         const history = readHistory(t);
         if (history.length) row.history = history.slice(-50);
+        if (typeof t.originalId === 'string' && t.originalId.trim()) {
+          row.originalId = t.originalId.trim();
+        }
         return row;
       }),
     })),

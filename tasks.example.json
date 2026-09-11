@@ -10,7 +10,10 @@
     "dailyPlan": { "date": null, "taskIds": [], "carriedIds": [] },
     "weeklyCapacityMinutes": 600,
     "projects": [
-      { "id": "my-app", "name": "My App", "color": "#3B82F6", "prefix": "APP" }
+      { "id": "my-app", "name": "My App", "color": "#3B82F6", "prefix": "APP" },
+      { "id": "my-app-frontend", "name": "Frontend", "color": "#8B5CF6", "parentId": "my-app" },
+      { "id": "my-app-backend", "name": "Backend", "color": "#10B981", "parentId": "my-app" },
+      { "id": "my-app-marketing", "name": "Marketing", "color": "#F59E0B", "parentId": "my-app" }
     ],
     "ideas": ["Try a weekly review ritual"],
     "review": { "weeklyDate": null, "checks": {} }
