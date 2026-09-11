@@ -717,12 +717,19 @@ function renderSubProjectSection(section, types, state, filters) {
   return sectionEl;
 }
 
-function renderToolbar(filters, project, hasSubProjects) {
+function renderToolbar(filters, project, hasSubProjects, onNewTicket) {
   const bar = document.createElement('div');
   bar.className = 'pv-toolbar';
 
   const left = document.createElement('div');
   left.className = 'pv-toolbar-left';
+
+  const newTicket = document.createElement('button');
+  newTicket.type = 'button';
+  newTicket.className = 'pv-toolbar-btn pv-toolbar-accent';
+  newTicket.textContent = '+ Ticket';
+  newTicket.addEventListener('click', () => onNewTicket?.());
+  left.appendChild(newTicket);
 
   const expandAll = document.createElement('button');
   expandAll.type = 'button';
@@ -948,7 +955,6 @@ function renderMain(state, project) {
       <div class="pv-hero-actions">
         <button type="button" class="pv-action-btn" data-action="edit">Edit</button>
         <button type="button" class="pv-action-btn" data-action="sub">+ Sub-project</button>
-        <button type="button" class="pv-action-btn" data-action="new-task">+ Ticket</button>
         <button type="button" class="pv-action-btn pv-action-docs" data-action="docs" id="projectsDocsHeroBtn" aria-expanded="false">Docs</button>
         <button type="button" class="pv-action-btn pv-danger" data-action="delete">Delete</button>
       </div>
@@ -978,10 +984,6 @@ function renderMain(state, project) {
     }, state, { parentId: project.id, color: SUBPROJECT_PALETTE[getProjectChildIds(projects, project.id).length % SUBPROJECT_PALETTE.length] });
   });
 
-  header.querySelector('[data-action="new-task"]').addEventListener('click', () => {
-    openCreateTaskModal('todo', { projectId: project.id });
-  });
-
   const docsBtn = header.querySelector('[data-action="docs"]');
   syncDocsHeroButton(docsBtn);
   docsBtn?.addEventListener('click', () => {
@@ -1002,7 +1004,9 @@ function renderMain(state, project) {
   });
 
   main.appendChild(header);
-  main.appendChild(renderToolbar(filters, project, grouped.mode === 'grouped'));
+  main.appendChild(renderToolbar(filters, project, grouped.mode === 'grouped', () => {
+    openCreateTaskModal('todo', { projectId: project.id });
+  }));
   main.appendChild(renderLinkPanel(state, project));
 
   const content = document.createElement('div');

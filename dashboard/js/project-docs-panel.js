@@ -18,6 +18,14 @@ export function readDocsPanelCollapsed() {
   return localStorage.getItem(COLLAPSED_KEY) === '1';
 }
 
+function syncExpandTab(collapsed, panelHidden) {
+  const expandTab = document.getElementById('projectsDocsExpandTab');
+  if (!expandTab) return;
+  const show = !panelHidden && collapsed;
+  expandTab.hidden = !show;
+  expandTab.setAttribute('aria-expanded', show ? 'false' : 'true');
+}
+
 function applyDocsLayout({ width, collapsed }) {
   const layout = document.querySelector('#projectsPanel .pv-layout');
   const panel = document.getElementById('projectsDocsPanel');
@@ -31,8 +39,10 @@ function applyDocsLayout({ width, collapsed }) {
   const toggle = document.getElementById('projectsDocsToggle');
   if (toggle) {
     toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    toggle.title = collapsed ? 'Hide documentation' : 'Hide documentation panel';
+    toggle.title = collapsed ? 'Show documentation panel' : 'Hide documentation panel';
   }
+
+  syncExpandTab(collapsed, panel.hidden);
 
   onLayoutChange?.({ collapsed, width });
 }
@@ -58,16 +68,25 @@ export function initProjectDocsPanel() {
   const panel = document.getElementById('projectsDocsPanel');
   const resizer = document.getElementById('projectsDocsResizer');
   const toggle = document.getElementById('projectsDocsToggle');
+  const expandTab = document.getElementById('projectsDocsExpandTab');
   if (!layout || !panel) return;
 
   let width = readWidth();
   let collapsed = readDocsPanelCollapsed();
   applyDocsLayout({ width, collapsed });
 
-  toggle?.addEventListener('click', () => {
-    collapsed = !readDocsPanelCollapsed();
+  const setCollapsed = (nextCollapsed) => {
+    collapsed = nextCollapsed;
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
     applyDocsLayout({ width, collapsed });
+  };
+
+  toggle?.addEventListener('click', () => {
+    setCollapsed(!readDocsPanelCollapsed());
+  });
+
+  expandTab?.addEventListener('click', () => {
+    setCollapsed(false);
   });
 
   if (resizer) {
@@ -103,6 +122,7 @@ export function syncProjectDocsPanelVisibility(hasProject) {
   if (!panel) return;
   if (!hasProject) {
     panel.hidden = true;
+    syncExpandTab(true, true);
     return;
   }
   panel.hidden = false;
