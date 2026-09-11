@@ -66,8 +66,10 @@ export const facetState = {
   dueExact: null,  // null | YYYY-MM-DD
 };
 
-/** Built DOM refs (survive across syncs). */
-let shell = null; // { bar, header, toggle, badge, summary, dayChip, clearBtn, body, grid, flags }
+/** Built DOM refs per container (survive across syncs). */
+/** @type {Map<HTMLElement, object>} */
+const shells = new Map();
+let activeFilterBarId = 'tasksFilters';
 
 export function setFilterCallbacks({ stateFn, renderFn, applyFn } = {}) {
   getState = stateFn || null;
@@ -150,6 +152,7 @@ function toggleInSet(set, value) {
 function applyViews() {
   if (getApplyViews) getApplyViews()();
   else if (getRenderTasks) getRenderTasks()();
+  import('./search-page.js').then(m => m.refreshSearchPageIfActive()).catch(() => {});
 }
 
 function countMatching(predicate) {
@@ -236,12 +239,18 @@ function activeSummaryLabels(state) {
   return out;
 }
 
+function getShell() {
+  const bar = document.getElementById(activeFilterBarId);
+  return bar ? shells.get(bar) : null;
+}
+
 function closeMenu() {
   if (openMenuEl) {
     openMenuEl.remove();
     openMenuEl = null;
   }
   openFieldId = null;
+  const shell = getShell();
   if (shell) {
     shell.bar.querySelectorAll('.tf-ms-face.open').forEach(el => el.classList.remove('open'));
     shell.bar.querySelectorAll('.tf-ms-trigger[aria-expanded="true"]').forEach(el => {
@@ -522,6 +531,7 @@ function createMultiSelectField(def) {
 }
 
 function openOrRefreshMenu(fieldId, state) {
+  const shell = getShell();
   const def = fieldDefs(state).find(d => d.id === fieldId);
   const fieldEl = shell?.grid?.querySelector(`[data-field="${fieldId}"]`);
   if (!def || !fieldEl?._tf) {
@@ -597,6 +607,7 @@ function openOrRefreshMenu(fieldId, state) {
 }
 
 function syncAllFieldFaces(state) {
+  const shell = getShell();
   if (!shell?.grid) return;
   const defs = fieldDefs(state);
   const byId = new Map(defs.map(d => [d.id, d]));
@@ -621,6 +632,7 @@ function syncAllFieldFaces(state) {
 }
 
 function syncFlags(state) {
+  const shell = getShell();
   if (!shell?.flagsGroup) return;
   const specs = [
     {
@@ -679,6 +691,7 @@ function syncFlags(state) {
 }
 
 function syncHeader(state) {
+  const shell = getShell();
   if (!shell) return;
   const active = hasActiveFacets();
   const count = activeFacetCount();
@@ -721,10 +734,15 @@ function syncHeader(state) {
   }
 
   if (facetState.dueExact) {
-    shell.dayChip.hidden = false;
-    shell.dayChip.textContent = `On ${facetState.dueExact} \u00d7`;
+    shell.dayChip.classList.add('is-active');
+    shell.dayChip.textContent = `Calendar: ${facetState.dueExact} \u00d7`;
+    shell.dayChip.title = `Due on ${facetState.dueExact} (from Overview calendar). Click to clear.`;
+    shell.dayChip.setAttribute('aria-label', `Clear calendar filter for ${facetState.dueExact}`);
   } else {
-    shell.dayChip.hidden = true;
+    shell.dayChip.classList.remove('is-active');
+    shell.dayChip.textContent = '';
+    shell.dayChip.removeAttribute('title');
+    shell.dayChip.removeAttribute('aria-label');
   }
 
   shell.clearBtn.hidden = !active;
@@ -732,7 +750,8 @@ function syncHeader(state) {
 }
 
 function ensureShell(bar) {
-  if (shell && shell.bar === bar && bar.contains(shell.header)) return shell;
+  const existing = shells.get(bar);
+  if (existing && bar.contains(existing.header)) return existing;
 
   closeMenu();
   bar.innerHTML = '';
@@ -770,8 +789,7 @@ function ensureShell(bar) {
   const dayChip = document.createElement('button');
   dayChip.type = 'button';
   dayChip.className = 'tf-day-chip';
-  dayChip.hidden = true;
-  dayChip.title = 'Clear calendar day filter';
+  dayChip.classList.remove('is-active');
   dayChip.addEventListener('click', () => {
     facetState.dueExact = null;
     onFacetChanged();
@@ -826,10 +844,11 @@ function ensureShell(bar) {
   bar.appendChild(header);
   bar.appendChild(body);
 
-  shell = {
+  const shell = {
     bar, header, toggle, badge, summary, dayChip, spacer, clearBtn,
     body, grid, flags, flagsGroup,
   };
+  shells.set(bar, shell);
   return shell;
 }
 
@@ -837,8 +856,9 @@ function ensureShell(bar) {
  * Sync filter UI with current task state.
  * Safe to call often — does not rebuild the shell unless missing.
  */
-export function renderFilterBar() {
-  const bar = document.getElementById('tasksFilters');
+export function renderFilterBar(barId = 'tasksFilters') {
+  activeFilterBarId = barId;
+  const bar = document.getElementById(barId);
   if (!bar || !getState) return;
 
   const state = getState();
@@ -863,6 +883,7 @@ export function renderFilterBar() {
 
 function onDocPointerDown(e) {
   if (!openFieldId) return;
+  const shell = getShell();
   const t = e.target;
   if (t.closest?.('.tf-ms') && shell?.bar?.contains(t.closest('.tf-ms'))) return;
   if (t.closest?.('.tf-ms-menu[data-tf-menu]')) return;

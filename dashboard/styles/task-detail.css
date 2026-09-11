@@ -464,14 +464,18 @@
 
 /* Buttons inherit .primary from base.css where available */
 .td-saved {
+  display: none;
   font-size: var(--text-xs);
   color: var(--status-done);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
   font-weight: var(--weight-medium);
+  padding: 0 var(--space-2);
+  user-select: none;
 }
 
-.td-saved.show { opacity: 1; }
+.td-saved.show {
+  display: inline-flex;
+  align-items: center;
+}
 
 .td-footer button.primary {
   background: var(--accent);

@@ -65,6 +65,7 @@
           "parentId": "T1",
           "project": "my-app",
           "energy": "deep",
+          "model": "claude-sonnet",
           "issueUrl": "https://github.com/example/repo/issues/42",
           "dueDate": "2026-02-20",
           "blocked": true,

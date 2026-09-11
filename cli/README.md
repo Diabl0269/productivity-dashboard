@@ -11,6 +11,8 @@ npm link
 
 After linking, `ch` is available globally. Alternatively, run `./ch` from the repo root without linking.
 
+**Node version:** the `ch` bin shebang is `#!/usr/bin/env node`, so it runs under whatever `node` your PATH resolves first — this can silently be a stale nvm version. Known-good: v20.19+ or v22+; v16, v18, and v20.17.0-and-below fail deep inside command modules with cryptic errors (`fetch is not defined`, CJS/ESM named-export errors). `cli/index.js` guards against this itself: on startup it checks `process.version` and, if too old, re-execs under the newest qualifying Node found under `~/.nvm/versions/node` — falling back to a clear error message if none qualifies. No action needed unless you see that error, in which case install a qualifying Node via nvm.
+
 ## Command Groups
 
 ### `ch tasks` — task management

@@ -87,6 +87,7 @@
       <div class="view-toggle" id="mainTabToggle" role="tablist">
         <button id="overviewTabBtn" class="active" role="tab" aria-selected="true" aria-controls="overviewPanel">Overview</button>
         <button id="tasksTabBtn" role="tab" aria-selected="false" aria-controls="tasksPanel">Tasks</button>
+        <button id="searchTabBtn" role="tab" aria-selected="false" aria-controls="searchPanel">Search</button>
         <button id="projectsTabBtn" role="tab" aria-selected="false" aria-controls="projectsPanel">Projects</button>
         <button id="memoryTabBtn" role="tab" aria-selected="false" aria-controls="memoryPanel">Memory</button>
         <button id="globalMemoryTabBtn" role="tab" aria-selected="false" aria-controls="globalMemoryPanel">Global Memory</button>
@@ -315,6 +316,34 @@
     </div>
   </div>
 
+  <!-- SEARCH TAB PANEL -->
+  <div class="tab-panel" id="searchPanel" role="tabpanel" aria-labelledby="searchTabBtn">
+    <div class="search-page">
+      <div class="search-page-toolbar">
+        <div class="search-page-query">
+          <svg class="search-page-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="searchPageInput" class="search-page-input" placeholder="Search all tickets…" autocomplete="off" spellcheck="false" aria-label="Search all tickets">
+          <button type="button" id="searchPageClear" class="search-page-clear" title="Clear search">×</button>
+        </div>
+        <details class="search-page-help" id="searchPageHelp">
+          <summary>Query syntax</summary>
+          <ul>
+            <li>Free text matches title, description, id, labels, project, assignee, model</li>
+            <li><code>id:T42</code> or <code>key:T42</code> — exact task id</li>
+            <li><code>label:auth</code> — label contains</li>
+            <li><code>project:my-app</code> — project slug</li>
+            <li><code>type:bug</code> — ticket type</li>
+            <li><code>status:todo</code> — section id</li>
+            <li><code>model:sonnet</code> — model contains</li>
+            <li>Space-separated tokens are ANDed; use facet filters below for structured filters</li>
+          </ul>
+        </details>
+      </div>
+      <div class="tasks-filters is-collapsed" id="searchFilters" aria-label="Search filters"></div>
+      <div class="search-page-results" id="searchPageResults" aria-live="polite"></div>
+    </div>
+  </div>
+
   <!-- PROJECTS TAB PANEL -->
   <div class="tab-panel" id="projectsPanel" role="tabpanel" aria-labelledby="projectsTabBtn">
     <div class="pv-layout">
@@ -362,6 +391,7 @@
     <div class="settings-sub-tabs" role="tablist" aria-label="Settings sections">
       <button class="settings-sub-tab active" data-subtab="display" role="tab" aria-selected="true">Display</button>
       <button class="settings-sub-tab" data-subtab="ticket-types" role="tab" aria-selected="false">Ticket Types</button>
+      <button class="settings-sub-tab" data-subtab="task-fields" role="tab" aria-selected="false">Task Fields</button>
       <button class="settings-sub-tab" data-subtab="data" role="tab" aria-selected="false">Data</button>
     </div>
     <div class="settings-section" id="settingsDisplaySection" data-settings-panel="display">
@@ -403,6 +433,20 @@
       <div class="tt-toolbar">
         <button type="button" class="tt-add-btn" id="settingsTicketTypeAdd">+ Add type</button>
       </div>
+    </div>
+    <div class="settings-section" id="settingsTaskFieldsSection" data-settings-panel="task-fields" hidden>
+      <p class="settings-section-desc">
+        Add custom text fields (saved on each task in <code>tasks.json</code> under <code>custom</code>).
+        Hide built-in fields you do not need in create/detail modals — stored in this browser only.
+      </p>
+      <h4 class="settings-fields-heading">Custom fields</h4>
+      <div class="settings-custom-fields-list" id="settingsCustomFieldsList"></div>
+      <div class="settings-fields-add">
+        <input type="text" id="settingsCustomFieldLabel" class="settings-fields-input" placeholder="Field label (e.g. Sprint goal)" aria-label="Custom field label">
+        <button type="button" class="settings-fields-add-btn" id="settingsCustomFieldAdd">+ Add field</button>
+      </div>
+      <h4 class="settings-fields-heading">Hide built-in fields</h4>
+      <div class="settings-hidden-fields" id="settingsHiddenFieldsList"></div>
     </div>
     <div class="settings-section" id="settingsDataSection" data-settings-panel="data" hidden>
       <p class="settings-section-desc">
@@ -461,7 +505,7 @@
       <div class="td-footer">
         <button id="tdDelete" class="td-delete">Delete task</button>
         <div class="td-footer-spacer"></div>
-        <button id="tdSaved" class="td-saved" aria-hidden="true"></button>
+        <span id="tdSaved" class="td-saved" aria-hidden="true" hidden>Saved</span>
         <button id="tdCloseBtn" class="primary">Close</button>
       </div>
     </div>
