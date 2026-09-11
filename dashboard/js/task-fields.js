@@ -278,6 +278,49 @@ export function appendNote(task, text) {
   if (task.notes.length > NOTES_MAX) task.notes = task.notes.slice(-NOTES_MAX);
 }
 
+const DECISIONS_MAX = 50;
+
+export function appendDecision(task, text) {
+  if (!task || !text || !String(text).trim()) return;
+  if (!Array.isArray(task.decisions)) task.decisions = [];
+  task.decisions.push({ at: new Date().toISOString(), text: String(text).trim() });
+  if (task.decisions.length > DECISIONS_MAX) task.decisions = task.decisions.slice(-DECISIONS_MAX);
+}
+
+/** Remove note by 1-based index (oldest = 1), matching CLI --remove-note N. */
+export function removeNoteAt(task, oneBased) {
+  if (!Array.isArray(task.notes)) return false;
+  const n = parseInt(oneBased, 10);
+  if (isNaN(n) || n < 1 || n > task.notes.length) return false;
+  task.notes.splice(n - 1, 1);
+  if (task.notes.length === 0) delete task.notes;
+  return true;
+}
+
+/** Remove decision by 1-based index (oldest = 1), matching CLI --remove-decision N. */
+export function removeDecisionAt(task, oneBased) {
+  if (!Array.isArray(task.decisions)) return false;
+  const n = parseInt(oneBased, 10);
+  if (isNaN(n) || n < 1 || n > task.decisions.length) return false;
+  task.decisions.splice(n - 1, 1);
+  if (task.decisions.length === 0) delete task.decisions;
+  return true;
+}
+
+/** Remove time entry by 1-based index; subtracts minutes from loggedMinutes. */
+export function removeTimeEntryAt(task, oneBased) {
+  if (!Array.isArray(task.timeEntries)) return false;
+  const n = parseInt(oneBased, 10);
+  if (isNaN(n) || n < 1 || n > task.timeEntries.length) return false;
+  const removed = task.timeEntries.splice(n - 1, 1)[0];
+  if (task.timeEntries.length === 0) delete task.timeEntries;
+  if (removed && typeof removed.minutes === 'number') {
+    task.loggedMinutes = Math.max(0, (task.loggedMinutes || 0) - removed.minutes);
+    if (task.loggedMinutes === 0) delete task.loggedMinutes;
+  }
+  return true;
+}
+
 /** Soft WIP limit for a section from config. Null = no limit. */
 export function wipLimitFor(sectionId) {
   const cfg = (typeof window !== 'undefined' && window.dashboardConfig) || {};
