@@ -28,6 +28,12 @@ import {
   isValidCustomFieldId,
   customFieldKey,
 } from './custom-fields.js';
+import {
+  formatDocFilterPatternsForInput,
+  readDocFilterPatterns,
+  writeDocFilterPatterns,
+} from './project-docs-prefs.js';
+import { clearProjectDocsCache } from './project-docs.js';
 
 const HIDE_CORPORATE_KEY = 'dashboard.hideCorporate';
 const LEGACY_HIDE_SPRINTS_KEY = 'dashboard.hideSprints';
@@ -123,6 +129,16 @@ function initDisplayPrefs() {
       applyPomodoroVisibility(next);
       getRenderTasks && getRenderTasks()();
       showStatus(next ? 'Pomodoro shown' : 'Pomodoro hidden');
+    });
+  }
+
+  const docFilters = document.getElementById('docFilterPatternsInput');
+  if (docFilters) {
+    docFilters.value = formatDocFilterPatternsForInput();
+    docFilters.addEventListener('blur', () => {
+      writeDocFilterPatterns(docFilters.value);
+      clearProjectDocsCache();
+      showStatus('Project doc filters updated');
     });
   }
 }

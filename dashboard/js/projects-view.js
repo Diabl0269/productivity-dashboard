@@ -17,7 +17,7 @@ import {
 } from './ticket-types.js';
 import { openTaskDetail } from './task-detail.js';
 import { openCreateTaskModal } from './task-create.js';
-import { markChanged } from './tasks-io.js';
+import { markChanged, flushAutoSave } from './tasks-io.js';
 import { todayStr } from './tasks-parser.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 import { normalizePrefix } from '../../shared/task-ids.js';
@@ -35,7 +35,8 @@ import {
 } from '../../shared/task-rename.js';
 import { createTasksBackup } from './tasks-backup.js';
 import { mountTicketPicker } from './ticket-picker.js';
-import { renderProjectDocsPanel, clearProjectDocsCache } from './project-docs.js';
+import { renderProjectDocsPanel, clearProjectDocsCache, setProjectDocsCallbacks } from './project-docs.js';
+import { initProjectDocsPanel, syncProjectDocsPanelVisibility, toggleDocsPanel, setDocsPanelCallbacks, syncDocsHeroButton } from './project-docs-panel.js';
 import { showTaskMovePopover } from './task-move.js';
 import { attachTaskDragHandle, bindProjectsDragDrop } from './project-drag.js';
 
@@ -257,17 +258,37 @@ function groupTasksForView(state, project, projects) {
   };
 }
 
+function metaProjectRow(state, projectId) {
+  return ensureMeta(state).projects.find(p => p.id === projectId) || null;
+}
+
+function projectForDocs(state, project) {
+  if (!project) return null;
+  const row = metaProjectRow(state, project.id);
+  return row ? { ...project, ...row } : project;
+}
+
 function countEpics(tasks, types) {
   return tasks.filter(t => (t.type || 'task') === 'epic').length;
 }
 
-function createProject(state, { id, name, color, prefix, parentId }) {
+function finishProjectSave() {
+  markChanged();
+  clearProjectDocsCache();
+  renderProjectsView();
+  getRenderTasks?.()();
+  flushAutoSave().catch(() => {});
+}
+
+function createProject(state, { id, name, color, prefix, parentId, memorySlug, docDirs }) {
   const meta = ensureMeta(state);
   const row = { id, name: name || id };
   if (color) row.color = color;
   const pfx = normalizePrefix(prefix);
   if (pfx) row.prefix = pfx;
   if (parentId) row.parentId = parentId;
+  if (memorySlug) row.memorySlug = memorySlug;
+  if (docDirs?.length) row.docDirs = docDirs;
   meta.projects.push(row);
   markChanged();
   return row;
@@ -293,6 +314,15 @@ function updateProjectMeta(state, projectId, updates) {
   if (updates.parentId !== undefined) {
     if (updates.parentId) row.parentId = updates.parentId;
     else delete row.parentId;
+  }
+  if (updates.memorySlug !== undefined) {
+    const slug = String(updates.memorySlug || '').trim();
+    if (slug) row.memorySlug = slug;
+    else delete row.memorySlug;
+  }
+  if (updates.docDirs !== undefined) {
+    if (updates.docDirs?.length) row.docDirs = updates.docDirs;
+    else delete row.docDirs;
   }
   markChanged();
   return row;
@@ -342,6 +372,9 @@ function showProjectForm(mode, project, onDone, state, defaults = {}) {
   const metaProjects = ensureMeta(state).projects;
   const defaultPrefix = isNew ? '' : (project.prefix || projectPrefix(project, metaProjects));
   const defaultParent = isNew ? (defaults.parentId || '') : (project.parentId || '');
+  const metaRow = !isNew && project?.id ? metaProjectRow(state, project.id) : null;
+  const defaultMemorySlug = isNew ? '' : (metaRow?.memorySlug || project?.memorySlug || '');
+  const defaultDocDirs = isNew ? '' : (metaRow?.docDirs || []).join('\n');
   const excludeIds = new Set();
   if (!isNew && project?.id) {
     excludeIds.add(project.id);
@@ -371,6 +404,16 @@ function showProjectForm(mode, project, onDone, state, defaults = {}) {
         <label class="td-field td-field-block">
           <span class="td-field-label">ID (slug)</span>
           <input type="text" class="td-text-input" name="id" ${isNew ? '' : 'readonly'} value="${escapeHtml(defaultId)}" placeholder="my-app" pattern="[a-z][a-z0-9-]*">
+        </label>
+        <label class="td-field td-field-block">
+          <span class="td-field-label">Memory slug</span>
+          <input type="text" class="td-text-input" name="memorySlug" value="${escapeHtml(defaultMemorySlug)}" placeholder="Defaults to project id">
+          <span class="pv-form-hint">Loads <code>memory/projects/{slug}.md</code> and nested files from this repo</span>
+        </label>
+        <label class="td-field td-field-block">
+          <span class="td-field-label">Documentation directories</span>
+          <textarea class="td-notes-textarea td-notes-textarea-compact" name="docDirs" rows="3" placeholder="/Users/you/projects/my-app">${escapeHtml(defaultDocDirs)}</textarea>
+          <span class="pv-form-hint">Absolute paths on this computer — one per line. Saved in <code>tasks.json</code> under this project.</span>
         </label>
         <label class="td-field td-field-block">
           <span class="td-field-label">Parent project</span>
@@ -447,11 +490,16 @@ function showProjectForm(mode, project, onDone, state, defaults = {}) {
       return;
     }
     const parentId = form.querySelector('[name="parentId"]').value.trim() || null;
+    const memorySlug = form.querySelector('[name="memorySlug"]').value.trim();
+    const docDirs = form.querySelector('[name="docDirs"]').value
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
     if (parentId && wouldCreateProjectCycle(ensureMeta(getState()).projects, isNew ? id : project.id, parentId)) {
       showStatus('Invalid parent — would create a cycle');
       return;
     }
-    onDone({ id, name, color: colorInput.value, prefix, parentId });
+    onDone({ id, name, color: colorInput.value, prefix, parentId, memorySlug, docDirs });
     close();
   });
 
@@ -521,20 +569,23 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
     + (isEpic ? ' pv-epic-row' : '')
     + (kids.length ? ' pv-has-children' : '');
   btn.innerHTML = `
-    <span class="pv-type" style="--pv-color:${escapeHtml(color)}">${escapeHtml(tt.name)}</span>
-    <span class="pv-id">${escapeHtml(task.taskId || '')}</span>
-    <span class="pv-title">${escapeHtml(task.title || '')}</span>
-    <span class="pv-meta">
-      ${dueBadgeHtml(task)}
-      ${task.estimateMinutes ? `<span class="pv-est">${escapeHtml(formatEstimate(task.estimateMinutes))}</span>` : ''}
-      <span class="pv-section">${escapeHtml(task.section || '')}</span>
+    <span class="pv-row-left">
+      <span class="pv-type" style="--pv-color:${escapeHtml(color)}">${escapeHtml(tt.name)}</span>
+      <span class="pv-id">${escapeHtml(task.taskId || '')}</span>
+      <span class="pv-title">${escapeHtml(task.title || '')}</span>
     </span>
-    ${kids.length ? `
-      <span class="pv-progress" title="${prog.done}/${prog.total} done">
-        <span class="pv-progress-bar"><span style="width:${prog.pct}%"></span></span>
-        <span class="pv-progress-label">${prog.pct}%</span>
-      </span>` : ''}
-  `;
+    <span class="pv-row-right">
+      <span class="pv-meta">
+        ${dueBadgeHtml(task)}
+        ${task.estimateMinutes ? `<span class="pv-est">${escapeHtml(formatEstimate(task.estimateMinutes))}</span>` : ''}
+        <span class="pv-section">${escapeHtml(task.section || '')}</span>
+      </span>
+      ${kids.length ? `
+        <span class="pv-progress" title="${prog.done}/${prog.total} done">
+          <span class="pv-progress-bar"><span style="width:${prog.pct}%"></span></span>
+          <span class="pv-progress-label">${prog.pct}%</span>
+        </span>` : ''}
+    </span>`;
   btn.addEventListener('click', () => openTaskDetail(task));
   row.appendChild(btn);
 
@@ -629,7 +680,7 @@ function renderSubProjectSection(section, types, state, filters) {
   titleWrap.className = 'pv-subproj-title-wrap';
   titleWrap.innerHTML = `
     <h3 class="pv-subproj-title">${escapeHtml(sub.name)}</h3>
-    <p class="pv-subproj-meta">${escapeHtml(prefix)} · ${tasks.length} tickets${epicCount ? ` · ${epicCount} epics` : ''}</p>`;
+    <span class="pv-subproj-meta">${escapeHtml(prefix)} · ${tasks.length} tickets${epicCount ? ` · ${epicCount} epics` : ''}</span>`;
   head.appendChild(titleWrap);
 
   const actions = document.createElement('div');
@@ -898,6 +949,7 @@ function renderMain(state, project) {
         <button type="button" class="pv-action-btn" data-action="edit">Edit</button>
         <button type="button" class="pv-action-btn" data-action="sub">+ Sub-project</button>
         <button type="button" class="pv-action-btn" data-action="new-task">+ Ticket</button>
+        <button type="button" class="pv-action-btn pv-action-docs" data-action="docs" id="projectsDocsHeroBtn" aria-expanded="false">Docs</button>
         <button type="button" class="pv-action-btn pv-danger" data-action="delete">Delete</button>
       </div>
     </div>
@@ -910,11 +962,10 @@ function renderMain(state, project) {
   `;
 
   header.querySelector('[data-action="edit"]').addEventListener('click', () => {
-    showProjectForm('edit', project, (data) => {
+    showProjectForm('edit', projectForDocs(state, project), (data) => {
       updateProjectMeta(state, project.id, data);
-      clearProjectDocsCache();
-      getRenderTasks?.()();
       showStatus('Project updated');
+      finishProjectSave();
     }, state);
   });
 
@@ -929,6 +980,13 @@ function renderMain(state, project) {
 
   header.querySelector('[data-action="new-task"]').addEventListener('click', () => {
     openCreateTaskModal('todo', { projectId: project.id });
+  });
+
+  const docsBtn = header.querySelector('[data-action="docs"]');
+  syncDocsHeroButton(docsBtn);
+  docsBtn?.addEventListener('click', () => {
+    toggleDocsPanel();
+    syncDocsHeroButton(docsBtn);
   });
 
   header.querySelector('[data-action="delete"]').addEventListener('click', () => {
@@ -957,7 +1015,7 @@ function renderMain(state, project) {
       directSection.className = 'pv-subproj pv-subproj-direct';
       directSection.dataset.pvProjectId = project.id;
       directSection.style.setProperty('--pv-sub-color', color);
-      directSection.innerHTML = `<header class="pv-subproj-head pv-subproj-head-static"><span class="pv-subproj-swatch" style="background:${escapeHtml(color)}"></span><div class="pv-subproj-title-wrap"><h3 class="pv-subproj-title">${escapeHtml(project.name)}</h3><p class="pv-subproj-meta">${directTasks.length} ticket(s) on this project · epics first</p></div></header>`;
+      directSection.innerHTML = `<header class="pv-subproj-head pv-subproj-head-static"><span class="pv-subproj-swatch" style="background:${escapeHtml(color)}"></span><h3 class="pv-subproj-title">${escapeHtml(project.name)}</h3><span class="pv-subproj-meta">${directTasks.length} ticket(s) · epics first</span></header>`;
       const body = document.createElement('div');
       body.className = 'pv-subproj-body';
       body.appendChild(renderTaskForest(directTasks, types, state, color));
@@ -1003,7 +1061,8 @@ export function renderProjectsView() {
   renderSidebar(projects, selectedId, state);
   const project = projects.find(p => p.id === selectedId) || null;
   renderMain(state, project);
-  renderProjectDocsPanel(project).catch(() => {});
+  syncProjectDocsPanelVisibility(!!project);
+  renderProjectDocsPanel(projectForDocs(state, project)).catch(() => {});
 }
 
 export function openProject(projectId) {
@@ -1012,6 +1071,23 @@ export function openProject(projectId) {
 }
 
 export function initProjectsView() {
+  setProjectDocsCallbacks({
+    configureProject: (project) => {
+      if (!getState || !project) return;
+      const state = getState();
+      showProjectForm('edit', projectForDocs(state, project), (data) => {
+        updateProjectMeta(state, project.id, data);
+        showStatus('Project paths saved');
+        finishProjectSave();
+      }, state);
+    },
+  });
+  setDocsPanelCallbacks({
+    onLayoutChange: () => {
+      syncDocsHeroButton(document.getElementById('projectsDocsHeroBtn'));
+    },
+  });
+  initProjectDocsPanel();
   renderProjectsView();
 }
 

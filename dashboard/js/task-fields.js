@@ -298,6 +298,16 @@ export function removeNoteAt(task, oneBased) {
   return true;
 }
 
+/** Update note text by 1-based index. Returns false if index invalid or text empty. */
+export function updateNoteAt(task, oneBased, text) {
+  if (!Array.isArray(task.notes)) return false;
+  const n = parseInt(oneBased, 10);
+  const trimmed = String(text ?? '').trim();
+  if (isNaN(n) || n < 1 || n > task.notes.length || !trimmed) return false;
+  task.notes[n - 1].text = trimmed;
+  return true;
+}
+
 /** Remove decision by 1-based index (oldest = 1), matching CLI --remove-decision N. */
 export function removeDecisionAt(task, oneBased) {
   if (!Array.isArray(task.decisions)) return false;
@@ -305,6 +315,16 @@ export function removeDecisionAt(task, oneBased) {
   if (isNaN(n) || n < 1 || n > task.decisions.length) return false;
   task.decisions.splice(n - 1, 1);
   if (task.decisions.length === 0) delete task.decisions;
+  return true;
+}
+
+/** Update decision text by 1-based index. Returns false if index invalid or text empty. */
+export function updateDecisionAt(task, oneBased, text) {
+  if (!Array.isArray(task.decisions)) return false;
+  const n = parseInt(oneBased, 10);
+  const trimmed = String(text ?? '').trim();
+  if (isNaN(n) || n < 1 || n > task.decisions.length || !trimmed) return false;
+  task.decisions[n - 1].text = trimmed;
   return true;
 }
 
@@ -318,6 +338,29 @@ export function removeTimeEntryAt(task, oneBased) {
   if (removed && typeof removed.minutes === 'number') {
     task.loggedMinutes = Math.max(0, (task.loggedMinutes || 0) - removed.minutes);
     if (task.loggedMinutes === 0) delete task.loggedMinutes;
+  }
+  return true;
+}
+
+/** Patch a time entry by 1-based index (note and/or minutes). */
+export function updateTimeEntryAt(task, oneBased, patch = {}) {
+  if (!Array.isArray(task.timeEntries)) return false;
+  const n = parseInt(oneBased, 10);
+  if (isNaN(n) || n < 1 || n > task.timeEntries.length) return false;
+  const entry = task.timeEntries[n - 1];
+  if (patch.note !== undefined) {
+    const note = String(patch.note).trim();
+    if (note) entry.note = note;
+    else delete entry.note;
+  }
+  if (patch.minutes !== undefined) {
+    const oldMin = typeof entry.minutes === 'number' ? entry.minutes : 0;
+    const newMin = Math.max(0, parseInt(patch.minutes, 10) || 0);
+    if (newMin !== oldMin) {
+      entry.minutes = newMin;
+      task.loggedMinutes = Math.max(0, (task.loggedMinutes || 0) - oldMin + newMin);
+      if (task.loggedMinutes === 0) delete task.loggedMinutes;
+    }
   }
   return true;
 }

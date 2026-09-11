@@ -370,8 +370,12 @@
         </div>
       </div>
       <aside class="pv-docs-panel" id="projectsDocsPanel" aria-label="Project documentation" hidden>
+        <div class="pv-docs-resizer" id="projectsDocsResizer" title="Drag to resize"></div>
         <div class="pv-docs-head">
           <span class="pv-docs-title">Documentation</span>
+          <button type="button" class="pv-docs-toggle" id="projectsDocsToggle" aria-expanded="true" title="Hide documentation" aria-label="Hide documentation">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
         </div>
         <div class="pv-docs-tree" id="projectsDocsTree"></div>
         <div class="pv-docs-preview" id="projectsDocsPreview"></div>
@@ -434,6 +438,12 @@
           <input type="checkbox" id="showPomodoroToggle" class="settings-pref-toggle" aria-describedby="showPomodoroDesc">
         </label>
         <p id="showPomodoroDesc" class="visually-hidden">When enabled, a Pomodoro 25m button appears next to Start timer on tasks.</p>
+        <div class="settings-pref-block">
+          <label class="settings-pref-title" for="docFilterPatternsInput">Project docs — focused file patterns</label>
+          <p class="settings-pref-desc">When <strong>Show all files</strong> is off in the Projects docs panel, only paths matching these globs appear. One pattern per line (<code>**</code> supported).</p>
+          <textarea id="docFilterPatternsInput" class="settings-pref-textarea" rows="6" spellcheck="false" aria-describedby="docFilterPatternsDesc"></textarea>
+          <p id="docFilterPatternsDesc" class="settings-pref-desc">Examples: <code>CLAUDE.md</code>, <code>**/agents/**</code>, <code>**/memory/**</code></p>
+        </div>
         <div class="settings-pref-row settings-pref-row-static" id="pwaInstallRow">
           <div class="settings-pref-text">
             <span class="settings-pref-title">Install as app (PWA)</span>

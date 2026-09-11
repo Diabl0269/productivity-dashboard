@@ -120,6 +120,10 @@ export function normalizeProjectRow(p) {
     const docs = p.docs.map(d => String(d).trim()).filter(Boolean).filter(d => !d.includes('..'));
     if (docs.length) row.docs = docs;
   }
+  if (Array.isArray(p.docDirs)) {
+    const docDirs = p.docDirs.map(d => String(d).trim()).filter(Boolean).filter(d => !d.includes('..'));
+    if (docDirs.length) row.docDirs = docDirs;
+  }
   return row;
 }
 
@@ -178,6 +182,7 @@ export function mergedProjectList(tasksBySection, metaProjects = []) {
     parentId: p.parentId || null,
     memorySlug: p.memorySlug || null,
     docs: Array.isArray(p.docs) ? [...p.docs] : null,
+    docDirs: Array.isArray(p.docDirs) ? [...p.docDirs] : null,
   }));
   const ids = new Set(fromMeta.map(p => p.id));
   for (const id of orphanProjectIds(tasksBySection, metaProjects)) {
