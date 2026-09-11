@@ -3,10 +3,10 @@
 import { onTabSwitch } from './search.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
-export let activeMainTab = 'overview'; // overview | tasks | projects | memory | global-memory | settings
+export let activeMainTab = 'overview'; // overview | tasks | search | projects | memory | global-memory | settings
 
 const MAIN_TAB_ORDER = [
-  'overview', 'tasks', 'projects', 'memory', 'global-memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'memory', 'global-memory', 'settings',
 ];
 
 function isTypingTarget(el) {
@@ -73,12 +73,14 @@ export function switchMainTab(tab, opts = {}) {
 
   const overviewTabBtn = document.getElementById('overviewTabBtn');
   const tasksTabBtn = document.getElementById('tasksTabBtn');
+  const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
   const globalMemoryTabBtn = document.getElementById('globalMemoryTabBtn');
   const settingsTabBtn = document.getElementById('settingsTabBtn');
   const overviewPanel = document.getElementById('overviewPanel');
   const tasksPanel = document.getElementById('tasksPanel');
+  const searchPanel = document.getElementById('searchPanel');
   const projectsPanel = document.getElementById('projectsPanel');
   const memoryPanel = document.getElementById('memoryPanel');
   const globalMemoryPanel = document.getElementById('globalMemoryPanel');
@@ -96,6 +98,7 @@ export function switchMainTab(tab, opts = {}) {
   const tabButtons = [
     { btn: overviewTabBtn, id: 'overview' },
     { btn: tasksTabBtn, id: 'tasks' },
+    { btn: searchTabBtn, id: 'search' },
     { btn: projectsTabBtn, id: 'projects' },
     { btn: memoryTabBtn, id: 'memory' },
     { btn: globalMemoryTabBtn, id: 'global-memory' },
@@ -110,6 +113,7 @@ export function switchMainTab(tab, opts = {}) {
 
   overviewPanel.classList.toggle('active', tab === 'overview');
   tasksPanel.classList.toggle('active', tab === 'tasks');
+  if (searchPanel) searchPanel.classList.toggle('active', tab === 'search');
   if (projectsPanel) projectsPanel.classList.toggle('active', tab === 'projects');
   memoryPanel.classList.toggle('active', tab === 'memory');
   globalMemoryPanel.classList.toggle('active', tab === 'global-memory');
@@ -154,6 +158,10 @@ export function switchMainTab(tab, opts = {}) {
     import('./projects-view.js').then(m => m.renderProjectsView()).catch(() => {});
   }
 
+  if (tab === 'search') {
+    import('./search-page.js').then(m => m.onSearchTabShow()).catch(() => {});
+  }
+
   onTabSwitch(tab);
 
   if (!opts.fromRoute && isRoutingReady()) syncUrl();
@@ -162,6 +170,7 @@ export function switchMainTab(tab, opts = {}) {
 export function initStateListeners() {
   const overviewTabBtn = document.getElementById('overviewTabBtn');
   const tasksTabBtn = document.getElementById('tasksTabBtn');
+  const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
   const globalMemoryTabBtn = document.getElementById('globalMemoryTabBtn');
@@ -169,6 +178,7 @@ export function initStateListeners() {
 
   overviewTabBtn.addEventListener('click', () => switchMainTab('overview'));
   tasksTabBtn.addEventListener('click', () => switchMainTab('tasks'));
+  if (searchTabBtn) searchTabBtn.addEventListener('click', () => switchMainTab('search'));
   if (projectsTabBtn) projectsTabBtn.addEventListener('click', () => switchMainTab('projects'));
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   globalMemoryTabBtn.addEventListener('click', () => switchMainTab('global-memory'));

@@ -1,6 +1,7 @@
 // task-fields.js — Shared helpers for due dates, blocked state, labels, links, WIP.
 
 import { escapeHtml, findTaskByTaskId } from './ticket-types.js';
+import { normalizeModel } from '../../shared/model.js';
 import { nextTaskIdFromState, projectPrefix, derivePrefixFromSlug } from '../../shared/task-ids.js';
 
 export { projectPrefix, derivePrefixFromSlug };
@@ -305,6 +306,8 @@ export function ensureTaskFieldDefaults(task) {
   if (task.issueUrl == null) task.issueUrl = null;
   if (task.project == null) task.project = null;
   if (task.energy == null) task.energy = null;
+  if (task.model == null) task.model = null;
+  if (!task.custom || typeof task.custom !== 'object' || Array.isArray(task.custom)) task.custom = {};
   if (task.snoozeUntil == null) task.snoozeUntil = null;
   if (!Array.isArray(task.timeEntries)) task.timeEntries = [];
   if (!Array.isArray(task.decisions)) task.decisions = [];
@@ -482,6 +485,23 @@ export function snoozeBadgeHtml(task) {
 export function energyBadgeHtml(task) {
   if (!task.energy) return '';
   return `<span class="energy-badge energy-${escapeHtml(task.energy)}" title="Energy: ${escapeHtml(task.energy)}">${escapeHtml(task.energy)}</span>`;
+}
+
+export function modelBadgeHtml(task) {
+  const label = normalizeModel(task.model);
+  if (!label) return '';
+  return `<span class="model-badge" title="Model: ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+}
+
+export function collectModels(tasksBySection) {
+  const set = new Set();
+  for (const list of Object.values(tasksBySection || {})) {
+    for (const t of list || []) {
+      const m = normalizeModel(t.model);
+      if (m) set.add(m);
+    }
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
 }
 
 /** Workload rows by project slug. */
@@ -800,6 +820,7 @@ export function spawnRecurringFollowUp(completedTask, state) {
     issueUrl: completedTask.issueUrl || null,
     project: completedTask.project || null,
     energy: completedTask.energy || null,
+    model: completedTask.model || null,
     snoozeUntil: null,
     timeEntries: [],
     decisions: [],

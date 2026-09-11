@@ -17,6 +17,17 @@ import { showStatus } from './state.js';
 import { applyCorporateVisibility } from './overview.js';
 import { applyPomodoroVisibility, readShowPomodoro, writeShowPomodoro } from './task-timer.js';
 import { syncUrl, isRoutingReady } from './routing.js';
+import { ALL_FIELD_IDS } from './task-field-layout.js';
+import {
+  BUILTIN_FIELD_LABELS,
+  readCustomFields,
+  writeCustomFields,
+  readHiddenFields,
+  writeHiddenFields,
+  slugifyFieldId,
+  isValidCustomFieldId,
+  customFieldKey,
+} from './custom-fields.js';
 
 const HIDE_CORPORATE_KEY = 'dashboard.hideCorporate';
 const LEGACY_HIDE_SPRINTS_KEY = 'dashboard.hideSprints';
@@ -80,6 +91,7 @@ export function switchSettingsSubtab(subtab, opts = {}) {
     panel.hidden = !match;
   });
   activeSettingsSubtab = subtab;
+  if (subtab === 'task-fields') renderSettingsTaskFields();
   if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
@@ -409,16 +421,116 @@ function commitTypeId(state, idx, input, row) {
   showStatus('Ticket type id updated');
 }
 
+function uniqueCustomFieldId(label, existing) {
+  const base = slugifyFieldId(label);
+  if (!existing.includes(base)) return base;
+  let n = 2;
+  while (existing.includes(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
+function renderSettingsTaskFields() {
+  const customList = document.getElementById('settingsCustomFieldsList');
+  const hiddenList = document.getElementById('settingsHiddenFieldsList');
+  if (!customList || !hiddenList) return;
+
+  const custom = readCustomFields();
+  if (!custom.length) {
+    customList.innerHTML = '<p class="settings-fields-empty">No custom fields yet.</p>';
+  } else {
+    customList.innerHTML = custom.map(f => `
+      <div class="settings-custom-field-row" data-id="${escapeHtml(f.id)}">
+        <span class="settings-custom-field-label">${escapeHtml(f.label)}</span>
+        <code class="settings-custom-field-id">${escapeHtml(f.id)}</code>
+        <button type="button" class="settings-custom-field-remove" data-id="${escapeHtml(f.id)}" title="Remove ${escapeHtml(f.label)}">×</button>
+      </div>
+    `).join('');
+    customList.querySelectorAll('.settings-custom-field-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const next = readCustomFields().filter(f => f.id !== id);
+        writeCustomFields(next);
+        const hidden = readHiddenFields();
+        hidden.delete(customFieldKey(id));
+        writeHiddenFields(hidden);
+        renderSettingsTaskFields();
+        getRenderTasks && getRenderTasks()();
+        showStatus(`Removed custom field "${id}"`);
+      });
+    });
+  }
+
+  const hidden = readHiddenFields();
+  hiddenList.innerHTML = ALL_FIELD_IDS.map(id => `
+    <label class="settings-hidden-field-row">
+      <input type="checkbox" class="settings-hidden-field-cb" data-field="${escapeHtml(id)}"
+        ${hidden.has(id) ? 'checked' : ''}>
+      <span>${escapeHtml(BUILTIN_FIELD_LABELS[id] || id)}</span>
+    </label>
+  `).join('');
+  hiddenList.querySelectorAll('.settings-hidden-field-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const next = readHiddenFields();
+      const fieldId = cb.dataset.field;
+      if (cb.checked) next.add(fieldId);
+      else next.delete(fieldId);
+      writeHiddenFields(next);
+      getRenderTasks && getRenderTasks()();
+      showStatus(cb.checked ? `Hidden ${BUILTIN_FIELD_LABELS[fieldId] || fieldId}` : `Showing ${BUILTIN_FIELD_LABELS[fieldId] || fieldId}`);
+    });
+  });
+}
+
+function addCustomField() {
+  const input = document.getElementById('settingsCustomFieldLabel');
+  if (!input) return;
+  const label = input.value.trim();
+  if (!label) {
+    showStatus('Enter a field label');
+    input.focus();
+    return;
+  }
+  const fields = readCustomFields();
+  const id = uniqueCustomFieldId(label, fields.map(f => f.id));
+  if (!isValidCustomFieldId(id)) {
+    showStatus('Could not derive a valid field id');
+    return;
+  }
+  fields.push({ id, label });
+  writeCustomFields(fields);
+  input.value = '';
+  renderSettingsTaskFields();
+  getRenderTasks && getRenderTasks()();
+  showStatus(`Added custom field "${label}"`);
+}
+
 export function initSettings() {
   applyDisplayPrefs();
   initDisplayPrefs();
   initSettingsSubtabs();
   renderSettingsTicketTypes();
+  renderSettingsTaskFields();
 
   const addBtn = document.getElementById('settingsTicketTypeAdd');
   if (addBtn && !addBtn.dataset.bound) {
     addBtn.dataset.bound = '1';
     addBtn.addEventListener('click', addTicketType);
+  }
+
+  const customAddBtn = document.getElementById('settingsCustomFieldAdd');
+  if (customAddBtn && !customAddBtn.dataset.bound) {
+    customAddBtn.dataset.bound = '1';
+    customAddBtn.addEventListener('click', addCustomField);
+  }
+  const customLabelInput = document.getElementById('settingsCustomFieldLabel');
+  if (customLabelInput && !customLabelInput.dataset.bound) {
+    customLabelInput.dataset.bound = '1';
+    customLabelInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addCustomField();
+      }
+    });
   }
 }
 

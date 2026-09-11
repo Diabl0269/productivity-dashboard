@@ -8,6 +8,9 @@ import {
 import { isValidTaskId, collectKnownPrefixes } from '../../shared/task-ids.js';
 import { normalizeProjectRow } from '../../shared/projects.js';
 
+import { normalizeModel } from '../../shared/model.js';
+import { readCustomFromJson, serializeCustomToJson } from './custom-fields.js';
+
 const ENERGY_VALUES = new Set(['deep', 'shallow', 'errands', 'creative']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -96,6 +99,13 @@ function readIssueUrl(t) {
 function readEnergy(t) {
   if (typeof t.energy !== 'string') return null;
   return ENERGY_VALUES.has(t.energy) ? t.energy : null;
+}
+
+function readModel(t) {
+  if (typeof t.model === 'string') return normalizeModel(t.model);
+  // Legacy enum field — preserve value as free text
+  if (typeof t.modelEffort === 'string') return normalizeModel(t.modelEffort);
+  return null;
 }
 
 /** Default / empty meta for solo task system. */
@@ -196,6 +206,8 @@ export function loadTasksJson(text) {
       issueUrl: readIssueUrl(t),
       project: (typeof t.project === 'string' && t.project.trim()) ? t.project.trim() : null,
       energy: readEnergy(t),
+      model: readModel(t),
+      custom: readCustomFromJson(t),
       snoozeUntil: (typeof t.snoozeUntil === 'string' && DATE_RE.test(t.snoozeUntil)) ? t.snoozeUntil : null,
       blocked: !!t.blocked,
       waitingOn: t.waitingOn || null,
@@ -258,6 +270,10 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (t.issueUrl) row.issueUrl = String(t.issueUrl).trim();
         if (t.project) row.project = String(t.project).trim();
         if (t.energy && ENERGY_VALUES.has(t.energy)) row.energy = t.energy;
+        const model = normalizeModel(t.model);
+        if (model) row.model = model;
+        const custom = serializeCustomToJson(t);
+        if (custom) row.custom = custom;
         if (t.snoozeUntil) row.snoozeUntil = t.snoozeUntil;
         if (t.blocked) row.blocked = true;
         if (t.waitingOn) row.waitingOn = t.waitingOn;

@@ -46,6 +46,7 @@ export function renderFilteredViews() {
   if (taskState.currentView === 'board') renderBoard();
   else renderList();
   reapplySearch();
+  import('./search-page.js').then(m => m.refreshSearchPageIfActive()).catch(() => {});
 }
 
 export function renderTasks() {

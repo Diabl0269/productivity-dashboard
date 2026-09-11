@@ -1,12 +1,14 @@
 // task-field-layout.js — Pinned / unpinned field order for create + detail modals.
 
+import { allLayoutFieldIds } from './custom-fields.js';
+
 export const STORAGE_KEY = 'dashboard.taskFieldLayout';
 const LEGACY_STORAGE_KEY = 'dashboard.taskCreateFieldLayout';
 
 /** All pinable field ids (title stays in the modal header). */
 export const ALL_FIELD_IDS = [
   'priority', 'status', 'due', 'start', 'jiraKey', 'issueUrl', 'project', 'energy',
-  'snoozeUntil', 'type', 'color', 'parent', 'blocked', 'waitingOn', 'assignee',
+  'model', 'snoozeUntil', 'type', 'color', 'parent', 'blocked', 'waitingOn', 'assignee',
   'estimate', 'recurrence', 'labels', 'links', 'description',
 ];
 
@@ -37,9 +39,13 @@ function dedupeList(ids) {
   return out;
 }
 
+function knownFieldIds() {
+  return new Set(allLayoutFieldIds());
+}
+
 function normalizeLayout(parsed) {
   const base = defaultLayout();
-  const known = new Set(ALL_FIELD_IDS);
+  const known = knownFieldIds();
 
   let pinned = Array.isArray(parsed?.pinned)
     ? dedupeList(parsed.pinned.filter(id => known.has(id)))
@@ -51,7 +57,7 @@ function normalizeLayout(parsed) {
   const pinnedSet = new Set(pinned);
   unpinned = unpinned.filter(id => !pinnedSet.has(id));
 
-  for (const id of ALL_FIELD_IDS) {
+  for (const id of known) {
     if (!pinnedSet.has(id) && !unpinned.includes(id)) unpinned.push(id);
   }
 
