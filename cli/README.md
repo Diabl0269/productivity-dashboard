@@ -34,7 +34,7 @@ After linking, `ch` is available globally. Alternatively, run `./ch` from the re
 | `ch tasks lint [--fix]` | Validate tasks.json; `--fix` deduplicates ids / normalizes legacy fields |
 | `ch tasks archive-done` | Move done tasks older than 7 days to archive |
 
-**`ch tasks update` flags:** `--title`, `--description`, `--add-description`, `--priority`, `--type`, `--parent` / `--clear-parent`, `--color` / `--clear-color`, `--due` / `--clear-due`, `--estimate` / `--clear-estimate`, `--assignee` / `--clear-assignee`, `--blocked` / `--unblocked`, `--waiting-on` / `--clear-waiting-on`, `--add-label` / `--remove-label` / `--clear-labels`, `--add-link` / `--link-label` / `--remove-link N` / `--clear-links`, `--add-blocked-by` / `--remove-blocked-by` / `--clear-blocked-by`, subtask flags, `--uncheck`.
+**`ch tasks update` flags:** `--title`, `--description`, `--add-description`, `--priority`, `--type`, `--parent` / `--clear-parent`, `--color` / `--clear-color`, `--due` / `--clear-due`, `--estimate` / `--clear-estimate`, `--assignee` / `--clear-assignee`, `--blocked` / `--unblocked`, `--waiting-on` / `--clear-waiting-on`, `--add-label` / `--remove-label` / `--clear-labels`, `--add-link` / `--link-label` / `--remove-link N` / `--clear-links`, `--add-blocked-by` / `--remove-blocked-by` / `--clear-blocked-by`, `--add-note` / `--remove-note N` / `--clear-notes`, `--decision` / `--remove-decision N` / `--clear-decisions`, `--remove-time-entry N` / `--clear-time-entries`, subtask flags, `--uncheck`.
 
 Valid sections: `inbox`, `backlog`, `todo`, `in-progress`, `done`, `archive`.  
 Valid priorities: `low`, `medium`, `high`.  

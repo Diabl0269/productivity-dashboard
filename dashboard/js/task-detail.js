@@ -31,6 +31,10 @@ import {
   isTaskDone,
   appendHistory,
   appendNote,
+  appendDecision,
+  removeNoteAt,
+  removeDecisionAt,
+  removeTimeEntryAt,
   parseEstimate,
   formatEstimate,
   formatDueLabel,
@@ -305,10 +309,8 @@ function buildPanels(task) {
   buildAssigneeEstimatePanel(task, paneEls.time);
   buildRecurrencePanel(task, paneEls.time);
 
-  // Notes — conversation, decisions, history
-  buildNotesPanel(task, paneEls.notes);
-  buildDecisionsPanel(task, paneEls.notes);
-  buildHistoryPanel(task, paneEls.notes);
+  // Notes — sub-tabbed: thread, decisions, activity
+  buildNotesTabContent(task, paneEls.notes);
 }
 
 /** Compact always-visible strip: status chips + live timer. */
@@ -362,11 +364,24 @@ function buildTimerPanel(task, body) {
   if (Array.isArray(task.timeEntries) && task.timeEntries.length) {
     const list = document.createElement('div');
     list.className = 'td-time-entries';
-    task.timeEntries.slice(-8).reverse().forEach(e => {
+    const entries = task.timeEntries;
+    entries.slice().reverse().forEach((e, revIdx) => {
+      const idx = entries.length - 1 - revIdx;
       const row = document.createElement('div');
       row.className = 'td-time-entry';
       const when = (e.at || '').replace('T', ' ').slice(0, 16);
       row.innerHTML = `<span>${escapeHtml(when)}</span><span>${escapeHtml(formatEstimate(e.minutes))}</span>${e.note ? `<span class="td-time-note">${escapeHtml(e.note)}</span>` : ''}`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'td-entry-remove';
+      remove.setAttribute('aria-label', 'Remove time session');
+      remove.textContent = '×';
+      remove.addEventListener('click', () => {
+        removeTimeEntryAt(task, idx + 1);
+        commit('Time session removed');
+        openTaskDetail(task, { focusTitle: false });
+      });
+      row.appendChild(remove);
       list.appendChild(row);
     });
     panel.appendChild(list);
@@ -375,41 +390,130 @@ function buildTimerPanel(task, body) {
   bindTimerControls(panel, task.taskId);
 }
 
+const NOTES_SUBTABS = [
+  { id: 'thread', label: 'Notes' },
+  { id: 'decisions', label: 'Decisions' },
+  { id: 'activity', label: 'Activity' },
+];
+
+let activeNotesSubTab = 'thread';
+
+function buildNotesTabContent(task, body) {
+  body.classList.add('td-notes-tab-root');
+
+  const subtabs = document.createElement('div');
+  subtabs.className = 'td-subtabs';
+  subtabs.setAttribute('role', 'tablist');
+
+  const subpanes = document.createElement('div');
+  subpanes.className = 'td-subtab-panes';
+
+  const subpaneEls = {};
+  NOTES_SUBTABS.forEach(tab => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'td-subtab' + (tab.id === activeNotesSubTab ? ' active' : '');
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', tab.id === activeNotesSubTab ? 'true' : 'false');
+    btn.dataset.subtab = tab.id;
+    btn.textContent = tab.label;
+    btn.addEventListener('click', () => {
+      activeNotesSubTab = tab.id;
+      subtabs.querySelectorAll('.td-subtab').forEach(b => {
+        const on = b.dataset.subtab === tab.id;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      Object.entries(subpaneEls).forEach(([id, el]) => {
+        el.hidden = id !== tab.id;
+      });
+    });
+    subtabs.appendChild(btn);
+
+    const pane = document.createElement('div');
+    pane.className = 'td-subtab-pane';
+    pane.dataset.subpane = tab.id;
+    pane.hidden = tab.id !== activeNotesSubTab;
+    subpanes.appendChild(pane);
+    subpaneEls[tab.id] = pane;
+  });
+
+  body.appendChild(subtabs);
+  body.appendChild(subpanes);
+
+  buildNotesPanel(task, subpaneEls.thread);
+  buildDecisionsPanel(task, subpaneEls.decisions);
+  buildHistoryPanel(task, subpaneEls.activity);
+}
+
+function buildRemovableEntryCard({ when, text, variant, onRemove }) {
+  const card = document.createElement('div');
+  card.className = 'td-entry-card' + (variant ? ` td-entry-card-${variant}` : '');
+
+  const meta = document.createElement('div');
+  meta.className = 'td-entry-meta';
+  meta.textContent = when;
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'td-entry-text';
+  bodyEl.textContent = text;
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'td-entry-remove';
+  remove.setAttribute('aria-label', 'Remove entry');
+  remove.textContent = '×';
+  remove.addEventListener('click', onRemove);
+
+  card.appendChild(meta);
+  card.appendChild(bodyEl);
+  card.appendChild(remove);
+  return card;
+}
+
 function buildDecisionsPanel(task, body) {
   ensureTaskFieldDefaults(task);
-  const list = document.createElement('div');
-  list.className = 'td-notes-list';
+  const wrap = document.createElement('div');
+  wrap.className = 'td-entry-list';
+
   const decisions = task.decisions || [];
   if (decisions.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'td-panel-hint';
-    empty.textContent = 'No decisions yet';
-    list.appendChild(empty);
+    empty.textContent = 'No decisions yet — record choices you want to remember.';
+    wrap.appendChild(empty);
   } else {
-    decisions.slice().reverse().forEach(d => {
-      const row = document.createElement('div');
-      row.className = 'td-note-row';
-      const when = (d.at || '').split('T')[0] || '';
-      row.innerHTML = `<span class="td-note-date">${escapeHtml(when)}</span><span class="td-note-text">${escapeHtml(d.text)}</span>`;
-      list.appendChild(row);
+    decisions.slice().reverse().forEach((d, revIdx) => {
+      const idx = decisions.length - 1 - revIdx;
+      const when = (d.at || '').replace('T', ' ').slice(0, 16);
+      wrap.appendChild(buildRemovableEntryCard({
+        when,
+        text: d.text || '',
+        variant: 'decision',
+        onRemove: () => {
+          removeDecisionAt(task, idx + 1);
+          commit('Decision removed');
+          openTaskDetail(task, { focusTitle: false });
+        },
+      }));
     });
   }
+
   const addRow = document.createElement('div');
-  addRow.className = 'td-note-add';
+  addRow.className = 'td-entry-add';
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'td-text-input';
   input.placeholder = 'Record a decision…';
+  input.setAttribute('aria-label', 'New decision');
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'td-add-btn';
-  btn.textContent = 'Add';
+  btn.textContent = 'Add decision';
   const add = () => {
     const text = input.value.trim();
     if (!text) return;
-    if (!Array.isArray(task.decisions)) task.decisions = [];
-    task.decisions.push({ at: new Date().toISOString(), text });
-    if (task.decisions.length > 50) task.decisions = task.decisions.slice(-50);
+    appendDecision(task, text);
     input.value = '';
     commit('Decision recorded');
     openTaskDetail(task, { focusTitle: false });
@@ -420,7 +524,9 @@ function buildDecisionsPanel(task, body) {
   });
   addRow.appendChild(input);
   addRow.appendChild(btn);
-  body.appendChild(sectionPanel('Decisions', [list, addRow]));
+  wrap.appendChild(addRow);
+
+  body.appendChild(wrap);
 }
 
 function sectionPanel(label, contentEl) {
@@ -1318,39 +1424,43 @@ function buildRecurrencePanel(task, body) {
 function buildNotesPanel(task, body) {
   ensureTaskFieldDefaults(task);
   const wrap = document.createElement('div');
-  wrap.className = 'td-notes-list';
+  wrap.className = 'td-entry-list';
 
-  const notes = [...(task.notes || [])].reverse();
+  const notes = task.notes || [];
   if (notes.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'td-panel-hint';
-    empty.textContent = 'No notes yet';
+    empty.textContent = 'No notes yet — add context, updates, or reminders.';
     wrap.appendChild(empty);
   } else {
-    notes.forEach(n => {
-      const row = document.createElement('div');
-      row.className = 'td-history-row';
+    notes.slice().reverse().forEach((n, revIdx) => {
+      const idx = notes.length - 1 - revIdx;
       const when = (n.at || '').replace('T', ' ').slice(0, 16);
-      row.innerHTML = `<span class="td-history-at">${escapeHtml(when)}</span>`
-        + `<span class="td-history-event">${escapeHtml(n.text || '')}</span>`;
-      wrap.appendChild(row);
+      wrap.appendChild(buildRemovableEntryCard({
+        when,
+        text: n.text || '',
+        variant: 'note',
+        onRemove: () => {
+          removeNoteAt(task, idx + 1);
+          commit('Note removed');
+          openTaskDetail(task, { focusTitle: false });
+        },
+      }));
     });
   }
 
   const addRow = document.createElement('div');
-  addRow.className = 'td-inline-add';
-  addRow.style.marginTop = '8px';
+  addRow.className = 'td-entry-add';
   const noteInput = document.createElement('textarea');
-  noteInput.className = 'td-notes-textarea';
+  noteInput.className = 'td-notes-textarea td-notes-textarea-compact';
   noteInput.rows = 2;
   noteInput.placeholder = 'Add a note…';
   noteInput.setAttribute('aria-label', 'New note');
-  noteInput.style.minHeight = '48px';
   const noteBtn = document.createElement('button');
   noteBtn.type = 'button';
-  noteBtn.className = 'td-add-subtask';
+  noteBtn.className = 'td-add-btn';
   noteBtn.textContent = 'Add note';
-  const addNote = () => {
+  const addNoteFn = () => {
     const text = noteInput.value.trim();
     if (!text) return;
     appendNote(task, text);
@@ -1358,44 +1468,54 @@ function buildNotesPanel(task, body) {
     commit('Note added');
     openTaskDetail(task, { focusTitle: false });
   };
-  noteBtn.addEventListener('click', addNote);
+  noteBtn.addEventListener('click', addNoteFn);
   noteInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      addNote();
+      addNoteFn();
     }
   });
   addRow.appendChild(noteInput);
   addRow.appendChild(noteBtn);
   wrap.appendChild(addRow);
 
-  body.appendChild(sectionPanel('Notes', wrap));
+  body.appendChild(wrap);
 }
 
 function buildHistoryPanel(task, body) {
   ensureTaskFieldDefaults(task);
   const list = document.createElement('div');
-  list.className = 'td-history';
+  list.className = 'td-entry-list td-entry-list-readonly';
   const entries = [...(task.history || [])].reverse();
   if (entries.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'td-panel-hint';
-    empty.textContent = 'No activity yet';
+    empty.textContent = 'No activity yet — changes to status, assignee, and other fields appear here.';
     list.appendChild(empty);
   } else {
     entries.forEach(h => {
-      const row = document.createElement('div');
-      row.className = 'td-history-row';
       const when = (h.at || '').replace('T', ' ').slice(0, 16);
       let detail = h.event;
       if (h.from || h.to) detail += `: ${h.from || '—'} → ${h.to || '—'}`;
       if (h.note) detail += ` (${h.note})`;
-      row.innerHTML = `<span class="td-history-at">${escapeHtml(when)}</span>`
-        + `<span class="td-history-event">${escapeHtml(detail)}</span>`;
-      list.appendChild(row);
+
+      const card = document.createElement('div');
+      card.className = 'td-entry-card td-entry-card-activity';
+
+      const meta = document.createElement('div');
+      meta.className = 'td-entry-meta';
+      meta.textContent = when;
+
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'td-entry-text';
+      bodyEl.textContent = detail;
+
+      card.appendChild(meta);
+      card.appendChild(bodyEl);
+      list.appendChild(card);
     });
   }
-  body.appendChild(sectionPanel('Activity', list));
+  body.appendChild(list);
 }
 
 function buildBlockedByPanel(task, body) {

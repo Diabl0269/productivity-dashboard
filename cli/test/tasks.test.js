@@ -632,6 +632,73 @@ test('tasks update: issue project energy snooze decision', () => {
   }
 });
 
+test('tasks update: remove notes, decisions, and time entries', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    let result = runCli([
+      'tasks', 'update', 'T2',
+      '--add-note', 'First note',
+      '--decision', 'Use option A',
+      '--json',
+    ], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    let out = JSON.parse(result.stdout.trim());
+    assert.equal(out.notes.length, 1);
+
+    result = runCli([
+      'tasks', 'update', 'T2',
+      '--add-note', 'Second note',
+      '--decision', 'Use option B',
+      '--json',
+    ], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    out = JSON.parse(result.stdout.trim());
+    assert.equal(out.notes.length, 2);
+    assert.equal(out.decisions.length, 2);
+
+    result = runCli(['tasks', 'update', 'T2', '--remove-note', '1', '--json'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    out = JSON.parse(result.stdout.trim());
+    assert.equal(out.notes.length, 1);
+    assert.equal(out.notes[0].text, 'Second note');
+
+    result = runCli(['tasks', 'update', 'T2', '--remove-decision', '2', '--json'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    out = JSON.parse(result.stdout.trim());
+    assert.equal(out.decisions.length, 1);
+    assert.equal(out.decisions[0].text, 'Use option A');
+
+    const doc = readTasks(tmpDir);
+    const task = doc.sections.flatMap(s => s.tasks).find(t => t.id === 'T2');
+    task.timeEntries = [
+      { at: '2026-01-01T12:00:00.000Z', minutes: 30 },
+      { at: '2026-01-02T12:00:00.000Z', minutes: 15 },
+    ];
+    task.loggedMinutes = 45;
+    fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc, null, 2) + '\n');
+
+    result = runCli(['tasks', 'update', 'T2', '--remove-time-entry', '1', '--json'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    out = JSON.parse(result.stdout.trim());
+    assert.equal(out.timeEntries.length, 1);
+    assert.equal(out.timeEntries[0].minutes, 15);
+    assert.equal(out.loggedMinutes, 15);
+
+    result = runCli([
+      'tasks', 'update', 'T2',
+      '--clear-notes', '--clear-decisions', '--clear-time-entries',
+      '--json',
+    ], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    out = JSON.parse(result.stdout.trim());
+    assert.equal(out.notes, undefined);
+    assert.equal(out.decisions, undefined);
+    assert.equal(out.timeEntries, undefined);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('tasks plan: pin and show', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {

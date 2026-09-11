@@ -15,7 +15,10 @@
  *              [--color "#RRGGBB"] [--clear-color]
  *              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
  *              [--jira PROJECT-123] [--clear-jira] [--log-time 30m|2h] [--set-logged 2h] [--clear-logged]
- *              [--recur daily|weekly|monthly] [--recur-interval N] [--clear-recur] [--add-note "..."]
+ *              [--recur daily|weekly|monthly] [--recur-interval N] [--clear-recur]
+ *              [--add-note "..."] [--remove-note N] [--clear-notes]
+ *              [--decision "..."] [--remove-decision N] [--clear-decisions]
+ *              [--remove-time-entry N] [--clear-time-entries]
  *              [--blocked] [--unblocked] [--waiting-on "..."] [--clear-waiting-on]
  *              [--add-label L] [--remove-label L] [--clear-labels]
  *              [--add-link URL] [--link-label "..."] [--remove-link N] [--clear-links]
@@ -679,6 +682,12 @@ function cmdUpdate(argv) {
     snooze:          { type: 'string' },
     'clear-snooze':  { type: 'boolean' },
     decision:        { type: 'string' },
+    'remove-decision': { type: 'string' },
+    'clear-decisions': { type: 'boolean' },
+    'remove-note':   { type: 'string' },
+    'clear-notes':   { type: 'boolean' },
+    'remove-time-entry': { type: 'string' },
+    'clear-time-entries': { type: 'boolean' },
     'log-time':      { type: 'string' },
     'clear-logged':  { type: 'boolean' },
     'set-logged':    { type: 'string' },
@@ -875,7 +884,18 @@ function cmdUpdate(argv) {
     changed = true;
   }
 
-  if (values.decision !== undefined) {
+  if (values['clear-decisions']) {
+    delete task.decisions;
+    changed = true;
+  } else if (values['remove-decision'] !== undefined) {
+    const n = parseInt(values['remove-decision'], 10);
+    if (!Array.isArray(task.decisions) || isNaN(n) || n < 1 || n > task.decisions.length) {
+      die(`--remove-decision N must be between 1 and ${(task.decisions || []).length}`);
+    }
+    task.decisions.splice(n - 1, 1);
+    if (task.decisions.length === 0) delete task.decisions;
+    changed = true;
+  } else if (values.decision !== undefined) {
     if (!Array.isArray(task.decisions)) task.decisions = [];
     task.decisions.push({ at: new Date().toISOString(), text: values.decision.trim() });
     changed = true;
@@ -917,9 +937,37 @@ function cmdUpdate(argv) {
     changed = true;
   }
 
-  if (values['add-note'] !== undefined) {
+  if (values['clear-notes']) {
+    delete task.notes;
+    changed = true;
+  } else if (values['remove-note'] !== undefined) {
+    const n = parseInt(values['remove-note'], 10);
+    if (!Array.isArray(task.notes) || isNaN(n) || n < 1 || n > task.notes.length) {
+      die(`--remove-note N must be between 1 and ${(task.notes || []).length}`);
+    }
+    task.notes.splice(n - 1, 1);
+    if (task.notes.length === 0) delete task.notes;
+    changed = true;
+  } else if (values['add-note'] !== undefined) {
     if (!Array.isArray(task.notes)) task.notes = [];
     task.notes.push({ at: new Date().toISOString(), text: values['add-note'].trim() });
+    changed = true;
+  }
+
+  if (values['clear-time-entries']) {
+    delete task.timeEntries;
+    changed = true;
+  } else if (values['remove-time-entry'] !== undefined) {
+    const n = parseInt(values['remove-time-entry'], 10);
+    if (!Array.isArray(task.timeEntries) || isNaN(n) || n < 1 || n > task.timeEntries.length) {
+      die(`--remove-time-entry N must be between 1 and ${(task.timeEntries || []).length}`);
+    }
+    const removed = task.timeEntries.splice(n - 1, 1)[0];
+    if (task.timeEntries.length === 0) delete task.timeEntries;
+    if (removed && typeof removed.minutes === 'number') {
+      task.loggedMinutes = Math.max(0, (task.loggedMinutes || 0) - removed.minutes);
+      if (task.loggedMinutes === 0) delete task.loggedMinutes;
+    }
     changed = true;
   }
 
@@ -1599,7 +1647,10 @@ Subcommands:
              [--model "name"] [--clear-model]
              [--snooze YYYY-MM-DD] [--clear-snooze] [--decision "..."]
              [--log-time 30m|2h] [--set-logged 2h] [--clear-logged]
-             [--recur daily|weekly|monthly] [--recur-interval N] [--clear-recur] [--add-note "..."]
+             [--recur daily|weekly|monthly] [--recur-interval N] [--clear-recur]
+             [--add-note "..."] [--remove-note N] [--clear-notes]
+             [--decision "..."] [--remove-decision N] [--clear-decisions]
+             [--remove-time-entry N] [--clear-time-entries]
              [--estimate 2h] [--clear-estimate]
              [--assignee name] [--clear-assignee] [--check] [--uncheck]
              [--blocked] [--unblocked] [--waiting-on "..."] [--clear-waiting-on]
