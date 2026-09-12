@@ -64,6 +64,10 @@ import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
 import { mountFieldLayoutSections } from './task-field-layout.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
+import {
+  taskIdDisplayState,
+  buildParentPickerCandidates,
+} from '../../shared/task-detail-fields.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 import { confirmAndRenameTaskId } from './task-move.js';
 
@@ -82,22 +86,33 @@ const PRIORITIES = ['low', 'medium', 'high'];
 
 /* ── Open / close ─────────────────────────────────────────────── */
 
-function syncTaskIdField(idEl, task) {
-  if (!idEl) return;
-  const taskId = task?.taskId || '';
-  if (idEl.tagName === 'INPUT') {
-    idEl.value = taskId;
-    idEl.placeholder = taskId ? '' : '—';
-    idEl.size = Math.max(3, Math.min(18, taskId.length || 1));
-    idEl.readOnly = true;
-    idEl.title = task?.originalId && task.originalId !== taskId
-      ? `Original ID: ${task.originalId} — click to rename`
-      : taskId
-        ? `${taskId} — click to rename`
-        : 'No ticket ID';
-  } else {
-    idEl.textContent = taskId || '\u2014';
+function syncTaskIdField(task) {
+  const state = taskIdDisplayState(task);
+  const btn = document.getElementById('tdTaskIdBtn');
+  const input = document.getElementById('tdTaskId');
+  if (btn) {
+    btn.textContent = state.label;
+    btn.title = state.title;
+    btn.hidden = false;
   }
+  if (input) {
+    input.value = state.taskId;
+    input.placeholder = state.placeholder;
+    input.size = state.size;
+    input.title = state.title;
+    input.hidden = true;
+  }
+}
+
+function beginTaskIdEdit() {
+  const btn = document.getElementById('tdTaskIdBtn');
+  const input = document.getElementById('tdTaskId');
+  if (!btn || !input || !activeTask) return;
+  btn.hidden = true;
+  input.hidden = false;
+  input.value = activeTask.taskId || '';
+  input.focus();
+  input.select();
 }
 
 export function openTaskDetail(task, opts = {}) {
@@ -121,7 +136,7 @@ export function openTaskDetail(task, opts = {}) {
   const refresh = overlay.classList.contains('visible');
 
   const idEl = document.getElementById('tdTaskId');
-  syncTaskIdField(idEl, task);
+  syncTaskIdField(task);
 
   overlay.hidden = false;
   // Force reflow before adding .visible so the enter animation plays.
@@ -1015,11 +1030,11 @@ function getEssentialsFieldFactories(task) {
       }
       const pickerHost = document.createElement('div');
       pickerHost.className = 'td-ticket-picker-host';
-      const candidates = parentCandidates(types, state.tasks, task.type || DEFAULT_TICKET_TYPE_ID, task.taskId);
-      if (task.parentId && !candidates.some(p => p.taskId === task.parentId)) {
-        const orphan = findTaskByTaskId(state.tasks, task.parentId);
-        if (orphan) candidates.unshift(orphan);
-      }
+      const candidates = buildParentPickerCandidates(
+        parentCandidates(types, state.tasks, task.type || DEFAULT_TICKET_TYPE_ID, task.taskId),
+        task,
+        (parentId) => findTaskByTaskId(state.tasks, parentId),
+      );
       mountTicketPicker(pickerHost, {
         tasks: candidates,
         value: task.parentId,
@@ -2165,17 +2180,17 @@ export function initTaskDetail() {
     titleInput.addEventListener('blur', saveTitle);
   }
 
+  const idBtn = document.getElementById('tdTaskIdBtn');
   const idInput = document.getElementById('tdTaskId');
+  if (idBtn) {
+    idBtn.addEventListener('click', beginTaskIdEdit);
+  }
   if (idInput) {
-    idInput.addEventListener('focus', () => {
-      idInput.readOnly = false;
-      if (idInput.value) idInput.select();
-    });
     idInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); idInput.blur(); }
       if (e.key === 'Escape') {
         e.preventDefault();
-        syncTaskIdField(idInput, activeTask);
+        syncTaskIdField(activeTask);
         idInput.blur();
       }
     });
@@ -2183,22 +2198,22 @@ export function initTaskDetail() {
       if (!activeTask) return;
       const next = idInput.value.trim().toUpperCase();
       if (!next || next === activeTask.taskId) {
-        syncTaskIdField(idInput, activeTask);
+        syncTaskIdField(activeTask);
         return;
       }
       const state = getState();
       if (!state) {
-        syncTaskIdField(idInput, activeTask);
+        syncTaskIdField(activeTask);
         return;
       }
       const ok = confirmAndRenameTaskId(state, activeTask, next, (result) => {
         activeTask = result.task;
-        syncTaskIdField(idInput, activeTask);
+        syncTaskIdField(activeTask);
         commit(`Renamed to ${result.newId}`);
         getRenderTasks?.()();
         if (isRoutingReady()) syncUrl();
       });
-      if (!ok) syncTaskIdField(idInput, activeTask);
+      if (!ok) syncTaskIdField(activeTask);
     });
   }
 }
