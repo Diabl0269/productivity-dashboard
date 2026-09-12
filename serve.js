@@ -23,6 +23,58 @@ function rootFor(relPath) {
   return ROOT;
 }
 
+/** Resolve memory/projects paths, falling back to memory.example/projects for demos. */
+function resolveMemoryRel(relPath) {
+  const norm = relPath.replace(/\\/g, '/');
+  const primary = path.join(ROOT, norm);
+  if (fs.existsSync(primary)) return { abs: primary, rel: norm };
+  if (norm.startsWith('memory/')) {
+    const altRel = norm.replace(/^memory\//, 'memory.example/');
+    const altAbs = path.join(ROOT, altRel);
+    if (fs.existsSync(altAbs)) return { abs: altAbs, rel: norm };
+  }
+  return { abs: primary, rel: norm };
+}
+
+function memoryExists(relPath) {
+  return fs.existsSync(resolveMemoryRel(relPath).abs);
+}
+
+function memoryProjectDir(memSlug) {
+  const relBase = `memory/projects/${memSlug}`;
+  const primary = path.join(ROOT, 'memory', 'projects', memSlug);
+  if (fs.existsSync(primary) && fs.statSync(primary).isDirectory()) {
+    return { abs: primary, relBase, source: 'memory' };
+  }
+  const example = path.join(ROOT, 'memory.example', 'projects', memSlug);
+  if (fs.existsSync(example) && fs.statSync(example).isDirectory()) {
+    return { abs: example, relBase, source: 'memory-example' };
+  }
+  return null;
+}
+
+/** @type {Promise<typeof import('./shared/project-docs.js')> | null} */
+let projectDocsLibPromise = null;
+function loadProjectDocsLib() {
+  if (!projectDocsLibPromise) {
+    projectDocsLibPromise = import('./shared/project-docs.js');
+  }
+  return projectDocsLibPromise;
+}
+
+function resolveFsDocRef(ref, allowedRoots) {
+  if (!ref || !ref.startsWith('fs:')) return null;
+  const abs = path.resolve(ref.slice(3));
+  for (const root of allowedRoots) {
+    const rootResolved = path.resolve(root);
+    if (abs === rootResolved || abs.startsWith(rootResolved + path.sep)) {
+      if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return abs;
+      return null;
+    }
+  }
+  return null;
+}
+
 const MIME_TYPES = {
   '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json',
@@ -214,6 +266,213 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Project documentation manifest
+  if (url.pathname === '/api/project-docs') {
+    try {
+      const pd = await loadProjectDocsLib();
+      const slug = url.searchParams.get('slug') || '';
+      const memorySlug = url.searchParams.get('memorySlug') || slug;
+      const extraDocs = (url.searchParams.get('docs') || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      const docDirs = (url.searchParams.get('docDirs') || '')
+        .split('|')
+        .map(s => decodeURIComponent(s.trim()))
+        .filter(Boolean);
+      const showAll = url.searchParams.get('showAll') === '1';
+      const filterPatterns = pd.parseDocFilterPatterns(
+        url.searchParams.get('filters') || ''
+      );
+
+      const entries = [];
+      const seen = new Set();
+      const add = (entry) => {
+        const id = (entry.id || entry.path || '').replace(/\\/g, '/');
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        entries.push({
+          id,
+          path: id,
+          treePath: entry.treePath || id,
+          name: entry.name || id.split('/').pop(),
+          kind: entry.kind || 'doc',
+          source: entry.source || 'repo',
+          rootLabel: entry.rootLabel || null,
+          previewable: entry.previewable !== false,
+        });
+      };
+
+      const walkRepoDir = (absDir, relBase, source) => {
+        if (!fs.existsSync(absDir)) return;
+        for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+          if (entry.name.startsWith('.')) continue;
+          const rel = `${relBase}/${entry.name}`;
+          const abs = path.join(absDir, entry.name);
+          if (entry.isFile() && /\.(md|txt|json)$/i.test(entry.name)) {
+            const treeRel = rel.replace(/^memory\/projects\/[^/]+\/?/, '');
+            add({
+              id: rel,
+              treePath: treeRel || entry.name.replace(/\.(md|txt|json)$/i, ''),
+              name: entry.name.replace(/\.(md|txt|json)$/i, ''),
+              kind: 'doc',
+              source,
+            });
+          } else if (entry.isDirectory()) {
+            walkRepoDir(abs, rel, source);
+          }
+        }
+      };
+
+      const useExampleFallback = docDirs.length === 0;
+      const projectMemoryExists = (relPath) => {
+        const norm = relPath.replace(/\\/g, '/');
+        const primary = path.join(ROOT, norm);
+        if (fs.existsSync(primary)) return true;
+        if (useExampleFallback && norm.startsWith('memory/')) {
+          const alt = path.join(ROOT, norm.replace(/^memory\//, 'memory.example/'));
+          return fs.existsSync(alt);
+        }
+        return false;
+      };
+      const projectMemoryFileSource = (relPath) => {
+        const norm = relPath.replace(/\\/g, '/');
+        const primary = path.join(ROOT, norm);
+        if (fs.existsSync(primary)) return 'memory';
+        if (useExampleFallback && norm.startsWith('memory/')) {
+          const alt = path.join(ROOT, norm.replace(/^memory\//, 'memory.example/'));
+          if (fs.existsSync(alt)) return 'memory-example';
+        }
+        return 'memory';
+      };
+      const projectMemoryDir = (memSlug) => {
+        const relBase = `memory/projects/${memSlug}`;
+        const primary = path.join(ROOT, 'memory', 'projects', memSlug);
+        if (fs.existsSync(primary) && fs.statSync(primary).isDirectory()) {
+          return { abs: primary, relBase, source: 'memory' };
+        }
+        if (useExampleFallback) {
+          const example = path.join(ROOT, 'memory.example', 'projects', memSlug);
+          if (fs.existsSync(example) && fs.statSync(example).isDirectory()) {
+            return { abs: example, relBase, source: 'memory-example' };
+          }
+        }
+        return null;
+      };
+
+      const memSlug = memorySlug || slug;
+      if (memSlug) {
+        const mainMd = `memory/projects/${memSlug}.md`;
+        if (projectMemoryExists(mainMd)) {
+          add({
+            id: mainMd,
+            treePath: 'Overview.md',
+            name: 'Overview',
+            kind: 'overview',
+            source: projectMemoryFileSource(mainMd),
+          });
+        }
+        const dir = projectMemoryDir(memSlug);
+        if (dir?.abs && fs.existsSync(dir.abs)) walkRepoDir(dir.abs, dir.relBase, dir.source);
+      }
+
+      for (const rel of extraDocs) {
+        if (rel.includes('..')) continue;
+        if (projectMemoryExists(rel)) {
+          add({
+            id: rel,
+            treePath: rel,
+            name: rel.split('/').pop().replace(/\.(md|txt|json)$/i, ''),
+            kind: 'link',
+            source: 'repo',
+          });
+        }
+      }
+
+      for (const absDir of docDirs) {
+        const resolved = path.resolve(absDir);
+        if (!fs.existsSync(resolved)) continue;
+        const label = pd.docDirLabel(resolved);
+        const scanned = pd.scanAbsoluteDocDir(resolved, {
+          fs,
+          rootLabel: label,
+          showAll: true,
+        });
+        for (const entry of scanned) add(entry);
+      }
+
+      const filtered = pd.filterDocEntries(entries, { showAll, patterns: filterPatterns });
+      const resolvedDirs = docDirs.filter(d => fs.existsSync(path.resolve(d)));
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        slug,
+        entries: filtered,
+        total: entries.length,
+        showAll,
+        missingDirs: docDirs.filter(d => !fs.existsSync(path.resolve(d))),
+        sources: {
+          memoryExample: entries.some(e => e.source === 'memory-example'),
+          memoryRepo: entries.some(e => e.source === 'memory'),
+          directories: resolvedDirs,
+        },
+      }));
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Read a project doc file (repo-relative or fs: absolute ref)
+  if (url.pathname === '/api/project-doc-content') {
+    try {
+      const ref = url.searchParams.get('ref') || '';
+      const docDirs = (url.searchParams.get('allowedRoots') || '')
+        .split('|')
+        .map(s => decodeURIComponent(s.trim()))
+        .filter(Boolean);
+      const allowedRoots = [
+        ROOT,
+        path.join(ROOT, 'memory.example'),
+        ...docDirs.map(d => path.resolve(d)),
+      ];
+
+      if (ref.startsWith('fs:')) {
+        const abs = resolveFsDocRef(ref, allowedRoots);
+        if (!abs) {
+          res.writeHead(403, { ...corsHeaders, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Path not allowed' }));
+          return;
+        }
+        const content = fs.readFileSync(abs, 'utf8');
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(content);
+        return;
+      }
+
+      const rel = ref.replace(/\\/g, '/');
+      if (rel.includes('..')) {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid path' }));
+        return;
+      }
+      const resolved = resolveMemoryRel(rel);
+      if (!fs.existsSync(resolved.abs) || !fs.statSync(resolved.abs).isFile()) {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not found' }));
+        return;
+      }
+      const content = fs.readFileSync(resolved.abs, 'utf8');
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(content);
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Global memory endpoint
   if (url.pathname === '/api/global-memory') {
     const claudeDir = path.join(os.homedir(), '.claude');
@@ -338,7 +597,7 @@ const server = http.createServer(async (req, res) => {
   // Static file serving
   const relPath = decodeURIComponent(url.pathname).replace(/^\/+/, '');
   const serveRoot = rootFor(relPath);
-  let filePath = path.join(serveRoot, decodeURIComponent(url.pathname));
+  let filePath = path.join(serveRoot, relPath);
   if (filePath.endsWith('/')) filePath = path.join(filePath, 'index.html');
 
   // Prevent directory traversal
@@ -346,6 +605,11 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(403);
     res.end('Forbidden');
     return;
+  }
+
+  if (!fs.existsSync(filePath) && relPath.startsWith('memory/')) {
+    const fallback = resolveMemoryRel(relPath);
+    if (fs.existsSync(fallback.abs)) filePath = fallback.abs;
   }
 
   fs.stat(filePath, (err, stats) => {

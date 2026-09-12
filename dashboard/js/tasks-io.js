@@ -36,6 +36,15 @@ export function markChanged(task) {
   saveTimeout = setTimeout(autoSave, 500);
 }
 
+/** Persist pending edits immediately (e.g. after project metadata save). */
+export function flushAutoSave() {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  return autoSave();
+}
+
 export async function autoSave() {
   const state = getState();
   if (!state.hasChanges || isSaving) return;

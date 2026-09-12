@@ -34,7 +34,10 @@ import {
   appendDecision,
   removeNoteAt,
   removeDecisionAt,
+  updateNoteAt,
+  updateDecisionAt,
   removeTimeEntryAt,
+  updateTimeEntryAt,
   parseEstimate,
   formatEstimate,
   formatDueLabel,
@@ -62,6 +65,7 @@ import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task
 import { mountFieldLayoutSections } from './task-field-layout.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import { syncUrl, isRoutingReady } from './routing.js';
+import { confirmAndRenameTaskId } from './task-move.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -99,7 +103,16 @@ export function openTaskDetail(task, opts = {}) {
   const refresh = overlay.classList.contains('visible');
 
   const idEl = document.getElementById('tdTaskId');
-  if (idEl) idEl.textContent = task.taskId || '\u2014';
+  if (idEl) {
+    if (idEl.tagName === 'INPUT') {
+      idEl.value = task.taskId || '';
+      idEl.title = task.originalId && task.originalId !== task.taskId
+        ? `Original ID: ${task.originalId}`
+        : 'Ticket ID — blur to rename';
+    } else {
+      idEl.textContent = task.taskId || '\u2014';
+    }
+  }
 
   overlay.hidden = false;
   // Force reflow before adding .visible so the enter animation plays.
@@ -370,7 +383,54 @@ function buildTimerPanel(task, body) {
       const row = document.createElement('div');
       row.className = 'td-time-entry';
       const when = (e.at || '').replace('T', ' ').slice(0, 16);
-      row.innerHTML = `<span>${escapeHtml(when)}</span><span>${escapeHtml(formatEstimate(e.minutes))}</span>${e.note ? `<span class="td-time-note">${escapeHtml(e.note)}</span>` : ''}`;
+
+      const whenEl = document.createElement('span');
+      whenEl.textContent = when;
+
+      const minutesInput = document.createElement('input');
+      minutesInput.type = 'number';
+      minutesInput.min = '0';
+      minutesInput.step = '1';
+      minutesInput.className = 'td-time-minutes-input';
+      minutesInput.value = String(e.minutes ?? 0);
+      minutesInput.setAttribute('aria-label', 'Session minutes');
+      minutesInput.title = 'Minutes logged';
+
+      const noteInput = document.createElement('input');
+      noteInput.type = 'text';
+      noteInput.className = 'td-text-input td-time-note-input';
+      noteInput.value = e.note || '';
+      noteInput.placeholder = 'Session note…';
+      noteInput.setAttribute('aria-label', 'Session note');
+
+      const saveEntry = () => {
+        const minutes = Math.max(0, parseInt(minutesInput.value, 10) || 0);
+        const note = noteInput.value.trim();
+        const prevMinutes = typeof e.minutes === 'number' ? e.minutes : 0;
+        const prevNote = e.note || '';
+        if (minutes === prevMinutes && note === prevNote) return;
+        updateTimeEntryAt(task, idx + 1, { minutes, note });
+        commit('Time session updated');
+        openTaskDetail(task, { focusTitle: false });
+      };
+
+      const blurUnlessRowFocus = (ev, saveFn) => {
+        if (row.contains(ev.relatedTarget)) return;
+        saveFn();
+      };
+
+      minutesInput.addEventListener('blur', (ev) => blurUnlessRowFocus(ev, saveEntry));
+      noteInput.addEventListener('blur', (ev) => blurUnlessRowFocus(ev, saveEntry));
+      minutesInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); minutesInput.blur(); }
+      });
+      noteInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); noteInput.blur(); }
+      });
+
+      row.appendChild(whenEl);
+      row.appendChild(minutesInput);
+      row.appendChild(noteInput);
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'td-entry-remove';
@@ -446,7 +506,7 @@ function buildNotesTabContent(task, body) {
   buildHistoryPanel(task, subpaneEls.activity);
 }
 
-function buildRemovableEntryCard({ when, text, variant, onRemove }) {
+function buildEditableEntryCard({ when, text, variant, multiline = false, onSave, onRemove }) {
   const card = document.createElement('div');
   card.className = 'td-entry-card' + (variant ? ` td-entry-card-${variant}` : '');
 
@@ -454,19 +514,66 @@ function buildRemovableEntryCard({ when, text, variant, onRemove }) {
   meta.className = 'td-entry-meta';
   meta.textContent = when;
 
-  const bodyEl = document.createElement('div');
-  bodyEl.className = 'td-entry-text';
-  bodyEl.textContent = text;
+  const editor = multiline ? document.createElement('textarea') : document.createElement('input');
+  editor.className = multiline
+    ? 'td-notes-textarea td-entry-edit'
+    : 'td-text-input td-entry-edit';
+  if (!multiline) editor.type = 'text';
+  if (multiline) editor.rows = Math.min(6, Math.max(2, String(text || '').split('\n').length));
+  editor.value = text || '';
+  editor.setAttribute('aria-label', multiline ? 'Edit note' : 'Edit decision');
+
+  const original = text || '';
+  let skipBlur = false;
+
+  const save = () => {
+    const next = editor.value.trim();
+    if (!next) {
+      editor.value = original;
+      return;
+    }
+    if (next !== original) onSave(next);
+  };
+
+  editor.addEventListener('blur', () => {
+    if (skipBlur) {
+      skipBlur = false;
+      return;
+    }
+    save();
+  });
+
+  editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      skipBlur = true;
+      editor.value = original;
+      editor.blur();
+      return;
+    }
+    if (!multiline && e.key === 'Enter') {
+      e.preventDefault();
+      editor.blur();
+      return;
+    }
+    if (multiline && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      editor.blur();
+    }
+  });
 
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'td-entry-remove';
   remove.setAttribute('aria-label', 'Remove entry');
   remove.textContent = '×';
+  remove.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    skipBlur = true;
+  });
   remove.addEventListener('click', onRemove);
 
   card.appendChild(meta);
-  card.appendChild(bodyEl);
+  card.appendChild(editor);
   card.appendChild(remove);
   return card;
 }
@@ -486,10 +593,15 @@ function buildDecisionsPanel(task, body) {
     decisions.slice().reverse().forEach((d, revIdx) => {
       const idx = decisions.length - 1 - revIdx;
       const when = (d.at || '').replace('T', ' ').slice(0, 16);
-      wrap.appendChild(buildRemovableEntryCard({
+      wrap.appendChild(buildEditableEntryCard({
         when,
         text: d.text || '',
         variant: 'decision',
+        onSave: (next) => {
+          updateDecisionAt(task, idx + 1, next);
+          commit('Decision updated');
+          openTaskDetail(task, { focusTitle: false });
+        },
         onRemove: () => {
           removeDecisionAt(task, idx + 1);
           commit('Decision removed');
@@ -1000,12 +1112,43 @@ function buildLabelsFieldContent(task) {
   task.labels.forEach((name, idx) => {
     const chip = document.createElement('span');
     chip.className = 'td-chip';
-    chip.innerHTML = `${escapeHtml(name)}<button type="button" class="td-chip-remove" aria-label="Remove label">×</button>`;
-    chip.querySelector('button').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'td-chip-input';
+    input.value = name;
+    input.setAttribute('aria-label', 'Edit label');
+    input.addEventListener('blur', () => {
+      const v = input.value.trim();
+      if (!v) {
+        task.labels.splice(idx, 1);
+        commit('Label removed');
+      } else if (v !== name) {
+        if (task.labels.includes(v) && task.labels.indexOf(v) !== idx) {
+          task.labels.splice(idx, 1);
+          commit('Duplicate label removed');
+        } else {
+          task.labels[idx] = v;
+          commit('Label updated');
+        }
+      }
+      openTaskDetail(task, { focusTitle: false });
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.value = name; input.blur(); }
+    });
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'td-chip-remove';
+    removeBtn.setAttribute('aria-label', 'Remove label');
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
       task.labels.splice(idx, 1);
       commit('Label removed');
       openTaskDetail(task, { focusTitle: false });
     });
+    chip.appendChild(input);
+    chip.appendChild(removeBtn);
     labelsWrap.appendChild(chip);
   });
   const labelAdd = document.createElement('div');
@@ -1050,13 +1193,61 @@ function buildLinksFieldContent(task) {
   linksWrap.className = 'td-links-list';
   task.links.forEach((link, idx) => {
     const row = document.createElement('div');
-    row.className = 'td-link-row';
-    const a = document.createElement('a');
-    a.href = link.url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.textContent = link.label || link.url;
-    a.className = 'td-link-anchor';
+    row.className = 'td-link-row td-link-row-editable';
+
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.className = 'td-text-input td-link-label-input';
+    labelInput.value = link.label || '';
+    labelInput.placeholder = 'Label';
+    labelInput.setAttribute('aria-label', 'Link label');
+
+    const urlInput = document.createElement('input');
+    urlInput.type = 'url';
+    urlInput.className = 'td-text-input td-link-url-input';
+    urlInput.value = link.url || '';
+    urlInput.placeholder = 'https://…';
+    urlInput.setAttribute('aria-label', 'Link URL');
+
+    const saveLink = () => {
+      const url = urlInput.value.trim();
+      if (!url) {
+        task.links.splice(idx, 1);
+        commit('Link removed');
+        openTaskDetail(task, { focusTitle: false });
+        return;
+      }
+      const label = labelInput.value.trim();
+      const next = { url };
+      if (label) next.label = label;
+      const changed = link.url !== url || (link.label || '') !== label;
+      if (changed) {
+        task.links[idx] = next;
+        commit('Link updated');
+        openTaskDetail(task, { focusTitle: false });
+      }
+    };
+
+    labelInput.addEventListener('blur', (ev) => {
+      if (row.contains(ev.relatedTarget)) return;
+      saveLink();
+    });
+    urlInput.addEventListener('blur', (ev) => {
+      if (row.contains(ev.relatedTarget)) return;
+      saveLink();
+    });
+    labelInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); urlInput.focus(); }
+    });
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); urlInput.blur(); }
+      if (e.key === 'Escape') {
+        labelInput.value = link.label || '';
+        urlInput.value = link.url || '';
+        urlInput.blur();
+      }
+    });
+
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'td-chip-remove';
@@ -1067,7 +1258,9 @@ function buildLinksFieldContent(task) {
       commit('Link removed');
       openTaskDetail(task, { focusTitle: false });
     });
-    row.appendChild(a);
+
+    row.appendChild(labelInput);
+    row.appendChild(urlInput);
     row.appendChild(remove);
     linksWrap.appendChild(row);
   });
@@ -1436,10 +1629,16 @@ function buildNotesPanel(task, body) {
     notes.slice().reverse().forEach((n, revIdx) => {
       const idx = notes.length - 1 - revIdx;
       const when = (n.at || '').replace('T', ' ').slice(0, 16);
-      wrap.appendChild(buildRemovableEntryCard({
+      wrap.appendChild(buildEditableEntryCard({
         when,
         text: n.text || '',
         variant: 'note',
+        multiline: true,
+        onSave: (next) => {
+          updateNoteAt(task, idx + 1, next);
+          commit('Note updated');
+          openTaskDetail(task, { focusTitle: false });
+        },
         onRemove: () => {
           removeNoteAt(task, idx + 1);
           commit('Note removed');
@@ -1936,5 +2135,30 @@ export function initTaskDetail() {
       if (e.key === 'Enter') { e.preventDefault(); titleInput.blur(); }
     });
     titleInput.addEventListener('blur', saveTitle);
+  }
+
+  const idInput = document.getElementById('tdTaskId');
+  if (idInput) {
+    idInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); idInput.blur(); }
+    });
+    idInput.addEventListener('blur', () => {
+      if (!activeTask) return;
+      const next = idInput.value.trim().toUpperCase();
+      if (!next || next === activeTask.taskId) {
+        idInput.value = activeTask.taskId || '';
+        return;
+      }
+      const state = getState();
+      if (!state) return;
+      const ok = confirmAndRenameTaskId(state, activeTask, next, (result) => {
+        activeTask = result.task;
+        idInput.value = result.newId;
+        commit(`Renamed to ${result.newId}`);
+        getRenderTasks?.()();
+        if (isRoutingReady()) syncUrl();
+      });
+      if (!ok) idInput.value = activeTask.taskId || '';
+    });
   }
 }

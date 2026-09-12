@@ -4,6 +4,7 @@ import {
   needsPrefixMigration,
   renameTaskIdInDoc,
   migrateTaskToProjectInDoc,
+  renameTaskIdWithHistoryInState,
 } from '../../shared/task-rename.js';
 
 function sampleDoc() {
@@ -49,4 +50,25 @@ test('migrateTaskToProjectInDoc renames and sets project', () => {
   assert.equal(result.newId, 'APP1');
   assert.equal(doc.sections[0].tasks[0].project, 'my-app');
   assert.equal(doc.sections[0].tasks[0].id, 'APP1');
+});
+
+test('renameTaskIdWithHistoryInState preserves originalId and updates refs', () => {
+  const state = {
+    meta: {
+      projects: [{ id: 'my-app', prefix: 'APP' }],
+      dailyPlan: { taskIds: ['T1'], carriedIds: [] },
+    },
+    tasks: {
+      todo: [
+        { taskId: 'T1', title: 'Epic', type: 'epic', parentId: null },
+        { taskId: 'T2', title: 'Child', type: 'task', parentId: 'T1' },
+      ],
+    },
+  };
+  const result = renameTaskIdWithHistoryInState(state, 'T1', 'APP1');
+  assert.equal(result.ok, true);
+  assert.equal(state.tasks.todo[0].taskId, 'APP1');
+  assert.equal(state.tasks.todo[0].originalId, 'T1');
+  assert.equal(state.tasks.todo[1].parentId, 'APP1');
+  assert.deepEqual(state.meta.dailyPlan.taskIds, ['APP1']);
 });
