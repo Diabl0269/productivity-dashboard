@@ -1,5 +1,16 @@
 /* Projects tab — sub-projects, epics, docs */
 
+#projectsPanel {
+  overflow: hidden;
+  min-height: 0;
+}
+
+#projectsPanel .pv-hero,
+#projectsPanel .pv-toolbar,
+#projectsPanel .pv-link-panel {
+  flex-shrink: 0;
+}
+
 .pv-layout {
   --pv-docs-width: 300px;
   display: grid;
@@ -142,7 +153,9 @@
 
 /* Main content */
 .pv-main {
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: var(--space-6) var(--space-7);
   min-height: 0;
   flex: 1;
@@ -327,6 +340,10 @@
   gap: var(--space-5);
   width: 100%;
   max-width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 .pv-subproj {
@@ -505,6 +522,10 @@
 .pv-node {
   display: flex;
   flex-direction: column;
+}
+
+.pv-node.pv-parent-node > .pv-row-wrap .pv-row {
+  font-weight: var(--weight-medium);
 }
 
 .pv-row-wrap {
