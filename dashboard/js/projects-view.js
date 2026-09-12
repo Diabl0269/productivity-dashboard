@@ -542,6 +542,15 @@ function collapseBtn(key, label) {
   return btn;
 }
 
+function wireCollapsibleHeader(head, collapseKey, excludeSelector = '') {
+  head.addEventListener('click', (e) => {
+    if (excludeSelector && e.target.closest(excludeSelector)) return;
+    if (e.target.closest('.pv-collapse-btn')) return;
+    toggleCollapsed(collapseKey);
+    renderProjectsView();
+  });
+}
+
 function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   const wrap = document.createElement('div');
   const taskType = task.type || 'task';
@@ -602,7 +611,20 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
           <span class="pv-progress-label">${prog.pct}%</span>
         </span>` : ''}
     </span>`;
-  btn.addEventListener('click', () => openTaskDetail(task));
+  if (hasKids) {
+    btn.title = 'Click to expand or collapse · Double-click to open';
+    btn.addEventListener('click', (e) => {
+      if (e.target.closest('.pv-move-btn, .pv-drag-handle')) return;
+      toggleCollapsed(collapseKey);
+      renderProjectsView();
+    });
+    btn.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      openTaskDetail(task);
+    });
+  } else {
+    btn.addEventListener('click', () => openTaskDetail(task));
+  }
   row.appendChild(btn);
 
   const moveBtn = document.createElement('button');
@@ -717,6 +739,7 @@ function renderSubProjectSection(section, types, state, filters) {
   actions.appendChild(addBtn);
   head.appendChild(actions);
 
+  wireCollapsibleHeader(head, collapseKey, '.pv-subproj-actions');
   sectionEl.appendChild(head);
 
   if (!collapsed) {
@@ -787,6 +810,7 @@ function renderDirectProjectSection(project, tasks, types, state, color) {
     <h3 class="pv-subproj-title">${escapeHtml(project.name)}</h3>
     <span class="pv-subproj-meta">${escapeHtml(prefix)} · ${tasks.length} tickets${epicCount ? ` · ${epicCount} epics` : ''} · direct</span>`;
   head.appendChild(titleWrap);
+  wireCollapsibleHeader(head, collapseKey);
   sectionEl.appendChild(head);
 
   if (!collapsed) {
