@@ -82,6 +82,24 @@ const PRIORITIES = ['low', 'medium', 'high'];
 
 /* ── Open / close ─────────────────────────────────────────────── */
 
+function syncTaskIdField(idEl, task) {
+  if (!idEl) return;
+  const taskId = task?.taskId || '';
+  if (idEl.tagName === 'INPUT') {
+    idEl.value = taskId;
+    idEl.placeholder = taskId ? '' : '—';
+    idEl.size = Math.max(3, Math.min(18, taskId.length || 1));
+    idEl.readOnly = true;
+    idEl.title = task?.originalId && task.originalId !== taskId
+      ? `Original ID: ${task.originalId} — click to rename`
+      : taskId
+        ? `${taskId} — click to rename`
+        : 'No ticket ID';
+  } else {
+    idEl.textContent = taskId || '\u2014';
+  }
+}
+
 export function openTaskDetail(task, opts = {}) {
   const {
     focusTitle = true,
@@ -103,16 +121,7 @@ export function openTaskDetail(task, opts = {}) {
   const refresh = overlay.classList.contains('visible');
 
   const idEl = document.getElementById('tdTaskId');
-  if (idEl) {
-    if (idEl.tagName === 'INPUT') {
-      idEl.value = task.taskId || '';
-      idEl.title = task.originalId && task.originalId !== task.taskId
-        ? `Original ID: ${task.originalId}`
-        : 'Ticket ID — blur to rename';
-    } else {
-      idEl.textContent = task.taskId || '\u2014';
-    }
-  }
+  syncTaskIdField(idEl, task);
 
   overlay.hidden = false;
   // Force reflow before adding .visible so the enter animation plays.
@@ -1875,26 +1884,34 @@ function buildChildrenColumnPicker(task, columns) {
   wrap.className = 'td-children-col-picker';
   const label = document.createElement('span');
   label.className = 'td-children-col-label';
-  label.textContent = 'Columns:';
+  label.textContent = 'Columns';
   wrap.appendChild(label);
+
+  const chips = document.createElement('div');
+  chips.className = 'td-children-col-chips';
+  chips.setAttribute('role', 'group');
+  chips.setAttribute('aria-label', 'Visible child columns');
 
   const allIds = [
     ...Object.keys(CHILD_COLUMN_DEFS),
     ...readCustomFields().map(cf => `custom:${cf.id}`),
   ];
   allIds.forEach(colId => {
+    const active = columns.includes(colId);
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'td-children-col-chip' + (columns.includes(colId) ? ' active' : '');
+    btn.className = 'td-children-col-chip' + (active ? ' active' : '');
     btn.textContent = columnLabel(colId);
-    btn.title = columns.includes(colId) ? `Hide ${columnLabel(colId)}` : `Show ${columnLabel(colId)}`;
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.title = active ? `Hide ${columnLabel(colId)}` : `Show ${columnLabel(colId)}`;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleChildrenColumn(colId);
       openTaskDetail(task, { focusTitle: false });
     });
-    wrap.appendChild(btn);
+    chips.appendChild(btn);
   });
+  wrap.appendChild(chips);
   return wrap;
 }
 
@@ -1904,10 +1921,20 @@ function buildChildrenPanel(task, body) {
   const children = childTasks(state.tasks, task.taskId);
   const columns = readChildrenColumns();
 
+  const panel = document.createElement('div');
+  panel.className = 'td-panel td-panel-soft td-children-panel';
+
+  const head = document.createElement('div');
+  head.className = 'td-children-panel-head';
+  const title = document.createElement('div');
+  title.className = 'td-panel-label';
+  title.textContent = `Children (${children.length})`;
+  head.appendChild(title);
+  head.appendChild(buildChildrenColumnPicker(task, columns));
+  panel.appendChild(head);
+
   const list = document.createElement('div');
   list.className = 'td-children';
-
-  list.appendChild(buildChildrenColumnPicker(task, columns));
 
   if (children.length === 0) {
     const empty = document.createElement('div');
@@ -1964,7 +1991,8 @@ function buildChildrenPanel(task, body) {
     list.appendChild(grid);
   }
 
-  body.appendChild(sectionPanel(`Children (${children.length})`, list));
+  panel.appendChild(list);
+  body.appendChild(panel);
 }
 
 function buildSubtasksPanel(task, body) {
@@ -2139,26 +2167,38 @@ export function initTaskDetail() {
 
   const idInput = document.getElementById('tdTaskId');
   if (idInput) {
+    idInput.addEventListener('focus', () => {
+      idInput.readOnly = false;
+      if (idInput.value) idInput.select();
+    });
     idInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); idInput.blur(); }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncTaskIdField(idInput, activeTask);
+        idInput.blur();
+      }
     });
     idInput.addEventListener('blur', () => {
       if (!activeTask) return;
       const next = idInput.value.trim().toUpperCase();
       if (!next || next === activeTask.taskId) {
-        idInput.value = activeTask.taskId || '';
+        syncTaskIdField(idInput, activeTask);
         return;
       }
       const state = getState();
-      if (!state) return;
+      if (!state) {
+        syncTaskIdField(idInput, activeTask);
+        return;
+      }
       const ok = confirmAndRenameTaskId(state, activeTask, next, (result) => {
         activeTask = result.task;
-        idInput.value = result.newId;
+        syncTaskIdField(idInput, activeTask);
         commit(`Renamed to ${result.newId}`);
         getRenderTasks?.()();
         if (isRoutingReady()) syncUrl();
       });
-      if (!ok) idInput.value = activeTask.taskId || '';
+      if (!ok) syncTaskIdField(idInput, activeTask);
     });
   }
 }
