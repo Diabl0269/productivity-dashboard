@@ -69,6 +69,10 @@
   flex-shrink: 0;
 }
 
+.td-id-wrap {
+  flex-shrink: 0;
+}
+
 .td-id {
   flex-shrink: 0;
   font-family: var(--font-mono);
@@ -85,17 +89,54 @@
   letter-spacing: 0.02em;
 }
 
-.td-id-input {
-  width: 4.5rem;
+.td-id-display {
   font: inherit;
-  color: inherit;
-  background: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.td-id-display:hover {
+  border-color: var(--border);
+  color: var(--text-primary);
+  background: var(--surface-3);
+}
+
+.td-id-display:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.td-id-input {
+  width: auto;
+  min-width: 2.75rem;
+  max-width: 12rem;
+  font: inherit;
+  padding: 3px var(--space-2);
+  text-align: center;
+  cursor: text;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.td-id-input[hidden] {
+  display: none !important;
+}
+
+.td-id-display[hidden] {
+  display: none !important;
 }
 
 .td-id-input:focus {
   outline: none;
   border-color: var(--accent);
   color: var(--text-primary);
+  background: var(--surface-3);
+}
+
+.td-id-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.85;
 }
 
 .td-title-input {
@@ -925,6 +966,20 @@
 
 .td-field-shell[data-field-id="description"] .td-field-shell-content {
   overflow: visible;
+}
+
+.td-field-shell[data-field-id="parent"],
+.td-field-shell[data-field-id="parent"] .td-field-shell-content {
+  overflow: visible;
+}
+
+.td-field-shell[data-field-id="parent"] .td-ticket-picker-host,
+.td-field-shell[data-field-id="parent"] .tp-wrap {
+  overflow: visible;
+}
+
+.td-field-shell[data-field-id="parent"] .tp-menu {
+  z-index: 80;
 }
 
 .td-field-block {

@@ -525,7 +525,8 @@
     <div class="td-modal" role="dialog" aria-modal="true" aria-labelledby="tdTitle">
       <div class="td-header">
         <span class="td-id-wrap">
-          <input type="text" class="td-id td-id-input" id="tdTaskId" aria-label="Task ID" spellcheck="false">
+          <button type="button" class="td-id td-id-display" id="tdTaskIdBtn" aria-label="Task ID" title="Task ID">—</button>
+          <input type="text" class="td-id td-id-input" id="tdTaskId" aria-label="Task ID" spellcheck="false" hidden>
         </span>
         <input type="text" class="td-title-input" id="tdTitle" aria-label="Task title" placeholder="Task title" />
         <button class="td-close" id="tdClose" aria-label="Close">

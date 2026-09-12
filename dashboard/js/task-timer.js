@@ -152,9 +152,12 @@ function showTimerChip(chip) {
 
 function refreshOpenDetailTimer(taskId) {
   try {
+    const btn = document.getElementById('tdTaskIdBtn');
     const idEl = document.getElementById('tdTaskId');
-    const openId = idEl?.value ?? idEl?.textContent ?? '';
-    if (idEl && openId === taskId) {
+    const openId = idEl?.hidden === false
+      ? (idEl.value || '')
+      : (btn?.textContent || idEl?.value || '');
+    if ((btn || idEl) && openId === taskId) {
       document.querySelectorAll('.td-timer-elapsed').forEach(el => {
         el.textContent = '';
       });
