@@ -36,7 +36,7 @@ import {
 import { createTasksBackup } from './tasks-backup.js';
 import { mountTicketPicker } from './ticket-picker.js';
 import { renderProjectDocsPanel, clearProjectDocsCache, setProjectDocsCallbacks } from './project-docs.js';
-import { initProjectDocsPanel, syncProjectDocsPanelVisibility, toggleDocsPanel, setDocsPanelCallbacks, syncDocsHeroButton } from './project-docs-panel.js';
+import { initProjectDocsPanel, syncProjectDocsPanelVisibility } from './project-docs-panel.js';
 import { showTaskMovePopover } from './task-move.js';
 import { attachTaskDragHandle, bindProjectsDragDrop } from './project-drag.js';
 
@@ -707,7 +707,16 @@ function renderSubProjectSection(section, types, state, filters) {
 
   const head = document.createElement('header');
   head.className = 'pv-subproj-head';
-  head.appendChild(collapseBtn(collapseKey, sub.name));
+  const isEmpty = tasks.length === 0;
+  if (!isEmpty) {
+    head.appendChild(collapseBtn(collapseKey, sub.name));
+  } else {
+    const spacer = document.createElement('span');
+    spacer.className = 'pv-collapse-spacer';
+    spacer.setAttribute('aria-hidden', 'true');
+    head.appendChild(spacer);
+    head.classList.add('pv-subproj-head-static');
+  }
 
   const swatch = document.createElement('span');
   swatch.className = 'pv-subproj-swatch';
@@ -716,9 +725,10 @@ function renderSubProjectSection(section, types, state, filters) {
 
   const titleWrap = document.createElement('div');
   titleWrap.className = 'pv-subproj-title-wrap';
+  const emptyHint = isEmpty ? ' · No tickets in this sub-project' : '';
   titleWrap.innerHTML = `
     <h3 class="pv-subproj-title">${escapeHtml(sub.name)}</h3>
-    <span class="pv-subproj-meta">${escapeHtml(prefix)} · ${tasks.length} tickets${epicCount ? ` · ${epicCount} epics` : ''}</span>`;
+    <span class="pv-subproj-meta">${escapeHtml(prefix)} · ${tasks.length} tickets${epicCount ? ` · ${epicCount} epics` : ''}${emptyHint}</span>`;
   head.appendChild(titleWrap);
 
   const actions = document.createElement('div');
@@ -739,17 +749,17 @@ function renderSubProjectSection(section, types, state, filters) {
   actions.appendChild(addBtn);
   head.appendChild(actions);
 
-  wireCollapsibleHeader(head, collapseKey, '.pv-subproj-actions');
+  if (!isEmpty) {
+    wireCollapsibleHeader(head, collapseKey, '.pv-subproj-actions');
+  }
   sectionEl.appendChild(head);
 
-  if (!collapsed) {
+  if (isEmpty) {
+    sectionEl.classList.add('pv-subproj-empty');
+  } else if (!collapsed) {
     const body = document.createElement('div');
     body.className = 'pv-subproj-body';
-    if (tasks.length === 0) {
-      body.innerHTML = '<div class="pv-empty-inline">No tickets in this sub-project</div>';
-    } else {
-      body.appendChild(renderTaskForest(tasks, types, state, color));
-    }
+    body.appendChild(renderTaskForest(tasks, types, state, color));
     sectionEl.appendChild(body);
   }
 
@@ -1053,7 +1063,6 @@ function renderMain(state, project) {
       <div class="pv-hero-actions">
         <button type="button" class="pv-action-btn" data-action="edit">Edit</button>
         <button type="button" class="pv-action-btn" data-action="sub">+ Sub-project</button>
-        <button type="button" class="pv-action-btn pv-action-docs" data-action="docs" id="projectsDocsHeroBtn" aria-expanded="false">Docs</button>
         <button type="button" class="pv-action-btn pv-danger" data-action="delete">Delete</button>
       </div>
     </div>
@@ -1080,13 +1089,6 @@ function renderMain(state, project) {
       getRenderTasks?.()();
       showStatus(`Created sub-project ${data.name}`);
     }, state, { parentId: project.id, color: SUBPROJECT_PALETTE[getProjectChildIds(projects, project.id).length % SUBPROJECT_PALETTE.length] });
-  });
-
-  const docsBtn = header.querySelector('[data-action="docs"]');
-  syncDocsHeroButton(docsBtn);
-  docsBtn?.addEventListener('click', () => {
-    toggleDocsPanel();
-    syncDocsHeroButton(docsBtn);
   });
 
   header.querySelector('[data-action="delete"]').addEventListener('click', () => {
@@ -1173,11 +1175,6 @@ export function initProjectsView() {
         showStatus('Project paths saved');
         finishProjectSave();
       }, state);
-    },
-  });
-  setDocsPanelCallbacks({
-    onLayoutChange: () => {
-      syncDocsHeroButton(document.getElementById('projectsDocsHeroBtn'));
     },
   });
   initProjectDocsPanel();

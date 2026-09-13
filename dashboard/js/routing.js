@@ -55,7 +55,15 @@ export function parseRoute() {
     if (segments[1] === 'list') route.taskView = 'list';
     else if (segments[1] === 'board') route.taskView = 'board';
     else if (segments[1]) route.taskId = decodeURIComponent(segments[1]);
-  } else if (route.tab === 'projects' && segments[1]) {
+  }
+
+  // Open ticket modal via ?ticket= on any non-tasks tab (tasks tab uses path segment).
+  if (!route.taskId) {
+    const ticket = new URLSearchParams(window.location.search).get('ticket');
+    if (ticket) route.taskId = decodeURIComponent(ticket);
+  }
+
+  if (route.tab === 'projects' && segments[1]) {
     route.projectId = decodeURIComponent(segments[1]);
   } else if (route.tab === 'memory' && segments[1]) {
     route.memoryTab = decodeURIComponent(segments[1]);
@@ -94,18 +102,32 @@ export function buildPath(route) {
   return `${base}/${parts.join('/')}`;
 }
 
+/** Build query string, embedding ?ticket= when a modal is open off the tasks tab. */
+function buildSearchForRoute(route) {
+  const params = new URLSearchParams(window.location.search);
+  const taskInPath = route.tab === 'tasks' && route.taskId;
+  if (taskInPath || !route.taskId) {
+    params.delete('ticket');
+  } else {
+    params.set('ticket', route.taskId);
+  }
+  const s = params.toString();
+  return s ? `?${s}` : '';
+}
+
 /** Read live UI state and produce a route object. */
 export function routeFromState() {
   const { activeMainTab } = deps;
   const route = { tab: activeMainTab?.() || 'overview' };
 
+  if (deps.isTaskDetailOpen?.()) {
+    const id = deps.getOpenTaskId?.();
+    if (id) route.taskId = id;
+  }
+
   if (route.tab === 'tasks') {
     const view = deps.getTaskView?.();
     if (view === 'list') route.taskView = 'list';
-    if (deps.isTaskDetailOpen?.()) {
-      const id = deps.getOpenTaskId?.();
-      if (id) route.taskId = id;
-    }
   } else if (route.tab === 'projects') {
     const pid = deps.getSelectedProjectId?.();
     if (pid) route.projectId = pid;
@@ -131,7 +153,7 @@ export function routeFromState() {
 export function navigateToRoute(route, opts = {}) {
   if (!routingReady || applyingRoute) return;
   const path = buildPath(route);
-  const search = window.location.search || '';
+  const search = buildSearchForRoute(route);
   const target = path + search;
   const current = window.location.pathname + window.location.search;
   if (target === current) return;
@@ -176,7 +198,7 @@ export function applyRoute(route) {
       deps.switchGlobalMemorySubtab?.(route.globalSubtab, { fromRoute: true });
     }
 
-    if (tab === 'tasks' && route.taskId) {
+    if (route.taskId) {
       const task = deps.findTaskById?.(route.taskId);
       if (task) {
         deps.openTaskDetail?.(task, { focusTitle: false, fromRoute: true });
@@ -225,8 +247,7 @@ export function initRouting(callbacks) {
 
   const initial = parseRoute();
   applyRoute(initial);
-  const initialSearch = window.location.search || '';
-  window.history.replaceState({ dashboardRoute: initial }, '', buildPath(initial) + initialSearch);
+  window.history.replaceState({ dashboardRoute: initial }, '', buildPath(initial) + buildSearchForRoute(initial));
 
   window.addEventListener('popstate', () => {
     applyRoute(parseRoute());

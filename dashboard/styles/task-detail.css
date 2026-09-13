@@ -1091,6 +1091,13 @@
   gap: var(--space-2);
 }
 
+.td-blocked-by-resolved,
+.td-blocked-by-resolved .task-parent-id,
+.td-blocked-by-resolved .task-parent-title {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
 .td-chip {
   display: inline-flex;
   align-items: center;

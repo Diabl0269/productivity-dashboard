@@ -494,7 +494,36 @@ button#openTaskBtn:hover, button#openMemoryBtn:hover {
 }
 
 #mainTabToggle button {
+  position: relative;
   padding: 7px 22px;
+}
+
+.tab-shortcut {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 3px);
+  transform: translateX(-50%);
+  z-index: 60;
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+}
+
+body.show-shortcuts .tab-shortcut {
+  opacity: 1;
+  visibility: visible;
 }
 
 .view-toggle {
