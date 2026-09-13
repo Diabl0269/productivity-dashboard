@@ -47,3 +47,14 @@ test('parseRoute: settings subtab', async () => {
   assert.equal(route.tab, 'settings');
   assert.equal(route.settingsSubtab, 'ticket-types');
 });
+
+test('registerRoutableTab: an external (iframe-mode) tab id becomes routable', async () => {
+  mockWindow('/dashboard/ext-status-page-0');
+  const { parseRoute, registerRoutableTab } = await import('../../dashboard/js/routing.js');
+
+  // Before registration, an unknown tab id falls back to overview.
+  assert.equal(parseRoute().tab, 'overview');
+
+  registerRoutableTab('ext-status-page-0');
+  assert.equal(parseRoute().tab, 'ext-status-page-0');
+});

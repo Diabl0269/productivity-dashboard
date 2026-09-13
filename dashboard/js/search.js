@@ -77,21 +77,14 @@ export function onTabSwitch(tab) {
   const savedViews = document.getElementById('savedViewsBar');
   const templates = document.getElementById('taskTemplatesBar');
   const searchFilters = document.getElementById('searchFilters');
-  if (tab === 'overview' || tab === 'settings' || tab === 'projects') {
-    container.style.display = 'none';
-    if (filters) filters.style.display = 'none';
-    if (searchFilters) searchFilters.style.display = 'none';
-    if (savedViews) savedViews.style.display = 'none';
-    if (templates) templates.style.display = 'none';
-    if (!isUrlFilterBootstrapping()) clearSearch({ skipUrl: false });
-  } else if (tab === 'search') {
+  if (tab === 'search') {
     container.style.display = 'none';
     if (filters) filters.style.display = 'none';
     if (savedViews) savedViews.style.display = 'none';
     if (templates) templates.style.display = 'none';
     if (searchFilters) searchFilters.style.display = 'flex';
     clearSearch({ skipUrl: false });
-  } else {
+  } else if (tab === 'tasks' || tab === 'memory' || tab === 'global-memory') {
     container.style.display = 'flex';
     if (searchFilters) searchFilters.style.display = 'none';
     if (tab === 'tasks') {
@@ -113,6 +106,15 @@ export function onTabSwitch(tab) {
       else searchInput.placeholder = 'Search global memory...';
       clearSearch();
     }
+  } else {
+    // overview, settings, projects, and any externally-configured tab (config.json
+    // externalTabs) — no search UI applies.
+    container.style.display = 'none';
+    if (filters) filters.style.display = 'none';
+    if (searchFilters) searchFilters.style.display = 'none';
+    if (savedViews) savedViews.style.display = 'none';
+    if (templates) templates.style.display = 'none';
+    if (!isUrlFilterBootstrapping()) clearSearch({ skipUrl: false });
   }
 }
 

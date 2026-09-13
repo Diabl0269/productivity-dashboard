@@ -4,6 +4,15 @@ const MAIN_TABS = new Set([
   'overview', 'tasks', 'search', 'projects', 'memory', 'global-memory', 'settings',
 ]);
 
+/**
+ * Register an additional tab id as routable (e.g. an iframe-mode external tab from
+ * config.json). Must be called before initRouting() parses the initial URL.
+ * @param {string} id
+ */
+export function registerRoutableTab(id) {
+  MAIN_TABS.add(id);
+}
+
 let routingReady = false;
 let applyingRoute = false;
 

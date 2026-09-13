@@ -9,6 +9,15 @@ const MAIN_TAB_ORDER = [
   'overview', 'tasks', 'search', 'projects', 'memory', 'global-memory', 'settings',
 ];
 
+// Externally-configured tabs (config.json externalTabs) register themselves here so
+// switchMainTab can toggle their button/panel without hardcoding each one by id.
+const externalTabs = new Map(); // id -> { btn, panel }
+
+/** @param {string} id @param {{ btn?: HTMLElement, panel?: HTMLElement }} refs */
+export function registerExternalTab(id, refs) {
+  externalTabs.set(id, refs);
+}
+
 const MAIN_TAB_BTN_IDS = [
   'overviewTabBtn', 'tasksTabBtn', 'searchTabBtn', 'projectsTabBtn',
   'memoryTabBtn', 'globalMemoryTabBtn', 'settingsTabBtn',
@@ -150,6 +159,16 @@ export function switchMainTab(tab, opts = {}) {
   memoryPanel.classList.toggle('active', tab === 'memory');
   globalMemoryPanel.classList.toggle('active', tab === 'global-memory');
   if (settingsPanel) settingsPanel.classList.toggle('active', tab === 'settings');
+
+  // Externally-configured (config.json externalTabs) tabs, if any.
+  for (const [extId, { btn, panel }] of externalTabs) {
+    const isActive = tab === extId;
+    if (btn) {
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    }
+    if (panel) panel.classList.toggle('active', isActive);
+  }
 
   // Show/hide view toggle for tasks
   taskViewToggle.style.display = tab === 'tasks' ? 'flex' : 'none';
