@@ -18,6 +18,7 @@ import { initSettings, applyDisplayPrefs, switchSettingsSubtab, getSettingsSubta
 import { initProjectsView } from './projects-view.js';
 import { initPwa } from './pwa.js';
 import { initRouting, flushPendingRoute, parseRoute } from './routing.js';
+import { initExternalTabs } from './external-tabs.js';
 import { applyFiltersFromUrl, initUrlFiltersEarly, finalizeUrlFiltersAfterTasksLoad } from './url-filters.js';
 import { activeMainTab, switchMainTab } from './state.js';
 import { taskState, switchTaskView, renderFilteredViews } from './tasks-main.js';
@@ -60,6 +61,7 @@ function renderQuickLinks() {
 // Initialize all modules — config must load first for sprints/links
 await loadConfig();
 renderQuickLinks();
+initExternalTabs();
 initTheme();
 applyDisplayPrefs(); // before Overview so sprint widget starts hidden if preferred
 initStateListeners();

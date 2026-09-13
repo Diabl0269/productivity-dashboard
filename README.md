@@ -62,6 +62,10 @@ Controls Overview widgets and soft WIP limits. Copy `config.example.json` and cu
   "quickLinks": [
     { "icon": "📊", "label": "Jira Board", "url": "https://..." }
   ],
+  "externalTabs": [
+    { "label": "Status page", "url": "https://example.com/status", "mode": "iframe" },
+    { "label": "Docs", "url": "https://example.com/docs", "mode": "link" }
+  ],
   "sprints": [
     { "name": "Q1 S1", "start": "2026-01-01", "end": "2026-01-21" }
   ],
@@ -75,6 +79,11 @@ Controls Overview widgets and soft WIP limits. Copy `config.example.json` and cu
 
 - `wipLimit` — soft max cards for In Progress (board header warning when exceeded)
 - `wipLimits` — optional per-section overrides (same soft-limit behavior)
+- `externalTabs` — adds extra tab buttons pointing at any URL you run yourself (a local
+  dashboard, an internal tool, etc.). Each entry is `{ label, url, mode }`: `mode:
+  "iframe"` embeds the URL in the main area (with its own deep-linkable tab route),
+  `mode: "link"` opens it in a new browser tab instead. Malformed entries (missing
+  `label`/`url`, or an unrecognized `mode`) are skipped. Omit the key for no extra tabs.
 
 Full task CLI and `tasks.json` field reference: [`cli/README.md`](cli/README.md).
 ### CLAUDE.md

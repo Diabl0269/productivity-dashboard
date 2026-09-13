@@ -727,6 +727,17 @@ body.show-shortcuts .tab-shortcut {
 .tab-panel.active > *:nth-child(n+7),
 .stagger > *:nth-child(n+7) { animation-delay: 200ms; }
 
+/* ── External tabs (config.json externalTabs, mode: "iframe") ── */
+.external-tab-panel {
+  padding: 0;
+}
+.external-tab-iframe {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+}
+
 /* ── Reduced motion: disable all non-essential animation ── */
 @media (prefers-reduced-motion: reduce) {
   .tab-panel.active > *,

@@ -4,6 +4,10 @@
     { "icon": "📅", "label": "Daily Planner", "url": "https://www.notion.so/your-page-id" },
     { "icon": "💬", "label": "Team Channel", "url": "https://your-org.slack.com/archives/C0EXAMPLE" }
   ],
+  "externalTabs": [
+    { "label": "Status page", "url": "https://example.com/status", "mode": "iframe" },
+    { "label": "Docs", "url": "https://example.com/docs", "mode": "link" }
+  ],
   "sprints": [],
   "wipLimit": 3,
   "wipLimits": {
