@@ -24,6 +24,7 @@
  *              [--add-link URL] [--link-label "..."] [--remove-link N] [--clear-links]
  *              [--add-blocked-by T1] [--remove-blocked-by T1] [--clear-blocked-by]
  *              [--add-subtask "text"] [--check-subtask N] [--uncheck-subtask N]
+ *              [--remove-subtask N] [--clear-subtasks]
  *              [--edit-subtask N --subtask-text "..."]
  *   set-priority <id> <low|medium|high>
  *   next-id
@@ -712,9 +713,11 @@ function cmdUpdate(argv) {
     'clear-assignee': { type: 'boolean' },
     estimate:        { type: 'string' },
     'clear-estimate': { type: 'boolean' },
-    'add-subtask':   { type: 'string' },
+    'add-subtask':   { type: 'string', multiple: true },
     'check-subtask': { type: 'string' },  // N (1-based) as string
     'uncheck-subtask': { type: 'string' },
+    'remove-subtask': { type: 'string' },  // N (1-based) as string
+    'clear-subtasks': { type: 'boolean' },
     'edit-subtask':  { type: 'string' },  // N (1-based); pairs with --subtask-text
     'subtask-text':  { type: 'string' },
     section:         { type: 'string',  short: 's' },
@@ -1091,9 +1094,22 @@ function cmdUpdate(argv) {
     changed = true;
   }
 
-  if (values['add-subtask'] !== undefined) {
+  if (values['clear-subtasks']) {
+    task.subtasks = [];
+    changed = true;
+  } else if (values['remove-subtask'] !== undefined) {
+    const n = parseInt(values['remove-subtask'], 10);
+    if (!Array.isArray(task.subtasks) || isNaN(n) || n < 1 || n > task.subtasks.length) {
+      die(`--remove-subtask N must be between 1 and ${(task.subtasks || []).length}`);
+    }
+    task.subtasks.splice(n - 1, 1);
+    changed = true;
+  }
+  if (values['add-subtask'] && values['add-subtask'].length) {
     if (!Array.isArray(task.subtasks)) task.subtasks = [];
-    task.subtasks.push({ text: values['add-subtask'], checked: false });
+    for (const text of values['add-subtask']) {
+      task.subtasks.push({ text, checked: false });
+    }
     changed = true;
   }
   if (values['check-subtask'] !== undefined) {
@@ -1658,6 +1674,7 @@ Subcommands:
              [--add-link URL] [--link-label "..."] [--remove-link N] [--clear-links]
              [--add-blocked-by T1] [--remove-blocked-by T1] [--clear-blocked-by]
              [--add-subtask "text"] [--check-subtask N] [--uncheck-subtask N]
+             [--remove-subtask N] [--clear-subtasks]
   set-priority <id> <low|medium|high>
   next-id
   dump [--active]
