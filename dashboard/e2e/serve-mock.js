@@ -57,6 +57,14 @@ function prepareRuntime() {
     throw new Error(`Failed to symlink dashboard into e2e runtime: ${err.message}`);
   }
 
+  const sharedLink = path.join(RUNTIME, 'shared');
+  const realShared = path.resolve(E2E_DIR, '../../shared');
+  try {
+    fs.symlinkSync(realShared, sharedLink, 'dir');
+  } catch (err) {
+    throw new Error(`Failed to symlink shared into e2e runtime: ${err.message}`);
+  }
+
   // Marker so we can prove we're on the mock root
   fs.writeFileSync(
     path.join(RUNTIME, '.e2e-mock'),

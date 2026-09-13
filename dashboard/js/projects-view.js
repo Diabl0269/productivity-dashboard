@@ -85,13 +85,26 @@ function writeCollapse(map) {
 }
 
 function isCollapsed(key) {
-  return !!readCollapse()[key];
+  const map = readCollapse();
+  if (map[key]) return true;
+  // Legacy epic-only collapse keys
+  if (key.startsWith('node:')) return !!map[`epic:${key.slice(5)}`];
+  return false;
 }
 
 function toggleCollapsed(key) {
   const map = readCollapse();
   map[key] = !map[key];
+  if (key.startsWith('node:')) delete map[`epic:${key.slice(5)}`];
   writeCollapse(map);
+}
+
+function taskCollapseKey(taskId) {
+  return `node:${taskId}`;
+}
+
+function directSectionCollapseKey(projectId) {
+  return `direct:${projectId}`;
 }
 
 function defaultFilters() {
@@ -529,19 +542,31 @@ function collapseBtn(key, label) {
   return btn;
 }
 
+function wireCollapsibleHeader(head, collapseKey, excludeSelector = '') {
+  head.addEventListener('click', (e) => {
+    if (excludeSelector && e.target.closest(excludeSelector)) return;
+    if (e.target.closest('.pv-collapse-btn')) return;
+    toggleCollapsed(collapseKey);
+    renderProjectsView();
+  });
+}
+
 function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   const wrap = document.createElement('div');
-  wrap.className = 'pv-node' + ((task.type || 'task') === 'epic' ? ' pv-epic-node' : '');
+  const taskType = task.type || 'task';
+  const isEpic = taskType === 'epic';
+  wrap.className = 'pv-node' + (isEpic ? ' pv-epic-node' : '');
   wrap.style.setProperty('--pv-depth', String(depth));
   if (accentColor) wrap.style.setProperty('--pv-accent', accentColor);
-  if ((task.type || 'task') === 'epic') wrap.dataset.pvEpicId = task.taskId;
+  if (isEpic) wrap.dataset.pvEpicId = task.taskId;
 
   const kids = childrenMap.get(task.taskId) || [];
-  const isEpic = (task.type || 'task') === 'epic';
-  const collapseKey = `epic:${task.taskId}`;
-  const collapsed = isEpic && isCollapsed(collapseKey);
+  const hasKids = kids.length > 0;
+  if (hasKids) wrap.classList.add('pv-parent-node');
+  const collapseKey = taskCollapseKey(task.taskId);
+  const collapsed = hasKids && isCollapsed(collapseKey);
   const prog = progressFor(task, childrenMap);
-  const tt = getTicketType(types, task.type || 'task');
+  const tt = getTicketType(types, taskType);
   const color = resolveTaskColor(task, types, state.tasks);
   const done = task.checked || task.section === 'done';
   const blocked = isEffectivelyBlocked(task, state.tasks);
@@ -559,7 +584,7 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   attachTaskDragHandle(dragHandle, task, wrap);
   row.appendChild(dragHandle);
 
-  if (isEpic) row.appendChild(collapseBtn(collapseKey, task.title || task.taskId));
+  if (hasKids) row.appendChild(collapseBtn(collapseKey, task.title || task.taskId));
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -567,7 +592,7 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
     + (done ? ' pv-done' : '')
     + (blocked ? ' pv-blocked' : '')
     + (isEpic ? ' pv-epic-row' : '')
-    + (kids.length ? ' pv-has-children' : '');
+    + (hasKids ? ' pv-has-children' : '');
   btn.innerHTML = `
     <span class="pv-row-left">
       <span class="pv-type" style="--pv-color:${escapeHtml(color)}">${escapeHtml(tt.name)}</span>
@@ -580,13 +605,26 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
         ${task.estimateMinutes ? `<span class="pv-est">${escapeHtml(formatEstimate(task.estimateMinutes))}</span>` : ''}
         <span class="pv-section">${escapeHtml(task.section || '')}</span>
       </span>
-      ${kids.length ? `
+      ${hasKids ? `
         <span class="pv-progress" title="${prog.done}/${prog.total} done">
           <span class="pv-progress-bar"><span style="width:${prog.pct}%"></span></span>
           <span class="pv-progress-label">${prog.pct}%</span>
         </span>` : ''}
     </span>`;
-  btn.addEventListener('click', () => openTaskDetail(task));
+  if (hasKids) {
+    btn.title = 'Click to expand or collapse · Double-click to open';
+    btn.addEventListener('click', (e) => {
+      if (e.target.closest('.pv-move-btn, .pv-drag-handle')) return;
+      toggleCollapsed(collapseKey);
+      renderProjectsView();
+    });
+    btn.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      openTaskDetail(task);
+    });
+  } else {
+    btn.addEventListener('click', () => openTaskDetail(task));
+  }
   row.appendChild(btn);
 
   const moveBtn = document.createElement('button');
@@ -606,12 +644,12 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   row.appendChild(moveBtn);
   wrap.appendChild(row);
 
-  if (kids.length && !collapsed) {
+  if (hasKids && !collapsed) {
     const branch = document.createElement('div');
     branch.className = 'pv-branch';
     kids.forEach(k => branch.appendChild(renderTaskRow(k, childrenMap, types, state, depth + 1, accentColor)));
     wrap.appendChild(branch);
-  } else if (isEpic && !collapsed && kids.length === 0) {
+  } else if (isEpic && !collapsed && !hasKids) {
     const empty = document.createElement('div');
     empty.className = 'pv-epic-drop-hint';
     empty.textContent = 'Drop tickets here';
@@ -701,6 +739,7 @@ function renderSubProjectSection(section, types, state, filters) {
   actions.appendChild(addBtn);
   head.appendChild(actions);
 
+  wireCollapsibleHeader(head, collapseKey, '.pv-subproj-actions');
   sectionEl.appendChild(head);
 
   if (!collapsed) {
@@ -717,7 +756,74 @@ function renderSubProjectSection(section, types, state, filters) {
   return sectionEl;
 }
 
-function renderToolbar(filters, project, hasSubProjects, onNewTicket) {
+function collectCollapseKeys(state, project, grouped, filters) {
+  const map = {};
+  const metaProjects = ensureMeta(state).projects;
+  const scopeIds = projectScopeIds(metaProjects, project.id);
+  const types = normalizeTicketTypes(state.ticketTypes);
+  const scopeTasks = flatTasks(state.tasks).filter(t => t.project && scopeIds.includes(t.project));
+  const visible = filterTasks(scopeTasks, filters);
+  const { children } = buildForest(visible, types);
+
+  if (grouped.mode === 'grouped') {
+    if (filterTasks(grouped.direct, filters).length) {
+      map[directSectionCollapseKey(project.id)] = true;
+    }
+    for (const section of grouped.sections) {
+      if (filterTasks(section.tasks, filters).length) {
+        map[`sub:${section.project.id}`] = true;
+      }
+    }
+  }
+
+  for (const task of visible) {
+    if ((children.get(task.taskId) || []).length) {
+      map[taskCollapseKey(task.taskId)] = true;
+    }
+  }
+  return map;
+}
+
+function renderDirectProjectSection(project, tasks, types, state, color) {
+  const collapseKey = directSectionCollapseKey(project.id);
+  const collapsed = isCollapsed(collapseKey);
+  const epicCount = countEpics(tasks, types);
+  const prefix = projectPrefix(project, ensureMeta(state).projects);
+
+  const sectionEl = document.createElement('section');
+  sectionEl.className = 'pv-subproj pv-subproj-direct';
+  sectionEl.dataset.pvProjectId = project.id;
+  sectionEl.style.setProperty('--pv-sub-color', color);
+
+  const head = document.createElement('header');
+  head.className = 'pv-subproj-head';
+  head.appendChild(collapseBtn(collapseKey, project.name));
+
+  const swatch = document.createElement('span');
+  swatch.className = 'pv-subproj-swatch';
+  swatch.style.background = color;
+  head.appendChild(swatch);
+
+  const titleWrap = document.createElement('div');
+  titleWrap.className = 'pv-subproj-title-wrap';
+  titleWrap.innerHTML = `
+    <h3 class="pv-subproj-title">${escapeHtml(project.name)}</h3>
+    <span class="pv-subproj-meta">${escapeHtml(prefix)} · ${tasks.length} tickets${epicCount ? ` · ${epicCount} epics` : ''} · direct</span>`;
+  head.appendChild(titleWrap);
+  wireCollapsibleHeader(head, collapseKey);
+  sectionEl.appendChild(head);
+
+  if (!collapsed) {
+    const body = document.createElement('div');
+    body.className = 'pv-subproj-body';
+    body.appendChild(renderTaskForest(tasks, types, state, color));
+    sectionEl.appendChild(body);
+  }
+
+  return sectionEl;
+}
+
+function renderToolbar(filters, project, grouped, onNewTicket) {
   const bar = document.createElement('div');
   bar.className = 'pv-toolbar';
 
@@ -746,15 +852,7 @@ function renderToolbar(filters, project, hasSubProjects, onNewTicket) {
   collapseAll.className = 'pv-toolbar-btn';
   collapseAll.textContent = 'Collapse all';
   collapseAll.addEventListener('click', () => {
-    const map = {};
-    for (const id of getProjectChildIds(ensureMeta(getState()).projects, project.id)) {
-      map[`sub:${id}`] = true;
-    }
-    flatTasks(getState().tasks)
-      .filter(t => t.project && projectScopeIds(ensureMeta(getState()).projects, project.id).includes(t.project))
-      .filter(t => (t.type || 'task') === 'epic')
-      .forEach(t => { map[`epic:${t.taskId}`] = true; });
-    writeCollapse(map);
+    writeCollapse(collectCollapseKeys(getState(), project, grouped, filters));
     renderProjectsView();
   });
   left.appendChild(collapseAll);
@@ -784,7 +882,7 @@ function renderToolbar(filters, project, hasSubProjects, onNewTicket) {
   }
   bar.appendChild(filtersEl);
 
-  if (hasSubProjects) {
+  if (grouped.mode === 'grouped') {
     const hint = document.createElement('span');
     hint.className = 'pv-toolbar-hint';
     hint.textContent = 'Grouped by sub-project';
@@ -1004,7 +1102,7 @@ function renderMain(state, project) {
   });
 
   main.appendChild(header);
-  main.appendChild(renderToolbar(filters, project, grouped.mode === 'grouped', () => {
+  main.appendChild(renderToolbar(filters, project, grouped, () => {
     openCreateTaskModal('todo', { projectId: project.id });
   }));
   main.appendChild(renderLinkPanel(state, project));
@@ -1015,16 +1113,7 @@ function renderMain(state, project) {
   if (grouped.mode === 'grouped') {
     const directTasks = filterTasks(grouped.direct, filters);
     if (directTasks.length) {
-      const directSection = document.createElement('section');
-      directSection.className = 'pv-subproj pv-subproj-direct';
-      directSection.dataset.pvProjectId = project.id;
-      directSection.style.setProperty('--pv-sub-color', color);
-      directSection.innerHTML = `<header class="pv-subproj-head pv-subproj-head-static"><span class="pv-subproj-swatch" style="background:${escapeHtml(color)}"></span><h3 class="pv-subproj-title">${escapeHtml(project.name)}</h3><span class="pv-subproj-meta">${directTasks.length} ticket(s) · epics first</span></header>`;
-      const body = document.createElement('div');
-      body.className = 'pv-subproj-body';
-      body.appendChild(renderTaskForest(directTasks, types, state, color));
-      directSection.appendChild(body);
-      content.appendChild(directSection);
+      content.appendChild(renderDirectProjectSection(project, directTasks, types, state, color));
     }
     for (const section of grouped.sections) {
       content.appendChild(renderSubProjectSection(section, types, state, filters));
