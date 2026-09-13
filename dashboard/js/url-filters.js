@@ -111,6 +111,10 @@ export function buildFilterQueryString() {
   if (facetState.snoozed === true) params.set('snoozed', '1');
   if (facetState.dueExact) params.set('dueOn', facetState.dueExact);
 
+  // Preserve open-ticket deep link (?ticket=) managed by routing.js.
+  const ticket = readParams().get('ticket');
+  if (ticket) params.set('ticket', ticket);
+
   const s = params.toString();
   return s ? `?${s}` : '';
 }

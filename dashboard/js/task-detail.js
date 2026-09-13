@@ -1759,10 +1759,12 @@ function buildBlockedByPanel(task, body) {
     const dep = findTaskByTaskId(state.tasks, depId);
     const row = document.createElement('div');
     row.className = 'td-link-row';
+    const resolved = dep && isTaskDone(dep);
+    if (resolved) row.classList.add('td-blocked-by-resolved');
     if (dep) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'task-parent-link';
+      btn.className = 'task-parent-link' + (resolved ? ' td-blocked-by-resolved' : '');
       btn.innerHTML = `<span class="task-parent-id">${escapeHtml(dep.taskId)}</span>`
         + `<span class="task-parent-title">${escapeHtml(dep.title)}</span>`;
       btn.addEventListener('click', () => openTaskDetail(dep));

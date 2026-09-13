@@ -9,6 +9,38 @@ const MAIN_TAB_ORDER = [
   'overview', 'tasks', 'search', 'projects', 'memory', 'global-memory', 'settings',
 ];
 
+const MAIN_TAB_BTN_IDS = [
+  'overviewTabBtn', 'tasksTabBtn', 'searchTabBtn', 'projectsTabBtn',
+  'memoryTabBtn', 'globalMemoryTabBtn', 'settingsTabBtn',
+];
+
+const MOD_KEY_LABEL = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
+
+function initTabShortcutBadges() {
+  MAIN_TAB_BTN_IDS.forEach((id, i) => {
+    const btn = document.getElementById(id);
+    if (!btn || btn.querySelector('.tab-shortcut')) return;
+    const kbd = document.createElement('kbd');
+    kbd.className = 'tab-shortcut';
+    kbd.textContent = `${MOD_KEY_LABEL}${i + 1}`;
+    kbd.setAttribute('aria-hidden', 'true');
+    btn.appendChild(kbd);
+  });
+}
+
+function initShortcutReveal() {
+  const show = () => document.body.classList.add('show-shortcuts');
+  const hide = () => document.body.classList.remove('show-shortcuts');
+
+  document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey) show();
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'Meta' || e.key === 'Control') hide();
+  });
+  window.addEventListener('blur', hide);
+}
+
 function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
@@ -168,6 +200,9 @@ export function switchMainTab(tab, opts = {}) {
 }
 
 export function initStateListeners() {
+  initTabShortcutBadges();
+  initShortcutReveal();
+
   const overviewTabBtn = document.getElementById('overviewTabBtn');
   const tasksTabBtn = document.getElementById('tasksTabBtn');
   const searchTabBtn = document.getElementById('searchTabBtn');

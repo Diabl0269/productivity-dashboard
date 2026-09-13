@@ -10,12 +10,6 @@
   min-height: 0;
 }
 
-#projectsPanel .pv-hero,
-#projectsPanel .pv-toolbar,
-#projectsPanel .pv-link-panel {
-  flex-shrink: 0;
-}
-
 .pv-layout {
   --pv-docs-width: 300px;
   display: grid;
@@ -40,7 +34,10 @@
 .pv-center {
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -161,14 +158,14 @@
   opacity: 0.75;
 }
 
-/* Main content */
+/* Main content — grows with hero, toolbar, and tree; scroll lives on .pv-center */
 .pv-main {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   padding: var(--space-6) var(--space-7);
-  min-height: 0;
-  flex: 1;
+  padding-bottom: var(--space-8);
+  flex: 0 0 auto;
   width: 100%;
 }
 
@@ -343,20 +340,14 @@
   font-style: italic;
 }
 
-/* Sub-project sections */
+/* Sub-project sections — grow with content; scroll lives on .pv-center */
 .pv-content {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
   width: 100%;
   max-width: 100%;
-  flex: 1;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
-  padding-bottom: var(--space-8);
+  overflow: visible;
 }
 
 .pv-subproj {
@@ -365,6 +356,11 @@
   background: var(--surface-2);
   overflow: hidden;
   border-left: 4px solid var(--pv-sub-color, var(--accent));
+}
+
+.pv-subproj-empty > .pv-subproj-head {
+  border-bottom: none;
+  cursor: default;
 }
 
 .pv-subproj-head {
@@ -386,9 +382,14 @@
   user-select: none;
 }
 
-.pv-subproj-head .pv-collapse-btn {
+.pv-subproj-head .pv-collapse-btn,
+.pv-collapse-spacer {
   width: 22px;
   height: 22px;
+  flex-shrink: 0;
+}
+
+.pv-subproj-head .pv-collapse-btn {
   border: none;
   background: transparent;
   color: var(--text-tertiary);
@@ -929,7 +930,8 @@ body.pv-docs-resizing .pv-docs-resizer {
 .pv-docs-expand-tab {
   position: absolute;
   right: 0;
-  top: var(--space-6);
+  /* Sit just below the hero action row (Edit / Sub-project / Delete) */
+  top: calc(var(--space-6) + 2.125rem + var(--space-2));
   transform: none;
   z-index: 4;
   display: flex;
