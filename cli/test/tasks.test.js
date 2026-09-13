@@ -268,6 +268,68 @@ test('tasks update --add-subtask: appends subtask', () => {
   }
 });
 
+test('tasks update --add-subtask: repeatable, appends multiple subtasks in order', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    const result = runCli(
+      ['tasks', 'update', 'T2', '--add-subtask', 'Write the stub', '--add-subtask', 'Wire it up'],
+      tmpDir
+    );
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    const doc = readTasks(tmpDir);
+    const todo = doc.sections.find(s => s.id === 'todo');
+    const task = todo.tasks.find(t => t.id === 'T2');
+    assert.equal(task.subtasks.length, 2);
+    assert.equal(task.subtasks[0].text, 'Write the stub');
+    assert.equal(task.subtasks[1].text, 'Wire it up');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks update --remove-subtask: removes the given 1-based subtask', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    // T1 subtasks[0] = 'Create directory structure', subtasks[1] = 'Add package.json'
+    const result = runCli(['tasks', 'update', 'T1', '--remove-subtask', '1'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    const doc = readTasks(tmpDir);
+    const todo = doc.sections.find(s => s.id === 'todo');
+    const task = todo.tasks.find(t => t.id === 'T1');
+    assert.equal(task.subtasks.length, 1);
+    assert.equal(task.subtasks[0].text, 'Add package.json');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks update --remove-subtask: rejects out-of-range index', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    const result = runCli(['tasks', 'update', 'T1', '--remove-subtask', '99'], tmpDir);
+    assert.notEqual(result.status, 0, 'should fail on out-of-range index');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks update --clear-subtasks: removes all subtasks', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    const result = runCli(['tasks', 'update', 'T1', '--clear-subtasks', '--json'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    const doc = readTasks(tmpDir);
+    const todo = doc.sections.find(s => s.id === 'todo');
+    const task = todo.tasks.find(t => t.id === 'T1');
+    assert.deepEqual(task.subtasks, [], 'subtasks should be an empty array');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('tasks update --check-subtask: marks subtask checked', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
