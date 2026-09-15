@@ -28,6 +28,7 @@ export function setSearchTerm(term, opts = {}) {
   if (clearBtn) clearBtn.style.display = currentTerm ? '' : 'none';
   if (container) container.classList.toggle('has-value', !!currentTerm);
   if (activeMainTab === 'tasks') filterTasks(currentTerm);
+  if (activeMainTab === 'projects') filterProjects(currentTerm);
   if (!opts.skipUrl) scheduleFilterUrlSync();
 }
 
@@ -58,7 +59,7 @@ export function initSearch() {
 
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-      if (activeMainTab === 'tasks' || activeMainTab === 'memory' || activeMainTab === 'global-memory') {
+      if (activeMainTab === 'tasks' || activeMainTab === 'projects' || activeMainTab === 'memory' || activeMainTab === 'global-memory') {
         e.preventDefault();
         searchInput.focus();
         searchInput.select();
@@ -77,6 +78,10 @@ export function onTabSwitch(tab) {
   const savedViews = document.getElementById('savedViewsBar');
   const templates = document.getElementById('taskTemplatesBar');
   const searchFilters = document.getElementById('searchFilters');
+  const archiveToggle = document.getElementById('searchIncludeArchive');
+  const archiveLabel = archiveToggle?.closest('.search-archive-toggle');
+  if (archiveLabel) archiveLabel.style.display = tab === 'tasks' ? '' : 'none';
+
   if (tab === 'search') {
     container.style.display = 'none';
     if (filters) filters.style.display = 'none';
@@ -84,7 +89,7 @@ export function onTabSwitch(tab) {
     if (templates) templates.style.display = 'none';
     if (searchFilters) searchFilters.style.display = 'flex';
     clearSearch({ skipUrl: false });
-  } else if (tab === 'tasks' || tab === 'memory' || tab === 'global-memory') {
+  } else if (tab === 'tasks' || tab === 'projects' || tab === 'memory' || tab === 'global-memory') {
     container.style.display = 'flex';
     if (searchFilters) searchFilters.style.display = 'none';
     if (tab === 'tasks') {
@@ -98,6 +103,12 @@ export function onTabSwitch(tab) {
       if (hasActiveFacets() || currentTerm) {
         import('./tasks-main.js').then(m => m.renderFilteredViews()).catch(() => {});
       }
+    } else if (tab === 'projects') {
+      searchInput.placeholder = 'Search projects...';
+      if (filters) filters.style.display = 'none';
+      if (savedViews) savedViews.style.display = 'none';
+      if (templates) templates.style.display = 'none';
+      if (currentTerm) filterProjects(currentTerm);
     } else {
       if (filters) filters.style.display = 'none';
       if (savedViews) savedViews.style.display = 'none';
@@ -107,7 +118,7 @@ export function onTabSwitch(tab) {
       clearSearch();
     }
   } else {
-    // overview, settings, projects, and any externally-configured tab (config.json
+    // overview, settings, and any externally-configured tab (config.json
     // externalTabs) — no search UI applies.
     container.style.display = 'none';
     if (filters) filters.style.display = 'none';
@@ -120,10 +131,11 @@ export function onTabSwitch(tab) {
 
 export function reapplySearch() {
   const shouldFilterTasks = activeMainTab === 'tasks' && (currentTerm || hasActiveFacets());
+  const shouldFilterProjects = activeMainTab === 'projects' && currentTerm;
   const shouldFilterMemory = activeMainTab === 'memory' && currentTerm;
   const shouldFilterGlobalMemory = activeMainTab === 'global-memory' && currentTerm;
 
-  if (shouldFilterTasks || shouldFilterMemory || shouldFilterGlobalMemory) {
+  if (shouldFilterTasks || shouldFilterProjects || shouldFilterMemory || shouldFilterGlobalMemory) {
     applyFilter();
   } else {
     updateColumnCounts('');
@@ -148,6 +160,7 @@ export function clearSearch(opts = {}) {
   if (clearBtn) clearBtn.style.display = 'none';
   if (container) container.classList.remove('has-value');
   showAllTasks();
+  showAllProjects();
   showAllMemory();
   showAllGlobalMemory();
   if (!opts.skipUrl) scheduleFilterUrlSync();
@@ -156,6 +169,8 @@ export function clearSearch(opts = {}) {
 function applyFilter() {
   if (activeMainTab === 'tasks') {
     filterTasks(currentTerm);
+  } else if (activeMainTab === 'projects') {
+    filterProjects(currentTerm);
   } else if (activeMainTab === 'memory') {
     filterMemory(currentTerm);
   } else if (activeMainTab === 'global-memory') {
@@ -275,6 +290,52 @@ function filterGlobalMemory(term) {
 
 function showAllGlobalMemory() {
   document.querySelectorAll('#globalMemoryContainer .gm-card, #globalMemoryContainer .gm-project-group').forEach(el => {
+    el.style.display = '';
+  });
+}
+
+// ===== PROJECTS FILTERING =====
+
+function projectTaskNodeMatches(node, term) {
+  const row = node.querySelector(':scope > .pv-row-wrap .pv-row');
+  if (row && row.textContent.toLowerCase().includes(term)) return true;
+  for (const child of node.querySelectorAll(':scope > .pv-branch > .pv-node')) {
+    if (projectTaskNodeMatches(child, term)) return true;
+  }
+  return false;
+}
+
+function projectSidebarNodeMatches(node, term) {
+  const btn = node.querySelector(':scope > .pv-project-btn');
+  if (btn && btn.textContent.toLowerCase().includes(term)) return true;
+  for (const child of node.querySelectorAll(':scope > .pv-sidebar-children > .pv-sidebar-node')) {
+    if (projectSidebarNodeMatches(child, term)) return true;
+  }
+  return false;
+}
+
+function filterProjects(term) {
+  document.querySelectorAll('#projectsPanel .pv-node').forEach(node => {
+    node.style.display = (!term || projectTaskNodeMatches(node, term)) ? '' : 'none';
+  });
+
+  document.querySelectorAll('#projectsPanel .pv-subproj').forEach(section => {
+    if (!term) {
+      section.style.display = '';
+      return;
+    }
+    const headText = section.querySelector('.pv-subproj-head')?.textContent.toLowerCase() || '';
+    const hasVisibleTask = [...section.querySelectorAll('.pv-node')].some(n => n.style.display !== 'none');
+    section.style.display = (headText.includes(term) || hasVisibleTask) ? '' : 'none';
+  });
+
+  document.querySelectorAll('#projectsPanel .pv-sidebar-node').forEach(node => {
+    node.style.display = (!term || projectSidebarNodeMatches(node, term)) ? '' : 'none';
+  });
+}
+
+function showAllProjects() {
+  document.querySelectorAll('#projectsPanel .pv-node, #projectsPanel .pv-subproj, #projectsPanel .pv-sidebar-node').forEach(el => {
     el.style.display = '';
   });
 }
