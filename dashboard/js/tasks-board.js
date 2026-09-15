@@ -121,11 +121,10 @@ function createCard(task, isArchive = false) {
   let html = `
     <div style="display: flex; align-items: flex-start; gap: 12px;">
       <button class="delete-btn" data-action="delete" aria-label="Delete task">&times;</button>
-      <span class="task-select-box${isSelected(task) ? ' checked' : ''}" data-action="select"
-            role="checkbox" aria-checked="${isSelected(task) ? 'true' : 'false'}"
-            aria-label="Select task" tabindex="0"></span>
-      <span class="checkbox ${task.checked ? 'checked' : ''}" data-action="toggle"
-            role="checkbox" aria-checked="${task.checked ? 'true' : 'false'}" tabindex="0"></span>
+      <span class="checkbox ${task.checked ? 'checked' : ''}${isSelected(task) ? ' bulk-selected' : ''}" data-action="toggle"
+            role="checkbox" aria-checked="${task.checked ? 'true' : 'false'}"
+            aria-label="${isSelected(task) ? 'Selected for bulk actions' : 'Mark complete'}"
+            title="Click to complete · Shift+click to select" tabindex="0"></span>
       <div style="flex: 1;">
         <div style="display: flex; align-items: center; gap: 8px; padding-right: 34px; flex-wrap: wrap;">
           <span class="priority-dot ${priorityClass}" data-action="cycle-priority"
@@ -217,17 +216,17 @@ function createCard(task, isArchive = false) {
     }
 
     const action = e.target.dataset.action;
-    if (action === 'select') {
-      e.stopPropagation();
-      toggleSelect(task, { additive: e.metaKey || e.ctrlKey || e.shiftKey || true });
-      return;
-    }
     if (e.metaKey || e.ctrlKey) {
       e.stopPropagation();
       toggleSelect(task, { additive: true });
       return;
     }
     if (action === 'toggle') {
+      if (e.shiftKey) {
+        e.stopPropagation();
+        toggleSelect(task, { additive: true });
+        return;
+      }
       task.checked = !task.checked;
       if (task.checked) {
         task.updated = todayStr();
