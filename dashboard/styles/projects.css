@@ -1049,20 +1049,45 @@ body.pv-docs-resizing .pv-docs-resizer {
   color: var(--priority-high, #ef4444);
 }
 
+.pv-docs-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .pv-docs-tree {
   overflow-y: auto;
   padding: var(--space-2);
-  flex: 0 1 42%;
-  min-height: 120px;
-  max-height: 45%;
-  border-bottom: 1px solid var(--border-subtle);
+  flex: 1;
+  min-height: 80px;
+}
+
+.pv-docs-preview-resizer {
+  flex-shrink: 0;
+  height: 5px;
+  cursor: row-resize;
+  touch-action: none;
+  background: var(--border-subtle);
+  transition: background var(--transition-fast);
+}
+
+.pv-docs-preview-resizer:hover,
+body.pv-docs-preview-resizing .pv-docs-preview-resizer {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+body.pv-docs-preview-resizing {
+  cursor: row-resize;
+  user-select: none;
 }
 
 .pv-docs-preview {
-  flex: 1;
+  flex: 0 0 var(--pv-docs-preview-height, 45%);
   overflow-y: auto;
   padding: var(--space-4);
-  min-height: 0;
+  min-height: 100px;
 }
 
 .pv-docs-file {
