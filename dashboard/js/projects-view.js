@@ -39,6 +39,7 @@ import { renderProjectDocsPanel, clearProjectDocsCache, setProjectDocsCallbacks 
 import { initProjectDocsPanel, syncProjectDocsPanelVisibility } from './project-docs-panel.js';
 import { showTaskMovePopover } from './task-move.js';
 import { attachTaskDragHandle, bindProjectsDragDrop } from './project-drag.js';
+import { reapplySearch } from './search.js';
 
 const SELECTED_KEY = 'dashboard.selectedProject';
 const COLLAPSE_KEY = 'dashboard.projects.collapsed';
@@ -1158,6 +1159,7 @@ export function renderProjectsView() {
   renderMain(state, project);
   syncProjectDocsPanelVisibility(!!project);
   renderProjectDocsPanel(projectForDocs(state, project)).catch(() => {});
+  reapplySearch();
 }
 
 export function openProject(projectId) {
