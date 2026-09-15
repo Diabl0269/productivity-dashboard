@@ -71,6 +71,7 @@ function renderBulkBar() {
   }
 
   const n = selectedIds.size;
+  document.getElementById('tasksPanel')?.classList.toggle('bulk-mode', n > 0);
   if (n === 0) {
     bar.hidden = true;
     bar.innerHTML = '';

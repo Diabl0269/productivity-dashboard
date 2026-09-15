@@ -362,24 +362,19 @@ function createListItem(task, section) {
   });
 
   const checkbox = document.createElement('span');
-  checkbox.className = `checkbox ${task.checked ? 'checked' : ''}`;
+  checkbox.className = `checkbox ${task.checked ? 'checked' : ''}${isSelected(task) ? ' bulk-selected' : ''}`;
   checkbox.setAttribute('role', 'checkbox');
   checkbox.setAttribute('aria-checked', task.checked ? 'true' : 'false');
+  checkbox.setAttribute('aria-label', isSelected(task) ? 'Selected for bulk actions' : 'Mark complete');
+  checkbox.setAttribute('title', 'Click to complete · Shift+click to select');
   checkbox.setAttribute('tabindex', '0');
-
-  const selectBox = document.createElement('span');
-  selectBox.className = 'task-select-box' + (isSelected(task) ? ' checked' : '');
-  selectBox.setAttribute('role', 'checkbox');
-  selectBox.setAttribute('aria-checked', isSelected(task) ? 'true' : 'false');
-  selectBox.setAttribute('aria-label', 'Select task');
-  selectBox.setAttribute('tabindex', '0');
-  selectBox.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleSelect(task, { additive: true });
-  });
 
   const toggleCheckbox = (e) => {
     e.stopPropagation();
+    if (e.shiftKey) {
+      toggleSelect(task, { additive: true });
+      return;
+    }
     task.checked = !task.checked;
     if (task.checked) {
       task.updated = todayStr();
@@ -619,7 +614,6 @@ function createListItem(task, section) {
     softDeleteTask(task);
    });
 
-  item.appendChild(selectBox);
   item.appendChild(checkbox);
   item.appendChild(content);
   item.appendChild(actions);
