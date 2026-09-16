@@ -25,7 +25,7 @@ A modular, local-first productivity dashboard designed for [Claude Code](https:/
 | Overview | None | Sprint tracker, deadlines, blocked count, estimate total, deep links to Tasks |
 | Automation | None | Daily summary (Claude Desktop scheduled tasks / optional scripts) |
 | Config | Hardcoded | External `config.json` (links, sprints, WIP limits, Slack) |
-| Global Memory | None | View/edit Claude's cross-project memory |
+| Global Memory | None | Global sidebar tab under Memory — view/edit Claude's cross-project memory |
 
 ## Quick Start
 

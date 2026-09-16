@@ -1,7 +1,7 @@
 // routing.js — URL ↔ dashboard state (History API, /dashboard/* paths)
 
 const MAIN_TABS = new Set([
-  'overview', 'tasks', 'search', 'projects', 'memory', 'global-memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'memory', 'settings',
 ]);
 
 /**
@@ -57,7 +57,9 @@ export function parseRoute() {
   rest = rest.replace(/^\/+|\/+$/g, '');
   const segments = rest ? rest.split('/').filter(Boolean) : [];
 
-  const tab = segments[0] || 'overview';
+  const rawTab = segments[0] || 'overview';
+  // Legacy: /dashboard/global-memory → /dashboard/memory/global
+  const tab = rawTab === 'global-memory' ? 'memory' : rawTab;
   const route = { tab: MAIN_TABS.has(tab) ? tab : 'overview' };
 
   if (route.tab === 'tasks') {
@@ -76,10 +78,14 @@ export function parseRoute() {
     route.projectId = decodeURIComponent(segments[1]);
   } else if (route.tab === 'memory' && segments[1]) {
     route.memoryTab = decodeURIComponent(segments[1]);
+    if (route.memoryTab === 'global' && segments[2]) {
+      route.globalSubtab = decodeURIComponent(segments[2]);
+    }
+  } else if (rawTab === 'global-memory') {
+    route.memoryTab = 'global';
+    if (segments[1]) route.globalSubtab = decodeURIComponent(segments[1]);
   } else if (route.tab === 'settings' && segments[1]) {
     route.settingsSubtab = decodeURIComponent(segments[1]);
-  } else if (route.tab === 'global-memory' && segments[1]) {
-    route.globalSubtab = decodeURIComponent(segments[1]);
   }
 
   return route;
@@ -101,10 +107,11 @@ export function buildPath(route) {
     parts.push(encodeURIComponent(route.projectId));
   } else if (tab === 'memory' && route.memoryTab) {
     parts.push(encodeURIComponent(route.memoryTab));
+    if (route.memoryTab === 'global' && route.globalSubtab) {
+      parts.push(encodeURIComponent(route.globalSubtab));
+    }
   } else if (tab === 'settings' && route.settingsSubtab) {
     parts.push(encodeURIComponent(route.settingsSubtab));
-  } else if (tab === 'global-memory' && route.globalSubtab) {
-    parts.push(encodeURIComponent(route.globalSubtab));
   }
 
   if (parts.length === 0) return `${base}/`;
@@ -143,12 +150,13 @@ export function routeFromState() {
   } else if (route.tab === 'memory') {
     const mt = deps.getActiveMemoryTab?.();
     if (mt) route.memoryTab = mt;
+    if (mt === 'global') {
+      const gs = deps.getGlobalMemorySubtab?.();
+      if (gs && gs !== 'claude-md') route.globalSubtab = gs;
+    }
   } else if (route.tab === 'settings') {
     const st = deps.getSettingsSubtab?.();
     if (st && st !== 'display') route.settingsSubtab = st;
-  } else if (route.tab === 'global-memory') {
-    const gs = deps.getGlobalMemorySubtab?.();
-    if (gs && gs !== 'claude-md') route.globalSubtab = gs;
   }
 
   return route;
@@ -199,12 +207,12 @@ export function applyRoute(route) {
       deps.selectMemoryTab?.(route.memoryTab, { fromRoute: true });
     }
 
-    if (tab === 'settings' && route.settingsSubtab) {
-      deps.switchSettingsSubtab?.(route.settingsSubtab, { fromRoute: true });
+    if (tab === 'memory' && route.memoryTab === 'global' && route.globalSubtab) {
+      deps.switchGlobalMemorySubtab?.(route.globalSubtab, { fromRoute: true });
     }
 
-    if (tab === 'global-memory' && route.globalSubtab) {
-      deps.switchGlobalMemorySubtab?.(route.globalSubtab, { fromRoute: true });
+    if (tab === 'settings' && route.settingsSubtab) {
+      deps.switchSettingsSubtab?.(route.settingsSubtab, { fromRoute: true });
     }
 
     if (route.taskId) {

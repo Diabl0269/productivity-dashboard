@@ -3,7 +3,7 @@
 import { escapeHtml, parseMemoryMarkdown, getPreview, getDisplayName, renderMarkdownToHtml } from './memory-parser.js';
 import { showStatus, filePathEl, setMemoryInfoGetter, activeMainTab } from './state.js';
 import { saveHandle } from './persistence.js';
-import { reapplyMemorySearch } from './search.js';
+import { reapplyMemorySearch, reapplyGlobalMemorySearch, updateMemorySearchUi } from './search.js';
 import { syncUrl, isRoutingReady, parseRoute } from './routing.js';
 
 export const memoryState = {
@@ -19,6 +19,34 @@ const memoryEmptyState = document.getElementById('memoryEmptyState');
 const memoryMainContent = document.getElementById('memoryMainContent');
 const memoryTabsContainer = document.getElementById('memoryTabsContainer');
 const memoryContentContainer = document.getElementById('memoryContentContainer');
+const globalMemoryContent = document.getElementById('globalMemoryContent');
+
+export function isViewingGlobalMemory() {
+  return getActiveMemoryTab() === 'global';
+}
+
+/** Show the memory shell with at least the Global sidebar tab (no project data required). */
+export function ensureMemorySidebar() {
+  if (!memoryTabsContainer) return;
+  memoryEmptyState.style.display = 'none';
+  memoryMainContent.style.display = 'flex';
+  if (!memoryTabsContainer.querySelector('[data-tab="global"]')) {
+    renderMemoryTabs();
+  }
+}
+
+function showMemoryPane(tabId) {
+  const isGlobal = tabId === 'global';
+  if (memoryContentContainer) {
+    memoryContentContainer.style.display = isGlobal ? 'none' : '';
+  }
+  if (globalMemoryContent) {
+    globalMemoryContent.style.display = isGlobal ? 'flex' : 'none';
+  }
+  if (activeMainTab === 'memory') {
+    filePathEl.textContent = isGlobal ? '~/.claude/' : (memoryState.memoryDirHandle?.name || 'memory (read-only)');
+  }
+}
 
 async function loadMemoryFromHandle(handle) {
   memoryState.memoryDirHandle = handle;
@@ -125,9 +153,23 @@ function renderMemoryTabs() {
     else coreFiles.push(file);
   }
 
+  let html = '';
+
+  // Global tab — always available in the sidebar
+  html += '<span class="memory-sidebar-group-label">Global</span>';
+  html += buildTabButton('global', 'Global', null, false);
+
   // Determine the default active tab id (first item in render order)
   let defaultTabId = null;
-  if (memoryState.memoryData.claudeMd) {
+  const hasProjectMemory = memoryState.memoryData.claudeMd
+    || coreFiles.length > 0
+    || feedbackFiles.length > 0
+    || referenceFiles.length > 0
+    || Object.keys(memoryState.memoryData.memoryDirs).length > 0;
+
+  if (!hasProjectMemory) {
+    defaultTabId = 'global';
+  } else if (memoryState.memoryData.claudeMd) {
     defaultTabId = 'overview';
   } else if (coreFiles.length > 0) {
     defaultTabId = 'file-' + coreFiles[0].name.replace('.md', '');
@@ -139,8 +181,6 @@ function renderMemoryTabs() {
     const dirNames = Object.keys(memoryState.memoryData.memoryDirs).sort();
     if (dirNames.length > 0) defaultTabId = 'dir-' + dirNames[0];
   }
-
-  let html = '';
 
   // ── Core group ──
   const hasCoreItems = memoryState.memoryData.claudeMd || coreFiles.length > 0;
@@ -208,12 +248,17 @@ function renderMemoryTabs() {
 
   memoryTabsContainer.innerHTML = html;
 
-  // Activate the default tab
-  if (defaultTabId) {
-    const defaultBtn = memoryTabsContainer.querySelector('[data-tab="' + defaultTabId + '"]');
+  // Activate the default tab (preserve current selection when re-rendering)
+  const currentActive = memoryTabsContainer.querySelector('.memory-tab.active')?.dataset.tab;
+  const tabToActivate = (currentActive && memoryTabsContainer.querySelector(`[data-tab="${currentActive}"]`))
+    ? currentActive
+    : defaultTabId;
+  if (tabToActivate) {
+    const defaultBtn = memoryTabsContainer.querySelector('[data-tab="' + tabToActivate + '"]');
     if (defaultBtn) {
       defaultBtn.classList.add('active');
       defaultBtn.setAttribute('aria-selected', 'true');
+      showMemoryPane(tabToActivate);
     }
   }
 
@@ -246,7 +291,13 @@ export function selectMemoryTab(tabId, opts = {}) {
   });
   btn.classList.add('active');
   btn.setAttribute('aria-selected', 'true');
-  renderMemoryContent();
+  showMemoryPane(tabId);
+  if (tabId === 'global') {
+    reapplyGlobalMemorySearch();
+  } else {
+    renderMemoryContent();
+  }
+  updateMemorySearchUi();
   if (!opts.fromRoute && isRoutingReady()) syncUrl();
   return true;
 }
@@ -501,6 +552,7 @@ export function initMemory() {
 
   document.getElementById('openMemoryBtn').addEventListener('click', loadMemoryDirectory);
   document.getElementById('openMemoryBtnLarge').addEventListener('click', loadMemoryDirectory);
+  renderMemoryTabs();
 }
 
 function loadMemoryFromHttpData(data) {

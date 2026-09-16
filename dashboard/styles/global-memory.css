@@ -475,7 +475,12 @@
 }
 
 /* Global container layouts */
-#globalMemoryContent {
+.global-memory-pane {
+  padding: 0;
+  overflow: hidden;
+}
+
+#globalMemoryInner {
   display: flex;
   flex-direction: column;
   flex: 1;

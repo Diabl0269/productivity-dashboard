@@ -100,7 +100,6 @@
         <button id="searchTabBtn" role="tab" aria-selected="false" aria-controls="searchPanel">Search</button>
         <button id="projectsTabBtn" role="tab" aria-selected="false" aria-controls="projectsPanel">Projects</button>
         <button id="memoryTabBtn" role="tab" aria-selected="false" aria-controls="memoryPanel">Memory</button>
-        <button id="globalMemoryTabBtn" role="tab" aria-selected="false" aria-controls="globalMemoryPanel">Global Memory</button>
         <button id="settingsTabBtn" role="tab" aria-selected="false" aria-controls="settingsPanel">Settings</button>
       </div>
       <div class="view-toggle" id="taskViewToggle" style="display: none;">
@@ -399,19 +398,17 @@
     <div id="memoryMainContent" style="display: none; flex-direction: row; flex: 1; min-height: 0; gap: 0; overflow: hidden;">
       <nav id="memoryTabsContainer" class="memory-sidebar" role="tablist" aria-label="Memory files"></nav>
       <div class="memory-content-area" id="memoryContentContainer"></div>
-    </div>
-  </div>
-
-  <!-- GLOBAL MEMORY TAB PANEL -->
-  <div class="tab-panel" id="globalMemoryPanel" role="tabpanel" aria-labelledby="globalMemoryTabBtn">
-    <div id="globalMemoryEmptyState" class="empty-state">
-      <p style="margin-bottom: 24px; font-size: 18px; font-weight: 600; color: var(--text-primary);">Loading global memory...</p>
-    </div>
-    <div id="globalMemoryContent" style="display: none; flex-direction: column; min-height: 0; flex: 1;">
-      <div class="gm-sub-tabs" id="globalMemorySubTabs"></div>
-      <div class="gm-filters" id="globalMemoryFilters" style="display: none;"></div>
-      <div class="memory-content-area" style="overflow-y: auto; flex: 1;">
-        <div id="globalMemoryContainer"></div>
+      <div id="globalMemoryContent" class="memory-content-area global-memory-pane" style="display: none; flex-direction: column; min-height: 0; flex: 1;">
+        <div id="globalMemoryEmptyState" class="empty-state">
+          <p style="margin-bottom: 24px; font-size: 18px; font-weight: 600; color: var(--text-primary);">Loading global memory...</p>
+        </div>
+        <div id="globalMemoryInner" style="display: none; flex-direction: column; min-height: 0; flex: 1;">
+          <div class="gm-sub-tabs" id="globalMemorySubTabs"></div>
+          <div class="gm-filters" id="globalMemoryFilters" style="display: none;"></div>
+          <div class="global-memory-scroll" style="overflow-y: auto; flex: 1;">
+            <div id="globalMemoryContainer"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

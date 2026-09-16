@@ -3,10 +3,10 @@
 import { onTabSwitch } from './search.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
-export let activeMainTab = 'overview'; // overview | tasks | search | projects | memory | global-memory | settings
+export let activeMainTab = 'overview'; // overview | tasks | search | projects | memory | settings
 
 const MAIN_TAB_ORDER = [
-  'overview', 'tasks', 'search', 'projects', 'memory', 'global-memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'memory', 'settings',
 ];
 
 // Externally-configured tabs (config.json externalTabs) register themselves here so
@@ -20,7 +20,7 @@ export function registerExternalTab(id, refs) {
 
 const MAIN_TAB_BTN_IDS = [
   'overviewTabBtn', 'tasksTabBtn', 'searchTabBtn', 'projectsTabBtn',
-  'memoryTabBtn', 'globalMemoryTabBtn', 'settingsTabBtn',
+  'memoryTabBtn', 'settingsTabBtn',
 ];
 
 const MOD_KEY_LABEL = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
@@ -117,14 +117,12 @@ export function switchMainTab(tab, opts = {}) {
   const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
-  const globalMemoryTabBtn = document.getElementById('globalMemoryTabBtn');
   const settingsTabBtn = document.getElementById('settingsTabBtn');
   const overviewPanel = document.getElementById('overviewPanel');
   const tasksPanel = document.getElementById('tasksPanel');
   const searchPanel = document.getElementById('searchPanel');
   const projectsPanel = document.getElementById('projectsPanel');
   const memoryPanel = document.getElementById('memoryPanel');
-  const globalMemoryPanel = document.getElementById('globalMemoryPanel');
   const settingsPanel = document.getElementById('settingsPanel');
   const taskViewToggle = document.getElementById('taskViewToggle');
   const sortPriorityBtn = document.getElementById('sortPriorityBtn');
@@ -142,7 +140,6 @@ export function switchMainTab(tab, opts = {}) {
     { btn: searchTabBtn, id: 'search' },
     { btn: projectsTabBtn, id: 'projects' },
     { btn: memoryTabBtn, id: 'memory' },
-    { btn: globalMemoryTabBtn, id: 'global-memory' },
     { btn: settingsTabBtn, id: 'settings' },
   ];
   for (const { btn, id } of tabButtons) {
@@ -157,7 +154,6 @@ export function switchMainTab(tab, opts = {}) {
   if (searchPanel) searchPanel.classList.toggle('active', tab === 'search');
   if (projectsPanel) projectsPanel.classList.toggle('active', tab === 'projects');
   memoryPanel.classList.toggle('active', tab === 'memory');
-  globalMemoryPanel.classList.toggle('active', tab === 'global-memory');
   if (settingsPanel) settingsPanel.classList.toggle('active', tab === 'settings');
 
   // Externally-configured (config.json externalTabs) tabs, if any.
@@ -193,9 +189,10 @@ export function switchMainTab(tab, opts = {}) {
   if (tab === 'tasks' || tab === 'settings' || tab === 'projects') {
     filePathEl.textContent = taskInfo.name || '';
   } else if (tab === 'memory') {
-    filePathEl.textContent = memInfo.name || '';
-  } else if (tab === 'global-memory') {
-    filePathEl.textContent = '~/.claude/';
+    const activeMemTab = document.querySelector('#memoryTabsContainer .memory-tab.active');
+    filePathEl.textContent = activeMemTab?.dataset.tab === 'global'
+      ? '~/.claude/'
+      : (memInfo.name || '');
   } else {
     filePathEl.textContent = '';
   }
@@ -227,7 +224,6 @@ export function initStateListeners() {
   const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
-  const globalMemoryTabBtn = document.getElementById('globalMemoryTabBtn');
   const settingsTabBtn = document.getElementById('settingsTabBtn');
 
   overviewTabBtn.addEventListener('click', () => switchMainTab('overview'));
@@ -235,7 +231,6 @@ export function initStateListeners() {
   if (searchTabBtn) searchTabBtn.addEventListener('click', () => switchMainTab('search'));
   if (projectsTabBtn) projectsTabBtn.addEventListener('click', () => switchMainTab('projects'));
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
-  globalMemoryTabBtn.addEventListener('click', () => switchMainTab('global-memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
 
   document.addEventListener('keydown', (e) => {

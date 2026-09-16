@@ -50,7 +50,7 @@ export function initGlobalMemory() {
 
 export async function loadGlobalMemory() {
   const emptyState = document.getElementById('globalMemoryEmptyState');
-  const content = document.getElementById('globalMemoryContent');
+  const inner = document.getElementById('globalMemoryInner');
 
   try {
     const resp = await fetch('/api/global-memory');
@@ -62,7 +62,10 @@ export async function loadGlobalMemory() {
     state.loaded = true;
 
     emptyState.style.display = 'none';
-    content.style.display = 'flex';
+    if (inner) inner.style.display = 'flex';
+
+    const { ensureMemorySidebar } = await import('./memory-renderer.js');
+    ensureMemorySidebar();
 
     renderSubTabs();
     renderContent();
