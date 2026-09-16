@@ -13,6 +13,7 @@ const os = require('os');
 const PORT = Number(process.env.PORT || process.argv[2] || 3010);
 const E2E_DIR = __dirname;
 const FIXTURES = path.join(E2E_DIR, 'fixtures');
+const FIXTURE_FILE = process.env.FIXTURE || 'tasks.json';
 const RUNTIME = path.join(E2E_DIR, 'runtime');
 const REAL_DASHBOARD = path.resolve(E2E_DIR, '..');
 
@@ -41,7 +42,11 @@ function copyFile(src, dest) {
 function prepareRuntime() {
   rmrf(RUNTIME);
   fs.mkdirSync(RUNTIME, { recursive: true });
-  copyFile(path.join(FIXTURES, 'tasks.json'), path.join(RUNTIME, 'tasks.json'));
+  const fixturePath = path.join(FIXTURES, FIXTURE_FILE);
+  if (!fs.existsSync(fixturePath)) {
+    throw new Error(`Fixture not found: ${fixturePath}`);
+  }
+  copyFile(fixturePath, path.join(RUNTIME, 'tasks.json'));
   copyFile(path.join(FIXTURES, 'CLAUDE.md'), path.join(RUNTIME, 'CLAUDE.md'));
   copyFile(path.join(FIXTURES, 'config.json'), path.join(RUNTIME, 'config.json'));
   copyFile(
@@ -255,6 +260,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[e2e-mock] Dashboard: http://localhost:${PORT}/dashboard/`);
+  console.log(`[e2e-mock] Fixture: ${FIXTURE_FILE}`);
   console.log(`[e2e-mock] Runtime (writable): ${RUNTIME}`);
   console.log(`[e2e-mock] Personal repo data is NOT used.`);
 });
