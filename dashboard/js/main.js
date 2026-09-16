@@ -166,7 +166,10 @@ const routeAfterLoad = parseRoute();
 if (routeAfterLoad.tab === 'projects' && routeAfterLoad.projectId) {
   selectProject(routeAfterLoad.projectId, { fromRoute: true });
 }
-if (routeAfterLoad.tab === 'global-memory' && routeAfterLoad.globalSubtab) {
+if (routeAfterLoad.tab === 'memory' && routeAfterLoad.memoryTab) {
+  selectMemoryTab(routeAfterLoad.memoryTab, { fromRoute: true });
+}
+if (routeAfterLoad.tab === 'memory' && routeAfterLoad.memoryTab === 'global' && routeAfterLoad.globalSubtab) {
   switchGlobalMemorySubtab(routeAfterLoad.globalSubtab, { fromRoute: true });
 }
 

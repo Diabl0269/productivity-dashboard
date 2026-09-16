@@ -1,7 +1,7 @@
 // search.js - Unified search/filter for tasks and memory tabs
 
 import { activeMainTab } from './state.js';
-import { renderMemoryContent, renderMemorySearchResults } from './memory-renderer.js';
+import { renderMemoryContent, renderMemorySearchResults, isViewingGlobalMemory } from './memory-renderer.js';
 import { hasActiveFacets, renderFilterBar } from './task-filters.js';
 import { scheduleFilterUrlSync, isUrlFilterBootstrapping } from './url-filters.js';
 
@@ -59,7 +59,7 @@ export function initSearch() {
 
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-      if (activeMainTab === 'tasks' || activeMainTab === 'projects' || activeMainTab === 'memory' || activeMainTab === 'global-memory') {
+      if (activeMainTab === 'tasks' || activeMainTab === 'projects' || activeMainTab === 'memory') {
         e.preventDefault();
         searchInput.focus();
         searchInput.select();
@@ -89,7 +89,7 @@ export function onTabSwitch(tab) {
     if (templates) templates.style.display = 'none';
     if (searchFilters) searchFilters.style.display = 'flex';
     clearSearch({ skipUrl: false });
-  } else if (tab === 'tasks' || tab === 'projects' || tab === 'memory' || tab === 'global-memory') {
+  } else if (tab === 'tasks' || tab === 'projects' || tab === 'memory') {
     container.style.display = 'flex';
     if (searchFilters) searchFilters.style.display = 'none';
     if (tab === 'tasks') {
@@ -113,8 +113,9 @@ export function onTabSwitch(tab) {
       if (filters) filters.style.display = 'none';
       if (savedViews) savedViews.style.display = 'none';
       if (templates) templates.style.display = 'none';
-      if (tab === 'memory') searchInput.placeholder = 'Search all memory...';
-      else searchInput.placeholder = 'Search global memory...';
+      searchInput.placeholder = isViewingGlobalMemory()
+        ? 'Search global memory...'
+        : 'Search all memory...';
       clearSearch();
     }
   } else {
@@ -132,8 +133,8 @@ export function onTabSwitch(tab) {
 export function reapplySearch() {
   const shouldFilterTasks = activeMainTab === 'tasks' && (currentTerm || hasActiveFacets());
   const shouldFilterProjects = activeMainTab === 'projects' && currentTerm;
-  const shouldFilterMemory = activeMainTab === 'memory' && currentTerm;
-  const shouldFilterGlobalMemory = activeMainTab === 'global-memory' && currentTerm;
+  const shouldFilterMemory = activeMainTab === 'memory' && currentTerm && !isViewingGlobalMemory();
+  const shouldFilterGlobalMemory = activeMainTab === 'memory' && currentTerm && isViewingGlobalMemory();
 
   if (shouldFilterTasks || shouldFilterProjects || shouldFilterMemory || shouldFilterGlobalMemory) {
     applyFilter();
@@ -145,9 +146,25 @@ export function reapplySearch() {
 
 /** Re-apply an active memory text search after tab content re-renders. */
 export function reapplyMemorySearch() {
-  if (activeMainTab === 'memory' && currentTerm) {
+  if (activeMainTab === 'memory' && currentTerm && !isViewingGlobalMemory()) {
     renderMemorySearchResults(currentTerm);
   }
+}
+
+/** Re-apply global memory search after switching to the Global sidebar tab. */
+export function reapplyGlobalMemorySearch() {
+  if (activeMainTab === 'memory' && currentTerm && isViewingGlobalMemory()) {
+    filterGlobalMemory(currentTerm);
+  }
+}
+
+/** Refresh search placeholder and filters when switching memory sidebar tabs. */
+export function updateMemorySearchUi() {
+  if (!searchInput || activeMainTab !== 'memory') return;
+  searchInput.placeholder = isViewingGlobalMemory()
+    ? 'Search global memory...'
+    : 'Search all memory...';
+  if (currentTerm) applyFilter();
 }
 
 /** Programmatically set the tasks search term (e.g. from Overview widgets). */
@@ -171,10 +188,10 @@ function applyFilter() {
     filterTasks(currentTerm);
   } else if (activeMainTab === 'projects') {
     filterProjects(currentTerm);
+  } else if (activeMainTab === 'memory' && isViewingGlobalMemory()) {
+    filterGlobalMemory(currentTerm);
   } else if (activeMainTab === 'memory') {
     filterMemory(currentTerm);
-  } else if (activeMainTab === 'global-memory') {
-    filterGlobalMemory(currentTerm);
   }
 }
 
@@ -270,7 +287,7 @@ function filterMemory(term) {
 }
 
 function showAllMemory() {
-  if (activeMainTab === 'memory') {
+  if (activeMainTab === 'memory' && !isViewingGlobalMemory()) {
     renderMemoryContent();
   }
 }
