@@ -479,6 +479,74 @@
   border: 1px dashed var(--border-subtle);
 }
 
+.pv-loose-subhead {
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: var(--space-3) 0 var(--space-1);
+  padding-left: var(--space-2);
+}
+
+.pv-loose-subhead-detached {
+  color: #7C3AED;
+}
+
+.pv-loose-subhead-orphan {
+  color: #D97706;
+}
+
+.pv-loose-subhead-missing {
+  color: #DC2626;
+}
+
+.pv-parent-badge {
+  font: inherit;
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pv-cross-project-badge {
+  border: 1px solid color-mix(in srgb, #7C3AED 35%, var(--border));
+  background: color-mix(in srgb, #7C3AED 12%, var(--surface-2));
+  color: #7C3AED;
+  cursor: pointer;
+}
+
+.pv-cross-project-badge:hover {
+  background: color-mix(in srgb, #7C3AED 20%, var(--surface-2));
+  border-color: color-mix(in srgb, #7C3AED 55%, var(--border));
+}
+
+.pv-orphan-badge {
+  border: 1px solid color-mix(in srgb, #D97706 35%, var(--border));
+  background: color-mix(in srgb, #D97706 10%, var(--surface-2));
+  color: #D97706;
+}
+
+.pv-missing-parent-badge {
+  border: 1px solid color-mix(in srgb, #DC2626 35%, var(--border));
+  background: color-mix(in srgb, #DC2626 10%, var(--surface-2));
+  color: #DC2626;
+}
+
+.pv-detached-parent-row {
+  border-left: 2px solid color-mix(in srgb, #7C3AED 45%, transparent);
+}
+
+.pv-orphan-row {
+  border-left: 2px solid color-mix(in srgb, #D97706 45%, transparent);
+}
+
+.pv-missing-parent-row {
+  border-left: 2px solid color-mix(in srgb, #DC2626 45%, transparent);
+}
+
 .pv-drag-handle {
   flex-shrink: 0;
   width: 22px;

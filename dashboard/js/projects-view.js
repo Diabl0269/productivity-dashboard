@@ -11,6 +11,7 @@ import {
 } from './task-fields.js';
 import {
   escapeHtml,
+  findTaskByTaskId,
   getTicketType,
   normalizeTicketTypes,
   resolveTaskColor,
@@ -223,6 +224,93 @@ function buildForest(tasks, types) {
   roots.sort(sortFn);
   for (const list of children.values()) list.sort(sortFn);
   return { roots, children, byId };
+}
+
+function findEpicAncestor(task, tasksBySection) {
+  let cur = task;
+  const seen = new Set();
+  while (cur?.parentId && !seen.has(cur.parentId)) {
+    seen.add(cur.parentId);
+    const parent = findTaskByTaskId(tasksBySection, cur.parentId);
+    if (!parent) break;
+    if ((parent.type || 'task') === 'epic') return parent;
+    cur = parent;
+  }
+  return null;
+}
+
+function projectDisplayName(state, projectId) {
+  if (!projectId) return '';
+  const row = ensureMeta(state).projects.find(p => p.id === projectId);
+  return row?.name || projectId;
+}
+
+/** Parent info when this ticket's parent is outside the current scoped task set. */
+function detachedParentInfo(task, localById, state) {
+  if (localById.has(task.parentId)) return null;
+  if (!task.parentId) {
+    if ((task.type || 'task') === 'epic') return null;
+    return { kind: 'orphan' };
+  }
+
+  const directParent = findTaskByTaskId(state.tasks, task.parentId);
+  if (!directParent) return { kind: 'missing', parentId: task.parentId };
+
+  const epic = (directParent.type || 'task') === 'epic'
+    ? directParent
+    : findEpicAncestor(directParent, state.tasks);
+  const anchor = epic || directParent;
+  const anchorProject = anchor.project || '';
+  const taskProject = task.project || '';
+  const crossProject = anchorProject && taskProject && anchorProject !== taskProject;
+
+  return {
+    kind: crossProject ? 'cross-project' : 'external-parent',
+    parent: anchor,
+    parentProject: anchorProject,
+    directParent,
+    crossProject,
+  };
+}
+
+function appendParentBadge(rowRight, info, state) {
+  if (!info) return;
+
+  const badge = document.createElement(info.kind === 'cross-project' || info.kind === 'external-parent' ? 'button' : 'span');
+  badge.className = 'pv-parent-badge';
+
+  if (info.kind === 'orphan') {
+    badge.classList.add('pv-orphan-badge');
+    badge.title = 'This ticket has no parent epic';
+    badge.textContent = 'No parent';
+    rowRight.insertBefore(badge, rowRight.firstChild);
+    return;
+  }
+
+  if (info.kind === 'missing') {
+    badge.classList.add('pv-missing-parent-badge');
+    badge.title = `Parent ${info.parentId} was not found`;
+    badge.textContent = `Missing ${info.parentId}`;
+    rowRight.insertBefore(badge, rowRight.firstChild);
+    return;
+  }
+
+  badge.type = 'button';
+  badge.classList.add('pv-cross-project-badge');
+  const projName = projectDisplayName(state, info.parentProject);
+  const parent = info.parent;
+  badge.textContent = info.crossProject
+    ? `↗ ${parent.taskId} · ${projName}`
+    : `↗ ${parent.taskId}`;
+  badge.title = `Parent: ${parent.title || parent.taskId}`
+    + (projName ? ` (${projName})` : '')
+    + ' — click to open';
+  badge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (info.parentProject) selectProject(info.parentProject);
+    openTaskDetail(parent);
+  });
+  rowRight.insertBefore(badge, rowRight.firstChild);
 }
 
 function progressFor(task, childrenMap) {
@@ -552,7 +640,7 @@ function wireCollapsibleHeader(head, collapseKey, excludeSelector = '') {
   });
 }
 
-function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
+function renderTaskRow(task, childrenMap, types, state, depth, accentColor, localById) {
   const wrap = document.createElement('div');
   const taskType = task.type || 'task';
   const isEpic = taskType === 'epic';
@@ -626,6 +714,13 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   } else {
     btn.addEventListener('click', () => openTaskDetail(task));
   }
+  const parentInfo = detachedParentInfo(task, localById, state);
+  if (parentInfo) {
+    appendParentBadge(btn.querySelector('.pv-row-right'), parentInfo, state);
+    if (parentInfo.kind === 'orphan') btn.classList.add('pv-orphan-row');
+    else if (parentInfo.kind === 'missing') btn.classList.add('pv-missing-parent-row');
+    else btn.classList.add('pv-detached-parent-row');
+  }
   row.appendChild(btn);
 
   const moveBtn = document.createElement('button');
@@ -648,7 +743,7 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
   if (hasKids && !collapsed) {
     const branch = document.createElement('div');
     branch.className = 'pv-branch';
-    kids.forEach(k => branch.appendChild(renderTaskRow(k, childrenMap, types, state, depth + 1, accentColor)));
+    kids.forEach(k => branch.appendChild(renderTaskRow(k, childrenMap, types, state, depth + 1, accentColor, localById)));
     wrap.appendChild(branch);
   } else if (isEpic && !collapsed && !hasKids) {
     const empty = document.createElement('div');
@@ -661,7 +756,7 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor) {
 
 function renderTaskForest(tasks, types, state, accentColor) {
   const filtered = tasks;
-  const { roots, children } = buildForest(filtered, types);
+  const { roots, children, byId } = buildForest(filtered, types);
   const container = document.createElement('div');
   container.className = 'pv-tree';
 
@@ -672,9 +767,15 @@ function renderTaskForest(tasks, types, state, accentColor) {
 
   const epics = roots.filter(t => (t.type || 'task') === 'epic');
   const loose = roots.filter(t => (t.type || 'task') !== 'epic');
+  const looseDetached = loose.filter(t => {
+    const kind = detachedParentInfo(t, byId, state)?.kind;
+    return kind === 'cross-project' || kind === 'external-parent';
+  });
+  const looseMissing = loose.filter(t => detachedParentInfo(t, byId, state)?.kind === 'missing');
+  const looseOrphans = loose.filter(t => detachedParentInfo(t, byId, state)?.kind === 'orphan');
 
   for (const epic of epics) {
-    container.appendChild(renderTaskRow(epic, children, types, state, 0, accentColor));
+    container.appendChild(renderTaskRow(epic, children, types, state, 0, accentColor, byId));
   }
   if (loose.length) {
     if (epics.length) {
@@ -684,8 +785,32 @@ function renderTaskForest(tasks, types, state, accentColor) {
       looseHead.textContent = 'Other tickets — drop here to remove from epic';
       container.appendChild(looseHead);
     }
-    for (const t of loose) {
-      container.appendChild(renderTaskRow(t, children, types, state, 0, accentColor));
+    if (looseDetached.length) {
+      const detachedHead = document.createElement('div');
+      detachedHead.className = 'pv-loose-subhead pv-loose-subhead-detached';
+      detachedHead.textContent = 'Linked to epic in another project';
+      container.appendChild(detachedHead);
+      for (const t of looseDetached) {
+        container.appendChild(renderTaskRow(t, children, types, state, 0, accentColor, byId));
+      }
+    }
+    if (looseMissing.length) {
+      const missingHead = document.createElement('div');
+      missingHead.className = 'pv-loose-subhead pv-loose-subhead-missing';
+      missingHead.textContent = 'Broken parent link';
+      container.appendChild(missingHead);
+      for (const t of looseMissing) {
+        container.appendChild(renderTaskRow(t, children, types, state, 0, accentColor, byId));
+      }
+    }
+    if (looseOrphans.length) {
+      const orphanHead = document.createElement('div');
+      orphanHead.className = 'pv-loose-subhead pv-loose-subhead-orphan';
+      orphanHead.textContent = 'Unlinked tickets (no parent epic)';
+      container.appendChild(orphanHead);
+      for (const t of looseOrphans) {
+        container.appendChild(renderTaskRow(t, children, types, state, 0, accentColor, byId));
+      }
     }
   }
   return container;

@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "ticketTypes": [
+    { "id": "epic", "name": "Epic", "color": "#8B5CF6", "parentTypes": [] },
+    { "id": "feature", "name": "Feature", "color": "#F59E0B", "parentTypes": ["epic"] },
+    { "id": "task", "name": "Task", "color": "#3B82F6", "parentTypes": ["epic", "feature"] },
+    { "id": "bug", "name": "Bug", "color": "#EF4444", "parentTypes": ["epic", "feature", "task"] }
+  ],
+  "meta": {
+    "dailyPlan": { "date": null, "taskIds": [], "carriedIds": [] },
+    "weeklyCapacityMinutes": 600,
+    "projects": [
+      { "id": "my-app", "name": "My App", "color": "#3B82F6", "prefix": "APP" },
+      { "id": "my-app-frontend", "name": "Frontend", "color": "#8B5CF6", "parentId": "my-app" },
+      { "id": "my-app-backend", "name": "Backend", "color": "#10B981", "parentId": "my-app" },
+      { "id": "platform", "name": "Platform SDK", "color": "#F59E0B", "prefix": "PLT" },
+      { "id": "mobile-app", "name": "Mobile App", "color": "#EC4899", "prefix": "MOB" }
+    ],
+    "ideas": [],
+    "review": { "weeklyDate": null, "checks": {} }
+  },
+  "sections": [
+    {
+      "id": "inbox",
+      "name": "Inbox",
+      "tasks": []
+    },
+    {
+      "id": "backlog",
+      "name": "Backlog",
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Platform rollout",
+          "checked": false,
+          "priority": "high",
+          "type": "epic",
+          "project": "my-app",
+          "created": "2026-09-01",
+          "updated": null,
+          "subtasks": []
+        },
+        {
+          "id": "T10",
+          "title": "Cross-platform SDK",
+          "checked": false,
+          "priority": "high",
+          "type": "epic",
+          "project": "platform",
+          "created": "2026-09-01",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "todo",
+      "name": "Todo",
+      "tasks": [
+        {
+          "id": "T3",
+          "title": "Add rate limiting middleware",
+          "checked": false,
+          "priority": "medium",
+          "type": "task",
+          "project": "my-app-backend",
+          "created": "2026-09-10",
+          "updated": null,
+          "subtasks": []
+        },
+        {
+          "id": "T99",
+          "title": "Stale parent reference demo",
+          "checked": false,
+          "priority": "low",
+          "type": "task",
+          "parentId": "T404",
+          "project": "my-app-backend",
+          "created": "2026-09-11",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "in-progress",
+      "name": "In Progress",
+      "tasks": [
+        {
+          "id": "T2",
+          "title": "Redesign login screen",
+          "checked": false,
+          "priority": "high",
+          "type": "task",
+          "parentId": "T1",
+          "project": "my-app-frontend",
+          "created": "2026-09-05",
+          "updated": null,
+          "subtasks": []
+        },
+        {
+          "id": "T5",
+          "title": "Wire up auth flow",
+          "checked": false,
+          "priority": "high",
+          "type": "task",
+          "parentId": "T1",
+          "project": "my-app",
+          "created": "2026-09-06",
+          "updated": null,
+          "subtasks": []
+        },
+        {
+          "id": "T20",
+          "title": "Integrate SDK on iOS",
+          "checked": false,
+          "priority": "high",
+          "type": "task",
+          "parentId": "T10",
+          "project": "mobile-app",
+          "created": "2026-09-08",
+          "updated": null,
+          "subtasks": []
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "name": "Done",
+      "tasks": []
+    },
+    {
+      "id": "archive",
+      "name": "Archive",
+      "tasks": []
+    }
+  ]
+}
