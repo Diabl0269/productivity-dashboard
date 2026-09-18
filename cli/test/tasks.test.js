@@ -795,3 +795,78 @@ test('tasks lint --fix: adds inbox and meta', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('tasks get: shows blocker status inline', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    // T1 is done, T2 is blocked by T1
+    runCli(['tasks', 'update', 'T1', '--check'], tmpDir);
+    let result = runCli(['tasks', 'update', 'T2', '--add-blocked-by', 'T1'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    result = runCli(['tasks', 'get', 'T2'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const output = result.stdout;
+    // Should show "T1 [done]" and the "unblocked" flag
+    assert.ok(output.includes('blocked by: T1 [done]'), `output missing blocker status: ${output}`);
+    assert.ok(output.includes('unblocked'), `output missing unblocked flag: ${output}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks get: shows blocker status for uncompleted blockers', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    // T1 is todo, T2 is blocked by T1
+    let result = runCli(['tasks', 'update', 'T2', '--add-blocked-by', 'T1'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    result = runCli(['tasks', 'get', 'T2'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const output = result.stdout;
+    // Should show "T1 [todo]" but NOT the "unblocked" flag
+    assert.ok(output.includes('blocked by: T1 [todo]'), `output missing blocker status: ${output}`);
+    assert.ok(!output.includes('unblocked'), `output should not have unblocked flag: ${output}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks get: shows blocks (reverse dependencies)', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    // T1 blocks T2 (via T2's blockedBy: [T1])
+    let result = runCli(['tasks', 'update', 'T2', '--add-blocked-by', 'T1'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    result = runCli(['tasks', 'get', 'T1'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const output = result.stdout;
+    // T1 should show it blocks T2
+    assert.ok(output.includes('blocks: T2'), `output missing blocks line: ${output}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks get: shows multiple blockers with status', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    // T3 is blocked by T1 and T2
+    runCli(['tasks', 'update', 'T1', '--check'], tmpDir);
+    // T2 is still todo
+    let result = runCli(['tasks', 'update', 'T3', '--add-blocked-by', 'T1', '--add-blocked-by', 'T2'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    result = runCli(['tasks', 'get', 'T3'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const output = result.stdout;
+    // Should show both blockers with their status, no unblocked flag
+    assert.ok(output.includes('T1 [done]'), `output missing T1 status: ${output}`);
+    assert.ok(output.includes('T2 [todo]'), `output missing T2 status: ${output}`);
+    assert.ok(!output.includes('unblocked'), `should not be unblocked when not all blockers done: ${output}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
