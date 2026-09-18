@@ -241,6 +241,47 @@ function resolveTask(doc, id, sectionId) {
 }
 
 /**
+ * Format dependency ids with their status.
+ * Returns string like "T1 [done], T2 [todo]" and flags if all are done.
+ */
+function formatDependencyIds(doc, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return { line: '', allDone: false };
+
+  const parts = ids.map(depId => {
+    const found = findTask(doc, depId);
+    const depTask = found ? found.task : null;
+    const status = depTask ? (depTask.checked ? 'done' : found.section.id) : 'unknown';
+    return `${depId} [${status}]`;
+  });
+
+  const allDone = ids.every(depId => {
+    const found = findTask(doc, depId);
+    const depTask = found ? found.task : null;
+    return depTask && depTask.checked;
+  });
+
+  return {
+    line: parts.join(', '),
+    allDone,
+  };
+}
+
+/**
+ * Find all tasks that block a given task id (reverse blockedBy lookup).
+ */
+function findBlockingTasks(doc, targetId) {
+  const blocks = [];
+  for (const section of doc.sections) {
+    for (const task of section.tasks) {
+      if (Array.isArray(task.blockedBy) && task.blockedBy.includes(targetId)) {
+        blocks.push({ id: task.id, checked: task.checked, section: section.id });
+      }
+    }
+  }
+  return blocks;
+}
+
+/**
  * Convert our tasks.json doc shape into the dashboard {sections, tasks} shape
  * expected by toMarkdown().
  *
@@ -373,7 +414,29 @@ function cmdGet(argv) {
     });
   }
   if (Array.isArray(task.blockedBy) && task.blockedBy.length) {
-    print(`  blocked by: ${task.blockedBy.join(', ')}`);
+    const { line, allDone } = formatDependencyIds(doc, task.blockedBy);
+    const status = allDone ? ' ✓ (all blockers done — unblocked)' : '';
+    print(`  blocked by: ${line}${status}`);
+  }
+  const blockingTasks = findBlockingTasks(doc, task.id);
+  if (blockingTasks.length > 0) {
+    const blockingIds = blockingTasks.map(t => t.id);
+    const { line } = formatDependencyIds(doc, blockingIds);
+    print(`  blocks: ${line}`);
+  }
+  if (task.parentId) {
+    const found = findTask(doc, task.parentId);
+    const parentTask = found ? found.task : null;
+    const status = parentTask ? (parentTask.checked ? 'done' : found.section.id) : 'unknown';
+    print(`  parent: ${task.parentId} [${status}]`);
+  }
+  const subTasks = flatTasks(doc).filter(t => t.parentId === task.id);
+  if (subTasks.length > 0) {
+    const subTaskParts = subTasks.map(st => {
+      const status = st.checked ? 'done' : st.section;
+      return `${st.id} [${status}]`;
+    });
+    print(`  subtasks: ${subTaskParts.join(', ')}`);
   }
   if (Array.isArray(task.history) && task.history.length) {
     print(`  history: ${task.history.length} event(s)`);
