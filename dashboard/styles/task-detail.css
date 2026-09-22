@@ -210,6 +210,68 @@
   color: var(--text-tertiary);
 }
 
+.td-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.td-panel-head .td-panel-label {
+  margin: 0;
+}
+
+.td-work-pin-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: color var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.td-work-pin-btn:hover {
+  opacity: 1;
+  color: var(--text-secondary);
+  background: var(--surface-4);
+}
+
+.td-work-pin-btn.pinned {
+  opacity: 0.95;
+  color: var(--accent);
+}
+
+.td-work-pin-btn.pinned:hover {
+  background: var(--accent-muted);
+}
+
+.td-work-pin-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  opacity: 1;
+}
+
+.td-essentials-work {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.td-children-panel-title {
+  margin-bottom: 0;
+}
+
 .td-panel-meta {
   display: flex;
   flex-wrap: wrap;

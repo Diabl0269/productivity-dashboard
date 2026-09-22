@@ -5,6 +5,7 @@ import {
   formatEstimate,
   dueBadgeHtml,
   isEffectivelyBlocked,
+  isTaskDone,
   derivePrefixFromSlug,
   projectPrefix,
   appendHistory,
@@ -313,21 +314,25 @@ function appendParentBadge(rowRight, info, state) {
   rowRight.insertBefore(badge, rowRight.firstChild);
 }
 
-function progressFor(task, childrenMap) {
-  const kids = childrenMap.get(task.taskId) || [];
+/**
+ * Completion for a parent ticket. Uses the full (unfiltered) child tree so
+ * hiding Done in the toolbar does not zero out epic/feature progress.
+ */
+function progressFor(task, progressChildrenMap) {
+  const kids = progressChildrenMap.get(task.taskId) || [];
   if (kids.length === 0) {
-    const done = task.checked || task.section === 'done';
+    const done = isTaskDone(task);
     return { done: done ? 1 : 0, total: 1, pct: done ? 100 : 0 };
   }
   let done = 0;
   let total = 0;
   const walk = (list) => {
     for (const k of list) {
-      const nested = childrenMap.get(k.taskId) || [];
+      const nested = progressChildrenMap.get(k.taskId) || [];
       if (nested.length) walk(nested);
       else {
         total += 1;
-        if (k.checked || k.section === 'done') done += 1;
+        if (isTaskDone(k)) done += 1;
       }
     }
   };
@@ -640,7 +645,7 @@ function wireCollapsibleHeader(head, collapseKey, excludeSelector = '') {
   });
 }
 
-function renderTaskRow(task, childrenMap, types, state, depth, accentColor, localById) {
+function renderTaskRow(task, childrenMap, progressChildrenMap, types, state, depth, accentColor, localById) {
   const wrap = document.createElement('div');
   const taskType = task.type || 'task';
   const isEpic = taskType === 'epic';
@@ -650,15 +655,18 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor, loca
   if (isEpic) wrap.dataset.pvEpicId = task.taskId;
 
   const kids = childrenMap.get(task.taskId) || [];
+  const progressKids = progressChildrenMap.get(task.taskId) || [];
   const hasKids = kids.length > 0;
-  if (hasKids) wrap.classList.add('pv-parent-node');
+  const hasProgressKids = progressKids.length > 0;
+  if (hasKids || hasProgressKids) wrap.classList.add('pv-parent-node');
   const collapseKey = taskCollapseKey(task.taskId);
   const collapsed = hasKids && isCollapsed(collapseKey);
-  const prog = progressFor(task, childrenMap);
+  const prog = progressFor(task, progressChildrenMap);
   const tt = getTicketType(types, taskType);
   const color = resolveTaskColor(task, types, state.tasks);
-  const done = task.checked || task.section === 'done';
+  const done = isTaskDone(task);
   const blocked = isEffectivelyBlocked(task, state.tasks);
+  const pri = task.priority || 'medium';
 
   const row = document.createElement('div');
   row.className = 'pv-row-wrap';
@@ -692,9 +700,10 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor, loca
       <span class="pv-meta">
         ${dueBadgeHtml(task)}
         ${task.estimateMinutes ? `<span class="pv-est">${escapeHtml(formatEstimate(task.estimateMinutes))}</span>` : ''}
+        <span class="priority-dot priority-${escapeHtml(pri)}" title="${escapeHtml(pri)} priority" aria-label="${escapeHtml(pri)} priority"></span>
         <span class="pv-section">${escapeHtml(task.section || '')}</span>
       </span>
-      ${hasKids ? `
+      ${hasProgressKids ? `
         <span class="pv-progress" title="${prog.done}/${prog.total} done">
           <span class="pv-progress-bar"><span style="width:${prog.pct}%"></span></span>
           <span class="pv-progress-label">${prog.pct}%</span>
@@ -743,7 +752,9 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor, loca
   if (hasKids && !collapsed) {
     const branch = document.createElement('div');
     branch.className = 'pv-branch';
-    kids.forEach(k => branch.appendChild(renderTaskRow(k, childrenMap, types, state, depth + 1, accentColor, localById)));
+    kids.forEach(k => branch.appendChild(
+      renderTaskRow(k, childrenMap, progressChildrenMap, types, state, depth + 1, accentColor, localById)
+    ));
     wrap.appendChild(branch);
   } else if (isEpic && !collapsed && !hasKids) {
     const empty = document.createElement('div');
@@ -754,9 +765,9 @@ function renderTaskRow(task, childrenMap, types, state, depth, accentColor, loca
   return wrap;
 }
 
-function renderTaskForest(tasks, types, state, accentColor) {
-  const filtered = tasks;
-  const { roots, children, byId } = buildForest(filtered, types);
+function renderTaskForest(tasks, types, state, accentColor, progressTasks = tasks) {
+  const { roots, children, byId } = buildForest(tasks, types);
+  const progressChildren = buildForest(progressTasks, types).children;
   const container = document.createElement('div');
   container.className = 'pv-tree';
 
@@ -774,9 +785,13 @@ function renderTaskForest(tasks, types, state, accentColor) {
   const looseMissing = loose.filter(t => detachedParentInfo(t, byId, state)?.kind === 'missing');
   const looseOrphans = loose.filter(t => detachedParentInfo(t, byId, state)?.kind === 'orphan');
 
-  for (const epic of epics) {
-    container.appendChild(renderTaskRow(epic, children, types, state, 0, accentColor, byId));
-  }
+  const appendRow = (t) => {
+    container.appendChild(
+      renderTaskRow(t, children, progressChildren, types, state, 0, accentColor, byId)
+    );
+  };
+
+  for (const epic of epics) appendRow(epic);
   if (loose.length) {
     if (epics.length) {
       const looseHead = document.createElement('div');
@@ -790,27 +805,21 @@ function renderTaskForest(tasks, types, state, accentColor) {
       detachedHead.className = 'pv-loose-subhead pv-loose-subhead-detached';
       detachedHead.textContent = 'Linked to epic in another project';
       container.appendChild(detachedHead);
-      for (const t of looseDetached) {
-        container.appendChild(renderTaskRow(t, children, types, state, 0, accentColor, byId));
-      }
+      for (const t of looseDetached) appendRow(t);
     }
     if (looseMissing.length) {
       const missingHead = document.createElement('div');
       missingHead.className = 'pv-loose-subhead pv-loose-subhead-missing';
       missingHead.textContent = 'Broken parent link';
       container.appendChild(missingHead);
-      for (const t of looseMissing) {
-        container.appendChild(renderTaskRow(t, children, types, state, 0, accentColor, byId));
-      }
+      for (const t of looseMissing) appendRow(t);
     }
     if (looseOrphans.length) {
       const orphanHead = document.createElement('div');
       orphanHead.className = 'pv-loose-subhead pv-loose-subhead-orphan';
       orphanHead.textContent = 'Unlinked tickets (no parent epic)';
       container.appendChild(orphanHead);
-      for (const t of looseOrphans) {
-        container.appendChild(renderTaskRow(t, children, types, state, 0, accentColor, byId));
-      }
+      for (const t of looseOrphans) appendRow(t);
     }
   }
   return container;
@@ -882,10 +891,10 @@ function renderSubProjectSection(section, types, state, filters) {
 
   if (isEmpty) {
     sectionEl.classList.add('pv-subproj-empty');
-  } else if (!collapsed) {
+  } else   if (!collapsed) {
     const body = document.createElement('div');
     body.className = 'pv-subproj-body';
-    body.appendChild(renderTaskForest(tasks, types, state, color));
+    body.appendChild(renderTaskForest(tasks, types, state, color, rawTasks));
     sectionEl.appendChild(body);
   }
 
@@ -920,7 +929,7 @@ function collectCollapseKeys(state, project, grouped, filters) {
   return map;
 }
 
-function renderDirectProjectSection(project, tasks, types, state, color) {
+function renderDirectProjectSection(project, tasks, types, state, color, progressTasks = tasks) {
   const collapseKey = directSectionCollapseKey(project.id);
   const collapsed = isCollapsed(collapseKey);
   const epicCount = countEpics(tasks, types);
@@ -952,7 +961,7 @@ function renderDirectProjectSection(project, tasks, types, state, color) {
   if (!collapsed) {
     const body = document.createElement('div');
     body.className = 'pv-subproj-body';
-    body.appendChild(renderTaskForest(tasks, types, state, color));
+    body.appendChild(renderTaskForest(tasks, types, state, color, progressTasks));
     sectionEl.appendChild(body);
   }
 
@@ -1169,7 +1178,7 @@ function renderMain(state, project) {
   const totalEst = scopeTasks.reduce((s, t) => s + (t.estimateMinutes || 0), 0);
   const totalLogged = scopeTasks.reduce((s, t) => s + (t.loggedMinutes || 0), 0);
   const active = scopeTasks.filter(t => t.section === 'todo' || t.section === 'in-progress').length;
-  const done = scopeTasks.filter(t => t.checked || t.section === 'done').length;
+  const done = scopeTasks.filter(t => isTaskDone(t)).length;
   const prefix = projectPrefix(project, ensureMeta(state).projects);
   const parent = project.parentId ? projects.find(p => p.id === project.parentId) : null;
   const parentLine = parent ? ` · under <code>${escapeHtml(parent.name)}</code>` : '';
@@ -1241,7 +1250,7 @@ function renderMain(state, project) {
   if (grouped.mode === 'grouped') {
     const directTasks = filterTasks(grouped.direct, filters);
     if (directTasks.length) {
-      content.appendChild(renderDirectProjectSection(project, directTasks, types, state, color));
+      content.appendChild(renderDirectProjectSection(project, directTasks, types, state, color, grouped.direct));
     }
     for (const section of grouped.sections) {
       content.appendChild(renderSubProjectSection(section, types, state, filters));
@@ -1254,7 +1263,7 @@ function renderMain(state, project) {
     if (tasks.length === 0) {
       content.innerHTML = '<div class="pv-empty">No tasks in this project yet. Link an existing ticket or click <strong>+ Ticket</strong>.</div>';
     } else {
-      content.appendChild(renderTaskForest(tasks, types, state, color));
+      content.appendChild(renderTaskForest(tasks, types, state, color, grouped.direct));
     }
   }
 

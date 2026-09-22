@@ -577,6 +577,10 @@
   line-height: 1.6;
 }
 
+.td-children-panel-title {
+  flex: 0 0 auto;
+}
+
 .td-children-col-picker {
   display: flex;
   flex-wrap: wrap;
@@ -713,23 +717,17 @@
   gap: 2px;
   width: 100%;
   overflow-x: auto;
+  --td-children-cols: 220px 88px 72px 56px 64px 56px 88px;
 }
 
 .td-children-head,
 .td-children-row {
   display: grid;
-  grid-template-columns:
-    minmax(12rem, 2.2fr)
-    minmax(4.5rem, 0.7fr)
-    minmax(4.5rem, 0.65fr)
-    minmax(3rem, 0.45fr)
-    minmax(4rem, 0.55fr)
-    minmax(3rem, 0.45fr)
-    minmax(4.5rem, 0.7fr);
+  grid-template-columns: var(--td-children-cols);
   align-items: center;
   gap: 6px;
-  width: 100%;
-  min-width: 36rem;
+  width: max-content;
+  min-width: 100%;
 }
 
 .td-children-head {
@@ -758,10 +756,59 @@
 }
 
 .td-child-col {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.td-children-head .td-child-col {
+  overflow: visible;
+}
+
+.td-child-col-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+
+.td-child-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.td-child-col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+
+.td-children-head .td-child-col:hover .td-child-col-resizer::after,
+.td-child-col-resizer:hover::after,
+body.td-children-resizing .td-child-col-resizer::after {
+  background: var(--accent);
+}
+
+body.td-children-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.td-children-resizing iframe {
+  pointer-events: none;
 }
 
 .td-child-col-main,
