@@ -59,7 +59,15 @@ import {
   toggleChildrenColumn,
   columnLabel,
   CHILD_COLUMN_DEFS,
+  TICKET_COLUMN_ID,
+  applyChildrenGridWidths,
+  bindChildrenColumnResize,
 } from './children-columns.js';
+import {
+  isWorkPanelOnEssentials,
+  toggleWorkPanelOnEssentials,
+  workPanelLabel,
+} from './work-panels-prefs.js';
 import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
 import { mountFieldLayoutSections } from './task-field-layout.js';
@@ -333,13 +341,11 @@ function buildPanels(task) {
   body.appendChild(tabs);
   body.appendChild(panes);
 
-  // Essentials — pinned / unpinned field layout (labels, links, description included)
+  // Essentials — fields + optionally mirrored Work panels
   buildEssentialsForm(task, paneEls.essentials);
 
-  // Work — checklist + children + deps
-  buildSubtasksPanel(task, paneEls.work);
-  buildChildrenPanel(task, paneEls.work);
-  buildBlockedByPanel(task, paneEls.work);
+  // Work — checklist + children + deps (always available here)
+  mountWorkPanels(task, paneEls.work, { showPin: true });
 
   // Time — timer + estimate/logged + recurrence (no assignee when corporate hidden)
   buildTimerPanel(task, paneEls.time);
@@ -348,6 +354,62 @@ function buildPanels(task) {
 
   // Notes — sub-tabbed: thread, decisions, activity
   buildNotesTabContent(task, paneEls.notes);
+}
+
+function mountWorkPanels(task, body, { showPin = true } = {}) {
+  buildSubtasksPanel(task, body, { showPin });
+  buildChildrenPanel(task, body, { showPin });
+  buildBlockedByPanel(task, body, { showPin });
+}
+
+const WORK_PIN_ICON_FILLED =
+  '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.193c.046.702-.275 1.533-.64 1.899a.5.5 0 0 1-.707 0l-2.475-2.475-3.182 3.182a.5.5 0 0 1-.707-.707L5.318 9.975 2.843 7.5a.5.5 0 0 1 0-.707c.366-.366 1.197-.687 1.899-.64.39.03.8.097 1.193.16l3.134-3.134a2.712 2.712 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/></svg>';
+
+const WORK_PIN_ICON_OUTLINE =
+  '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4.146.146A.5.5 0 0 1 4.5 0h7a.5.5 0 0 1 .5.5c0 .68-.342 1.174-.646 1.479-.126.125-.25.224-.354.298v4.146l.888.332A2.5 2.5 0 0 1 14 9.07V10.5a.5.5 0 0 1-.5.5h-3v3.5a.5.5 0 0 1-1 0V11h-3a.5.5 0 0 1-.5-.5V9.07a2.5 2.5 0 0 1 1.512-2.294L7 6.423V2.277a2.23 2.23 0 0 1-.354-.298C6.342 1.674 6 1.179 6 .5a.5.5 0 0 1-.354-.854zM5.002 1.5a1.627 1.627 0 0 0 .172.5H10.83a1.61 1.61 0 0 0 .17-.5H5.002zM7.888 7.154A1.5 1.5 0 0 0 7 8.57V10h5V8.57a1.5 1.5 0 0 0-.888-1.416L8.5 6.226l-.612.928z" opacity="0.7"/></svg>';
+
+function workPanelPinButton(panelId, task) {
+  const pinned = isWorkPanelOnEssentials(panelId);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'td-work-pin-btn' + (pinned ? ' pinned' : '');
+  btn.title = pinned
+    ? `Unpin ${workPanelLabel(panelId)} from Essentials`
+    : `Show ${workPanelLabel(panelId)} on Essentials`;
+  btn.setAttribute('aria-label', btn.title);
+  btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+  btn.innerHTML = pinned ? WORK_PIN_ICON_FILLED : WORK_PIN_ICON_OUTLINE;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleWorkPanelOnEssentials(panelId);
+    openTaskDetail(task, { focusTitle: false });
+  });
+  return btn;
+}
+
+function sectionPanel(label, contentEl, { panelId = null, task = null, showPin = false } = {}) {
+  const panel = document.createElement('div');
+  panel.className = 'td-panel td-panel-soft';
+  if (panelId) panel.dataset.workPanel = panelId;
+
+  if (label || (showPin && panelId && task)) {
+    const head = document.createElement('div');
+    head.className = 'td-panel-head';
+    if (label) {
+      const lbl = document.createElement('div');
+      lbl.className = 'td-panel-label';
+      lbl.textContent = label;
+      head.appendChild(lbl);
+    }
+    if (showPin && panelId && task) {
+      head.appendChild(workPanelPinButton(panelId, task));
+    }
+    panel.appendChild(head);
+  }
+
+  const items = Array.isArray(contentEl) ? contentEl : [contentEl];
+  items.forEach(el => el && panel.appendChild(el));
+  return panel;
 }
 
 /** Compact always-visible strip: status chips + live timer. */
@@ -665,21 +727,6 @@ function buildDecisionsPanel(task, body) {
   body.appendChild(wrap);
 }
 
-function sectionPanel(label, contentEl) {
-  const panel = document.createElement('div');
-  panel.className = 'td-panel td-panel-soft';
-  if (label) {
-    const lbl = document.createElement('div');
-    lbl.className = 'td-panel-label';
-    lbl.textContent = label;
-    panel.appendChild(lbl);
-  }
-  const items = Array.isArray(contentEl) ? contentEl : [contentEl];
-  items.forEach(el => el && panel.appendChild(el));
-  return panel;
-}
-
-
 /** Date input with subtle × clear (no noisy Clear button). */
 function dateControl(value, { ariaLabel, onChange }) {
   const wrap = document.createElement('div');
@@ -727,6 +774,25 @@ function buildEssentialsForm(task, body) {
     },
   });
 
+  body.appendChild(wrap);
+
+  const pinnedWork = document.createElement('div');
+  pinnedWork.className = 'td-essentials-work';
+  const pinned = [];
+  if (isWorkPanelOnEssentials('subtasks')) {
+    buildSubtasksPanel(task, pinnedWork, { showPin: true });
+    pinned.push('subtasks');
+  }
+  if (isWorkPanelOnEssentials('children')) {
+    buildChildrenPanel(task, pinnedWork, { showPin: true });
+    pinned.push('children');
+  }
+  if (isWorkPanelOnEssentials('blockedBy')) {
+    buildBlockedByPanel(task, pinnedWork, { showPin: true });
+    pinned.push('blockedBy');
+  }
+  if (pinned.length) body.appendChild(pinnedWork);
+
   const foot = document.createElement('div');
   foot.className = 'td-form-footer';
   foot.innerHTML =
@@ -734,7 +800,6 @@ function buildEssentialsForm(task, body) {
     `<span class="td-form-footer-sep">·</span>` +
     `<span>Updated <strong>${escapeHtml(task.updated || '—')}</strong></span>`;
 
-  body.appendChild(wrap);
   body.appendChild(foot);
 }
 
@@ -1741,7 +1806,7 @@ function buildHistoryPanel(task, body) {
   body.appendChild(list);
 }
 
-function buildBlockedByPanel(task, body) {
+function buildBlockedByPanel(task, body, { showPin = false } = {}) {
   ensureTaskFieldDefaults(task);
   const state = getState() || {};
   const wrap = document.createElement('div');
@@ -1814,7 +1879,11 @@ function buildBlockedByPanel(task, body) {
   addRow.appendChild(select);
   wrap.appendChild(addRow);
 
-  body.appendChild(sectionPanel('Blocked by (peer deps)', wrap));
+  body.appendChild(sectionPanel('Blocked by (peer deps)', wrap, {
+    panelId: 'blockedBy',
+    task,
+    showPin,
+  }));
 }
 
 function childBlockedHint(child, tasks) {
@@ -1932,7 +2001,7 @@ function buildChildrenColumnPicker(task, columns) {
   return wrap;
 }
 
-function buildChildrenPanel(task, body) {
+function buildChildrenPanel(task, body, { showPin = false } = {}) {
   const state = getState() || {};
   const types = normalizeTicketTypes(state.ticketTypes);
   const children = childTasks(state.tasks, task.taskId);
@@ -1940,13 +2009,18 @@ function buildChildrenPanel(task, body) {
 
   const panel = document.createElement('div');
   panel.className = 'td-panel td-panel-soft td-children-panel';
+  panel.dataset.workPanel = 'children';
 
   const head = document.createElement('div');
   head.className = 'td-children-panel-head';
+  const titleRow = document.createElement('div');
+  titleRow.className = 'td-panel-head td-children-panel-title';
   const title = document.createElement('div');
   title.className = 'td-panel-label';
   title.textContent = `Children (${children.length})`;
-  head.appendChild(title);
+  titleRow.appendChild(title);
+  if (showPin) titleRow.appendChild(workPanelPinButton('children', task));
+  head.appendChild(titleRow);
   head.appendChild(buildChildrenColumnPicker(task, columns));
   panel.appendChild(head);
 
@@ -1961,15 +2035,33 @@ function buildChildrenPanel(task, body) {
   } else {
     const grid = document.createElement('div');
     grid.className = 'td-children-grid';
-    const headCols = columns.map(colId =>
-      `<span class="td-child-col">${escapeHtml(columnLabel(colId))}</span>`
-    ).join('');
-    grid.innerHTML = `
-      <div class="td-children-head" aria-hidden="true">
-        <span class="td-child-col td-child-col-main">Ticket</span>
-        ${headCols}
-      </div>
-    `;
+    applyChildrenGridWidths(grid, columns);
+
+    const headRow = document.createElement('div');
+    headRow.className = 'td-children-head';
+    headRow.setAttribute('aria-hidden', 'true');
+
+    const makeHeadCell = (colId, label) => {
+      const cell = document.createElement('span');
+      cell.className = 'td-child-col' + (colId === TICKET_COLUMN_ID ? ' td-child-col-main' : '');
+      cell.dataset.colId = colId;
+      const text = document.createElement('span');
+      text.className = 'td-child-col-label';
+      text.textContent = label;
+      cell.appendChild(text);
+      const handle = document.createElement('span');
+      handle.className = 'td-child-col-resizer';
+      handle.title = 'Drag to resize column';
+      bindChildrenColumnResize(handle, colId, grid, columns);
+      cell.appendChild(handle);
+      return cell;
+    };
+
+    headRow.appendChild(makeHeadCell(TICKET_COLUMN_ID, 'Ticket'));
+    columns.forEach(colId => {
+      headRow.appendChild(makeHeadCell(colId, columnLabel(colId)));
+    });
+    grid.appendChild(headRow);
 
     children.forEach(child => {
       const done = isTaskDone(child);
@@ -2012,7 +2104,7 @@ function buildChildrenPanel(task, body) {
   body.appendChild(panel);
 }
 
-function buildSubtasksPanel(task, body) {
+function buildSubtasksPanel(task, body, { showPin = false } = {}) {
   if (!Array.isArray(task.subtasks)) task.subtasks = [];
 
   const list = document.createElement('div');
@@ -2125,7 +2217,11 @@ function buildSubtasksPanel(task, body) {
   });
   list.appendChild(addBtn);
 
-  body.appendChild(sectionPanel('Subtasks', list));
+  body.appendChild(sectionPanel('Subtasks', list, {
+    panelId: 'subtasks',
+    task,
+    showPin,
+  }));
 
   // Expand a specific field if requested when rebuilding
   if (pendingFocus.expandSubtask && Number.isInteger(pendingFocus.focusSubtaskIdx)) {
