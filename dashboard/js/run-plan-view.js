@@ -110,7 +110,8 @@ function openClaudeSession(card) {
   const url = claudeCodeSessionUrl(card.command, folder);
   if (!url) return;
   window.location.assign(url);
-  showToast(folder ? `Opening Claude: ${card.command}` : 'Opening Claude (set claudeSessionFolder in config.json to pick the folder)');
+  const pick = card.model ? ` (pick ${card.model} in the model menu)` : '';
+  showToast(folder ? `Opening Claude: ${card.command}${pick}` : `Opening Claude${pick} (set claudeSessionFolder in config.json to pick the folder)`);
 }
 
 function renderCard(card, phase) {
@@ -148,9 +149,11 @@ function renderCard(card, phase) {
   const toggle = el('button', 'rp-btn rp-toggle', TOGGLE_LABEL[state]);
   toggle.type = 'button';
   const apply = () => {
-    toggle.textContent = TOGGLE_LABEL[state];
+    // Start names the model to pick: the desktop app's link can't set it.
+    toggle.textContent = !state && card.model ? `Start · ${card.model}` : TOGGLE_LABEL[state];
+    toggle.title = card.model ? `Opens Claude with ${card.command}; pick ${card.model} in the model menu` : '';
     toggle.setAttribute('aria-pressed', state ? 'true' : 'false');
-    toggle.setAttribute('aria-label', `${card.id} ${card.title}: ${state || 'not started'}. Activate to change`);
+    toggle.setAttribute('aria-label', `${card.id} ${card.title}: ${state || 'not started'}${card.model ? `, model ${card.model}` : ''}. Activate to change`);
     article.classList.toggle('rp-done', state === 'done');
   };
   toggle.addEventListener('click', () => {

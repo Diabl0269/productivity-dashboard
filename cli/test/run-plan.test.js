@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { computeRunPlan, isPickGate } from '../../shared/run-plan.js';
+import { computeRunPlan, isPickGate, modelOf } from '../../shared/run-plan.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
@@ -359,4 +359,15 @@ test('appStartCount counts step-0 build epics across lanes', () => {
   // unassigned: FRO1, FRO3 start now (FRO5 waits on FRO1); app lane: only FRO9 first; web: no build.
   assert.equal(plan.appStartCount, 3);
   assert.equal(plan.appLaneCount, 2);
+});
+
+test('cards carry the model from the epic model: label, null without one', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a', labels: ['model:opus'] }), task('T2', { parentId: 'E1' }),
+    epic('E3', { lane: 'b' }), task('T4', { parentId: 'E3' }),
+  ], ['E1', 'E3']);
+  const cards = computeRunPlan(doc).lanes.flatMap(l => l.now);
+  assert.equal(cards.find(c => c.id === 'E1').model, 'Opus');
+  assert.equal(cards.find(c => c.id === 'E3').model, null);
+  assert.equal(modelOf({ labels: ['x', 'model: sonnet'] }), 'Sonnet');
 });
