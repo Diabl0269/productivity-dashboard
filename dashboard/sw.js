@@ -19,6 +19,7 @@ const SHELL = [
   './styles/global-memory.css',
   './styles/settings.css',
   './styles/projects.css',
+  './styles/run-plan.css',
   './js/main.js',
 ];
 

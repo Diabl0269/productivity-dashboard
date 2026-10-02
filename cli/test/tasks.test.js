@@ -870,3 +870,28 @@ test('tasks get: shows multiple blockers with status', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// lane field (run plan)
+// ---------------------------------------------------------------------------
+
+test('lane: add/update/clear via CLI, shown by get, bad slug rejected', () => {
+  const tmp = makeTmpDir(FIXTURE_SAMPLE);
+  const add = runCli(['tasks', 'add', 'Laned epic', '--type', 'epic', '--lane', 'frontend-1', '--json'], tmp);
+  assert.equal(add.status, 0, add.stderr);
+  const id = JSON.parse(add.stdout).id;
+  const find = () => readTasks(tmp).sections.flatMap(s => s.tasks).find(t => t.id === id);
+  assert.equal(find().lane, 'frontend-1');
+  assert.match(runCli(['tasks', 'get', id], tmp).stdout, /lane: frontend-1/);
+
+  assert.equal(runCli(['tasks', 'update', id, '--lane', 'backend'], tmp).status, 0);
+  assert.equal(find().lane, 'backend');
+
+  const bad = runCli(['tasks', 'update', id, '--lane', 'Bad Lane'], tmp);
+  assert.notEqual(bad.status, 0);
+  assert.equal(find().lane, 'backend');
+  assert.notEqual(runCli(['tasks', 'add', 'x', '--lane', 'UP'], tmp).status, 0);
+
+  assert.equal(runCli(['tasks', 'update', id, '--clear-lane'], tmp).status, 0);
+  assert.equal('lane' in find(), false);
+});

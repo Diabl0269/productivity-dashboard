@@ -23,6 +23,7 @@ import { setUndoCallbacks } from './task-undo.js';
 import { setKeyboardCallbacks, initTaskKeyboard } from './task-keyboard.js';
 import { initTaskTimer, setTimerCallbacks } from './task-timer.js';
 import { setProjectsViewCallbacks, refreshProjectsView } from './projects-view.js';
+import { setRunPlanStateGetter, refreshRunPlanView } from './run-plan-view.js';
 import { setBackupCallbacks, initTasksBackup } from './tasks-backup.js';
 import { computeNextTaskId, appendHistory } from './task-fields.js';
 import { syncUrl, isRoutingReady } from './routing.js';
@@ -54,6 +55,7 @@ export function renderTasks() {
   renderFilterBar();
   refreshOverviewTaskWidgets({ tasks: taskState.tasks, meta: taskState.meta });
   refreshProjectsView();
+  refreshRunPlanView();
   syncTaskDetailAfterReload(taskState.tasks);
 }
 
@@ -309,6 +311,7 @@ export function initTasks() {
   initCaptureBar();
   setTimerCallbacks({ stateFn: () => taskState, renderFn: () => renderTasks });
   setProjectsViewCallbacks({ stateFn: () => taskState, renderFn: () => renderTasks });
+  setRunPlanStateGetter(() => taskState);
   initTaskTimer();
   initTasksBackup();
 

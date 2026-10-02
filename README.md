@@ -134,6 +134,11 @@ See `memory.example/` for the expected format.
 - Add, rename, reorder, or remove types in Settings → Ticket Types (saved to `tasks.json`)
 - Colors flow onto cards, parent chips, and the detail/create modals
 
+### Run Plan Tab
+- Shows which pinned epics (`ch tasks plan --pin <id>`) can be launched now, as parallel lanes (set an epic's lane with `ch tasks update <id> --lane <slug>`)
+- Each epic card shows a Ready / Partly ready / Waiting badge, its open tickets in dependency order (design and Co-task picks marked), and a Copy button for `/ship-task <id>`
+- Same data from the CLI: `ch tasks runplan`
+
 ### Memory Viewer
 - Browse all memory files organized by directory
 - View detailed content of people, projects, and context files

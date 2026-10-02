@@ -3,10 +3,10 @@
 import { onTabSwitch } from './search.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
-export let activeMainTab = 'overview'; // overview | tasks | search | projects | memory | settings
+export let activeMainTab = 'overview'; // overview | tasks | search | projects | runplan | memory | settings
 
 const MAIN_TAB_ORDER = [
-  'overview', 'tasks', 'search', 'projects', 'memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'runplan', 'memory', 'settings',
 ];
 
 // Externally-configured tabs (config.json externalTabs) register themselves here so
@@ -20,7 +20,7 @@ export function registerExternalTab(id, refs) {
 
 const MAIN_TAB_BTN_IDS = [
   'overviewTabBtn', 'tasksTabBtn', 'searchTabBtn', 'projectsTabBtn',
-  'memoryTabBtn', 'settingsTabBtn',
+  'runPlanTabBtn', 'memoryTabBtn', 'settingsTabBtn',
 ];
 
 const MOD_KEY_LABEL = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
@@ -116,12 +116,14 @@ export function switchMainTab(tab, opts = {}) {
   const tasksTabBtn = document.getElementById('tasksTabBtn');
   const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
+  const runPlanTabBtn = document.getElementById('runPlanTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
   const settingsTabBtn = document.getElementById('settingsTabBtn');
   const overviewPanel = document.getElementById('overviewPanel');
   const tasksPanel = document.getElementById('tasksPanel');
   const searchPanel = document.getElementById('searchPanel');
   const projectsPanel = document.getElementById('projectsPanel');
+  const runPlanPanel = document.getElementById('runPlanPanel');
   const memoryPanel = document.getElementById('memoryPanel');
   const settingsPanel = document.getElementById('settingsPanel');
   const taskViewToggle = document.getElementById('taskViewToggle');
@@ -139,6 +141,7 @@ export function switchMainTab(tab, opts = {}) {
     { btn: tasksTabBtn, id: 'tasks' },
     { btn: searchTabBtn, id: 'search' },
     { btn: projectsTabBtn, id: 'projects' },
+    { btn: runPlanTabBtn, id: 'runplan' },
     { btn: memoryTabBtn, id: 'memory' },
     { btn: settingsTabBtn, id: 'settings' },
   ];
@@ -153,6 +156,7 @@ export function switchMainTab(tab, opts = {}) {
   tasksPanel.classList.toggle('active', tab === 'tasks');
   if (searchPanel) searchPanel.classList.toggle('active', tab === 'search');
   if (projectsPanel) projectsPanel.classList.toggle('active', tab === 'projects');
+  if (runPlanPanel) runPlanPanel.classList.toggle('active', tab === 'runplan');
   memoryPanel.classList.toggle('active', tab === 'memory');
   if (settingsPanel) settingsPanel.classList.toggle('active', tab === 'settings');
 
@@ -206,6 +210,10 @@ export function switchMainTab(tab, opts = {}) {
     import('./projects-view.js').then(m => m.renderProjectsView()).catch(() => {});
   }
 
+  if (tab === 'runplan') {
+    import('./run-plan-view.js').then(m => m.renderRunPlanView()).catch(() => {});
+  }
+
   if (tab === 'search') {
     import('./search-page.js').then(m => m.onSearchTabShow()).catch(() => {});
   }
@@ -223,6 +231,7 @@ export function initStateListeners() {
   const tasksTabBtn = document.getElementById('tasksTabBtn');
   const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
+  const runPlanTabBtn = document.getElementById('runPlanTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
   const settingsTabBtn = document.getElementById('settingsTabBtn');
 
@@ -230,6 +239,7 @@ export function initStateListeners() {
   tasksTabBtn.addEventListener('click', () => switchMainTab('tasks'));
   if (searchTabBtn) searchTabBtn.addEventListener('click', () => switchMainTab('search'));
   if (projectsTabBtn) projectsTabBtn.addEventListener('click', () => switchMainTab('projects'));
+  if (runPlanTabBtn) runPlanTabBtn.addEventListener('click', () => switchMainTab('runplan'));
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
 
