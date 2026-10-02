@@ -9,6 +9,17 @@ export const DEFAULT_MACHINE_CAP = 3;
 export const UNASSIGNED_LANE = 'unassigned';
 export const DESIGN_LANE = 'design';
 
+/** Stage of an open pick gate: draw a canvas, wait for Tal's pick, or publish the pick. */
+function pickStage(t) {
+  const waiting = String((t && t.waitingOn) || '');
+  const hasCanvas = Array.isArray(t && t.links) && t.links.some(l => l && /design canvas/i.test(l.label || ''));
+  const hasDecision = Array.isArray(t && t.decisions) && t.decisions.length > 0;
+  if (/^\s*claude\s*:/i.test(waiting)) return 'draw';
+  if (/^\s*tal\s*:/i.test(waiting)) return 'pick';
+  if (hasDecision) return 'publish';
+  return hasCanvas ? 'pick' : 'draw';
+}
+
 /** Natural id order: T2 before T10, prefix first. */
 function compareIds(a, b) {
   const ma = /^(.*?)(\d+)$/.exec(a);
@@ -227,37 +238,55 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   });
 
   const pickList = [...picks.values()]
-    .map(p => ({ ...p, gates: p.gates.sort(compareIds) }))
+    .map(p => ({ ...p, gates: p.gates.sort(compareIds), stage: pickStage(byId.get(p.id)) }))
     .sort((a, b) => compareIds(a.id, b.id));
 
   if (pickList.length) {
-    const ids = pickList.map(p => p.id);
-    const prompt = `Draw the design canvases for ${joinList(ids)} (one board per ticket, options plus a recommended default, Design System components), link each canvas on its ticket, then stop for my picks.`;
+    const idsAt = stage => pickList.filter(p => p.stage === stage).map(p => p.id);
+    const drawIds = idsAt('draw');
+    const pickIds = idsAt('pick');
+    const publishIds = idsAt('publish');
+    const now = [];
+    if (drawIds.length) {
+      now.push({
+        id: 'design-canvases',
+        title: `Draw the ${drawIds.length} pick ${drawIds.length === 1 ? 'canvas' : 'canvases'}`,
+        state: 'ready',
+        isRest: false,
+        openTickets: drawIds.length,
+        why: 'An agent draws one board per pick ticket',
+        command: `Draw the design canvases for ${joinList(drawIds)} (one board per ticket, options plus a recommended default, Design System components), link each canvas on its ticket, then stop for my picks.`,
+        isPrompt: true,
+      });
+    }
+    if (pickIds.length) {
+      now.push({
+        id: 'design-picks',
+        title: 'You: pick on each canvas',
+        state: 'pick',
+        isRest: false,
+        openTickets: pickIds.length,
+        why: `Picks: ${joinList(pickIds)}`,
+        command: null,
+      });
+    }
+    if (publishIds.length) {
+      now.push({
+        id: 'design-publish',
+        title: `Publish the ${publishIds.length} picked ${publishIds.length === 1 ? 'design' : 'designs'} to the Design System`,
+        state: 'ready',
+        isRest: false,
+        openTickets: publishIds.length,
+        why: 'An agent adds the chosen options to the Design System',
+        command: `Publish the picked designs for ${joinList(publishIds)} to the AgentSynth Design System and Storybook (chosen option only, as recorded in each ticket's decisions), then close each pick ticket.`,
+        isPrompt: true,
+      });
+    }
     lanes.unshift({
       lane: DESIGN_LANE,
       name: 'Design round',
       needsBuild: false,
-      now: [
-        {
-          id: 'design-canvases',
-          title: `Draw the ${ids.length} pick ${ids.length === 1 ? 'canvas' : 'canvases'}`,
-          state: 'ready',
-          isRest: false,
-          openTickets: ids.length,
-          why: 'An agent draws one board per pick ticket',
-          command: prompt,
-          isPrompt: true,
-        },
-        {
-          id: 'design-picks',
-          title: 'You: pick on each canvas',
-          state: 'pick',
-          isRest: false,
-          openTickets: ids.length,
-          why: `Picks: ${joinList(ids)}`,
-          command: null,
-        },
-      ],
+      now,
       later: [],
     });
   }

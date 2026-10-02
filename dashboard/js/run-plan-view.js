@@ -112,7 +112,7 @@ function renderCard(card, phase) {
     const copy = el('button', 'rp-btn rp-cmd', card.isPrompt ? 'Copy prompt' : card.command);
     copy.type = 'button';
     copy.title = card.command;
-    copy.setAttribute('aria-label', card.isPrompt ? 'Copy the design canvas prompt' : `Copy command ${card.command}`);
+    copy.setAttribute('aria-label', card.isPrompt ? 'Copy the design prompt' : `Copy command ${card.command}`);
     copy.addEventListener('click', async () => {
       const ok = await copyText(card.command);
       showToast(ok ? (card.isPrompt ? 'Copied the design prompt' : `Copied: ${card.command}`) : `Copy blocked: ${card.command}`);
