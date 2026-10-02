@@ -1,8 +1,9 @@
-// run-plan-view.js — "Run plan" tab: pinned epics as parallel lanes (see shared/run-plan.js)
+// run-plan-view.js — "Run plan" tab: pinned epics as lanes (rows); see shared/run-plan.js
 
 import { computeRunPlan } from '../../shared/run-plan.js';
 
 let getState = null;
+let toastTimer = null;
 
 export function setRunPlanStateGetter(fn) { getState = fn; }
 
@@ -21,6 +22,7 @@ function toDoc(state) {
         blockedBy: t.blockedBy || [],
         labels: t.labels || [],
         lane: t.lane || undefined,
+        project: t.project || undefined,
       })),
     })),
   };
@@ -31,6 +33,34 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text != null) node.textContent = text;
   return node;
+}
+
+const STATE_LABEL = { ready: 'Ready now', partial: 'Partly ready', later: 'Later', pick: 'Your pick' };
+const LANE_COLORS = 4; // --rp-c1..4; the design lane uses the pick colour
+const PROGRESS_KEY = 'runPlanProgress';
+
+// ----- Start -> Started -> Done progress, kept in localStorage (best effort) -----
+function readProgress() {
+  try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch { return {}; }
+}
+function writeProgress(map) {
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(map)); } catch { /* storage unavailable */ }
+}
+const NEXT = { '': 'started', started: 'done', done: '' };
+const TOGGLE_LABEL = { '': 'Start', started: 'Started', done: 'Done' };
+
+function showToast(message) {
+  let toast = document.getElementById('runPlanToast');
+  if (!toast) {
+    toast = el('div', 'rp-toast');
+    toast.id = 'runPlanToast';
+    toast.setAttribute('role', 'status');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1600);
 }
 
 async function copyText(text) {
@@ -52,52 +82,116 @@ async function copyText(text) {
   }
 }
 
-function badgeFor(epic) {
-  if (epic.state === 'waiting') return { cls: 'waiting', text: `Waiting on ${epic.waitingOn.join(', ')}` };
-  if (epic.state === 'partial') return { cls: 'partial', text: 'Partly ready – waiting on a design pick' };
-  return { cls: 'ready', text: 'Ready' };
-}
+function renderCard(card, phase) {
+  const key = `${card.id}:${phase}`;
+  const article = el('article', `rp-card rp-${card.state}`);
+  article.setAttribute('aria-label', `${card.id} ${card.title}`);
 
-function renderTicket(t) {
-  const li = el('li', 'rp-ticket' + (t.isPick ? ' rp-pick' : ''));
-  li.appendChild(el('span', 'rp-ticket-id', t.id));
-  li.appendChild(el('span', 'rp-ticket-title', t.title));
-  if (t.isPick) li.appendChild(el('span', 'rp-pick-tag', 'Pick'));
-  if (t.blockedBy.length) li.appendChild(el('span', 'rp-ticket-blocked', `blocked by ${t.blockedBy.join(', ')}`));
-  return li;
-}
+  const row = el('div', 'rp-row');
+  row.appendChild(el('span', 'rp-id', card.state === 'pick' || card.isPrompt ? 'Design' : card.id));
+  row.appendChild(el('span', `rp-chip rp-chip-${card.state}`, STATE_LABEL[card.state] || card.state));
+  article.appendChild(row);
 
-function renderEpic(epic) {
-  const card = el('article', `rp-epic rp-${epic.state}`);
-  card.setAttribute('aria-label', `Epic ${epic.id}: ${epic.title}`);
+  article.appendChild(el('div', 'rp-title', card.isRest ? `${card.title} (rest)` : card.title));
+  const n = card.openTickets;
+  article.appendChild(el('div', 'rp-items', `${n} open ${n === 1 ? 'ticket' : 'tickets'}`));
+  if (card.why) article.appendChild(el('div', 'rp-why', card.why));
 
-  const head = el('div', 'rp-epic-head');
-  head.appendChild(el('span', 'rp-epic-id', epic.id));
-  head.appendChild(el('span', 'rp-epic-title', epic.title));
-  card.appendChild(head);
-
-  const badge = badgeFor(epic);
-  card.appendChild(el('span', `rp-badge rp-badge-${badge.cls}`, badge.text));
-
-  if (epic.tickets.length) {
-    const ol = el('ol', 'rp-tickets');
-    epic.tickets.forEach(t => ol.appendChild(renderTicket(t)));
-    card.appendChild(ol);
-  } else {
-    card.appendChild(el('p', 'rp-empty-tickets', 'No open tickets'));
+  const actions = el('div', 'rp-actions');
+  if (card.command) {
+    const copy = el('button', 'rp-btn rp-cmd', card.isPrompt ? 'Copy prompt' : card.command);
+    copy.type = 'button';
+    copy.title = card.command;
+    copy.setAttribute('aria-label', card.isPrompt ? 'Copy the design canvas prompt' : `Copy command ${card.command}`);
+    copy.addEventListener('click', async () => {
+      const ok = await copyText(card.command);
+      showToast(ok ? (card.isPrompt ? 'Copied the design prompt' : `Copied: ${card.command}`) : `Copy blocked: ${card.command}`);
+    });
+    actions.appendChild(copy);
   }
-
-  const btn = el('button', 'rp-copy', 'Copy command');
-  btn.type = 'button';
-  btn.setAttribute('aria-label', `Copy command ${epic.command}`);
-  btn.title = epic.command;
-  btn.addEventListener('click', async () => {
-    const ok = await copyText(epic.command);
-    btn.textContent = ok ? 'Copied' : 'Copy failed';
-    setTimeout(() => { btn.textContent = 'Copy command'; }, 1500);
+  const progress = readProgress();
+  let state = progress[key] || '';
+  const toggle = el('button', 'rp-btn rp-toggle', TOGGLE_LABEL[state]);
+  toggle.type = 'button';
+  const apply = () => {
+    toggle.textContent = TOGGLE_LABEL[state];
+    toggle.setAttribute('aria-pressed', state ? 'true' : 'false');
+    toggle.setAttribute('aria-label', `${card.id} ${card.title}: ${state || 'not started'}. Activate to change`);
+    article.classList.toggle('rp-done', state === 'done');
+  };
+  toggle.addEventListener('click', () => {
+    state = NEXT[state];
+    const map = readProgress();
+    if (state) map[key] = state; else delete map[key];
+    writeProgress(map);
+    apply();
   });
-  card.appendChild(btn);
-  return card;
+  apply();
+  actions.appendChild(toggle);
+  article.appendChild(actions);
+  return article;
+}
+
+function appendCards(parent, cards, phase) {
+  cards.forEach((card, i) => {
+    if (i > 0) {
+      const arrow = el('span', 'rp-arrow', '→');
+      arrow.setAttribute('aria-hidden', 'true');
+      parent.appendChild(arrow);
+    }
+    parent.appendChild(renderCard(card, phase));
+  });
+}
+
+function renderLane(lane, index) {
+  const track = el('section', 'rp-track');
+  track.setAttribute('aria-label', `Lane ${lane.name}`);
+  const colorIdx = lane.lane === 'design' ? 'pick' : (index % LANE_COLORS) + 1;
+  track.style.setProperty('--c', `var(--rp-c${colorIdx})`);
+
+  const head = el('div', 'rp-head');
+  head.appendChild(el('h3', 'rp-name', lane.name));
+  head.appendChild(el('div', 'rp-note', lane.needsBuild ? 'Needs an app build' : 'No app build'));
+  track.appendChild(head);
+
+  const row = el('div', 'rp-lane');
+  row.tabIndex = 0;
+  row.setAttribute('role', 'group');
+  row.setAttribute('aria-label', `${lane.name} cards, in order`);
+  appendCards(row, lane.now, 'now');
+  if (lane.later.length) {
+    const divider = el('div', 'rp-picks');
+    divider.appendChild(el('div', null, 'after your picks'));
+    row.appendChild(divider);
+    appendCards(row, lane.later, 'later');
+  }
+  track.appendChild(row);
+  return track;
+}
+
+function renderRules(plan) {
+  const rules = el('div', 'rp-rules');
+  const pill = (bold, rest) => {
+    const p = el('span', 'rp-rule');
+    if (bold) p.appendChild(el('b', null, bold));
+    p.appendChild(document.createTextNode(rest));
+    rules.appendChild(p);
+  };
+  pill('Lanes run side by side', '; cards in a lane run one after another');
+  pill(`At most ${plan.machineCap} app lanes at once`, ` (this plan has ${plan.appLaneCount}); lanes without an app build are not counted`);
+  pill('Partly ready', ' = run it now, it stops at the design picks; run the same command again after your picks');
+  return rules;
+}
+
+function renderLegend() {
+  const legend = el('div', 'rp-legend');
+  for (const [cls, text] of [['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your design picks']]) {
+    const item = el('span');
+    item.appendChild(el('span', `rp-dot rp-dot-${cls}`));
+    item.appendChild(document.createTextNode(text));
+    legend.appendChild(item);
+  }
+  return legend;
 }
 
 export function renderRunPlanView() {
@@ -111,29 +205,16 @@ export function renderRunPlanView() {
   }
   const plan = computeRunPlan(toDoc(state));
 
-  root.appendChild(el('p', 'rp-note',
-    `Machine cap: run at most ${plan.machineCap} agentsynth epics at once. ${plan.readyCount} launchable now.`));
-
   if (plan.lanes.length === 0) {
     root.appendChild(el('p', 'rp-empty', 'No pinned epics. Pin one with ch tasks plan --pin <id>'));
-  } else {
-    const grid = el('div', 'rp-lanes');
-    grid.setAttribute('role', 'group');
-    grid.setAttribute('aria-label', 'Run plan lanes');
-    grid.tabIndex = 0;
-    for (const lane of plan.lanes) {
-      const col = el('section', 'rp-lane');
-      col.setAttribute('aria-label', `Lane ${lane.lane}`);
-      col.appendChild(el('h3', 'rp-lane-title', lane.lane));
-      lane.epics.forEach(e => col.appendChild(renderEpic(e)));
-      grid.appendChild(col);
-    }
-    root.appendChild(grid);
+    return;
   }
-
-  if (plan.doneEpics.length) {
-    root.appendChild(el('p', 'rp-done', `Done: ${plan.doneEpics.join(', ')}`));
-  }
+  root.appendChild(renderRules(plan));
+  root.appendChild(renderLegend());
+  const tracks = el('div', 'rp-tracks');
+  plan.lanes.forEach((lane, i) => tracks.appendChild(renderLane(lane, i)));
+  root.appendChild(tracks);
+  if (plan.doneEpics.length) root.appendChild(el('p', 'rp-done-note', `Done: ${plan.doneEpics.join(', ')}`));
 }
 
 /** Re-render when tasks change (called from renderTasks); only if the tab is showing. */

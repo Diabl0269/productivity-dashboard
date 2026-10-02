@@ -23,7 +23,7 @@ After linking, `ch` is available globally. Alternatively, run `./ch` from the re
 | `ch tasks get <id> [--json]` | Show a single task (due, estimate, assignee, labels, links, deps, history) |
 | `ch tasks capture "<title>"` | Shorthand add into **inbox** |
 | `ch tasks plan [--pin T1] [--unpin T1] [--carry] [--json]` | Today plan pins in `meta.dailyPlan` |
-| `ch tasks runplan [--json]` | Run plan: pinned epics that can be launched now, grouped into parallel lanes (set an epic's lane with `--lane`); same view as the dashboard Run plan tab |
+| `ch tasks runplan [--json]` | Run plan: pinned epics that can be launched now, grouped into parallel lanes (set an epic's lane with `--lane`), each split into now and after-your-picks; `Co-task:` tickets are the picks. Same view as the dashboard Run plan tab |
 | `ch tasks add "<title>" [flags…]` | Create a task; prints new id. Flags: `--section`, `--priority`, `--description`, `--color`, `--type`, `--parent`, `--due YYYY-MM-DD`, `--issue URL`, `--project slug`, `--energy deep\|shallow\|errands\|creative`, `--lane slug`, `--snooze YYYY-MM-DD`, `--decision "…"`, `--estimate 2h\|30m\|1d`, `--assignee name`, `--blocked`, `--waiting-on "…"`, `--label L` (repeatable), `--link URL`, `--link-label`, `--blocked-by T1` |
 | `ch tasks move <id> <section>` | Move task (records `history` event) |
 | `ch tasks done <id>` | Mark checked and move to done |

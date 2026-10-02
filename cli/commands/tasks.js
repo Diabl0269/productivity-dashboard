@@ -1530,8 +1530,6 @@ function assertLane(value) {
   }
 }
 
-const RUNPLAN_MARK = { ready: '[ready]  ', partial: '[partial]', waiting: '[waiting]' };
-
 /** Run plan: which pinned epics can be launched now, as parallel lanes. */
 function cmdRunPlan(argv) {
   const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
@@ -1541,17 +1539,24 @@ function cmdRunPlan(argv) {
   if (plan.lanes.length === 0) {
     print('No pinned epics. Pin one with: ch tasks plan --pin <id>');
   }
+  const line = c => {
+    const mark = { ready: '[ready]  ', partial: '[partial]', later: '[later]  ', pick: '[you]    ' }[c.state] || c.state;
+    const rest = c.isRest ? ' (rest)' : '';
+    return `  ${mark} ${c.id}  ${c.title}${rest}${c.why ? `  - ${c.why}` : ''}`;
+  };
   for (const lane of plan.lanes) {
-    print(`Lane: ${lane.lane}`);
-    for (const e of lane.epics) {
-      const wait = e.waitingOn.length ? `  waiting on ${e.waitingOn.join(', ')}` : '';
-      print(`  ${RUNPLAN_MARK[e.state] || e.state} ${e.id}  ${e.title}${wait}`);
-      if (e.picks.length) print(`      picks needed: ${e.picks.join(', ')}`);
-      print(`      ${e.command}`);
+    print(`Lane: ${lane.name}${lane.needsBuild ? ' (app build)' : ''}`);
+    for (const c of lane.now) {
+      print(line(c));
+      if (c.command) print(`      ${c.isPrompt ? 'prompt: ' : ''}${c.command}`);
+    }
+    if (lane.later.length) {
+      print('  -- after your picks --');
+      for (const c of lane.later) print(line(c));
     }
   }
   if (plan.doneEpics.length) print(`Done epics: ${plan.doneEpics.join(', ')}`);
-  print(`Machine cap: run at most ${plan.machineCap} epics at once (${plan.readyCount} launchable)`);
+  print(`At most ${plan.machineCap} app lanes at once (${plan.appLaneCount} app lanes in this plan)`);
 }
 
 /** Today plan: show / pin / unpin / carry unfinished pins. */
