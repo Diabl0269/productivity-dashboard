@@ -4,7 +4,6 @@
 
 import {
   isEffectivelyBlocked,
-  indexTasksById,
   dueUrgency,
   daysUntilDue,
   parseYmd,
