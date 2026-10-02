@@ -209,6 +209,15 @@ export function estimateBadgeHtml(task) {
   return `<span class="task-estimate-badge" title="Estimate ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 
+/** Small n/m badge for the per-ticket checks tick-list; only when some are unticked. */
+export function checksBadgeHtml(task) {
+  const checks = Array.isArray(task.checks) ? task.checks : [];
+  const done = checks.filter(c => c.checked).length;
+  if (checks.length === 0 || done === checks.length) return '';
+  const label = `${done}/${checks.length}`;
+  return `<span class="task-checks-badge" title="Checks ${label}" aria-label="Checks ${label}">&#10003; ${label}</span>`;
+}
+
 export function loggedBadgeHtml(task) {
   if (!task.loggedMinutes) return '';
   const logged = formatEstimate(task.loggedMinutes);

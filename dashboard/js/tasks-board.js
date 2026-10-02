@@ -9,7 +9,7 @@ import {
 } from './ticket-types.js';
 import {
   dueBadgeHtml, labelsHtml, linksAffordanceHtml, blockedIndicatorHtml,
-  wipLimitFor, appendHistory, estimateBadgeHtml, assigneeChipHtml,
+  wipLimitFor, appendHistory, estimateBadgeHtml, checksBadgeHtml, assigneeChipHtml,
   jiraKeyBadgeHtml, recurrenceBadgeHtml, loggedBadgeHtml,
   spawnRecurringFollowUp, staleBadgeHtml, snoozeBadgeHtml, energyBadgeHtml,
   isSnoozed, syncTaskCompletionWithSection,
@@ -111,6 +111,7 @@ function createCard(task, isArchive = false) {
     + jiraKeyBadgeHtml(task)
     + recurrenceBadgeHtml(task)
     + estimateBadgeHtml(task)
+    + checksBadgeHtml(task)
     + loggedBadgeHtml(task)
     + energyBadgeHtml(task)
     + staleBadgeHtml(task, staleDays)
