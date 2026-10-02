@@ -149,6 +149,7 @@ See `memory.example/` for the expected format.
 ### Overview Tab
 - **Sprint Tracker:** Progress bar for current sprint (configured in `config.json`)
 - **Task Summary:** Counts for in-progress, todo, done, and blocked — click to open Tasks with that filter; total time estimate for active work
+- **Today Plan:** Filter (Pinned / Epics in progress / Both, default Both) over `ch tasks plan --pin` tickets and in-progress epics, with done/total progress on epic rows; the choice is remembered in localStorage
 - **Upcoming Deadlines:** Prefer `dueDate`; fall back to dates scraped from descriptions
 - **Quick Links:** Configurable shortcuts to your tools (Jira, Notion, Slack, etc.)
 - **1:1 Topics:** Scratchpad for manager meeting topics

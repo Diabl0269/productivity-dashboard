@@ -23,6 +23,7 @@ import {
   computeNextTaskId,
   appendHistory,
 } from './task-fields.js';
+import { selectPlanRows, normalizePlanFilter } from '../../shared/plan-filter.js';
 import { switchMainTab } from './state.js';
 import { applyDeepLinkFilter, applyDueDayFilter } from './task-filters.js';
 import { setTaskSearch } from './search.js';
@@ -276,11 +277,46 @@ function ensureDailyPlan(meta) {
     });
     plan.date = today;
     plan.taskIds = unfinished;
-    plan.carriedIds = unfinished;
+    plan.carriedIds = [...unfinished];
   } else if (!plan.date) {
     plan.date = today;
   }
   return plan;
+}
+
+const PLAN_FILTER_KEY = 'todayPlanFilter';
+const PLAN_FILTER_OPTIONS = [
+  { mode: 'pinned', label: 'Pinned', tip: 'Show only tickets you pinned with ch tasks plan --pin' },
+  { mode: 'epics', label: 'Epics in progress', tip: 'Show only epics that are in progress' },
+  { mode: 'both', label: 'Both', tip: 'Show in-progress epics and pinned tickets' },
+];
+
+function readPlanFilter() {
+  try { return normalizePlanFilter(localStorage.getItem(PLAN_FILTER_KEY)); } catch { return normalizePlanFilter(null); }
+}
+function writePlanFilter(mode) {
+  try { localStorage.setItem(PLAN_FILTER_KEY, mode); } catch { /* storage unavailable */ }
+}
+
+function renderPlanFilter(parsed, current) {
+  const group = document.createElement('div');
+  group.className = 'td-priority today-plan-filter';
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', 'Filter today plan');
+  PLAN_FILTER_OPTIONS.forEach(({ mode, label, tip }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'td-priority-btn' + (mode === current ? ' active' : '');
+    btn.textContent = label;
+    btn.title = tip;
+    btn.setAttribute('aria-pressed', mode === current ? 'true' : 'false');
+    btn.addEventListener('click', () => {
+      writePlanFilter(mode);
+      updateTodayPlan(parsed);
+    });
+    group.appendChild(btn);
+  });
+  return group;
 }
 
 export function updateTodayPlan(parsed) {
@@ -293,29 +329,41 @@ export function updateTodayPlan(parsed) {
   if (!parsed.meta) parsed.meta = { dailyPlan: { date: todayYmd(), taskIds: [], carriedIds: [] } };
   const plan = ensureDailyPlan(parsed.meta);
   const byId = indexTasksById(parsed.tasks);
-  const ids = plan.taskIds || [];
+  const mode = readPlanFilter();
+  const rows = selectPlanRows(parsed.tasks, plan, mode);
   let estSum = 0;
-  if (ids.length === 0) {
-    container.innerHTML = '<div class="workload-empty">Pin tasks from Focus or use <code>ch tasks plan --pin T1</code></div>';
+  container.innerHTML = '';
+  container.appendChild(renderPlanFilter(parsed, mode));
+  if (rows.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'workload-empty';
+    empty.innerHTML = mode === 'epics'
+      ? 'No epics in progress'
+      : 'Pin tasks from Focus or use <code>ch tasks plan --pin T1</code>';
+    container.appendChild(empty);
     return;
   }
-  container.innerHTML = '';
-  ids.forEach(id => {
+  rows.forEach(({ id, kind, pinned, progress }) => {
     const t = byId.get(id);
     const row = document.createElement('div');
     row.className = 'today-plan-row';
     const title = t ? t.title : '(missing)';
     const est = t?.estimateMinutes ? formatEstimate(t.estimateMinutes) : '';
     if (t?.estimateMinutes) estSum += t.estimateMinutes;
-    const carried = (plan.carriedIds || []).includes(id) ? ' <span class="carried-tag">carried</span>' : '';
+    const carried = pinned && (plan.carriedIds || []).includes(id) ? ' <span class="carried-tag">carried</span>' : '';
+    const epicTag = kind === 'epic' ? ' <span class="carried-tag">epic</span>' : '';
+    const prog = progress && progress.total > 0
+      ? `<span class="workload-estimate" title="${progress.done} of ${progress.total} child tickets done">${progress.done}/${progress.total} done</span>`
+      : '';
     row.innerHTML = `
       <button type="button" class="today-plan-item" data-id="${escapeHtml(id)}">
         <span class="focus-item-id">${escapeHtml(id)}</span>
         <span class="focus-item-title">${escapeHtml(title)}</span>
+        ${prog}
         ${est ? `<span class="workload-estimate">${escapeHtml(est)}</span>` : ''}
-        ${carried}
+        ${epicTag}${carried}
       </button>
-      <button type="button" class="topic-delete today-unpin" data-id="${escapeHtml(id)}" title="Unpin">×</button>
+      ${pinned ? `<button type="button" class="topic-delete today-unpin" data-id="${escapeHtml(id)}" title="Unpin" aria-label="Unpin ${escapeHtml(id)}">×</button>` : ''}
     `;
     row.querySelector('.today-plan-item')?.addEventListener('click', () => openTaskInTasksTab(id));
     row.querySelector('.today-unpin')?.addEventListener('click', () => {

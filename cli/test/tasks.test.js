@@ -780,6 +780,23 @@ test('tasks plan: pin and show', () => {
   }
 });
 
+test('tasks plan: pin after a date rollover is not marked carried', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    const doc = readTasks(tmpDir);
+    doc.meta = { ...(doc.meta || {}), dailyPlan: { date: '2000-01-01', taskIds: ['T1'], carriedIds: [] } };
+    fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc, null, 2));
+
+    const result = runCli(['tasks', 'plan', '--pin', 'T2', '--json'], tmpDir);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const out = JSON.parse(result.stdout.trim());
+    assert.deepEqual(out.taskIds, ['T1', 'T2']);
+    assert.deepEqual(out.carriedIds, ['T1']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('tasks lint --fix: adds inbox and meta', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
