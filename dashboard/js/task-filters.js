@@ -8,11 +8,12 @@ import {
   collectProjects,
   dueUrgency,
   isEffectivelyBlocked,
+  indexTasksById,
+  countTasksUnderEpics,
   isStale,
   isSnoozed,
   isCorporateUiHidden,
   taskMatchesFacets,
-  taskUnderEpic,
 } from './task-fields.js';
 import { renderSavedViewsBar } from './saved-views.js';
 import { normalizeTicketTypes } from './ticket-types.js';
@@ -139,6 +140,17 @@ export function taskPassesFacets(task) {
   return taskMatchesFacets(task, facetState, state.tasks);
 }
 
+/**
+ * Like taskPassesFacets, but builds the id index once for a whole pass over many tasks:
+ * `list.filter(makeFacetPredicate())`. Call it fresh per render (tasks are mutated in place).
+ */
+export function makeFacetPredicate() {
+  if (!hasActiveFacets()) return () => true;
+  const state = getState() || {};
+  const byId = indexTasksById(state.tasks);
+  return task => taskMatchesFacets(task, facetState, state.tasks, byId);
+}
+
 function persistExpanded() {
   try { localStorage.setItem(COLLAPSE_KEY, filtersExpanded ? '1' : '0'); }
   catch { /* ignore */ }
@@ -164,15 +176,6 @@ function countMatching(predicate) {
     }
   }
   return n;
-}
-
-function flatTaskById(tasksBySection, taskId) {
-  for (const list of Object.values(tasksBySection || {})) {
-    for (const t of list || []) {
-      if (t.taskId === taskId) return t;
-    }
-  }
-  return null;
 }
 
 function collectEnergies(tasksBySection) {
@@ -292,7 +295,7 @@ function onFacetChanged() {
   scheduleFilterUrlSync();
 }
 
-function fieldDefs(state) {
+function fieldDefs(state, byId = indexTasksById(state.tasks)) {
   const types = normalizeTicketTypes(state.ticketTypes);
   const sections = (state.sections || []).filter(s => s.id !== 'archive');
   const showCorporate = !isCorporateUiHidden();
@@ -302,6 +305,8 @@ function fieldDefs(state) {
   const projects = [...knownProjects].sort((a, b) => a.localeCompare(b));
   const assignees = [...knownAssignees].sort((a, b) => a.localeCompare(b));
   const epics = [...knownEpics].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  const epicCounts = countTasksUnderEpics(state.tasks, byId);
 
   const defs = [
     {
@@ -390,14 +395,14 @@ function fieldDefs(state) {
       selected: facetState.parentEpics,
       always: true,
       options: epics.map(epicId => {
-        const epicTask = flatTaskById(state.tasks, epicId);
+        const epicTask = byId.get(epicId);
         const label = epicTask
           ? `${epicId} — ${epicTask.title || ''}`
           : epicId;
         return {
           id: epicId,
           label,
-          count: countMatching(t => taskUnderEpic(t, epicId, state.tasks)),
+          count: epicCounts.get(epicId) || 0,
         };
       }),
       emptyHint: 'No epics yet',
@@ -606,11 +611,11 @@ function openOrRefreshMenu(fieldId, state) {
   requestAnimationFrame(() => positionMenu(menu, face));
 }
 
-function syncAllFieldFaces(state) {
+function syncAllFieldFaces(state, byId = indexTasksById(state.tasks)) {
   const shell = getShell();
   if (!shell?.grid) return;
-  const defs = fieldDefs(state);
-  const byId = new Map(defs.map(d => [d.id, d]));
+  const defs = fieldDefs(state, byId);
+  const defById = new Map(defs.map(d => [d.id, d]));
 
   // Ensure field elements exist for each def (Labels etc. always present)
   for (const def of defs) {
@@ -627,11 +632,11 @@ function syncAllFieldFaces(state) {
 
   // Remove assignee field when corporate UI is hidden
   for (const el of [...shell.grid.querySelectorAll('.tf-field')]) {
-    if (!byId.has(el.dataset.field)) el.remove();
+    if (!defById.has(el.dataset.field)) el.remove();
   }
 }
 
-function syncFlags(state) {
+function syncFlags(state, byId = indexTasksById(state.tasks)) {
   const shell = getShell();
   if (!shell?.flagsGroup) return;
   const specs = [
@@ -646,7 +651,7 @@ function syncFlags(state) {
       key: 'blocked',
       label: 'Blocked',
       active: facetState.blocked === true,
-      count: countMatching(t => isEffectivelyBlocked(t, state.tasks)),
+      count: countMatching(t => isEffectivelyBlocked(t, state.tasks, byId)),
       toggle: () => { facetState.blocked = facetState.blocked === true ? null : true; },
     },
     {
@@ -868,8 +873,9 @@ export function renderFilterBar(barId = 'tasksFilters') {
   bar.style.display = 'flex';
   ensureShell(bar);
   syncHeader(state);
-  syncAllFieldFaces(state);
-  syncFlags(state);
+  const byId = indexTasksById(state.tasks);
+  syncAllFieldFaces(state, byId);
+  syncFlags(state, byId);
 
   // Keep open menu aligned with fresh options/counts
   if (openFieldId && filtersExpanded) {

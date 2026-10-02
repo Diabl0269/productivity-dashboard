@@ -27,6 +27,12 @@ function mkDoc(tasks, pinned) {
     sections: [{ id: 'todo', name: 'Todo', tasks }],
   };
 }
+/** Doc with tasks spread over sections: { todo: [...], 'in-progress': [...] }. */
+function mkSectionDoc(bySection, pinned) {
+  const doc = mkDoc([], pinned);
+  doc.sections = Object.entries(bySection).map(([id, tasks]) => ({ id, name: id, tasks }));
+  return doc;
+}
 const lane = (plan, name) => plan.lanes.find(l => l.lane === name);
 const ids = cards => cards.map(c => `${c.id}${c.isRest ? '+' : ''}`);
 
@@ -219,9 +225,9 @@ test('CLI: ch tasks runplan --json and text', () => {
   assert.equal(t.status, 0, t.stderr);
   assert.match(t.stdout, /Lane: Design round/);
   assert.match(t.stdout, /Lane: alpha/);
-  assert.match(t.stdout, /after your picks/);
+  assert.match(t.stdout, /-- after your pick T2 --/);
   assert.match(t.stdout, /\/ship-task T1/);
-  assert.match(t.stdout, /At most 3 app lanes/);
+  assert.match(t.stdout, /At most 3 app builds at once \(0 could start now\)/);
 });
 
 test('dashboard tasks.json round-trip preserves lane', async () => {
@@ -274,4 +280,83 @@ test('design round splits pick gates into draw, pick and publish stages', () => 
   assert.match(designNow(plan)[2].command, /designs for M3 /);
   assert.deepEqual(plan.picks.map(p => p.stage), ['draw', 'pick', 'publish']);
   assert.equal(designNow(stages([gate('S1', { links: canvas, decisions })]))[0].title, 'Publish the 1 picked design to the Design System');
+});
+
+test('inProgress: epic itself, or an open child, in the in-progress section', () => {
+  const own = computeRunPlan(mkSectionDoc({
+    'in-progress': [epic('E1', { lane: 'a' })], todo: [task('T2', { parentId: 'E1' })],
+  }, ['E1']));
+  assert.equal(lane(own, 'a').now[0].inProgress, true);
+
+  const viaChild = computeRunPlan(mkSectionDoc({
+    todo: [epic('E1', { lane: 'a' }), epic('E3', { lane: 'b' }), task('T4', { parentId: 'E3' })],
+    'in-progress': [task('T2', { parentId: 'E1' })],
+  }, ['E1', 'E3']));
+  assert.equal(lane(viaChild, 'a').now[0].inProgress, true);
+  assert.equal(lane(viaChild, 'b').now[0].inProgress, false);
+});
+
+test('inProgress: a done child in the in-progress section does not count', () => {
+  const plan = computeRunPlan(mkSectionDoc({
+    todo: [epic('E1', { lane: 'a' }), task('T3', { parentId: 'E1' })],
+    'in-progress': [task('T2', { parentId: 'E1', checked: true })],
+  }, ['E1']));
+  assert.equal(lane(plan, 'a').now[0].inProgress, false);
+});
+
+test('waitsOn: a later card that needs a cross-lane epic names the epic, not a pick', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1' }),
+    epic('E3', { lane: 'b', blockedBy: ['E1'] }), task('T4', { parentId: 'E3' }),
+  ], ['E1', 'E3']);
+  const plan = computeRunPlan(doc);
+  assert.deepEqual(lane(plan, 'b').waitsOn, { picks: [], epics: ['E1'] });
+  assert.deepEqual(lane(plan, 'a').waitsOn, { picks: [], epics: [] });
+});
+
+test('waitsOn: picks from partial and gated cards, sorted and deduped, with epics', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a' }),
+    task('T10', { parentId: 'E1', title: 'Co-task: pick X' }),
+    task('T2', { parentId: 'E1', title: 'Co-task: pick Y' }),
+    task('T3', { parentId: 'E1', blockedBy: ['T10', 'T2'] }), task('T4', { parentId: 'E1' }),
+    epic('E5', { lane: 'b', blockedBy: ['E1'] }), task('T6', { parentId: 'E5' }),
+  ], ['E1', 'E5']);
+  const plan = computeRunPlan(doc);
+  assert.deepEqual(lane(plan, 'a').waitsOn, { picks: ['T2', 'T10'], epics: [] });
+  assert.deepEqual(lane(plan, 'b').waitsOn, { picks: [], epics: ['E1'] });
+});
+
+test('step: unrelated epics without a lane all start together; a dependant is step 1', () => {
+  const free = computeRunPlan(mkDoc([
+    epic('E1'), task('T2', { parentId: 'E1' }), epic('E3'), task('T4', { parentId: 'E3' }),
+    epic('E5'), task('T6', { parentId: 'E5' }),
+  ], ['E1', 'E3', 'E5']));
+  assert.deepEqual(lane(free, 'unassigned').now.map(c => c.step), [0, 0, 0]);
+
+  const chained = lane(computeRunPlan(mkDoc([
+    epic('E1', { blockedBy: ['E3'] }), task('T2', { parentId: 'E1' }), epic('E3'), task('T4', { parentId: 'E3' }),
+    epic('E5'), task('T6', { parentId: 'E5' }),
+  ], ['E1', 'E3', 'E5'])), 'unassigned');
+  assert.deepEqual(chained.now.map(c => [c.id, c.step]), [['E3', 0], ['E5', 0], ['E1', 1]]);
+});
+
+test('step: named lanes keep position order', () => {
+  const l = lane(computeRunPlan(mkDoc([
+    epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1' }), epic('E3', { lane: 'a' }), task('T4', { parentId: 'E3' }),
+  ], ['E1', 'E3'])), 'a');
+  assert.deepEqual(l.now.map(c => c.step), [0, 1]);
+});
+
+test('appStartCount counts step-0 build epics across lanes', () => {
+  const plan = computeRunPlan(mkDoc([
+    epic('FRO1'), task('FRO2', { parentId: 'FRO1' }), epic('FRO3'), task('FRO4', { parentId: 'FRO3' }),
+    epic('FRO5', { blockedBy: ['FRO1'] }), task('FRO6', { parentId: 'FRO5' }),
+    epic('E7', { lane: 'web' }), task('T8', { parentId: 'E7' }),
+    epic('FRO9', { lane: 'app' }), task('FRO10', { parentId: 'FRO9' }),
+    epic('FRO11', { lane: 'app' }), task('FRO12', { parentId: 'FRO11' }),
+  ], ['FRO1', 'FRO3', 'FRO5', 'E7', 'FRO9', 'FRO11']));
+  // unassigned: FRO1, FRO3 start now (FRO5 waits on FRO1); app lane: only FRO9 first; web: no build.
+  assert.equal(plan.appStartCount, 3);
+  assert.equal(plan.appLaneCount, 2);
 });

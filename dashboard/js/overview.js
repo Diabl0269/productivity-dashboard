@@ -4,6 +4,7 @@
 
 import {
   isEffectivelyBlocked,
+  indexTasksById,
   dueUrgency,
   daysUntilDue,
   parseYmd,
@@ -141,9 +142,10 @@ export function updateTaskSummary(parsed) {
   const done = (tasks['done'] || []).length;
 
   let blocked = 0;
+  const byId = indexTasksById(tasks);
   ['in-progress', 'todo', 'backlog'].forEach(section => {
     (tasks[section] || []).forEach(t => {
-      if (!t.checked && isEffectivelyBlocked(t, tasks)) blocked++;
+      if (!t.checked && isEffectivelyBlocked(t, tasks, byId)) blocked++;
     });
   });
 

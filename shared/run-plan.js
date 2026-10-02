@@ -75,9 +75,10 @@ function needsBuildEpic(epic) {
  */
 export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   const byId = new Map();
+  const sectionOf = new Map(); // task id -> id of the section it sits in
   for (const sec of doc?.sections || []) {
     for (const t of sec.tasks || []) {
-      if (t && t.id && !byId.has(t.id)) byId.set(t.id, t);
+      if (t && t.id && !byId.has(t.id)) { byId.set(t.id, t); sectionOf.set(t.id, sec.id); }
     }
   }
   const isOpen = id => byId.has(id) && !byId.get(id).checked;
@@ -176,8 +177,12 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     else if (gatedWork.length > 0) phase = 'partial';
     else phase = 'now';
 
+    // In progress: the epic itself or any open ticket under it sits in the in-progress section.
+    const inProgress = sectionOf.get(epicId) === 'in-progress'
+      || [...kidSet].some(k => sectionOf.get(k) === 'in-progress');
+
     info.set(epicId, {
-      epicId, deps, phase, work, freeWork, gatedWork,
+      epicId, deps, phase, inProgress, work, freeWork, gatedWork,
       pickIds: [...gatingPicks].sort(compareIds),
       epicPicks: [...kidSet].filter(k => picks.has(k)).sort(compareIds),
     });
@@ -191,7 +196,29 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     openTickets,
     why,
     command: `/ship-task ${epicId}`,
+    inProgress: info.get(epicId).inProgress,
+    step: 0,
   });
+
+  /**
+   * Give each card of one row its `step`. Named lanes run in order, so step = position.
+   * In the unassigned lane, cards with no dependency on another card in the row can run at
+   * the same time: step 0, else 1 + the highest step among their same-lane dependencies.
+   * Unassigned rows are stably sorted by step so equal steps sit together.
+   */
+  function assignSteps(row, lane) {
+    if (lane !== UNASSIGNED_LANE) {
+      row.forEach((c, idx) => { c.step = idx; });
+      return row;
+    }
+    const stepOf = new Map();
+    for (const c of row) {
+      const deps = info.get(c.id).deps.filter(d => laneOf(d) === lane && stepOf.has(d));
+      c.step = deps.length ? 1 + Math.max(...deps.map(d => stepOf.get(d))) : 0;
+      stepOf.set(c.id, c.step);
+    }
+    return row.map((c, idx) => ({ c, idx })).sort((a, b) => a.c.step - b.c.step || a.idx - b.idx).map(x => x.c);
+  }
 
   const laneNames = [];
   for (const id of live) {
@@ -205,6 +232,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     const now = [];
     const later = [];
     const resolved = new Map();
+    const waitPicks = new Set();
+    const waitEpics = new Set();
     for (const id of ordered) {
       const i = info.get(id);
       const crossLane = i.deps.filter(d => laneOf(d) !== lane);
@@ -216,6 +245,9 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
       let phase = i.phase;
       if (crossLane.length || laterSameLane.length) phase = 'later';
       resolved.set(id, phase);
+
+      if (phase === 'later' || phase === 'partial') pickList.forEach(p => waitPicks.add(p));
+      if (phase === 'later') [...crossLane, ...laterSameLane].forEach(e => waitEpics.add(e));
 
       if (phase === 'later') {
         const needs = joinList([...crossLane, ...laterSameLane, ...(pickText ? [pickText] : [])]);
@@ -232,10 +264,13 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
       lane,
       name: lane === UNASSIGNED_LANE ? 'No lane yet' : lane,
       needsBuild: ids.some(id => needsBuildEpic(byId.get(id))),
-      now,
-      later,
+      now: assignSteps(now, lane),
+      later: assignSteps(later, lane),
+      waitsOn: { picks: [...waitPicks].sort(compareIds), epics: [...waitEpics].sort(compareIds) },
     };
   });
+  const appStartCount = lanes.reduce(
+    (n, l) => n + l.now.filter(c => c.step === 0 && needsBuildEpic(byId.get(c.id))).length, 0);
 
   const pickList = [...picks.values()]
     .map(p => ({ ...p, gates: p.gates.sort(compareIds), stage: pickStage(byId.get(p.id)) }))
@@ -257,6 +292,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         why: 'An agent draws one board per pick ticket',
         command: `Draw the design canvases for ${joinList(drawIds)} (one board per ticket, options plus a recommended default, Design System components), link each canvas on its ticket, then stop for my picks.`,
         isPrompt: true,
+        inProgress: false,
+        step: now.length,
       });
     }
     if (pickIds.length) {
@@ -268,6 +305,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         openTickets: pickIds.length,
         why: `Picks: ${joinList(pickIds)}`,
         command: null,
+        inProgress: false,
+        step: now.length,
       });
     }
     if (publishIds.length) {
@@ -280,6 +319,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         why: 'An agent adds the chosen options to the Design System',
         command: `Publish the picked designs for ${joinList(publishIds)} to the AgentSynth Design System and Storybook (chosen option only, as recorded in each ticket's decisions), then close each pick ticket.`,
         isPrompt: true,
+        inProgress: false,
+        step: now.length,
       });
     }
     lanes.unshift({
@@ -288,6 +329,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
       needsBuild: false,
       now,
       later: [],
+      waitsOn: { picks: [], epics: [] },
     });
   }
 
@@ -297,5 +339,6 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     picks: pickList,
     machineCap,
     appLaneCount: lanes.filter(l => l.needsBuild).length,
+    appStartCount,
   };
 }

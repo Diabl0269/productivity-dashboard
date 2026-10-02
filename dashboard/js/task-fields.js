@@ -84,12 +84,12 @@ export function indexTasksById(tasksBySection) {
  * Peer deps that are still unresolved (not done/archive/checked).
  * @returns {string[]} unresolved task ids
  */
-export function unresolvedBlockedBy(task, tasksBySection) {
+export function unresolvedBlockedBy(task, tasksBySection, byId) {
   const deps = Array.isArray(task.blockedBy) ? task.blockedBy : [];
   if (deps.length === 0) return [];
-  const byId = indexTasksById(tasksBySection);
+  const index = byId || indexTasksById(tasksBySection);
   return deps.filter(id => {
-    const dep = byId.get(id);
+    const dep = index.get(id);
     if (!dep) return true; // missing = still blocking
     if (isTaskDone(dep)) return false;
     const sec = dep.section || '';
@@ -97,10 +97,10 @@ export function unresolvedBlockedBy(task, tasksBySection) {
   });
 }
 
-/** True if flagged blocked OR has unresolved peer deps. */
-export function isEffectivelyBlocked(task, tasksBySection) {
+/** True if flagged blocked OR has unresolved peer deps. Pass a prebuilt `byId` in loops. */
+export function isEffectivelyBlocked(task, tasksBySection, byId) {
   if (task.blocked) return true;
-  return unresolvedBlockedBy(task, tasksBySection).length > 0;
+  return unresolvedBlockedBy(task, tasksBySection, byId).length > 0;
 }
 
 /** True when a task is finished (checkbox or done/archive column). */
@@ -726,19 +726,49 @@ export function dependencyEdges(tasksBySection) {
   return edges;
 }
 
-/** True when `task` is the epic or a direct/indirect child of `epicId`. */
-export function taskUnderEpic(task, epicId, tasksBySection) {
+/**
+ * True when `task` is the epic or a direct/indirect child of `epicId`.
+ * Pass a prebuilt `byId` (indexTasksById) when calling in a loop.
+ */
+export function taskUnderEpic(task, epicId, tasksBySection, byId) {
   if (!task || !epicId) return false;
   if (task.taskId === epicId) return true;
-  const byId = indexTasksById(tasksBySection);
+  if (!task.parentId) return false;
+  const index = byId || indexTasksById(tasksBySection);
   let cur = task;
   const seen = new Set();
   while (cur?.parentId && !seen.has(cur.parentId)) {
     if (cur.parentId === epicId) return true;
     seen.add(cur.parentId);
-    cur = byId.get(cur.parentId);
+    cur = index.get(cur.parentId);
   }
   return false;
+}
+
+/**
+ * Epic id -> number of tasks under it (the epic itself plus every descendant via the
+ * parentId chain, cycle-safe). One pass; equals counting `taskUnderEpic` per epic.
+ * Only ids that appear as a task or an ancestor get an entry.
+ */
+export function countTasksUnderEpics(tasksBySection, byId) {
+  const index = byId || indexTasksById(tasksBySection);
+  const counts = new Map();
+  for (const list of Object.values(tasksBySection || {})) {
+    for (const t of list || []) {
+      const matched = new Set();
+      if (t.taskId) matched.add(t.taskId);
+      // Same walk as taskUnderEpic: every parentId along the chain, stopping on a cycle.
+      const seen = new Set();
+      let cur = t;
+      while (cur?.parentId && !seen.has(cur.parentId)) {
+        matched.add(cur.parentId);
+        seen.add(cur.parentId);
+        cur = index.get(cur.parentId);
+      }
+      for (const id of matched) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+  }
+  return counts;
 }
 
 /**
@@ -746,7 +776,7 @@ export function taskUnderEpic(task, epicId, tasksBySection) {
  * filters: { priorities:Set, types:Set, due:Set, labels:Set, sections:Set,
  *            hasParent:bool|null, blocked:bool|null, parentEpics:Set }
  */
-export function taskMatchesFacets(task, filters, tasksBySection) {
+export function taskMatchesFacets(task, filters, tasksBySection, byId) {
   if (!filters) return true;
 
   if (filters.sections && filters.sections.size > 0) {
@@ -779,8 +809,8 @@ export function taskMatchesFacets(task, filters, tasksBySection) {
   }
   if (filters.hasParent === true && !task.parentId) return false;
   if (filters.hasParent === false && task.parentId) return false;
-  if (filters.blocked === true && !isEffectivelyBlocked(task, tasksBySection)) return false;
-  if (filters.blocked === false && isEffectivelyBlocked(task, tasksBySection)) return false;
+  if (filters.blocked === true && !isEffectivelyBlocked(task, tasksBySection, byId)) return false;
+  if (filters.blocked === false && isEffectivelyBlocked(task, tasksBySection, byId)) return false;
   if (filters.dueExact && task.dueDate !== filters.dueExact && task.startDate !== filters.dueExact) {
     return false;
   }
@@ -799,8 +829,9 @@ export function taskMatchesFacets(task, filters, tasksBySection) {
   if (filters.snoozed === false && isSnoozed(task)) return false;
   if (filters.parentEpics && filters.parentEpics.size > 0) {
     let ok = false;
+    const index = byId || indexTasksById(tasksBySection);
     for (const epicId of filters.parentEpics) {
-      if (taskUnderEpic(task, epicId, tasksBySection)) { ok = true; break; }
+      if (taskUnderEpic(task, epicId, tasksBySection, index)) { ok = true; break; }
     }
     if (!ok) return false;
   }

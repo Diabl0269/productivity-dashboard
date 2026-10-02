@@ -18,7 +18,7 @@ import {
   staleBadgeHtml, snoozeBadgeHtml, energyBadgeHtml, isSnoozed,
   computeNextTaskId,
 } from './task-fields.js';
-import { taskPassesFacets, hasActiveFacets } from './task-filters.js';
+import { makeFacetPredicate, hasActiveFacets } from './task-filters.js';
 import { isSelected, toggleSelect } from './task-selection.js';
 import { softDeleteTask } from './task-undo.js';
 
@@ -116,10 +116,11 @@ export function renderList() {
   const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
 
   // Render each section
+  const passesFacets = makeFacetPredicate();
   sections.forEach(section => {
     let rawTasks = tasks[section.id] || [];
     if (hasActiveFacets()) {
-      rawTasks = rawTasks.filter(taskPassesFacets);
+      rawTasks = rawTasks.filter(passesFacets);
     }
     const sectionTasks = state.sortByPriority
       ? [...rawTasks].sort((a, b) =>
