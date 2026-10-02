@@ -1,6 +1,7 @@
 // run-plan-view.js — "Run plan" tab: pinned epics as lanes (rows); see shared/run-plan.js
 
 import { computeRunPlan } from '../../shared/run-plan.js';
+import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 
 let getState = null;
 let toastTimer = null;
@@ -82,6 +83,15 @@ async function copyText(text) {
   }
 }
 
+/** Start: open the Claude desktop app on a new Code session with this card's command typed in. */
+function openClaudeSession(card) {
+  const folder = window.dashboardConfig?.claudeSessionFolder;
+  const url = claudeCodeSessionUrl(card.command, folder);
+  if (!url) return;
+  window.location.assign(url);
+  showToast(folder ? `Opening Claude: ${card.command}` : 'Opening Claude (set claudeSessionFolder in config.json to pick the folder)');
+}
+
 function renderCard(card, phase) {
   const key = `${card.id}:${phase}`;
   const article = el('article', `rp-card rp-${card.state}`);
@@ -120,7 +130,9 @@ function renderCard(card, phase) {
     article.classList.toggle('rp-done', state === 'done');
   };
   toggle.addEventListener('click', () => {
+    const prev = state;
     state = NEXT[state];
+    if (prev === '' && state === 'started') openClaudeSession(card);
     const map = readProgress();
     if (state) map[key] = state; else delete map[key];
     writeProgress(map);

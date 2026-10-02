@@ -139,6 +139,7 @@ See `memory.example/` for the expected format.
 - A dashed "after your picks" divider splits each lane into what can run now and what comes later; `Co-task:` tickets are your picks and get their own Design round lane
 - Each card shows a Ready now / Partly ready / Later chip, why it waits, a copy button for `/ship-task <id>`, and a Start / Started / Done toggle (remembered in this browser)
 - Same data from the CLI: `ch tasks runplan`
+- Start on a card also opens the Claude desktop app on a new Claude Code session with the card's `/ship-task` command typed in (a `claude://code/new` link; the app has no model parameter, so pick the model there). Set `claudeSessionFolder` in `config.json` to choose the folder it opens in.
 
 ### Memory Viewer
 - Browse all memory files organized by directory
