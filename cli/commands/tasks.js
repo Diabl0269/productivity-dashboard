@@ -1632,7 +1632,7 @@ function cmdPlan(argv) {
     plan = {
       date: today,
       taskIds: unfinished,
-      carriedIds: unfinished,
+      carriedIds: [...unfinished],
     };
     doc.meta.dailyPlan = plan;
     changed = true;
@@ -1650,7 +1650,7 @@ function cmdPlan(argv) {
       return true;
     });
     plan.taskIds = unfinished;
-    plan.carriedIds = unfinished;
+    plan.carriedIds = [...unfinished];
     plan.date = today;
     changed = true;
   }
