@@ -149,11 +149,11 @@ test('design lane appears when picks exist, with a prompt card and a human card'
   assert.equal(plan.lanes[0].lane, 'design');
   assert.equal(plan.lanes[0].name, 'Design round');
   assert.equal(plan.lanes[0].needsBuild, false);
-  const [prompt, human] = plan.lanes[0].now;
+  assert.equal(plan.lanes[0].now.length, 1);
+  const [prompt] = plan.lanes[0].now;
   assert.equal(prompt.title, 'Draw the 2 pick canvases');
   assert.match(prompt.command, /^Draw the design canvases for F2 and F4 \(one board per ticket/);
   assert.match(prompt.command, /then stop for my picks\.$/);
-  assert.equal(human.command, null);
   assert.deepEqual(plan.picks.map(p => ({ id: p.id, gates: p.gates })), [{ id: 'F2', gates: ['F1'] }, { id: 'F4', gates: ['F1'] }]);
   assert.equal(computeRunPlan(mkDoc([epic('E1'), task('T2', { parentId: 'E1' })], ['E1'])).lanes.some(l => l.lane === 'design'), false);
 });
@@ -239,4 +239,39 @@ test('dashboard routing knows the runplan tab', async () => {
   const route = parseRoute();
   assert.equal(route.tab, 'runplan');
   assert.equal(buildPath(route), '/dashboard/runplan');
+});
+
+test('design round splits pick gates into draw, pick and publish stages', () => {
+  const canvas = [{ label: 'Design canvas', url: 'https://x/c' }];
+  const decisions = [{ at: '2026-01-01T00:00:00Z', text: 'Option B' }];
+  const gate = (id, extra) => task(id, { parentId: 'E1', title: `Co-task: ${id}`, ...extra });
+  const stages = tasks => computeRunPlan(mkDoc([epic('E1', { lane: 'a' }), ...tasks], ['E1']));
+  const designNow = plan => plan.lanes[0].now;
+
+  let plan = stages([gate('D1'), gate('D2', { links: canvas, waitingOn: 'Claude: revise' })]);
+  assert.deepEqual(designNow(plan).map(c => c.id), ['design-canvases']);
+  assert.match(designNow(plan)[0].command, /canvases for D1 and D2 /);
+
+  plan = stages([gate('P1', { links: canvas }), gate('P2', { waitingOn: 'Tal: decide' }),
+    gate('P3', { links: canvas, decisions, waitingOn: 'Tal: more' })]);
+  assert.deepEqual(designNow(plan).map(c => c.id), ['design-picks']);
+  assert.equal(designNow(plan)[0].why, 'Picks: P1, P2 and P3');
+  assert.equal(designNow(plan)[0].command, null);
+
+  plan = stages([gate('U1', { links: canvas, decisions }), gate('U2', { decisions, waitingOn: 'someone' })]);
+  const [pub] = designNow(plan);
+  assert.deepEqual(designNow(plan).map(c => c.id), ['design-publish']);
+  assert.equal(pub.title, 'Publish the 2 picked designs to the Design System');
+  assert.equal(pub.state, 'ready');
+  assert.equal(pub.isPrompt, true);
+  assert.equal(pub.why, 'An agent adds the chosen options to the Design System');
+  assert.match(pub.command, /^Publish the picked designs for U1 and U2 to the AgentSynth Design System and Storybook/);
+
+  plan = stages([gate('M1'), gate('M2', { links: canvas }), gate('M3', { links: canvas, decisions })]);
+  assert.deepEqual(designNow(plan).map(c => c.id), ['design-canvases', 'design-picks', 'design-publish']);
+  assert.match(designNow(plan)[0].command, /canvases for M1 /);
+  assert.equal(designNow(plan)[1].why, 'Picks: M2');
+  assert.match(designNow(plan)[2].command, /designs for M3 /);
+  assert.deepEqual(plan.picks.map(p => p.stage), ['draw', 'pick', 'publish']);
+  assert.equal(designNow(stages([gate('S1', { links: canvas, decisions })]))[0].title, 'Publish the 1 picked design to the Design System');
 });
