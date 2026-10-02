@@ -1595,7 +1595,7 @@ function cmdRunPlan(argv) {
     print(`Lane: ${lane.name}${lane.needsBuild ? ' (app build)' : ''}`);
     lane.now.forEach((c, i) => {
       print(line(c, lane.now[i - 1]));
-      if (c.command) print(`      ${c.isPrompt ? 'prompt: ' : ''}${c.command}`);
+      if (c.command) print(`      ${c.isPrompt ? 'prompt: ' : ''}${c.command}${c.model ? `  (model: ${c.model})` : ''}`);
     });
     if (lane.later.length) {
       const { picks, epics } = lane.waitsOn || { picks: [], epics: [] };

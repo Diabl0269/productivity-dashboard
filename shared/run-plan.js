@@ -58,6 +58,17 @@ export function isPickGate(task) {
   return (task?.labels || []).some(l => /^co-task$/i.test(String(l).trim()));
 }
 
+/**
+ * The model to pick for a ticket, from its `model:<tier>` label ("opus" -> "Opus"); null when
+ * unlabelled. The desktop app's new-session link cannot set a model, so the plan names it.
+ */
+export function modelOf(task) {
+  const label = (task?.labels || []).find(l => /^model:\s*\S/i.test(String(l)));
+  if (!label) return null;
+  const tier = String(label).replace(/^model:\s*/i, '').trim();
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
+
 /** "A", "A and B", "A, B and C". */
 function joinList(items) {
   if (items.length <= 1) return items.join('');
@@ -196,6 +207,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     openTickets,
     why,
     command: `/ship-task ${epicId}`,
+    model: modelOf(byId.get(epicId)),
     inProgress: info.get(epicId).inProgress,
     step: 0,
   });
