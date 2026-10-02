@@ -119,6 +119,19 @@ export function defaultTasksMeta() {
   };
 }
 
+/** Normalise a task's `checks` tick-list: drop malformed entries, keep addedAt. */
+export function normalizeChecks(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const c of raw) {
+    if (!c || typeof c !== 'object' || typeof c.text !== 'string' || !c.text.trim()) continue;
+    const e = { text: c.text, checked: !!c.checked };
+    if (typeof c.addedAt === 'string' && c.addedAt) e.addedAt = c.addedAt;
+    out.push(e);
+  }
+  return out;
+}
+
 /**
  * Normalize top-level meta from tasks.json.
  * @param {any} meta
@@ -229,6 +242,7 @@ export function loadTasksJson(text) {
       created: t.created || null,
       updated: t.updated || null,
       subtasks: Array.isArray(t.subtasks) ? t.subtasks.map(st => ({ text: st.text || '', checked: !!st.checked })) : [],
+      checks: normalizeChecks(t.checks),
       section: sec.id,
     }));
   }
@@ -262,6 +276,8 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
           updated: t.updated || null,
           subtasks: (t.subtasks || []).map(st => ({ text: st.text, checked: !!st.checked })),
         };
+        const checks = normalizeChecks(t.checks);
+        if (checks.length) row.checks = checks;
         const desc = (t.description || '').trim();
         if (desc) row.description = desc;
         if (t.parentId) row.parentId = t.parentId;

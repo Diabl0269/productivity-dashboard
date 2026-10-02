@@ -895,3 +895,71 @@ test('lane: add/update/clear via CLI, shown by get, bad slug rejected', () => {
   assert.equal(runCli(['tasks', 'update', id, '--clear-lane'], tmp).status, 0);
   assert.equal('lane' in find(), false);
 });
+
+// ---------------------------------------------------------------------------
+// checks: per-ticket tick-list, separate from subtasks (PRO4)
+// ---------------------------------------------------------------------------
+
+test('tasks update checks: add/check/uncheck/remove/clear, get output and --json', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    const t2 = () => readTasks(tmpDir).sections.flatMap(s => s.tasks).find(t => t.id === 'T2');
+    const r = runCli(['tasks', 'update', 'T2', '--add-check', 'first', '--add-check', 'second'], tmpDir);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(t2().checks.length, 2);
+    assert.equal(t2().checks[0].text, 'first');
+    assert.equal(t2().checks[0].checked, false);
+    assert.ok(!isNaN(Date.parse(t2().checks[0].addedAt)), 'addedAt is an ISO date');
+
+    assert.equal(runCli(['tasks', 'update', 'T2', '--check-check', '1'], tmpDir).status, 0);
+    assert.equal(t2().checks[0].checked, true);
+    assert.equal(t2().checks[0].addedAt.length > 10, true, 'addedAt kept');
+
+    const get = runCli(['tasks', 'get', 'T2'], tmpDir);
+    assert.match(get.stdout, /Checks \(1\/2\)/);
+    assert.match(get.stdout, /\[x\] first/);
+    assert.match(get.stdout, /\[ \] second/);
+    const json = JSON.parse(runCli(['tasks', 'get', 'T2', '--json'], tmpDir).stdout);
+    assert.equal(json.checks.length, 2);
+
+    assert.equal(runCli(['tasks', 'update', 'T2', '--uncheck-check', '1'], tmpDir).status, 0);
+    assert.equal(t2().checks[0].checked, false);
+
+    assert.equal(runCli(['tasks', 'update', 'T2', '--remove-check', '1'], tmpDir).status, 0);
+    assert.deepEqual(t2().checks.map(c => c.text), ['second']);
+
+    assert.equal(runCli(['tasks', 'update', 'T2', '--clear-checks'], tmpDir).status, 0);
+    assert.deepEqual(t2().checks, []);
+    assert.equal(runCli(['tasks', 'lint'], tmpDir).status, 0, 'lint accepts checks');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks update checks: out-of-range indices die', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    for (const flag of ['--check-check', '--uncheck-check', '--remove-check']) {
+      const r = runCli(['tasks', 'update', 'T2', flag, '5'], tmpDir);
+      assert.notEqual(r.status, 0, `${flag} should fail`);
+      assert.match(r.stderr, new RegExp(`${flag} N must be between 1 and 0`));
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('tasks done: unticked checks do not block marking a ticket done', () => {
+  const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
+  try {
+    assert.equal(runCli(['tasks', 'update', 'T2', '--add-check', 'still open'], tmpDir).status, 0);
+    const done = runCli(['tasks', 'done', 'T2'], tmpDir);
+    assert.equal(done.status, 0, done.stderr);
+    const t2 = readTasks(tmpDir).sections.flatMap(s => s.tasks).find(t => t.id === 'T2');
+    assert.equal(t2.checked, true);
+    assert.equal(t2.checks[0].checked, false, 'check stays unticked');
+    assert.equal(t2.subtasks.length, 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

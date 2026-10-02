@@ -13,7 +13,7 @@ import {
 } from './ticket-types.js';
 import {
   dueBadgeHtml, labelsHtml, linksAffordanceHtml, blockedIndicatorHtml,
-  estimateBadgeHtml, assigneeChipHtml, appendHistory,
+  estimateBadgeHtml, checksBadgeHtml, assigneeChipHtml, appendHistory,
   jiraKeyBadgeHtml, recurrenceBadgeHtml, loggedBadgeHtml,
   staleBadgeHtml, snoozeBadgeHtml, energyBadgeHtml, isSnoozed,
   computeNextTaskId,
@@ -460,6 +460,7 @@ function createListItem(task, section) {
     + jiraKeyBadgeHtml(task)
     + recurrenceBadgeHtml(task)
     + estimateBadgeHtml(task)
+    + checksBadgeHtml(task)
     + loggedBadgeHtml(task)
     + energyBadgeHtml(task)
     + staleBadgeHtml(task, staleDays)
