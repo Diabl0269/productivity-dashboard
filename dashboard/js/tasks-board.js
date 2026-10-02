@@ -14,7 +14,7 @@ import {
   spawnRecurringFollowUp, staleBadgeHtml, snoozeBadgeHtml, energyBadgeHtml,
   isSnoozed, syncTaskCompletionWithSection,
 } from './task-fields.js';
-import { taskPassesFacets, hasActiveFacets } from './task-filters.js';
+import { makeFacetPredicate, hasActiveFacets } from './task-filters.js';
 import { isSelected, toggleSelect } from './task-selection.js';
 import { softDeleteTask } from './task-undo.js';
 
@@ -725,13 +725,14 @@ export function renderBoard() {
   board.innerHTML = '';
   board.classList.toggle('swimlanes-mode', !!state.swimlanesByEpic);
 
+  const passesFacets = makeFacetPredicate();
   if (state.swimlanesByEpic) {
     renderSwimlaneBoard(board, state, sections, tasks);
   } else {
     sections.forEach(section => {
       let sectionTasks = tasks[section.id] || [];
       if (hasActiveFacets()) {
-        sectionTasks = sectionTasks.filter(taskPassesFacets);
+        sectionTasks = sectionTasks.filter(passesFacets);
       }
       const displayTasks = state.sortByPriority ? sortByPriority(sectionTasks) : sectionTasks;
       board.appendChild(createColumn(section.id, section.name, displayTasks));
@@ -771,6 +772,7 @@ function swimlaneKey(task, tasksBySection, ticketTypes) {
 }
 
 function renderSwimlaneBoard(board, state, sections, tasks) {
+  const passesFacets = makeFacetPredicate();
   const lanes = new Map(); // key -> { title, bySection: { sectionId: tasks[] } }
   const ensure = (key, title) => {
     if (!lanes.has(key)) {
@@ -784,7 +786,7 @@ function renderSwimlaneBoard(board, state, sections, tasks) {
 
   sections.forEach(section => {
     let sectionTasks = tasks[section.id] || [];
-    if (hasActiveFacets()) sectionTasks = sectionTasks.filter(taskPassesFacets);
+    if (hasActiveFacets()) sectionTasks = sectionTasks.filter(passesFacets);
     const displayTasks = state.sortByPriority ? sortByPriority(sectionTasks) : sectionTasks;
     displayTasks.forEach(task => {
       const { key, title } = swimlaneKey(task, tasks, state.ticketTypes);

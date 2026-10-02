@@ -1583,24 +1583,32 @@ function cmdRunPlan(argv) {
   if (plan.lanes.length === 0) {
     print('No pinned epics. Pin one with: ch tasks plan --pin <id>');
   }
-  const line = c => {
-    const mark = { ready: '[ready]  ', partial: '[partial]', later: '[later]  ', pick: '[you]    ' }[c.state] || c.state;
+  const line = (c, prev) => {
+    const mark = c.inProgress && (c.state === 'ready' || c.state === 'partial')
+      ? '[running]'
+      : { ready: '[ready]  ', partial: '[partial]', later: '[later]  ', pick: '[you]    ' }[c.state] || c.state;
     const rest = c.isRest ? ' (rest)' : '';
-    return `  ${mark} ${c.id}  ${c.title}${rest}${c.why ? `  - ${c.why}` : ''}`;
+    const alongside = prev && prev.step === c.step ? '\u2016' : ' '; // ‖ = runs alongside the card above
+    return ` ${alongside}${mark} ${c.id}  ${c.title}${rest}${c.why ? `  - ${c.why}` : ''}`;
   };
   for (const lane of plan.lanes) {
     print(`Lane: ${lane.name}${lane.needsBuild ? ' (app build)' : ''}`);
-    for (const c of lane.now) {
-      print(line(c));
+    lane.now.forEach((c, i) => {
+      print(line(c, lane.now[i - 1]));
       if (c.command) print(`      ${c.isPrompt ? 'prompt: ' : ''}${c.command}`);
-    }
+    });
     if (lane.later.length) {
-      print('  -- after your picks --');
-      for (const c of lane.later) print(line(c));
+      const { picks, epics } = lane.waitsOn || { picks: [], epics: [] };
+      const pickWords = `your ${picks.length > 1 ? 'picks' : 'pick'} ${picks.join(', ')}`;
+      const words = epics.length && picks.length ? `${epics.join(', ')} and ${pickWords}`
+        : epics.length ? epics.join(', ') : picks.length ? pickWords : 'later';
+      print(`  -- ${words === 'later' ? 'later' : `after ${words}`} --`);
+      lane.later.forEach((c, i) => print(line(c, lane.later[i - 1])));
     }
   }
   if (plan.doneEpics.length) print(`Done epics: ${plan.doneEpics.join(', ')}`);
-  print(`At most ${plan.machineCap} app lanes at once (${plan.appLaneCount} app lanes in this plan)`);
+  print('Lanes run side by side; cards in a lane run top to bottom; a \u2016 line runs alongside the card above it');
+  print(`At most ${plan.machineCap} app builds at once (${plan.appStartCount} could start now)`);
 }
 
 /** Today plan: show / pin / unpin / carry unfinished pins. */

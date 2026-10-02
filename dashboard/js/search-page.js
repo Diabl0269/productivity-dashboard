@@ -1,7 +1,7 @@
 // search-page.js — All-tickets search (Jira-style) with text query + facet filters
 
 import { taskState } from './tasks-main.js';
-import { facetState, hasActiveFacets, taskPassesFacets, renderFilterBar } from './task-filters.js';
+import { facetState, hasActiveFacets, makeFacetPredicate, renderFilterBar } from './task-filters.js';
 import { openTaskDetail } from './task-detail.js';
 import {
   escapeHtml,
@@ -127,7 +127,8 @@ function taskMatchesQuery(task, q) {
 function renderResults() {
   if (!resultsEl) return;
   const types = normalizeTicketTypes(taskState.ticketTypes);
-  const tasks = flatTasks().filter(t => taskPassesFacets(t) && taskMatchesQuery(t, query));
+  const passesFacets = makeFacetPredicate();
+  const tasks = flatTasks().filter(t => passesFacets(t) && taskMatchesQuery(t, query));
 
   if (!tasks.length) {
     resultsEl.innerHTML = '<div class="search-page-empty">No tickets match your search.</div>';

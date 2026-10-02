@@ -1,13 +1,13 @@
-/* Run plan tab — lanes as horizontal tracks: now cards | after your picks | later cards */
+/* Run plan tab — lanes as horizontal tracks: now cards | divider naming what it waits on | later cards */
 
 :root {
   --rp-c1: #f2a33a; --rp-c2: #3fc6ec; --rp-c3: #6ccf72; --rp-c4: #f2789c; --rp-cpick: #a790f5;
-  --rp-c-ready: #6ccf72; --rp-c-partial: #f2a33a; --rp-c-later: var(--text-secondary);
+  --rp-c-ready: #6ccf72; --rp-c-partial: #f2a33a; --rp-c-running: #6ea8ff; --rp-c-later: var(--text-secondary);
   --rp-tint: .16;
 }
 [data-theme="light"] {
   --rp-c1: #b86a00; --rp-c2: #00799e; --rp-c3: #2f7d32; --rp-c4: #b8325a; --rp-cpick: #6a4cc2;
-  --rp-c-ready: #2f7d32; --rp-c-partial: #a35f00;
+  --rp-c-ready: #2f7d32; --rp-c-partial: #a35f00; --rp-c-running: #1f5fbf;
   --rp-tint: .10;
 }
 .rp-track { --c: var(--rp-c1); }
@@ -23,6 +23,7 @@
 .rp-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--text-secondary); }
 .rp-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .rp-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.rp-dot-running { background: var(--rp-c-running); }
 .rp-dot-ready { background: var(--rp-c-ready); }
 .rp-dot-partial { background: var(--rp-c-partial); }
 .rp-dot-later { background: var(--rp-c-later); }
@@ -47,9 +48,13 @@
 .rp-card.rp-done .rp-title { text-decoration: line-through; }
 .rp-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .rp-id { font-family: ui-monospace, Menlo, monospace; font-weight: 600; font-size: 13px; color: var(--c); }
+button.rp-link { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: var(--c); text-decoration: underline dotted; text-underline-offset: 3px; text-align: left; }
+button.rp-link:hover { text-decoration-style: solid; }
+button.rp-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 .rp-title { font-weight: 600; font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
 .rp-items, .rp-why { font-size: 12px; color: var(--text-secondary); }
 .rp-chip { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 2px 8px; white-space: nowrap; border: 1px solid currentColor; }
+.rp-chip-running { color: var(--rp-c-running); background: color-mix(in srgb, var(--rp-c-running) 14%, transparent); }
 .rp-chip-ready { color: var(--rp-c-ready); }
 .rp-chip-partial { color: var(--rp-c-partial); }
 .rp-chip-later { color: var(--rp-c-later); }
@@ -63,8 +68,13 @@
 .rp-toggle[aria-pressed="true"] { background: var(--c); color: var(--surface-2); border-color: var(--c); }
 
 .rp-arrow { flex: 0 0 22px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 16px; }
-.rp-picks { flex: 0 0 auto; display: flex; align-items: center; margin: 0 8px; }
-.rp-picks div { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11.5px; font-weight: 600; color: var(--rp-cpick); border-left: 2px dashed var(--rp-cpick); padding: 6px 4px; letter-spacing: .02em; }
+.rp-col { flex: 0 0 218px; display: flex; flex-direction: column; gap: 8px; }
+.rp-col .rp-card { flex: none; }
+.rp-picks { flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 4px; margin: 0 8px; padding: 6px 0 6px 10px; border-left: 2px dashed var(--rp-cpick); max-width: 120px; }
+.rp-picks-label { font-size: 11.5px; font-weight: 600; color: var(--rp-cpick); letter-spacing: .02em; }
+.rp-picks-ids { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.rp-picks-id { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--rp-cpick); }
+button.rp-picks-id { color: var(--rp-cpick); }
 
 .rp-toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text-primary); color: var(--surface-0); padding: 7px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 1000; }
 .rp-toast.show { opacity: 1; }
@@ -73,9 +83,8 @@
   .rp-track { grid-template-columns: 1fr; }
   .rp-head { border-right: 0; border-bottom: 1px solid var(--border); }
   .rp-lane { flex-direction: column; }
-  .rp-card { flex: none; }
+  .rp-card, .rp-col { flex: none; }
   .rp-arrow { transform: rotate(90deg); height: 22px; }
-  .rp-picks { margin: 8px 0; }
-  .rp-picks div { writing-mode: horizontal-tb; transform: none; border-left: 0; border-top: 2px dashed var(--rp-cpick); width: 100%; text-align: center; padding: 4px 0; }
+  .rp-picks { margin: 8px 0; max-width: none; border-left: 0; border-top: 2px dashed var(--rp-cpick); padding: 6px 0 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

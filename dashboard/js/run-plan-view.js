@@ -2,6 +2,7 @@
 
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
+import { openTaskDetail } from './task-detail.js';
 
 let getState = null;
 let toastTimer = null;
@@ -37,6 +38,26 @@ function el(tag, className, text) {
 }
 
 const STATE_LABEL = { ready: 'Ready now', partial: 'Partly ready', later: 'Later', pick: 'Your pick' };
+
+/** Open a ticket's detail in place (no navigation); toasts if the ticket is gone. */
+function openTicket(id) {
+  const state = getState?.();
+  for (const list of Object.values(state?.tasks || {})) {
+    const task = (list || []).find(t => t.taskId === id);
+    if (task) { openTaskDetail(task); return; }
+  }
+  showToast(`Ticket ${id} not found`);
+}
+
+/** A ticket id as a button that opens the ticket. */
+function idButton(id, className = 'rp-id rp-link') {
+  const btn = el('button', className, id);
+  btn.type = 'button';
+  btn.title = `Open ${id}`;
+  btn.setAttribute('aria-label', `Open ticket ${id}`);
+  btn.addEventListener('click', () => openTicket(id));
+  return btn;
+}
 const LANE_COLORS = 4; // --rp-c1..4; the design lane uses the pick colour
 const PROGRESS_KEY = 'runPlanProgress';
 
@@ -98,8 +119,11 @@ function renderCard(card, phase) {
   article.setAttribute('aria-label', `${card.id} ${card.title}`);
 
   const row = el('div', 'rp-row');
-  row.appendChild(el('span', 'rp-id', card.state === 'pick' || card.isPrompt ? 'Design' : card.id));
-  row.appendChild(el('span', `rp-chip rp-chip-${card.state}`, STATE_LABEL[card.state] || card.state));
+  row.appendChild(card.state === 'pick' || card.isPrompt ? el('span', 'rp-id', 'Design') : idButton(card.id));
+  const running = card.inProgress && (card.state === 'ready' || card.state === 'partial');
+  row.appendChild(running
+    ? el('span', 'rp-chip rp-chip-running', 'In progress')
+    : el('span', `rp-chip rp-chip-${card.state}`, STATE_LABEL[card.state] || card.state));
   article.appendChild(row);
 
   article.appendChild(el('div', 'rp-title', card.isRest ? `${card.title} (rest)` : card.title));
@@ -144,15 +168,43 @@ function renderCard(card, phase) {
   return article;
 }
 
+/** Cards sharing a step stack in one column; arrows sit between columns only. */
 function appendCards(parent, cards, phase) {
-  cards.forEach((card, i) => {
+  const steps = [...new Set(cards.map(c => c.step ?? 0))].sort((x, y) => x - y);
+  steps.forEach((step, i) => {
     if (i > 0) {
       const arrow = el('span', 'rp-arrow', '→');
       arrow.setAttribute('aria-hidden', 'true');
       parent.appendChild(arrow);
     }
-    parent.appendChild(renderCard(card, phase));
+    const col = el('div', 'rp-col');
+    cards.filter(c => (c.step ?? 0) === step).forEach(c => col.appendChild(renderCard(c, phase)));
+    parent.appendChild(col);
   });
+}
+
+/** Words for the divider, as DOM: "after <epics> and your pick(s) <ids>". Ids are buttons. */
+function renderDivider(waitsOn) {
+  const { picks = [], epics = [] } = waitsOn || {};
+  const divider = el('div', 'rp-picks');
+  const label = el('div', 'rp-picks-label');
+  if (!picks.length && !epics.length) {
+    label.textContent = 'later';
+    divider.appendChild(label);
+    return divider;
+  }
+  const pickWord = picks.length > 1 ? 'your picks' : 'your pick';
+  label.textContent = picks.length && !epics.length ? `after ${pickWord}` : 'after';
+  divider.appendChild(label);
+  const group = (ids, text) => {
+    if (text) divider.appendChild(el('div', 'rp-picks-label', text));
+    const stack = el('div', 'rp-picks-ids');
+    ids.forEach(id => stack.appendChild(idButton(id, 'rp-link rp-picks-id')));
+    divider.appendChild(stack);
+  };
+  if (epics.length) group(epics);
+  if (picks.length) group(picks, epics.length ? `and ${pickWord}` : '');
+  return divider;
 }
 
 function renderLane(lane, index) {
@@ -172,9 +224,7 @@ function renderLane(lane, index) {
   row.setAttribute('aria-label', `${lane.name} cards, in order`);
   appendCards(row, lane.now, 'now');
   if (lane.later.length) {
-    const divider = el('div', 'rp-picks');
-    divider.appendChild(el('div', null, 'after your picks'));
-    row.appendChild(divider);
+    row.appendChild(renderDivider(lane.waitsOn));
     appendCards(row, lane.later, 'later');
   }
   track.appendChild(row);
@@ -189,15 +239,15 @@ function renderRules(plan) {
     p.appendChild(document.createTextNode(rest));
     rules.appendChild(p);
   };
-  pill('Lanes run side by side', '; cards in a lane run one after another');
-  pill(`At most ${plan.machineCap} app lanes at once`, ` (this plan has ${plan.appLaneCount}); lanes without an app build are not counted`);
+  pill('Lanes run side by side', '; cards in a lane run left to right, cards stacked in one column can run at the same time');
+  pill(`At most ${plan.machineCap} app builds at once`, ` (${plan.appStartCount} could start now)`);
   pill('Partly ready', ' = run it now, it stops at the design picks; run the same command again after your picks');
   return rules;
 }
 
 function renderLegend() {
   const legend = el('div', 'rp-legend');
-  for (const [cls, text] of [['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your design picks']]) {
+  for (const [cls, text] of [['running', 'In progress'], ['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your design picks']]) {
     const item = el('span');
     item.appendChild(el('span', `rp-dot rp-dot-${cls}`));
     item.appendChild(document.createTextNode(text));
