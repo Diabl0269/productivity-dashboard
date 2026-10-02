@@ -11,6 +11,8 @@
  *              [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--log-time 30m|2h]
  *              [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
  *              [--blocked] [--waiting-on "..."] [--label L] [--link URL] [--link-label "..."] [--blocked-by T1]
+ *   (add/update also take --lane <slug> and update --clear-lane: run-plan lane)
+ *   runplan [--json]
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
  *              [--color "#RRGGBB"] [--clear-color]
  *              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
@@ -48,11 +50,12 @@ import {
   SECTION_IDS, PRIORITIES, DEFAULT_TICKET_TYPE_ID, normalizeTicketTypes,
   isSectionId, isPriority, isHexColor, validateTasksDoc, normalizeTasksDoc,
   appendHistory, isJiraKey, RECURRENCE_FREQS, ENERGY_VALUES, isEnergy,
-  isHttpsUrl, ensureSections, normalizeMeta, defaultMeta,
+  isHttpsUrl, ensureSections, normalizeMeta, defaultMeta, isLaneSlug,
 } from '../lib/schema.js';
 import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup } from '../lib/backup.js';
+import { computeRunPlan } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 
 // ---------------------------------------------------------------------------
@@ -395,6 +398,7 @@ function cmdGet(argv) {
   if (task.jiraKey) print(`  jira: ${task.jiraKey}`);
   if (task.issueUrl) print(`  issue: ${task.issueUrl}`);
   if (task.project) print(`  project: ${task.project}`);
+  if (task.lane) print(`  lane: ${task.lane}`);
   if (task.energy) print(`  energy: ${task.energy}`);
   if (task.model) print(`  model: ${task.model}`);
   if (task.snoozeUntil) print(`  snoozeUntil: ${task.snoozeUntil}`);
@@ -479,6 +483,7 @@ function cmdAdd(argv) {
     issue:         { type: 'string' },
     project:       { type: 'string' },
     energy:        { type: 'string' },
+    lane:          { type: 'string' },
     model: { type: 'string' },
     snooze:        { type: 'string' },
     decision:      { type: 'string' },
@@ -533,6 +538,7 @@ function cmdAdd(argv) {
   if (values.energy && !isEnergy(values.energy)) {
     die(`invalid --energy "${values.energy}". Valid: ${ENERGY_VALUES.join(', ')}`);
   }
+  assertLane(values.lane);
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
 
@@ -580,6 +586,7 @@ function cmdAdd(argv) {
   if (values.issue) task.issueUrl = values.issue.trim();
   if (values.project) task.project = values.project.trim();
   if (values.energy) task.energy = values.energy;
+  if (values.lane) task.lane = values.lane.trim();
   if (values.model) task.model = normalizeModel(values.model);
   if (values.snooze) task.snoozeUntil = values.snooze;
   if (values.decision) {
@@ -741,6 +748,8 @@ function cmdUpdate(argv) {
     'clear-project': { type: 'boolean' },
     energy:          { type: 'string' },
     'clear-energy':  { type: 'boolean' },
+    lane:            { type: 'string' },
+    'clear-lane':    { type: 'boolean' },
     model: { type: 'string' },
     'clear-model': { type: 'boolean' },
     snooze:          { type: 'string' },
@@ -807,6 +816,7 @@ function cmdUpdate(argv) {
   if (values.energy && !isEnergy(values.energy)) {
     die(`invalid --energy "${values.energy}". Valid: ${ENERGY_VALUES.join(', ')}`);
   }
+  assertLane(values.lane);
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
 
@@ -931,6 +941,14 @@ function cmdUpdate(argv) {
     changed = true;
   } else if (values.energy !== undefined) {
     task.energy = values.energy;
+    changed = true;
+  }
+
+  if (values['clear-lane']) {
+    delete task.lane;
+    changed = true;
+  } else if (values.lane !== undefined) {
+    task.lane = values.lane.trim();
     changed = true;
   }
 
@@ -1505,6 +1523,37 @@ function cmdCapture(argv) {
   return cmdAdd(rest);
 }
 
+/** Reject a --lane value that is not a lowercase slug. */
+function assertLane(value) {
+  if (value !== undefined && !isLaneSlug(String(value).trim())) {
+    die(`invalid --lane "${value}". Use lowercase letters, digits and hyphens`);
+  }
+}
+
+const RUNPLAN_MARK = { ready: '[ready]  ', partial: '[partial]', waiting: '[waiting]' };
+
+/** Run plan: which pinned epics can be launched now, as parallel lanes. */
+function cmdRunPlan(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const plan = computeRunPlan(load());
+  if (values.json) return jsonOut(plan);
+
+  if (plan.lanes.length === 0) {
+    print('No pinned epics. Pin one with: ch tasks plan --pin <id>');
+  }
+  for (const lane of plan.lanes) {
+    print(`Lane: ${lane.lane}`);
+    for (const e of lane.epics) {
+      const wait = e.waitingOn.length ? `  waiting on ${e.waitingOn.join(', ')}` : '';
+      print(`  ${RUNPLAN_MARK[e.state] || e.state} ${e.id}  ${e.title}${wait}`);
+      if (e.picks.length) print(`      picks needed: ${e.picks.join(', ')}`);
+      print(`      ${e.command}`);
+    }
+  }
+  if (plan.doneEpics.length) print(`Done epics: ${plan.doneEpics.join(', ')}`);
+  print(`Machine cap: run at most ${plan.machineCap} epics at once (${plan.readyCount} launchable)`);
+}
+
 /** Today plan: show / pin / unpin / carry unfinished pins. */
 function cmdPlan(argv) {
   const { values } = parse(argv, {
@@ -1708,9 +1757,10 @@ Subcommands:
   get <id> [--json]
   capture "<title>" [--priority medium] [--json]
   plan [--pin T1] [--unpin T1] [--carry] [--json]
+  runplan [--json]
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
-      [--project slug] [--energy deep|shallow|errands|creative]
+      [--project slug] [--energy deep|shallow|errands|creative] [--lane slug]
       [--model "claude-sonnet"] [--snooze YYYY-MM-DD]
       [--decision "..."] [--log-time 30m|2h]
       [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
@@ -1723,6 +1773,7 @@ Subcommands:
              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
              [--jira PROJECT-123] [--clear-jira] [--issue URL] [--clear-issue]
              [--project slug] [--clear-project] [--energy E] [--clear-energy]
+             [--lane slug] [--clear-lane]
              [--model "name"] [--clear-model]
              [--snooze YYYY-MM-DD] [--clear-snooze] [--decision "..."]
              [--log-time 30m|2h] [--set-logged 2h] [--clear-logged]
@@ -1753,6 +1804,7 @@ const SUBCOMMANDS = {
   get:           cmdGet,
   capture:       cmdCapture,
   plan:          cmdPlan,
+  runplan:       cmdRunPlan,
   add:           cmdAdd,
   move:          cmdMove,
   done:          cmdDone,

@@ -36,6 +36,14 @@ export const SECTION_IDS = SECTIONS.map(s => s.id);
 /** Valid priority values. */
 export const PRIORITIES = ['low', 'medium', 'high'];
 
+/** Run-plan lane: lowercase slug (a-z, digits, hyphens). */
+const LANE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** @param {unknown} value */
+export function isLaneSlug(value) {
+  return typeof value === 'string' && LANE_SLUG_RE.test(value);
+}
+
 /** Valid energy contexts for solo focus filtering. */
 export const ENERGY_VALUES = ['deep', 'shallow', 'errands', 'creative'];
 
@@ -231,6 +239,13 @@ export function normalizeTask(task) {
 
   if (task.project === '' || task.project == null) delete task.project;
   else if (typeof task.project === 'string') task.project = task.project.trim();
+
+  // lane (optional run-plan lane slug); empty -> removed, invalid slug kept so validate reports it
+  if (task.lane === '' || task.lane == null) delete task.lane;
+  else if (typeof task.lane === 'string') {
+    task.lane = task.lane.trim();
+    if (task.lane === '') delete task.lane;
+  }
 
   if (task.energy === '' || task.energy == null) delete task.energy;
   else if (typeof task.energy === 'string' && !ENERGY_VALUES.includes(task.energy)) delete task.energy;
@@ -790,6 +805,13 @@ export function validateTasksDoc(doc) {
       // project (optional slug)
       if (task.project !== undefined && task.project !== null && typeof task.project !== 'string') {
         errors.push(`${ref} (id=${task.id ?? '?'}) .project must be a string`);
+      }
+
+      // lane (optional run-plan lane slug)
+      if (task.lane !== undefined && task.lane !== null) {
+        if (typeof task.lane !== 'string' || !isLaneSlug(task.lane)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .lane "${task.lane}" must be a slug (lowercase letters, digits, hyphens)`);
+        }
       }
 
       // energy (optional)

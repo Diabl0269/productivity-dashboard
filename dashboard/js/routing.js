@@ -1,7 +1,7 @@
 // routing.js — URL ↔ dashboard state (History API, /dashboard/* paths)
 
 const MAIN_TABS = new Set([
-  'overview', 'tasks', 'search', 'projects', 'memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'runplan', 'memory', 'settings',
 ]);
 
 /**
