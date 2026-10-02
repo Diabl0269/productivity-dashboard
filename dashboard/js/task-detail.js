@@ -358,6 +358,7 @@ function buildPanels(task) {
 
 function mountWorkPanels(task, body, { showPin = true } = {}) {
   buildSubtasksPanel(task, body, { showPin });
+  buildChecksPanel(task, body);
   buildChildrenPanel(task, body, { showPin });
   buildBlockedByPanel(task, body, { showPin });
 }
@@ -2230,6 +2231,104 @@ function buildSubtasksPanel(task, body, { showPin = false } = {}) {
   }
 }
 
+
+/**
+ * Checks: a per-ticket tick-list separate from subtasks. Ticking never changes
+ * the ticket's status; entries are {text, checked, addedAt}.
+ */
+function buildChecksPanel(task, body) {
+  if (!Array.isArray(task.checks)) task.checks = [];
+
+  const list = document.createElement('div');
+  list.className = 'td-subtasks td-checks';
+
+  task.checks.forEach((c, idx) => {
+    const row = document.createElement('div');
+    row.className = 'td-subtask' + (c.checked ? ' done' : '');
+
+    const cb = document.createElement('span');
+    cb.className = 'checkbox' + (c.checked ? ' checked' : '');
+    cb.setAttribute('role', 'checkbox');
+    cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
+    cb.setAttribute('aria-label', 'Check ' + (idx + 1) + ': ' + (c.text || ''));
+    cb.setAttribute('tabindex', '0');
+    cb.addEventListener('click', () => {
+      c.checked = !c.checked;
+      cb.classList.toggle('checked', c.checked);
+      cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
+      row.classList.toggle('done', c.checked);
+      commit();
+    });
+    cb.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
+    });
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'td-subtask-input td-check-input';
+    input.dataset.idx = String(idx);
+    input.value = c.text || '';
+    input.setAttribute('aria-label', 'Check text ' + (idx + 1));
+    input.placeholder = 'Check text…';
+    let saved = false;
+    const save = () => {
+      if (saved) return;
+      saved = true;
+      const v = input.value.trim();
+      if (v) {
+        if (v !== c.text) { c.text = v; commit(); }
+      } else {
+        task.checks.splice(idx, 1);
+        commit();
+        openTaskDetail(task, { focusTitle: false });
+      }
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      else if (e.key === 'Escape') { saved = true; input.value = c.text || ''; input.blur(); }
+    });
+    input.addEventListener('blur', save);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'td-subtask-remove';
+    remove.setAttribute('aria-label', 'Remove check ' + (idx + 1));
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      task.checks.splice(idx, 1);
+      commit();
+      openTaskDetail(task, { focusTitle: false });
+    });
+
+    row.appendChild(cb);
+    row.appendChild(input);
+    row.appendChild(remove);
+    list.appendChild(row);
+  });
+
+  if (task.checks.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'td-subtasks-empty';
+    empty.textContent = 'No checks yet';
+    list.appendChild(empty);
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'td-add-subtask';
+  addBtn.textContent = '+ Add check';
+  addBtn.addEventListener('click', () => {
+    task.checks.push({ text: '', checked: false, addedAt: new Date().toISOString() });
+    openTaskDetail(task, { focusTitle: false });
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.td-check-input[data-idx="${task.checks.length - 1}"]`);
+      if (el) el.focus();
+    });
+  });
+  list.appendChild(addBtn);
+
+  body.appendChild(sectionPanel('Checks', list, { panelId: 'checks', task, showPin: false }));
+}
 
 /* ── Init: wire up the shared overlay chrome ──────────────────── */
 

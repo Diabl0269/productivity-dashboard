@@ -28,6 +28,8 @@
  *              [--add-subtask "text"] [--check-subtask N] [--uncheck-subtask N]
  *              [--remove-subtask N] [--clear-subtasks]
  *              [--edit-subtask N --subtask-text "..."]
+ *              [--add-check "text"] [--check-check N] [--uncheck-check N]
+ *              [--remove-check N] [--clear-checks]
  *   set-priority <id> <low|medium|high>
  *   next-id
  *   dump [--active] [--json]
@@ -152,6 +154,7 @@ function spawnRecurringNext(doc, completedTask, today) {
     created: today,
     updated: null,
     subtasks: (completedTask.subtasks || []).map(st => ({ text: st.text, checked: false })),
+    checks: [],
     recurrence: {
       freq: completedTask.recurrence.freq,
       interval: completedTask.recurrence.interval > 0 ? completedTask.recurrence.interval : 1,
@@ -301,6 +304,7 @@ function docToDashboardShape(doc) {
       description: taskDescription(t),
       checked: t.checked,
       subtasks: t.subtasks || [],
+      checks: t.checks || [],
       created: t.created || null,
       updated: t.updated || null,
       priority: t.priority,
@@ -465,6 +469,12 @@ function cmdGet(argv) {
       print(`  ${i + 1}. [${st.checked ? 'x' : ' '}] ${st.text}`);
     });
   }
+  if (Array.isArray(task.checks) && task.checks.length > 0) {
+    print(`  Checks (${task.checks.filter(c => c.checked).length}/${task.checks.length}):`);
+    task.checks.forEach((c, i) => {
+      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}`);
+    });
+  }
   print(`  created: ${task.created || 'n/a'}  updated: ${task.updated || 'n/a'}`);
 }
 
@@ -576,6 +586,7 @@ function cmdAdd(argv) {
     created: todayStr(),
     updated: null,
     subtasks: [],
+    checks: [],
   };
   if (description) task.description = description;
   if (values.parent) task.parentId = values.parent;
@@ -792,6 +803,11 @@ function cmdUpdate(argv) {
     'clear-subtasks': { type: 'boolean' },
     'edit-subtask':  { type: 'string' },  // N (1-based); pairs with --subtask-text
     'subtask-text':  { type: 'string' },
+    'add-check':     { type: 'string', multiple: true },
+    'check-check':   { type: 'string' },  // N (1-based) as string
+    'uncheck-check': { type: 'string' },
+    'remove-check':  { type: 'string' },
+    'clear-checks':  { type: 'boolean' },
     section:         { type: 'string',  short: 's' },
     uncheck:         { type: 'boolean' }, // reopen a task that was marked done
     check:           { type: 'boolean' }, // mark task checked (triggers recurrence spawn)
@@ -1221,6 +1237,34 @@ function cmdUpdate(argv) {
     changed = true;
   } else if (values['subtask-text'] !== undefined) {
     die('--subtask-text requires --edit-subtask N');
+  }
+
+  if (values['clear-checks']) {
+    task.checks = [];
+    changed = true;
+  } else if (values['remove-check'] !== undefined) {
+    const n = parseInt(values['remove-check'], 10);
+    if (!Array.isArray(task.checks) || isNaN(n) || n < 1 || n > task.checks.length) {
+      die(`--remove-check N must be between 1 and ${(task.checks || []).length}`);
+    }
+    task.checks.splice(n - 1, 1);
+    changed = true;
+  }
+  if (values['add-check'] && values['add-check'].length) {
+    if (!Array.isArray(task.checks)) task.checks = [];
+    for (const text of values['add-check']) {
+      task.checks.push({ text, checked: false, addedAt: new Date().toISOString() });
+    }
+    changed = true;
+  }
+  for (const [flag, state] of [['check-check', true], ['uncheck-check', false]]) {
+    if (values[flag] === undefined) continue;
+    const n = parseInt(values[flag], 10);
+    if (isNaN(n) || n < 1 || n > (task.checks || []).length) {
+      die(`--${flag} N must be between 1 and ${(task.checks || []).length}`);
+    }
+    task.checks[n - 1].checked = state;
+    changed = true;
   }
 
   if (!changed) {
@@ -1789,6 +1833,8 @@ Subcommands:
              [--add-blocked-by T1] [--remove-blocked-by T1] [--clear-blocked-by]
              [--add-subtask "text"] [--check-subtask N] [--uncheck-subtask N]
              [--remove-subtask N] [--clear-subtasks]
+             [--add-check "text"] [--check-check N] [--uncheck-check N]
+             [--remove-check N] [--clear-checks]
   set-priority <id> <low|medium|high>
   next-id
   dump [--active]

@@ -546,6 +546,7 @@ export { TASK_ID_RE };
  *       created is 'YYYY-MM-DD' or null/undefined/empty (should be set — warned, not errored)
  *       updated is 'YYYY-MM-DD' or null/undefined/empty
  *       subtasks is array of {text:string, checked:boolean}
+ *       checks (optional) is array of {text:string, checked:boolean, addedAt:ISO string}
  *       type (optional) is a known ticket-type id (defaults to "task")
  *       parentId (optional) is a task id that exists and is not self
  *       description (optional) free-text; legacy `note` is also accepted
@@ -735,6 +736,26 @@ export function validateTasksDoc(doc) {
           }
           if (typeof st.checked !== 'boolean') {
             errors.push(`${ref}.subtasks[${sti}].checked must be a boolean`);
+          }
+        }
+      }
+
+      // checks (optional tick-list, separate from subtasks)
+      if (task.checks !== undefined) {
+        if (!Array.isArray(task.checks)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .checks must be an array`);
+        } else {
+          for (let ci = 0; ci < task.checks.length; ci++) {
+            const c = task.checks[ci];
+            if (!c || typeof c !== 'object') {
+              errors.push(`${ref}.checks[${ci}] must be an object`);
+              continue;
+            }
+            if (typeof c.text !== 'string') errors.push(`${ref}.checks[${ci}].text must be a string`);
+            if (typeof c.checked !== 'boolean') errors.push(`${ref}.checks[${ci}].checked must be a boolean`);
+            if (c.addedAt !== undefined && typeof c.addedAt !== 'string') {
+              errors.push(`${ref}.checks[${ci}].addedAt must be an ISO string`);
+            }
           }
         }
       }

@@ -328,7 +328,7 @@ The `serve.js` server provides:
 
 Canonical task store (gitignored). Copy `tasks.example.json`. Full schema: [`cli/README.md`](cli/README.md).
 
-Notable optional fields: `dueDate`, `blocked`, `waitingOn`, `assignee`, `estimateMinutes` (minutes — **not** story points; display as `30m`/`2h`/`1d`), `labels`, `links`, `blockedBy`, `history`.
+Notable optional fields: `dueDate`, `blocked`, `waitingOn`, `assignee`, `estimateMinutes` (minutes — **not** story points; display as `30m`/`2h`/`1d`), `labels`, `links`, `blockedBy`, `history`, `checks` (per-ticket tick-list `{text, checked, addedAt}`, separate from subtasks and never blocks done; `ch tasks update T7 --add-check "text" --check-check 1`).
 
 ```bash
 ch tasks add "Ship release notes" --due 2026-09-01 --estimate 2h --assignee alex --label docs
