@@ -27,65 +27,107 @@ function mkDoc(tasks, pinned) {
     sections: [{ id: 'todo', name: 'Todo', tasks }],
   };
 }
-const find = (plan, id) => plan.lanes.flatMap(l => l.epics).find(e => e.id === id);
+const lane = (plan, name) => plan.lanes.find(l => l.lane === name);
+const ids = cards => cards.map(c => `${c.id}${c.isRest ? '+' : ''}`);
 
-test('ready epic lists open children in dependency order', () => {
-  const doc = mkDoc([
-    epic('E1'),
-    task('T3', { parentId: 'E1', blockedBy: ['T2'] }),
-    task('T2', { parentId: 'E1' }),
-    task('T4', { parentId: 'E1', checked: true }),
-  ], ['E1']);
-  const e = find(computeRunPlan(doc), 'E1');
-  assert.equal(e.state, 'ready');
-  assert.deepEqual(e.tickets.map(t => t.id), ['T2', 'T3']);
-  assert.deepEqual(e.tickets[1].blockedBy, ['T2']);
-  assert.equal(e.command, '/ship-task E1');
+test('pick gate: Co-task title or label only; Design: is not a gate', () => {
+  assert.equal(isPickGate({ title: 'Co-task: choose' }), true);
+  assert.equal(isPickGate({ title: 'co-TASK : x' }), true);
+  assert.equal(isPickGate({ title: 'x', labels: ['Co-Task'] }), true);
+  assert.equal(isPickGate({ title: 'Design: colours' }), false);
+  assert.equal(isPickGate({ title: 'x', labels: ['design'] }), false);
 });
 
-test('partial: child blocked only by a Co-task pick gate', () => {
-  const doc = mkDoc([
-    epic('E1'),
-    task('T2', { parentId: 'E1', title: 'Co-task: pick a vendor' }),
-    task('T3', { parentId: 'E1', blockedBy: ['T2'] }),
-    task('T4', { parentId: 'E1' }),
-  ], ['E1']);
+test('ready epic: now card with ticket count and command', () => {
+  const doc = mkDoc([epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1' }), task('T3', { parentId: 'E1', checked: true })], ['E1']);
   const plan = computeRunPlan(doc);
-  const e = find(plan, 'E1');
-  assert.equal(e.state, 'partial');
-  assert.deepEqual(e.picks, ['T2']);
-  assert.equal(e.tickets.find(t => t.id === 'T2').isPick, true);
-  assert.equal(plan.readyCount, 1);
+  const [c] = lane(plan, 'a').now;
+  assert.equal(c.state, 'ready');
+  assert.equal(c.openTickets, 1);
+  assert.equal(c.command, '/ship-task E1');
+  assert.equal(lane(plan, 'a').later.length, 0);
 });
 
-test('design label counts as a pick gate; plain blocker does not make partial', () => {
-  assert.equal(isPickGate({ title: 'x', labels: ['Design'] }), true);
-  assert.equal(isPickGate({ title: 'Design: colours' }), true);
-  assert.equal(isPickGate({ title: 'Plain' }), false);
+test('same-lane blocker is ordering, not waiting', () => {
   const doc = mkDoc([
-    epic('E1'),
-    task('T2', { parentId: 'E1' }),
-    task('T3', { parentId: 'E1', blockedBy: ['T2'] }),
-  ], ['E1']);
-  assert.equal(find(computeRunPlan(doc), 'E1').state, 'ready');
+    epic('E1', { lane: 'a', blockedBy: ['E2'] }), task('T11', { parentId: 'E1' }),
+    epic('E2', { lane: 'a' }), task('T12', { parentId: 'E2' }),
+  ], ['E1', 'E2']);
+  const l = lane(computeRunPlan(doc), 'a');
+  assert.deepEqual(ids(l.now), ['E2', 'E1']);
+  assert.equal(l.later.length, 0);
+  assert.match(l.now[1].why, /Runs after E2/);
 });
 
-test('waiting: epic-level blockedBy an open epic, and flips when it closes', () => {
+test('cross-lane blocker -> later, and flips to now when it closes', () => {
   const tasks = [
-    epic('E1'), task('T2', { parentId: 'E1' }),
-    epic('E5', { blockedBy: ['E1'] }), task('T6', { parentId: 'E5' }),
+    epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1' }),
+    epic('E3', { lane: 'b', blockedBy: ['E1'] }), task('T4', { parentId: 'E3' }),
   ];
-  const plan = computeRunPlan(mkDoc(tasks, ['E1', 'E5']));
-  assert.equal(find(plan, 'E5').state, 'waiting');
-  assert.deepEqual(find(plan, 'E5').waitingOn, ['E1']);
-  assert.equal(plan.readyCount, 1);
-  tasks[1].checked = true; // E1's only child done -> E1 done
-  const after = computeRunPlan(mkDoc(tasks, ['E1', 'E5']));
-  assert.equal(find(after, 'E5').state, 'ready');
+  const plan = computeRunPlan(mkDoc(tasks, ['E1', 'E3']));
+  assert.deepEqual(ids(lane(plan, 'b').later), ['E3']);
+  assert.equal(lane(plan, 'b').later[0].state, 'later');
+  assert.match(lane(plan, 'b').later[0].why, /Needs E1/);
+  tasks[1].checked = true;
+  const after = computeRunPlan(mkDoc(tasks, ['E1', 'E3']));
+  assert.deepEqual(ids(lane(after, 'b').now), ['E3']);
   assert.deepEqual(after.doneEpics, ['E1']);
 });
 
-test('done: all children done, or epic itself checked', () => {
+test('cross-lane child-level blocker also makes the epic later', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1' }),
+    epic('E3', { lane: 'b' }), task('T4', { parentId: 'E3', blockedBy: ['T2'] }),
+  ], ['E1', 'E3']);
+  assert.deepEqual(ids(lane(computeRunPlan(doc), 'b').later), ['E3']);
+});
+
+test('partial renders twice with the same command', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a' }),
+    task('T2', { parentId: 'E1', title: 'Co-task: pick palette' }),
+    task('T3', { parentId: 'E1', blockedBy: ['T2'] }),
+    task('T4', { parentId: 'E1' }),
+  ], ['E1']);
+  const l = lane(computeRunPlan(doc), 'a');
+  assert.equal(l.now[0].state, 'partial');
+  assert.equal(l.now[0].openTickets, 1);
+  assert.equal(l.later[0].state, 'later');
+  assert.equal(l.later[0].isRest, true);
+  assert.equal(l.later[0].openTickets, 1);
+  assert.equal(l.now[0].command, l.later[0].command);
+  assert.match(l.now[0].why, /Stops at your T2 pick/);
+  assert.match(l.later[0].why, /Needs your T2 pick/);
+});
+
+test('all tickets gated by an open pick -> later', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a' }),
+    task('T2', { parentId: 'E1', labels: ['co-task'] }),
+    task('T3', { parentId: 'E1', blockedBy: ['T2'] }),
+  ], ['E1']);
+  const l = lane(computeRunPlan(doc), 'a');
+  assert.equal(l.now.length, 0);
+  assert.deepEqual(ids(l.later), ['E1']);
+  assert.match(l.later[0].why, /your T2 pick/);
+});
+
+test('in-lane blocker that is later makes the dependant later', () => {
+  const base = [
+    epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1' }),
+    epic('E3', { lane: 'b' }), task('T4', { parentId: 'E3' }),
+    epic('E5', { lane: 'b', blockedBy: ['E3'] }), task('T6', { parentId: 'E5' }),
+  ];
+  const pins = ['E1', 'E3', 'E5'];
+  const l = lane(computeRunPlan(mkDoc(base, pins)), 'b');
+  assert.deepEqual(ids(l.now), ['E3', 'E5']);
+  const blocked = base.map(t => (t.id === 'E3' ? { ...t, blockedBy: ['E1'] } : t));
+  const l2 = lane(computeRunPlan(mkDoc(blocked, pins)), 'b');
+  assert.deepEqual(ids(l2.later), ['E3', 'E5']);
+  assert.equal(l2.now.length, 0);
+});
+
+test('done epics are counted and skipped', () => {
   const doc = mkDoc([
     epic('E1'), task('T2', { parentId: 'E1', checked: true }),
     epic('E3', { checked: true }),
@@ -93,68 +135,75 @@ test('done: all children done, or epic itself checked', () => {
   ], ['E1', 'E3', 'E4']);
   const plan = computeRunPlan(doc);
   assert.deepEqual(plan.doneEpics, ['E1', 'E3']);
-  assert.deepEqual(plan.lanes.flatMap(l => l.epics.map(e => e.id)), ['E4']);
+  assert.deepEqual(plan.lanes.flatMap(l => ids(l.now)), ['E4']);
 });
 
-test('cross-epic child blocker makes the epic wait on the owning epic', () => {
+test('design lane appears when picks exist, with a prompt card and a human card', () => {
   const doc = mkDoc([
-    epic('E1'), task('T2', { parentId: 'E1' }),
-    epic('E3'), task('T4', { parentId: 'E3', blockedBy: ['T2'] }),
-  ], ['E1', 'E3']);
-  const e = find(computeRunPlan(doc), 'E3');
-  assert.equal(e.state, 'waiting');
-  assert.deepEqual(e.waitingOn, ['E1']);
-});
-
-test('subtasks of children belong to the epic', () => {
-  const doc = mkDoc([
-    epic('E1'), task('T2', { parentId: 'E1', checked: true }),
-    task('T3', { parentId: 'T2' }),
-  ], ['E1']);
-  const e = find(computeRunPlan(doc), 'E1');
-  assert.deepEqual(e.tickets.map(t => t.id), ['T3']);
-});
-
-test('lanes: grouped by epic lane, ordered by after, first appearance, tie by id', () => {
-  const doc = mkDoc([
-    epic('E1', { lane: 'alpha', blockedBy: ['E4'] }), task('T11', { parentId: 'E1' }),
-    epic('E2', { lane: 'alpha' }), task('T12', { parentId: 'E2' }),
-    epic('E3', { lane: 'beta' }), task('T13', { parentId: 'E3' }),
-    epic('E4', { lane: 'alpha' }), task('T14', { parentId: 'E4' }),
-  ], ['E1', 'E3', 'E2', 'E4']);
+    epic('F1', { lane: 'a' }),
+    task('F2', { parentId: 'F1', title: 'Co-task: pick A' }),
+    task('F3', { parentId: 'F1', blockedBy: ['F2'] }),
+    task('F4', { parentId: 'F1', labels: ['Co-task'], title: 'pick B' }),
+  ], ['F1']);
   const plan = computeRunPlan(doc);
-  assert.deepEqual(plan.lanes.map(l => l.lane), ['alpha', 'beta']);
-  assert.deepEqual(plan.lanes[0].epics.map(e => e.id), ['E2', 'E4', 'E1']);
+  assert.equal(plan.lanes[0].lane, 'design');
+  assert.equal(plan.lanes[0].name, 'Design round');
+  assert.equal(plan.lanes[0].needsBuild, false);
+  const [prompt, human] = plan.lanes[0].now;
+  assert.equal(prompt.title, 'Draw the 2 pick canvases');
+  assert.match(prompt.command, /^Draw the design canvases for F2 and F4 \(one board per ticket/);
+  assert.match(prompt.command, /then stop for my picks\.$/);
+  assert.equal(human.command, null);
+  assert.deepEqual(plan.picks.map(p => ({ id: p.id, gates: p.gates })), [{ id: 'F2', gates: ['F1'] }, { id: 'F4', gates: ['F1'] }]);
+  assert.equal(computeRunPlan(mkDoc([epic('E1'), task('T2', { parentId: 'E1' })], ['E1'])).lanes.some(l => l.lane === 'design'), false);
 });
 
-test('epics without a lane go to "unassigned"', () => {
-  const doc = mkDoc([epic('E1'), task('T2', { parentId: 'E1' })], ['E1']);
-  assert.deepEqual(computeRunPlan(doc).lanes.map(l => l.lane), ['unassigned']);
+test('Design: ticket is built by an agent: no pick, no design lane', () => {
+  const doc = mkDoc([epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1', title: 'Design: layout' }), task('T3', { parentId: 'E1', blockedBy: ['T2'] })], ['E1']);
+  const plan = computeRunPlan(doc);
+  assert.equal(plan.picks.length, 0);
+  assert.equal(plan.lanes[0].lane, 'a');
+  assert.equal(plan.lanes[0].now[0].state, 'ready');
 });
 
-test('cycles do not crash and keep every ticket and epic', () => {
+test('epics without a lane go to unassigned, shown as "No lane yet"', () => {
+  const l = computeRunPlan(mkDoc([epic('E1'), task('T2', { parentId: 'E1' })], ['E1'])).lanes[0];
+  assert.equal(l.lane, 'unassigned');
+  assert.equal(l.name, 'No lane yet');
+});
+
+test('needsBuild and appLaneCount: FRO prefix or agentsynth/frontend project', () => {
   const doc = mkDoc([
-    epic('E1', { lane: 'a', blockedBy: ['E2'] }), task('T3', { parentId: 'E1', blockedBy: ['T4'] }),
-    task('T4', { parentId: 'E1', blockedBy: ['T3'] }),
+    epic('FRO1', { lane: 'app' }), task('FRO2', { parentId: 'FRO1' }),
+    epic('E3', { lane: 'proj', project: 'agentsynth' }), task('T4', { parentId: 'E3' }),
+    epic('E5', { lane: 'web', project: 'website' }), task('T6', { parentId: 'E5' }),
+  ], ['FRO1', 'E3', 'E5']);
+  const plan = computeRunPlan(doc);
+  assert.equal(lane(plan, 'app').needsBuild, true);
+  assert.equal(lane(plan, 'proj').needsBuild, true);
+  assert.equal(lane(plan, 'web').needsBuild, false);
+  assert.equal(plan.appLaneCount, 2);
+  assert.equal(plan.machineCap, 3);
+  assert.equal(computeRunPlan(doc, { machineCap: 5 }).machineCap, 5);
+});
+
+test('cycles do not crash and keep every epic', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a', blockedBy: ['E2'] }), task('T3', { parentId: 'E1' }),
     epic('E2', { lane: 'a', blockedBy: ['E1'] }), task('T5', { parentId: 'E2' }),
-  ], ['E1', 'E2']);
+    epic('E6', { lane: 'b', blockedBy: ['E7'] }), task('T8', { parentId: 'E6', blockedBy: ['T9'] }), task('T9', { parentId: 'E6', blockedBy: ['T8'] }),
+    epic('E7', { lane: 'c', blockedBy: ['E6'] }), task('T10', { parentId: 'E7' }),
+  ], ['E1', 'E2', 'E6', 'E7']);
   const plan = computeRunPlan(doc);
-  assert.equal(plan.lanes[0].epics.length, 2);
-  assert.deepEqual(find(plan, 'E1').tickets.map(t => t.id), ['T3', 'T4']);
-});
-
-test('unpinned epics are ignored; machineCap is configurable', () => {
-  const doc = mkDoc([epic('E1'), task('T2', { parentId: 'E1' }), epic('E3')], ['E1']);
-  assert.equal(computeRunPlan(doc).machineCap, 3);
-  const plan = computeRunPlan(doc, { machineCap: 5 });
-  assert.equal(plan.machineCap, 5);
-  assert.equal(plan.lanes.length, 1);
+  const all = plan.lanes.flatMap(l => [...l.now, ...l.later].map(c => c.id));
+  for (const id of ['E1', 'E2', 'E6', 'E7']) assert.ok(all.includes(id), id);
 });
 
 test('CLI: ch tasks runplan --json and text', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-runplan-'));
   const doc = mkDoc([
-    epic('T1', { lane: 'alpha' }), task('T2', { parentId: 'T1' }),
+    epic('T1', { lane: 'alpha' }), task('T2', { parentId: 'T1', title: 'Co-task: pick' }),
+    task('T3', { parentId: 'T1', blockedBy: ['T2'] }), task('T4', { parentId: 'T1' }),
   ], ['T1']);
   fs.writeFileSync(path.join(dir, 'tasks.json'), JSON.stringify(doc));
   const run = args => spawnSync(process.execPath, [CH_SCRIPT, 'tasks', ...args], {
@@ -162,11 +211,17 @@ test('CLI: ch tasks runplan --json and text', () => {
   });
   const j = run(['runplan', '--json']);
   assert.equal(j.status, 0, j.stderr);
-  assert.equal(JSON.parse(j.stdout).lanes[0].epics[0].command, '/ship-task T1');
+  const parsed = JSON.parse(j.stdout);
+  assert.equal(parsed.lanes[0].lane, 'design');
+  assert.equal(parsed.lanes[1].now[0].command, '/ship-task T1');
+  assert.equal(parsed.picks[0].id, 'T2');
   const t = run(['runplan']);
   assert.equal(t.status, 0, t.stderr);
+  assert.match(t.stdout, /Lane: Design round/);
   assert.match(t.stdout, /Lane: alpha/);
+  assert.match(t.stdout, /after your picks/);
   assert.match(t.stdout, /\/ship-task T1/);
+  assert.match(t.stdout, /At most 3 app lanes/);
 });
 
 test('dashboard tasks.json round-trip preserves lane', async () => {

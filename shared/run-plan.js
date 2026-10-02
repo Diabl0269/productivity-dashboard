@@ -1,5 +1,5 @@
 /**
- * Run plan — which pinned epics can be launched now, as parallel lanes.
+ * Run plan — which pinned epics can be launched now, as parallel lanes (rows).
  * Pure module shared by the CLI (`ch tasks runplan`) and the dashboard "Run plan" tab.
  *
  * Input is the tasks.json document shape: { sections: [{ id, tasks: [...] }], meta }.
@@ -7,6 +7,7 @@
 
 export const DEFAULT_MACHINE_CAP = 3;
 export const UNASSIGNED_LANE = 'unassigned';
+export const DESIGN_LANE = 'design';
 
 /** Natural id order: T2 before T10, prefix first. */
 function compareIds(a, b) {
@@ -37,14 +38,24 @@ function stableTopo(ids, depsOf) {
 }
 
 /**
- * A "pick" gate is a ticket that needs the human to decide or act before dependants can
- * proceed: a title starting "Co-task:" or "Design:" (case-insensitive), or a label
- * "design" / "co-task" (case-insensitive).
+ * A "pick" gate is a ticket the human must act on before dependants can proceed: a title
+ * starting "Co-task:" (case-insensitive) or a label "co-task". A "Design:" ticket is NOT a
+ * pick; an agent builds it.
  */
 export function isPickGate(task) {
-  const title = String(task?.title || '');
-  if (/^\s*(co-task|design)\s*:/i.test(title)) return true;
-  return (task?.labels || []).some(l => /^(design|co-task)$/i.test(String(l).trim()));
+  if (/^\s*co-task\s*:/i.test(String(task?.title || ''))) return true;
+  return (task?.labels || []).some(l => /^co-task$/i.test(String(l).trim()));
+}
+
+/** "A", "A and B", "A, B and C". */
+function joinList(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/** An epic needs an app build when its id starts with FRO or its project is agentsynth/frontend. */
+function needsBuildEpic(epic) {
+  return /^FRO\d/.test(epic.id) || epic.project === 'agentsynth' || epic.project === 'frontend';
 }
 
 /**
@@ -53,13 +64,9 @@ export function isPickGate(task) {
  */
 export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   const byId = new Map();
-  const statusOf = new Map();
   for (const sec of doc?.sections || []) {
     for (const t of sec.tasks || []) {
-      if (t && t.id && !byId.has(t.id)) {
-        byId.set(t.id, t);
-        statusOf.set(t.id, sec.id);
-      }
+      if (t && t.id && !byId.has(t.id)) byId.set(t.id, t);
     }
   }
   const isOpen = id => byId.has(id) && !byId.get(id).checked;
@@ -71,7 +78,6 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     if (!pinned.includes(id) && byId.get(id)?.type === 'epic') pinned.push(id);
   }
 
-  // Descendants (children and their subtasks) per pinned epic; cycle-safe.
   const childrenOf = new Map();
   for (const t of byId.values()) {
     if (!t.parentId) continue;
@@ -93,8 +99,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   }
 
   const doneEpics = [];
-  const live = []; // pinned, not done, in pin order
-  const members = new Map(); // epicId -> Set of descendant ids
+  const live = [];
+  const members = new Map();
   for (const id of pinned) {
     const kids = descendants(id);
     const done = byId.get(id).checked || (kids.length > 0 && kids.every(k => !isOpen(k)));
@@ -102,81 +108,165 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     live.push(id);
     members.set(id, new Set(kids));
   }
-
-  // Which live epic owns a ticket (the epic itself or anything under it).
   const owningEpic = id => live.find(e => e === id || members.get(e).has(id)) || null;
+  const laneOf = id => byId.get(id).lane || UNASSIGNED_LANE;
 
-  const epics = new Map();
+  // Open pick gates under live epics, and which epics they gate.
+  const picks = new Map(); // pickId -> { id, title, gates: [] }
   for (const epicId of live) {
-    const epic = byId.get(epicId);
-    const kids = [...members.get(epicId)].filter(isOpen);
-    const kidSet = new Set(kids);
-
-    const waitingOn = [];
-    const addWait = id => { if (id !== epicId && !waitingOn.includes(id)) waitingOn.push(id); };
-    for (const b of openBlockers(epic)) {
-      if (kidSet.has(b) || doneEpics.includes(b)) continue;
-      addWait(owningEpic(b) || b);
-    }
-    for (const k of kids) {
-      for (const b of openBlockers(byId.get(k))) {
-        const owner = owningEpic(b);
-        if (owner && owner !== epicId) addWait(owner);
+    for (const k of members.get(epicId)) {
+      if (isOpen(k) && isPickGate(byId.get(k)) && !picks.has(k)) {
+        picks.set(k, { id: k, title: byId.get(k).title || '', gates: [] });
       }
     }
+  }
 
-    const picks = [];
-    let partial = false;
-    for (const k of kids) {
-      const blockers = openBlockers(byId.get(k));
-      if (blockers.length && blockers.every(b => isPickGate(byId.get(b)))) {
-        partial = true;
-        for (const b of blockers) if (!picks.includes(b)) picks.push(b);
-      }
+  const info = new Map();
+  for (const epicId of live) {
+    const kidSet = new Set([...members.get(epicId)].filter(isOpen));
+    const work = [...kidSet].filter(k => !picks.has(k));
+
+    // Epic dependencies: epic-level blockers and child-level blockers inside other live epics.
+    const deps = [];
+    const addDep = id => { if (id && id !== epicId && !deps.includes(id)) deps.push(id); };
+    for (const b of openBlockers(byId.get(epicId))) {
+      if (!kidSet.has(b)) addDep(owningEpic(b));
+    }
+    for (const k of kidSet) {
+      for (const b of openBlockers(byId.get(k))) addDep(owningEpic(b));
     }
 
-    const ordered = stableTopo(kids, id => openBlockers(byId.get(id)).filter(b => kidSet.has(b)));
-    const tickets = ordered.map(id => {
-      const t = byId.get(id);
-      return {
-        id,
-        title: t.title || '',
-        status: statusOf.get(id),
-        blockedBy: openBlockers(t),
-        isPick: isPickGate(t),
-      };
-    });
+    // A work ticket is gated when an open pick (or a gated ticket) blocks it.
+    const gatedMemo = new Map();
+    const gatingPicks = new Set();
+    function gated(id, trail = new Set()) {
+      if (gatedMemo.has(id)) return gatedMemo.get(id);
+      if (trail.has(id)) return false;
+      trail.add(id);
+      let g = false;
+      for (const b of openBlockers(byId.get(id))) {
+        if (picks.has(b)) { g = true; gatingPicks.add(b); } else if (kidSet.has(b) && gated(b, trail)) g = true;
+      }
+      gatedMemo.set(id, g);
+      return g;
+    }
+    const gatedWork = work.filter(k => gated(k));
+    const freeWork = work.filter(k => !gatedWork.includes(k));
+    for (const p of gatingPicks) {
+      const gates = picks.get(p).gates;
+      if (!gates.includes(epicId)) gates.push(epicId);
+    }
+    // Picks that gate nothing yet still hold up the epic they live in.
+    for (const k of kidSet) if (picks.has(k) && !picks.get(k).gates.includes(epicId)) picks.get(k).gates.push(epicId);
 
-    epics.set(epicId, {
-      id: epicId,
-      title: epic.title || '',
-      state: waitingOn.length ? 'waiting' : partial ? 'partial' : 'ready',
-      waitingOn,
-      picks,
-      tickets,
-      command: `/ship-task ${epicId}`,
-      lane: epic.lane || UNASSIGNED_LANE,
+    let phase;
+    if (work.length === 0) phase = [...kidSet].some(k => picks.has(k)) ? 'later' : 'now';
+    else if (freeWork.length === 0) phase = 'later';
+    else if (gatedWork.length > 0) phase = 'partial';
+    else phase = 'now';
+
+    info.set(epicId, {
+      epicId, deps, phase, work, freeWork, gatedWork,
+      pickIds: [...gatingPicks].sort(compareIds),
+      epicPicks: [...kidSet].filter(k => picks.has(k)).sort(compareIds),
     });
   }
 
-  // Group by lane (first appearance in pin order), order epics within a lane by "after".
+  const card = (epicId, state, isRest, openTickets, why) => ({
+    id: epicId,
+    title: byId.get(epicId).title || '',
+    state,
+    isRest,
+    openTickets,
+    why,
+    command: `/ship-task ${epicId}`,
+  });
+
   const laneNames = [];
   for (const id of live) {
-    const lane = epics.get(id).lane;
-    if (!laneNames.includes(lane)) laneNames.push(lane);
+    const l = laneOf(id);
+    if (!laneNames.includes(l)) laneNames.push(l);
   }
+
   const lanes = laneNames.map(lane => {
-    const ids = live.filter(id => epics.get(id).lane === lane);
-    const ordered = stableTopo(ids, id => epics.get(id).waitingOn);
+    const ids = live.filter(id => laneOf(id) === lane);
+    const ordered = stableTopo(ids, id => info.get(id).deps.filter(d => laneOf(d) === lane));
+    const now = [];
+    const later = [];
+    const resolved = new Map();
+    for (const id of ordered) {
+      const i = info.get(id);
+      const crossLane = i.deps.filter(d => laneOf(d) !== lane);
+      const sameLane = i.deps.filter(d => laneOf(d) === lane);
+      const laterSameLane = sameLane.filter(d => resolved.get(d) === 'later');
+      const pickList = i.pickIds.length ? i.pickIds : i.epicPicks;
+      const pickText = pickList.length
+        ? `your ${joinList(pickList)} ${pickList.length > 1 ? 'picks' : 'pick'}` : '';
+      let phase = i.phase;
+      if (crossLane.length || laterSameLane.length) phase = 'later';
+      resolved.set(id, phase);
+
+      if (phase === 'later') {
+        const needs = joinList([...crossLane, ...laterSameLane, ...(pickText ? [pickText] : [])]);
+        later.push(card(id, 'later', false, i.work.length, needs ? `Needs ${needs}` : 'Needs the card before it'));
+      } else if (phase === 'partial') {
+        now.push(card(id, 'partial', false, i.freeWork.length, `Stops at ${pickText}`));
+        later.push(card(id, 'later', true, i.gatedWork.length, `Needs ${pickText}`));
+      } else {
+        now.push(card(id, 'ready', false, i.work.length,
+          sameLane.length ? `Runs after ${joinList(sameLane)}` : 'Nothing blocking it'));
+      }
+    }
     return {
       lane,
-      epics: ordered.map(id => {
-        const { lane: _lane, ...rest } = epics.get(id);
-        return rest;
-      }),
+      name: lane === UNASSIGNED_LANE ? 'No lane yet' : lane,
+      needsBuild: ids.some(id => needsBuildEpic(byId.get(id))),
+      now,
+      later,
     };
   });
 
-  const readyCount = [...epics.values()].filter(e => e.state !== 'waiting').length;
-  return { lanes, doneEpics, machineCap, readyCount };
+  const pickList = [...picks.values()]
+    .map(p => ({ ...p, gates: p.gates.sort(compareIds) }))
+    .sort((a, b) => compareIds(a.id, b.id));
+
+  if (pickList.length) {
+    const ids = pickList.map(p => p.id);
+    const prompt = `Draw the design canvases for ${joinList(ids)} (one board per ticket, options plus a recommended default, Design System components), link each canvas on its ticket, then stop for my picks.`;
+    lanes.unshift({
+      lane: DESIGN_LANE,
+      name: 'Design round',
+      needsBuild: false,
+      now: [
+        {
+          id: 'design-canvases',
+          title: `Draw the ${ids.length} pick ${ids.length === 1 ? 'canvas' : 'canvases'}`,
+          state: 'ready',
+          isRest: false,
+          openTickets: ids.length,
+          why: 'An agent draws one board per pick ticket',
+          command: prompt,
+          isPrompt: true,
+        },
+        {
+          id: 'design-picks',
+          title: 'You: pick on each canvas',
+          state: 'pick',
+          isRest: false,
+          openTickets: ids.length,
+          why: `Picks: ${joinList(ids)}`,
+          command: null,
+        },
+      ],
+      later: [],
+    });
+  }
+
+  return {
+    lanes,
+    doneEpics,
+    picks: pickList,
+    machineCap,
+    appLaneCount: lanes.filter(l => l.needsBuild).length,
+  };
 }

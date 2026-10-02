@@ -135,8 +135,9 @@ See `memory.example/` for the expected format.
 - Colors flow onto cards, parent chips, and the detail/create modals
 
 ### Run Plan Tab
-- Shows which pinned epics (`ch tasks plan --pin <id>`) can be launched now, as parallel lanes (set an epic's lane with `ch tasks update <id> --lane <slug>`)
-- Each epic card shows a Ready / Partly ready / Waiting badge, its open tickets in dependency order (design and Co-task picks marked), and a Copy button for `/ship-task <id>`
+- Shows which pinned epics (`ch tasks plan --pin <id>`) can be launched now, as horizontal lanes that run side by side (set an epic's lane with `ch tasks update <id> --lane <slug>`); cards in a lane run left to right
+- A dashed "after your picks" divider splits each lane into what can run now and what comes later; `Co-task:` tickets are your picks and get their own Design round lane
+- Each card shows a Ready now / Partly ready / Later chip, why it waits, a copy button for `/ship-task <id>`, and a Start / Started / Done toggle (remembered in this browser)
 - Same data from the CLI: `ch tasks runplan`
 
 ### Memory Viewer
