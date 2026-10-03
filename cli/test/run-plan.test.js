@@ -239,12 +239,14 @@ test('dashboard tasks.json round-trip preserves lane', async () => {
   assert.equal(out.sections[0].tasks[0].lane, 'alpha');
 });
 
-test('dashboard routing knows the runplan tab', async () => {
-  global.window = { location: { pathname: '/dashboard/runplan' }, history: { replaceState() {}, pushState() {} }, addEventListener() {} };
+test('dashboard routing knows the plan tab', async () => {
+  global.window = { location: { pathname: '/dashboard/plan' }, history: { replaceState() {}, pushState() {} }, addEventListener() {} };
   const { parseRoute, buildPath } = await import('../../dashboard/js/routing.js');
   const route = parseRoute();
-  assert.equal(route.tab, 'runplan');
-  assert.equal(buildPath(route), '/dashboard/runplan');
+  assert.equal(route.tab, 'plan');
+  assert.equal(buildPath(route), '/dashboard/plan');
+  global.window.location.pathname = '/dashboard/runplan';
+  assert.equal(parseRoute().tab, 'plan', 'legacy /runplan link still opens the plan tab');
 });
 
 test('design round splits pick gates into draw, pick and publish stages', () => {

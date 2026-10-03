@@ -9,7 +9,7 @@
     { "label": "Docs", "url": "https://example.com/docs", "mode": "link" }
   ],
   "sprints": [],
-  "claudeSessionFolder": "/path/to/your/workspace   (optional: Run plan > Start opens a new Claude Code session in this folder, with the /ship-task command typed in)",
+  "claudeSessionFolder": "/path/to/your/workspace   (optional: Plan > Start opens a new Claude Code session in this folder, with the /ship-task command typed in)",
   "wipLimit": 3,
   "wipLimits": {
     "in-progress": 3

@@ -1,6 +1,6 @@
 /**
  * Run plan — which pinned epics can be launched now, as parallel lanes (rows).
- * Pure module shared by the CLI (`ch tasks runplan`) and the dashboard "Run plan" tab.
+ * Pure module shared by the CLI (`ch tasks runplan`) and the dashboard "Plan" tab.
  *
  * Input is the tasks.json document shape: { sections: [{ id, tasks: [...] }], meta }.
  */

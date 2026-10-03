@@ -1,7 +1,7 @@
 // routing.js — URL ↔ dashboard state (History API, /dashboard/* paths)
 
 const MAIN_TABS = new Set([
-  'overview', 'tasks', 'search', 'projects', 'runplan', 'memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings',
 ]);
 
 /**
@@ -59,7 +59,8 @@ export function parseRoute() {
 
   const rawTab = segments[0] || 'overview';
   // Legacy: /dashboard/global-memory → /dashboard/memory/global
-  const tab = rawTab === 'global-memory' ? 'memory' : rawTab;
+  // Legacy: /dashboard/runplan → /dashboard/plan
+  const tab = rawTab === 'global-memory' ? 'memory' : rawTab === 'runplan' ? 'plan' : rawTab;
   const route = { tab: MAIN_TABS.has(tab) ? tab : 'overview' };
 
   if (route.tab === 'tasks') {

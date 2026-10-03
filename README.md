@@ -134,7 +134,7 @@ See `memory.example/` for the expected format.
 - Add, rename, reorder, or remove types in Settings → Ticket Types (saved to `tasks.json`)
 - Colors flow onto cards, parent chips, and the detail/create modals
 
-### Run Plan Tab
+### Plan Tab
 - Shows which pinned epics (`ch tasks plan --pin <id>`) can be launched now, as horizontal lanes that run side by side (set an epic's lane with `ch tasks update <id> --lane <slug>`); cards in a lane run left to right
 - A dashed divider splits each lane into what can run now and what comes later, and names what it waits on ("after your pick T12", "after E4"); each id opens that ticket. `Co-task:` tickets are your picks and get their own Design round lane
 - Each card shows an In progress chip (the epic, or an open ticket in it, is in the In progress column) or a Ready now / Partly ready / Later chip, why it waits, a copy button for `/ship-task <id>`, and a Start / Started / Done toggle (remembered in this browser). The card's id opens the ticket in place

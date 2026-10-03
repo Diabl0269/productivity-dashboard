@@ -1,4 +1,4 @@
-// run-plan-view.js — "Run plan" tab: pinned epics as lanes (rows); see shared/run-plan.js
+// run-plan-view.js — "Plan" tab: pinned epics as lanes (rows); see shared/run-plan.js
 
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
@@ -265,7 +265,7 @@ export function renderRunPlanView() {
   root.textContent = '';
   const state = getState?.();
   if (!state?.tasks) {
-    root.appendChild(el('p', 'rp-empty', 'Load tasks to see the run plan.'));
+    root.appendChild(el('p', 'rp-empty', 'Load tasks to see the plan.'));
     return;
   }
   const plan = computeRunPlan(toDoc(state));
