@@ -5,6 +5,8 @@
  * Input is the tasks.json document shape: { sections: [{ id, tasks: [...] }], meta }.
  */
 
+import { reviewQueue } from './review.js';
+
 export const DEFAULT_MACHINE_CAP = 3;
 export const UNASSIGNED_LANE = 'unassigned';
 export const DESIGN_LANE = 'design';
@@ -352,5 +354,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     machineCap,
     appLaneCount: lanes.filter(l => l.needsBuild).length,
     appStartCount,
+    // Shipped work waiting for Tal's own look, oldest first (shared/review.js).
+    review: reviewQueue(doc),
   };
 }
