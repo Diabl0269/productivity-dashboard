@@ -207,6 +207,10 @@ export function migrateToSplit(root, { moveSingleTo }) {
     if (stringifyDoc(back) !== stringifyDoc(doc)) {
       throw new Error('ticket contents differ after the split');
     }
+    // Another writer (a hook, the dashboard) may have saved while we split; don't lose it.
+    if (fs.readFileSync(singlePath(root), 'utf8') !== original) {
+      throw new Error(`${SINGLE_FILE} changed during the split; run it again`);
+    }
   } catch (e) {
     fs.rmSync(splitDir(root), { recursive: true, force: true });
     throw new Error(`split aborted, ${SINGLE_FILE} left as it was: ${e.message}`);
