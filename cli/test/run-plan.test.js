@@ -394,10 +394,14 @@ test('co-tasks that need no design get a to-do card, not a canvas', () => {
   assert.match(design.now.find(c => c.id === 'design-canvases').command, /canvases for T3 and T4 /);
   const todo = design.now.find(c => c.id === 'co-tasks');
   assert.equal(todo.why, 'Co-tasks: T2');
+  assert.deepEqual(todo.ticketIds, ['T2']);
+  assert.deepEqual(design.now.find(c => c.id === 'design-canvases').ticketIds, ['T3', 'T4']);
   assert.equal(plan.picks.find(p => p.id === 'T2').stage, 'todo');
   const withCanvas = computeRunPlan(mkDoc([epic('E1', { lane: 'a' }),
     task('T2', { parentId: 'E1', title: 'Co-task: revisit shapes', links: [{ label: 'Design canvas', url: 'https://x' }] })], ['E1']));
   assert.equal(withCanvas.picks[0].stage, 'pick');
+  assert.deepEqual(withCanvas.picks[0].canvas, { label: 'Design canvas', url: 'https://x' });
+  assert.equal(withCanvas.picks[0].epic, 'E1');
   const only = computeRunPlan(mkDoc([epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1', title: 'Co-task: check it' })], ['E1']));
   assert.equal(only.lanes[0].name, 'Co-tasks');
   assert.deepEqual(only.lanes[0].now.map(c => c.id), ['co-tasks']);
