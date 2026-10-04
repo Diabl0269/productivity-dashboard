@@ -191,11 +191,12 @@ function renderCard(card, phase) {
   article.setAttribute('aria-label', `${card.id} ${card.title}`);
 
   const row = el('div', 'rp-row');
-  row.appendChild(card.state === 'pick' || card.isPrompt ? el('span', 'rp-id', 'Design') : idButton(card.id));
+  const coTasks = card.id === 'co-tasks';
+  row.appendChild(card.state === 'pick' || card.isPrompt ? el('span', 'rp-id', coTasks ? 'Co-tasks' : 'Design') : idButton(card.id));
   const running = card.inProgress && (card.state === 'ready' || card.state === 'partial');
   row.appendChild(running
     ? el('span', 'rp-chip rp-chip-running', 'In progress')
-    : el('span', `rp-chip rp-chip-${card.state}`, STATE_LABEL[card.state] || card.state));
+    : el('span', `rp-chip rp-chip-${card.state}`, coTasks ? 'Your to-do' : (STATE_LABEL[card.state] || card.state)));
   article.appendChild(row);
 
   article.appendChild(el('div', 'rp-title', card.isRest ? `${card.title} (rest)` : card.title));
@@ -292,6 +293,15 @@ function renderLane(lane, index) {
   const head = el('div', 'rp-head');
   head.appendChild(el('h3', 'rp-name', lane.name));
   head.appendChild(el('div', 'rp-note', lane.needsBuild ? 'Needs an app build' : 'No app build'));
+  if (lane.lane !== 'design') {
+    const epics = new Set([...lane.now, ...lane.later].map(c => c.id)).size;
+    const open = [...lane.now, ...lane.later].reduce((n, c) => n + (c.openTickets || 0), 0);
+    head.appendChild(el('div', 'rp-note rp-count',
+      `${epics} ${epics === 1 ? 'epic' : 'epics'} · ${open} open ${open === 1 ? 'ticket' : 'tickets'}`));
+  }
+  if (lane.lane === 'unassigned') {
+    head.appendChild(el('div', 'rp-note rp-hint', 'Give each a lane: ch tasks update <id> --lane <slug>'));
+  }
   track.appendChild(head);
 
   const row = el('div', 'rp-lane');
@@ -305,6 +315,17 @@ function renderLane(lane, index) {
   }
   track.appendChild(row);
   return track;
+}
+
+/** Pinned epics that are finished: each id opens it, with the unpin command. */
+function renderDoneNote(ids) {
+  const note = el('p', 'rp-done-note', 'Done, still pinned: ');
+  ids.forEach((id, i) => {
+    if (i > 0) note.appendChild(document.createTextNode(', '));
+    note.appendChild(idButton(id, 'rp-link rp-review-id'));
+  });
+  note.appendChild(document.createTextNode(` (unpin with ch tasks plan --unpin ${ids[0]})`));
+  return note;
 }
 
 function renderRules(plan) {
@@ -323,7 +344,7 @@ function renderRules(plan) {
 
 function renderLegend() {
   const legend = el('div', 'rp-legend');
-  for (const [cls, text] of [['running', 'In progress'], ['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your design picks']]) {
+  for (const [cls, text] of [['running', 'In progress'], ['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your picks and co-tasks']]) {
     const item = el('span');
     item.appendChild(el('span', `rp-dot rp-dot-${cls}`));
     item.appendChild(document.createTextNode(text));
@@ -353,7 +374,7 @@ export function renderRunPlanView() {
   const tracks = el('div', 'rp-tracks');
   plan.lanes.forEach((lane, i) => tracks.appendChild(renderLane(lane, i)));
   root.appendChild(tracks);
-  if (plan.doneEpics.length) root.appendChild(el('p', 'rp-done-note', `Done: ${plan.doneEpics.join(', ')}`));
+  if (plan.doneEpics.length) root.appendChild(renderDoneNote(plan.doneEpics));
 }
 
 /** Re-render when tasks change (called from renderTasks); only if the tab is showing. */

@@ -11,8 +11,30 @@ export const DEFAULT_MACHINE_CAP = 3;
 export const UNASSIGNED_LANE = 'unassigned';
 export const DESIGN_LANE = 'design';
 
-/** Stage of an open pick gate: draw a canvas, wait for Tal's pick, or publish the pick. */
+/** Lane slugs shown as words: "timeline" -> "Timeline", "mod-lanes" -> "Mod lanes", "ai" -> "AI". */
+const LANE_ACRONYMS = new Set(['ai', 'ui', 'ux', 'cli', 'midi', 'api', 'ci']);
+export function laneDisplayName(slug) {
+  const words = String(slug || '').split('-').filter(Boolean)
+    .map(w => (LANE_ACRONYMS.has(w) ? w.toUpperCase() : w));
+  if (!words.length) return '';
+  words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
+  return words.join(' ');
+}
+
+/**
+ * A co-task that needs a design board: a "design" label, "pick" in its title, or a design canvas
+ * link already on it. Other co-tasks
+ * (submit a form, check something in the app) are plain to-dos for Tal and get no canvas.
+ */
+export function isDesignPick(task) {
+  if ((task?.labels || []).some(l => /^design$/i.test(String(l).trim()))) return true;
+  if (Array.isArray(task?.links) && task.links.some(l => l && /design canvas/i.test(l.label || ''))) return true;
+  return /\bpick\b/i.test(String(task?.title || ''));
+}
+
+/** Stage of an open pick gate: draw a canvas, wait for Tal's pick, publish the pick, or (no design) do it. */
 function pickStage(t) {
+  if (!isDesignPick(t)) return 'todo';
   const waiting = String((t && t.waitingOn) || '');
   const hasCanvas = Array.isArray(t && t.links) && t.links.some(l => l && /design canvas/i.test(l.label || ''));
   const hasDecision = Array.isArray(t && t.decisions) && t.decisions.length > 0;
@@ -276,7 +298,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     }
     return {
       lane,
-      name: lane === UNASSIGNED_LANE ? 'No lane yet' : lane,
+      name: lane === UNASSIGNED_LANE ? 'No lane yet' : laneDisplayName(lane),
       needsBuild: ids.some(id => needsBuildEpic(byId.get(id))),
       now: assignSteps(now, lane),
       later: assignSteps(later, lane),
@@ -295,6 +317,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     const drawIds = idsAt('draw');
     const pickIds = idsAt('pick');
     const publishIds = idsAt('publish');
+    const todoIds = idsAt('todo');
     const now = [];
     if (drawIds.length) {
       now.push({
@@ -337,9 +360,22 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         step: now.length,
       });
     }
+    if (todoIds.length) {
+      now.push({
+        id: 'co-tasks',
+        title: 'You: do the co-tasks',
+        state: 'pick',
+        isRest: false,
+        openTickets: todoIds.length,
+        why: `Co-tasks: ${joinList(todoIds)}`,
+        command: null,
+        inProgress: false,
+        step: now.length,
+      });
+    }
     lanes.unshift({
       lane: DESIGN_LANE,
-      name: 'Design round',
+      name: drawIds.length || pickIds.length || publishIds.length ? 'Design round' : 'Co-tasks',
       needsBuild: false,
       now,
       later: [],
