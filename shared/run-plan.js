@@ -32,6 +32,12 @@ export function isDesignPick(task) {
   return /\bpick\b/i.test(String(task?.title || ''));
 }
 
+/** The design canvas link on a ticket ({ label?, url }), or null while none is drawn. */
+function canvasLink(t) {
+  const link = (Array.isArray(t?.links) ? t.links : []).find(l => l && l.url && /design canvas/i.test(l.label || ''));
+  return link ? { label: link.label, url: link.url } : null;
+}
+
 /** Stage of an open pick gate: draw a canvas, wait for Tal's pick, publish the pick, or (no design) do it. */
 function pickStage(t) {
   if (!isDesignPick(t)) return 'todo';
@@ -309,7 +315,13 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     (n, l) => n + l.now.filter(c => c.step === 0 && needsBuildEpic(byId.get(c.id))).length, 0);
 
   const pickList = [...picks.values()]
-    .map(p => ({ ...p, gates: p.gates.sort(compareIds), stage: pickStage(byId.get(p.id)) }))
+    .map(p => ({
+      ...p,
+      gates: p.gates.sort(compareIds),
+      stage: pickStage(byId.get(p.id)),
+      epic: owningEpic(p.id),
+      canvas: canvasLink(byId.get(p.id)),
+    }))
     .sort((a, b) => compareIds(a.id, b.id));
 
   if (pickList.length) {
@@ -326,6 +338,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         state: 'ready',
         isRest: false,
         openTickets: drawIds.length,
+        ticketIds: drawIds,
         why: 'An agent draws one board per pick ticket',
         command: `Draw the design canvases for ${joinList(drawIds)} (one board per ticket, options plus a recommended default, Design System components), link each canvas on its ticket, then stop for my picks.`,
         isPrompt: true,
@@ -340,6 +353,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         state: 'pick',
         isRest: false,
         openTickets: pickIds.length,
+        ticketIds: pickIds,
         why: `Picks: ${joinList(pickIds)}`,
         command: null,
         inProgress: false,
@@ -353,6 +367,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         state: 'ready',
         isRest: false,
         openTickets: publishIds.length,
+        ticketIds: publishIds,
         why: 'An agent adds the chosen options to the Design System',
         command: `Publish the picked designs for ${joinList(publishIds)} to the AgentSynth Design System and Storybook (chosen option only, as recorded in each ticket's decisions), then close each pick ticket.`,
         isPrompt: true,
@@ -367,6 +382,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         state: 'pick',
         isRest: false,
         openTickets: todoIds.length,
+        ticketIds: todoIds,
         why: `Co-tasks: ${joinList(todoIds)}`,
         command: null,
         inProgress: false,
