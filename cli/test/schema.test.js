@@ -21,9 +21,9 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-test('SECTIONS has all six canonical ids', () => {
+test('SECTIONS has all seven canonical ids', () => {
   const ids = SECTIONS.map(s => s.id);
-  assert.deepEqual(ids, ['inbox', 'backlog', 'todo', 'in-progress', 'done', 'archive']);
+  assert.deepEqual(ids, ['inbox', 'backlog', 'todo', 'in-progress', 'review', 'done', 'archive']);
 });
 
 test('SECTION_IDS matches SECTIONS map', () => {
@@ -588,7 +588,7 @@ test('ensureSections adds inbox and orders sections', async () => {
   const doc = makeValidDoc();
   const { added } = ensureSections(doc);
   assert.ok(added.includes('inbox'));
-  assert.deepEqual(doc.sections.map(s => s.id).filter(id => SECTION_IDS.includes(id)).slice(0, 6), SECTION_IDS);
+  assert.deepEqual(doc.sections.map(s => s.id).filter(id => SECTION_IDS.includes(id)).slice(0, 7), SECTION_IDS);
 });
 
 test('normalizeMeta fills defaults', async () => {

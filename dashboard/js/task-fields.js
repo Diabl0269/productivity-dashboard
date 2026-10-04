@@ -1,6 +1,7 @@
 // task-fields.js — Shared helpers for due dates, blocked state, labels, links, WIP.
 
 import { escapeHtml, findTaskByTaskId } from './ticket-types.js';
+import { REVIEW_SECTION } from '../../shared/review.js';
 import { normalizeModel } from '../../shared/model.js';
 import { nextTaskIdFromState, projectPrefix, derivePrefixFromSlug } from '../../shared/task-ids.js';
 
@@ -93,7 +94,7 @@ export function unresolvedBlockedBy(task, tasksBySection, byId) {
     if (!dep) return true; // missing = still blocking
     if (isTaskDone(dep)) return false;
     const sec = dep.section || '';
-    return sec !== 'done' && sec !== 'archive';
+    return sec !== 'done' && sec !== 'archive' && sec !== REVIEW_SECTION;
   });
 }
 
@@ -108,7 +109,7 @@ export function isTaskDone(task) {
   if (!task) return false;
   if (task.checked) return true;
   const sec = task.section || '';
-  return sec === 'done' || sec === 'archive';
+  return sec === 'done' || sec === 'archive' || sec === REVIEW_SECTION;
 }
 
 /**
@@ -116,13 +117,17 @@ export function isTaskDone(task) {
  * Checkbox toggle sets checked before moveTask; drag/status only change section.
  */
 export function syncTaskCompletionWithSection(task, toSectionId, prevSectionId) {
-  const finishing = toSectionId === 'done' || toSectionId === 'archive';
-  const wasFinished = prevSectionId === 'done' || prevSectionId === 'archive';
+  // Ready for review counts as shipped (checked), but only Done stamps the finish date,
+  // so reviewing a ticket (review -> done) stamps it even though it is already checked.
+  const finishing = toSectionId === 'done' || toSectionId === 'archive' || toSectionId === REVIEW_SECTION;
+  const wasFinished = prevSectionId === 'done' || prevSectionId === 'archive' || prevSectionId === REVIEW_SECTION;
   if (finishing && !task.checked) {
     task.checked = true;
     if (toSectionId === 'done' && prevSectionId !== 'done') {
       task.updated = todayYmd();
     }
+  } else if (toSectionId === 'done' && prevSectionId === REVIEW_SECTION) {
+    task.updated = todayYmd();
   } else if (!finishing && wasFinished && task.checked) {
     task.checked = false;
   }
@@ -438,7 +443,7 @@ export function advanceDateByRecurrence(ymd, recurrence) {
 export function focusScore(task, tasksBySection, now = new Date()) {
   if (!task || task.checked) return -Infinity;
   const sec = task.section || '';
-  if (sec === 'done' || sec === 'archive' || sec === 'backlog' || sec === 'inbox') return -Infinity;
+  if (sec === 'done' || sec === 'archive' || sec === REVIEW_SECTION || sec === 'backlog' || sec === 'inbox') return -Infinity;
   if (isSnoozed(task, now)) return -Infinity;
 
   let score = 0;
@@ -516,7 +521,7 @@ export function nextActionForEpic(epic, tasksBySection, now = new Date()) {
     for (const t of list || []) {
       if (t.parentId === epic.taskId && !t.checked) {
         const sec = t.section || '';
-        if (sec === 'done' || sec === 'archive') continue;
+        if (sec === 'done' || sec === 'archive' || sec === REVIEW_SECTION) continue;
         children.push(t);
       }
     }

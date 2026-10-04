@@ -25,6 +25,13 @@ function toDoc(state) {
         labels: t.labels || [],
         lane: t.lane || undefined,
         project: t.project || undefined,
+        // Review queue inputs (shared/review.js reads these).
+        reviewOf: t.reviewOf || undefined,
+        result: t.result || undefined,
+        checks: t.checks || [],
+        history: t.history || [],
+        created: t.created || undefined,
+        updated: t.updated || undefined,
       })),
     })),
   };
@@ -58,6 +65,70 @@ function idButton(id, className = 'rp-id rp-link') {
   btn.addEventListener('click', () => openTicket(id));
   return btn;
 }
+
+/** The ticket (dashboard shape) with this id, or null. */
+function findTicket(id) {
+  for (const list of Object.values(getState?.()?.tasks || {})) {
+    const task = (list || []).find(t => t.taskId === id);
+    if (task) return task;
+  }
+  return null;
+}
+
+/** "From review of <id>" note, or null when the ticket has none. */
+function reviewOfNote(reviewOf, className = 'rp-review-of') {
+  if (!reviewOf) return null;
+  const note = el('div', className, 'From review of ');
+  note.appendChild(idButton(reviewOf, 'rp-link rp-review-id'));
+  return note;
+}
+
+const SHIPPED_MAX = 120;
+function truncate(text, max) {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/** "3 Oct" style short date from an ISO timestamp (empty when unparseable). */
+function shortDate(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+/** "Ready for review" block above the lanes: shipped tickets waiting for Tal's look, oldest first. */
+function renderReview(review) {
+  const block = el('section', 'rp-review');
+  block.setAttribute('aria-label', 'Ready for review');
+  block.appendChild(el('h2', 'rp-review-title', 'Ready for review'));
+  if (!review.length) {
+    block.appendChild(el('p', 'rp-review-empty', 'Nothing waiting for review.'));
+    return block;
+  }
+  const list = el('ol', 'rp-review-list');
+  for (const item of review) {
+    const li = el('li', 'rp-review-item');
+    const row = el('div', 'rp-row');
+    row.appendChild(idButton(item.id));
+    const since = shortDate(item.enteredAt);
+    if (since) row.appendChild(el('span', 'rp-review-since', `since ${since}`));
+    row.appendChild(el('span', 'rp-chip rp-chip-review', `${item.checks.done}/${item.checks.total} checked`));
+    li.appendChild(row);
+    li.appendChild(el('div', 'rp-title', item.title));
+    const shipped = item.result?.shipped?.[0];
+    if (shipped) li.appendChild(el('div', 'rp-why', truncate(shipped, SHIPPED_MAX)));
+    const from = reviewOfNote(item.reviewOf);
+    if (from) li.appendChild(from);
+    for (const fu of item.followUps) {
+      const line = el('div', 'rp-review-of', 'Follow-up: ');
+      line.appendChild(idButton(fu.id, 'rp-link rp-review-id'));
+      line.appendChild(document.createTextNode(` (${fu.section})`));
+      li.appendChild(line);
+    }
+    list.appendChild(li);
+  }
+  block.appendChild(list);
+  return block;
+}
+
 const LANE_COLORS = 4; // --rp-c1..4; the design lane uses the pick colour
 const PROGRESS_KEY = 'runPlanProgress';
 
@@ -130,6 +201,8 @@ function renderCard(card, phase) {
   article.appendChild(el('div', 'rp-title', card.isRest ? `${card.title} (rest)` : card.title));
   const n = card.openTickets;
   article.appendChild(el('div', 'rp-items', `${n} open ${n === 1 ? 'ticket' : 'tickets'}`));
+  const fromReview = reviewOfNote(findTicket(card.id)?.reviewOf);
+  if (fromReview) article.appendChild(fromReview);
   if (card.why) article.appendChild(el('div', 'rp-why', card.why));
 
   const actions = el('div', 'rp-actions');
@@ -270,6 +343,7 @@ export function renderRunPlanView() {
   }
   const plan = computeRunPlan(toDoc(state));
 
+  root.appendChild(renderReview(plan.review || []));
   if (plan.lanes.length === 0) {
     root.appendChild(el('p', 'rp-empty', 'No pinned epics. Pin one with ch tasks plan --pin <id>'));
     return;

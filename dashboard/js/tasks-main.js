@@ -26,6 +26,7 @@ import { setProjectsViewCallbacks, refreshProjectsView } from './projects-view.j
 import { setRunPlanStateGetter, refreshRunPlanView } from './run-plan-view.js';
 import { setBackupCallbacks, initTasksBackup } from './tasks-backup.js';
 import { computeNextTaskId, appendHistory } from './task-fields.js';
+import { REVIEW_SECTION, REVIEW_SECTION_NAME } from '../../shared/review.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
 // ===== Shared mutable state =====
@@ -247,12 +248,12 @@ export function startTasksHttpWatching() {
 function applyLoadedTasks(result) {
   taskState.sections.length = 0;
   // Ensure canonical section order (inbox first)
-  const canonical = ['inbox', 'backlog', 'todo', 'in-progress', 'done', 'archive'];
+  const canonical = ['inbox', 'backlog', 'todo', 'in-progress', 'review', 'done', 'archive'];
   const byId = new Map(result.sections.map(s => [s.id, s]));
   const ordered = [];
   for (const id of canonical) {
     if (byId.has(id)) ordered.push(byId.get(id));
-    else ordered.push({ id, name: id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ') });
+    else ordered.push({ id, name: id === REVIEW_SECTION ? REVIEW_SECTION_NAME : id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ') });
   }
   for (const s of result.sections) {
     if (!canonical.includes(s.id)) ordered.push(s);

@@ -35,6 +35,7 @@
   /* ── Semantic Status Colors ── */
   --status-todo:        #4A9EFF;
   --status-inprogress:  #CF6A43;   /* = accent — active work */
+  --status-review:      #D9A441;   /* amber — shipped, waiting for my look */
   --status-done:        #5DAF7A;   /* sage green — accomplished */
   --status-backlog:     #6e6a65;   /* muted — parked */
   --status-blocked:     #E05C5C;   /* red — attention */
@@ -185,6 +186,7 @@
 
   --status-todo:       #1d78d4;
   --status-inprogress: #C05A30;
+  --status-review:     #b07a12;
   --status-done:       #1e8a58;
   --status-backlog:    #8c8278;
   --status-blocked:    #c43030;
