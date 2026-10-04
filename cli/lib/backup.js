@@ -1,13 +1,16 @@
 /**
- * cli/lib/backup.js — Timestamped tasks.json backups under .backup/tasks/
+ * cli/lib/backup.js — Timestamped backups of the tasks document under .backup/tasks/.
+ * A backup is always one assembled tasks-<ts>.json file, whichever layout is on disk
+ * (see shared/tasks-files.js), so old and new backups restore the same way.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { tasksJsonPath } from './io.js';
+import { dataRoot } from './io.js';
+import { readTasksText, writeTasksDoc, tasksLayout, singlePath, splitDir } from '../../shared/tasks-files.js';
 
 export function backupDir() {
-  return path.join(path.dirname(tasksJsonPath()), '.backup', 'tasks');
+  return path.join(dataRoot(), '.backup', 'tasks');
 }
 
 /** ISO-ish timestamp safe for filenames: 2026-09-06T11-00-00Z */
@@ -26,19 +29,19 @@ export function ensureBackupDir() {
 }
 
 /**
- * Create a timestamped backup of tasks.json.
+ * Create a timestamped backup of the tasks document.
  * @returns {{ name: string, path: string, createdAt: string }}
  */
 export function createTasksBackup() {
-  const src = tasksJsonPath();
-  if (!fs.existsSync(src)) {
-    throw new Error(`tasks.json not found at ${src}`);
+  const root = dataRoot();
+  if (tasksLayout(root) === 'none') {
+    throw new Error(`tasks.json not found at ${path.join(root, 'tasks.json')}`);
   }
   const createdAt = new Date().toISOString();
   const name = backupFileName(backupTimestamp(new Date(createdAt)));
   const dir = ensureBackupDir();
   const dest = path.join(dir, name);
-  fs.copyFileSync(src, dest);
+  fs.writeFileSync(dest, readTasksText(root), 'utf8');
   return { name, path: dest, createdAt };
 }
 
@@ -65,7 +68,8 @@ export function listTasksBackups() {
 }
 
 /**
- * Restore tasks.json from a backup file name (basename only).
+ * Restore the tasks document from a backup file name (basename only), in the layout
+ * currently on disk.
  * @param {string} name
  */
 export function restoreTasksBackup(name) {
@@ -77,9 +81,10 @@ export function restoreTasksBackup(name) {
   if (!fs.existsSync(src)) {
     throw new Error(`backup not found: ${base}`);
   }
-  const dest = tasksJsonPath();
-  fs.copyFileSync(src, dest);
-  return { name: base, path: dest };
+  const text = fs.readFileSync(src, 'utf8');
+  const root = dataRoot();
+  writeTasksDoc(root, JSON.parse(text), { text });
+  return { name: base, path: tasksLayout(root) === 'split' ? splitDir(root) : singlePath(root) };
 }
 
 /**

@@ -40,7 +40,8 @@
 
 import { parse } from '../lib/args.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
-import { readJson, tasksJsonPath } from '../lib/io.js';
+import { dataRoot } from '../lib/io.js';
+import { readTasksDoc, layoutWarnings, migrateToSplit, splitDir } from '../../shared/tasks-files.js';
 import {
   isValidTaskId,
   collectKnownPrefixes,
@@ -56,7 +57,8 @@ import {
 } from '../lib/schema.js';
 import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
-import { createTasksBackup, listTasksBackups, restoreTasksBackup } from '../lib/backup.js';
+import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
+import path from 'node:path';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 
@@ -1414,10 +1416,10 @@ function cmdLint(argv) {
     json: { type: 'boolean', short: 'j' },
   });
 
-  // Use readJson directly — lint must work even when load() would throw
+  // Read without load() — lint must work even when validation would throw
   let doc;
   try {
-    doc = normalizeTasksDoc(readJson(tasksJsonPath()));
+    doc = normalizeTasksDoc(readTasksDoc(dataRoot()));
   } catch (e) {
     if (values.json) {
       jsonOut({ valid: false, errors: [e.message], duplicateIds: [] });
@@ -1435,6 +1437,7 @@ function cmdLint(argv) {
   }
 
   const result = validateTasksDoc(doc);
+  for (const w of layoutWarnings(dataRoot())) printErr(`lint: warning: ${w}`);
 
   if (result.valid) {
     // Persist note→description, missing sections, meta when --fix is set
@@ -1792,6 +1795,21 @@ async function cmdBackups(argv) {
   }
 }
 
+async function cmdSplit(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const root = dataRoot();
+  // Validate first: a document `ch` can't load shouldn't be migrated.
+  load();
+  const moveSingleTo = path.join(ensureBackupDir(), backupFileName());
+  const result = migrateToSplit(root, { moveSingleTo });
+  if (values.json) {
+    jsonOut({ ...result, dir: splitDir(root) });
+    return;
+  }
+  const counts = result.sections.map(s => `${s.id} ${s.count}`).join(', ');
+  ok(`split: ${result.tickets} tickets -> ${splitDir(root)} (${counts}); verified; original moved to ${result.movedTo}`);
+}
+
 async function cmdRestore(argv) {
   const { positionals, values } = parse(argv, {
     json: { type: 'boolean', short: 'j' },
@@ -1856,7 +1874,8 @@ Subcommands:
   archive-done
   backup [--json]
   backups [--json]
-  restore <backup-name> [--json]`;
+  restore <backup-name> [--json]
+  split [--json]        move tasks.json into tasks.d/ (one file per ticket); backs up first`;
 
 const SUBCOMMANDS = {
   list:          cmdList,
@@ -1877,6 +1896,7 @@ const SUBCOMMANDS = {
   backup:        cmdBackup,
   backups:       cmdBackups,
   restore:       cmdRestore,
+  split:         cmdSplit,
 };
 
 export default async function tasks(argv) {
