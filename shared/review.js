@@ -61,8 +61,11 @@ function cleanList(value, name) {
 
 /**
  * Validate and tidy a ship result. Shape on the ticket:
- *   { at: ISO, shipped: string[], left?: string[], tests?: string[], ci: string }
- * `left` (blocked or left over) and `tests` (added or changed) are omitted when empty;
+ *   { at: ISO, shipped: string[], left?: string[], tests?: string[], ci: string,
+ *     unverified?: string[], risks?: string[], fixed?: string[], opened?: string[] }
+ * Optional lists are omitted when empty: `left` (blocked or left over), `tests` (added or
+ * changed), `unverified` (major things not checked for real), `risks`, `fixed` (fixed on
+ * the way) and `opened` (tickets opened). Judgment calls go in the ticket's `decisions`;
  * `ci` defaults to "all passed".
  */
 export function normalizeResult(input, { now = new Date().toISOString() } = {}) {
@@ -76,6 +79,10 @@ export function normalizeResult(input, { now = new Date().toISOString() } = {}) 
   if (left.length) out.left = left;
   const tests = cleanList(input.tests, 'tests');
   if (tests.length) out.tests = tests;
+  for (const key of ['unverified', 'risks', 'fixed', 'opened']) {
+    const list = cleanList(input[key], key);
+    if (list.length) out[key] = list;
+  }
   const ci = typeof input.ci === 'string' && input.ci.trim() ? input.ci.trim() : 'all passed';
   out.ci = ci;
   return out;
@@ -117,6 +124,10 @@ export function resultLines(result) {
   for (const s of result.left || []) lines.push(`Left: ${s}`);
   for (const s of result.tests || []) lines.push(`Tests: ${s}`);
   if (result.ci) lines.push(`CI: ${result.ci}`);
+  for (const s of result.unverified || []) lines.push(`Unverified: ${s}`);
+  for (const s of result.risks || []) lines.push(`Risk: ${s}`);
+  for (const s of result.fixed || []) lines.push(`Fixed: ${s}`);
+  for (const s of result.opened || []) lines.push(`Opened: ${s}`);
   return lines;
 }
 
