@@ -71,6 +71,7 @@ import {
 import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
 import { mountFieldLayoutSections } from './task-field-layout.js';
+import { REVIEW_SECTION, reviewComplete, checkProgress, resultLines } from '../../shared/review.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import {
   taskIdDisplayState,
@@ -361,6 +362,7 @@ function mountWorkPanels(task, body, { showPin = true } = {}) {
   buildChecksPanel(task, body);
   buildChildrenPanel(task, body, { showPin });
   buildBlockedByPanel(task, body, { showPin });
+  buildReviewOfPanel(task, body);
 }
 
 const WORK_PIN_ICON_FILLED =
@@ -766,6 +768,8 @@ function buildEssentialsForm(task, body) {
   wrap.className = 'td-essentials-fields';
 
   const refresh = () => openTaskDetail(task, { focusTitle: false });
+
+  buildReviewPanel(task, body);
 
   mountFieldLayoutSections(wrap, {
     factories: getEssentialsFieldFactories(task),
@@ -2258,6 +2262,7 @@ function buildChecksPanel(task, body) {
       cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
       row.classList.toggle('done', c.checked);
       commit();
+      finishReviewIfComplete(task, c.checked);
     });
     cb.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
@@ -2328,6 +2333,162 @@ function buildChecksPanel(task, body) {
   list.appendChild(addBtn);
 
   body.appendChild(sectionPanel('Checks', list, { panelId: 'checks', task, showPin: false }));
+}
+
+/* ── Ready for review ─────────────────────────────────────────── */
+
+/** Move a review ticket to Done once its last check is ticked (same path as the status select). */
+function finishReviewIfComplete(task, ticked) {
+  if (!reviewComplete(task, task.section, { ticked })) return;
+  moveTask(task.id, 'done', -1);
+  showStatus('Reviewed: moved to Done');
+}
+
+/** Tickets opened while reviewing `taskId`. */
+function reviewFollowUps(taskId) {
+  const out = [];
+  if (!taskId) return out;
+  for (const list of Object.values(getState()?.tasks || {})) {
+    for (const t of list || []) if (t.reviewOf === taskId && t.taskId) out.push(t);
+  }
+  return out;
+}
+
+/** A clickable ticket id that opens that ticket's detail. */
+function ticketLinkButton(taskId) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'td-review-link';
+  btn.textContent = taskId;
+  btn.title = 'Open ' + taskId;
+  btn.addEventListener('click', () => {
+    const t = findTaskByTaskId(getState()?.tasks, taskId);
+    if (t) openTaskDetail(t, { focusTitle: false });
+  });
+  return btn;
+}
+
+function reviewRelationRow(label, ids) {
+  const row = document.createElement('div');
+  row.className = 'td-review-rel';
+  row.appendChild(document.createTextNode(label + ' '));
+  ids.forEach((id, i) => {
+    if (i) row.appendChild(document.createTextNode(', '));
+    row.appendChild(ticketLinkButton(id));
+  });
+  return row;
+}
+
+/**
+ * Top of Essentials: the ship result, the review checks with "Tick all", and the
+ * review relations. Shown for tickets in review, or that carry a result / relation.
+ */
+function buildReviewPanel(task, body) {
+  const inReview = task.section === REVIEW_SECTION;
+  const followUps = reviewFollowUps(task.taskId);
+  const lines = resultLines(task.result);
+  if (!inReview && !lines.length && !task.reviewOf && !followUps.length) return;
+
+  const box = document.createElement('div');
+  box.className = 'td-review';
+
+  if (inReview) {
+    const { done, total } = checkProgress(task);
+    const head = document.createElement('div');
+    head.className = 'td-review-head';
+    const count = document.createElement('span');
+    count.className = 'td-review-count';
+    count.textContent = total ? `${done} of ${total} checked` : 'No checks';
+    head.appendChild(count);
+    const tickAll = document.createElement('button');
+    tickAll.type = 'button';
+    tickAll.className = 'td-review-tick-all';
+    tickAll.textContent = 'Tick all and mark reviewed';
+    tickAll.addEventListener('click', () => {
+      (task.checks || []).forEach(c => { c.checked = true; });
+      commit();
+      finishReviewIfComplete(task, true);
+    });
+    head.appendChild(tickAll);
+    box.appendChild(head);
+  }
+
+  if (lines.length) {
+    const res = document.createElement('div');
+    res.className = 'td-review-result';
+    lines.forEach(line => {
+      const idx = line.indexOf(': ');
+      const row = document.createElement('div');
+      row.className = 'td-review-line';
+      const key = document.createElement('span');
+      key.className = 'td-review-key';
+      key.textContent = line.slice(0, idx);
+      row.appendChild(key);
+      row.appendChild(document.createTextNode(line.slice(idx + 2)));
+      res.appendChild(row);
+    });
+    box.appendChild(res);
+  }
+
+  if (inReview && (task.checks || []).length) {
+    const list = document.createElement('div');
+    list.className = 'td-review-checks';
+    task.checks.forEach((c, idx) => {
+      const row = document.createElement('div');
+      row.className = 'td-subtask' + (c.checked ? ' done' : '');
+      const cb = document.createElement('span');
+      cb.className = 'checkbox' + (c.checked ? ' checked' : '');
+      cb.setAttribute('role', 'checkbox');
+      cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
+      cb.setAttribute('aria-label', 'Check ' + (idx + 1) + ': ' + (c.text || ''));
+      cb.setAttribute('tabindex', '0');
+      cb.addEventListener('click', () => {
+        c.checked = !c.checked;
+        commit();
+        if (!reviewComplete(task, task.section, { ticked: c.checked })) {
+          openTaskDetail(task, { focusTitle: false });
+        }
+        finishReviewIfComplete(task, c.checked);
+      });
+      cb.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
+      });
+      const text = document.createElement('span');
+      text.className = 'td-review-check-text';
+      text.textContent = c.text || '';
+      row.appendChild(cb);
+      row.appendChild(text);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  }
+
+  if (task.reviewOf) box.appendChild(reviewRelationRow('From review of', [task.reviewOf]));
+  if (followUps.length) {
+    box.appendChild(reviewRelationRow('Follow-ups from review:', followUps.map(t => t.taskId)));
+  }
+
+  body.appendChild(sectionPanel(inReview ? 'Ready for review' : 'Review', box));
+}
+
+/** Work tab: set or clear "From review of". */
+function buildReviewOfPanel(task, body) {
+  const host = document.createElement('div');
+  host.className = 'td-ticket-picker-host';
+  mountTicketPicker(host, {
+    tasks: blockedByCandidates(getState()?.tasks, task.taskId),
+    value: task.reviewOf || null,
+    allowNone: true,
+    noneLabel: 'None',
+    placeholder: 'Search ticket being reviewed…',
+    ariaLabel: 'From review of',
+    onChange: (id) => {
+      task.reviewOf = id || null;
+      commit(id ? 'From review of ' + id : 'Review link cleared');
+      openTaskDetail(task, { focusTitle: false });
+    },
+  });
+  body.appendChild(sectionPanel('From review of', host));
 }
 
 /* ── Init: wire up the shared overlay chrome ──────────────────── */

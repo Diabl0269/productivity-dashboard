@@ -36,6 +36,11 @@ function readLabels(t) {
   return t.labels.map(l => String(l).trim()).filter(Boolean);
 }
 
+/** Plain `{}` object (not null, not an array): the shape of a review `result`. */
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
 function readBlockedBy(t) {
   if (!Array.isArray(t.blockedBy)) return [];
   return [...new Set(t.blockedBy.map(id => String(id).trim()).filter(Boolean))];
@@ -243,6 +248,8 @@ export function loadTasksJson(text) {
       updated: t.updated || null,
       subtasks: Array.isArray(t.subtasks) ? t.subtasks.map(st => ({ text: st.text || '', checked: !!st.checked })) : [],
       checks: normalizeChecks(t.checks),
+      reviewOf: (typeof t.reviewOf === 'string' && t.reviewOf.trim()) ? t.reviewOf.trim() : null,
+      result: isPlainObject(t.result) ? t.result : null,
       section: sec.id,
     }));
   }
@@ -278,6 +285,8 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         };
         const checks = normalizeChecks(t.checks);
         if (checks.length) row.checks = checks;
+        if (typeof t.reviewOf === 'string' && t.reviewOf.trim()) row.reviewOf = t.reviewOf.trim();
+        if (isPlainObject(t.result)) row.result = t.result;
         const desc = (t.description || '').trim();
         if (desc) row.description = desc;
         if (t.parentId) row.parentId = t.parentId;

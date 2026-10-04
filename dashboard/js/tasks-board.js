@@ -228,7 +228,8 @@ function createCard(task, isArchive = false) {
         toggleSelect(task, { additive: true });
         return;
       }
-      task.checked = !task.checked;
+      // A ready-for-review ticket is already checked; its checkbox means "reviewed" -> Done.
+      task.checked = task.section === 'review' ? true : !task.checked;
       if (task.checked) {
         task.updated = todayStr();
         moveTask(task.id, 'done', 0);
@@ -435,6 +436,7 @@ function startEditingColumnTitle(titleEl, colId) {
 function colorForSection(id) {
   const normalized = (id || '').toLowerCase().replace(/[\s_-]+/g, '');
   if (normalized === 'inprogress' || normalized === 'in-progress') return 'var(--status-inprogress)';
+  if (normalized === 'review' || normalized === 'readyforreview') return 'var(--status-review)';
   if (normalized === 'done' || normalized === 'completed') return 'var(--status-done)';
   if (normalized === 'todo' || normalized === 'to-do') return 'var(--status-todo)';
   if (normalized === 'backlog') return 'var(--status-backlog)';

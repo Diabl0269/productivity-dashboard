@@ -35,14 +35,18 @@ export function reviewComplete(task, sectionId, { ticked }) {
   return sectionId === REVIEW_SECTION && !!ticked && allChecksTicked(task);
 }
 
-/** When the ticket entered review: last history move to `review`, else result.at, else updated. */
+/**
+ * When the ticket shipped into review: its result's time (set when the work shipped, so a
+ * backfilled result keeps its original date), else the last history move to `review`,
+ * else updated.
+ */
 export function enteredReviewAt(task) {
+  if (task?.result && typeof task.result.at === 'string') return task.result.at;
   const history = Array.isArray(task?.history) ? task.history : [];
   for (let i = history.length - 1; i >= 0; i--) {
     const h = history[i];
     if (h && h.to === REVIEW_SECTION && typeof h.at === 'string') return h.at;
   }
-  if (task?.result && typeof task.result.at === 'string') return task.result.at;
   return task?.updated || task?.created || '';
 }
 

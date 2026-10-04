@@ -376,7 +376,8 @@ function createListItem(task, section) {
       toggleSelect(task, { additive: true });
       return;
     }
-    task.checked = !task.checked;
+    // A ready-for-review ticket is already checked; its checkbox means "reviewed" -> Done.
+    task.checked = task.section === 'review' ? true : !task.checked;
     if (task.checked) {
       task.updated = todayStr();
       moveTask(task.id, 'done', 0);
