@@ -34,6 +34,8 @@ After linking, `ch` is available globally. Alternatively, run `./ch` from the re
 | `ch tasks export [--md]` | Export tasks as markdown (reads dashboard parser) |
 | `ch tasks lint [--fix]` | Validate tasks.json; `--fix` deduplicates ids / normalizes legacy fields |
 | `ch tasks archive-done` | Move done tasks older than 7 days to archive |
+| `ch tasks backup` / `backups` / `restore <name>` | Timestamped snapshots of the whole document in `.backup/tasks/` (always one assembled `tasks-<ts>.json`, whichever layout is on disk) |
+| `ch tasks split` | Move a big `tasks.json` into `tasks.d/` (one file per ticket); backs up first, verifies counts and contents, then moves the original into `.backup/tasks/` |
 
 **`ch tasks update` flags:** `--title`, `--description`, `--add-description`, `--priority`, `--type`, `--parent` / `--clear-parent`, `--color` / `--clear-color`, `--due` / `--clear-due`, `--lane slug` / `--clear-lane`, `--estimate` / `--clear-estimate`, `--assignee` / `--clear-assignee`, `--blocked` / `--unblocked`, `--waiting-on` / `--clear-waiting-on`, `--add-label` / `--remove-label` / `--clear-labels`, `--add-link` / `--link-label` / `--remove-link N` / `--clear-links`, `--add-blocked-by` / `--remove-blocked-by` / `--clear-blocked-by`, `--add-note` / `--remove-note N` / `--clear-notes`, `--decision` / `--remove-decision N` / `--clear-decisions`, `--remove-time-entry N` / `--clear-time-entries`, subtask flags, `--add-check "text"` (repeatable) / `--check-check N` / `--uncheck-check N` / `--remove-check N` / `--clear-checks` (the per-ticket **checks** tick-list: separate from subtasks, never blocks marking a ticket done; `ch tasks get` shows `Checks (n/m)`), `--uncheck`.
 
@@ -120,7 +122,14 @@ All output JSON. Requires a Slack `xoxp-` user token via `config.json` `slack_to
 
 ## tasks.json schema
 
-Tasks live in `tasks.json` at the repo root (gitignored). Copy `tasks.example.json` to get started.
+Tasks live in `tasks.json` at the repo root (gitignored), or in `$CH_HOME` when set. Copy `tasks.example.json` to get started.
+
+**Split layout.** Once the file gets large, `ch tasks split` stores the same document as
+`tasks.d/index.json` (everything below, with each section's `tasks` reduced to an ordered list of
+ids) plus `tasks.d/tickets/<ID>.json` (one ticket each). When `tasks.d/index.json` exists it wins;
+`ch`, the dashboard (`GET /tasks.json` is assembled on the fly) and backups behave the same in both
+layouts. Saves rewrite only the tickets that changed and write the index last. Code that needs the
+document should go through `shared/tasks-files.js` rather than reading `tasks.json` directly.
 
 ```jsonc
 {

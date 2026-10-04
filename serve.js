@@ -9,7 +9,7 @@ const os = require('os');
 const PORT = process.env.PORT || process.argv[2] || 3000;
 const ROOT = __dirname;
 
-// Personal data (tasks.json, config.json) normally lives alongside the app,
+// Personal data (tasks.json or tasks.d/, config.json) normally lives alongside the app,
 // but CH_HOME lets it live anywhere on disk instead — same env var the ch
 // CLI already honors (cli/lib/io.js). Only tasks.json/config.json are
 // touched by the backup job, so only they follow CH_HOME; everything else
@@ -60,6 +60,22 @@ function loadProjectDocsLib() {
     projectDocsLibPromise = import('./shared/project-docs.js');
   }
   return projectDocsLibPromise;
+}
+
+/** @type {Promise<typeof import('./shared/tasks-files.js')> | null} */
+let tasksFilesLibPromise = null;
+function loadTasksFilesLib() {
+  if (!tasksFilesLibPromise) tasksFilesLibPromise = import('./shared/tasks-files.js');
+  return tasksFilesLibPromise;
+}
+
+/** Same document, ignoring formatting: what a save conflict check should compare. */
+function sameTasksDoc(a, b) {
+  try {
+    return JSON.stringify(JSON.parse(a)) === JSON.stringify(JSON.parse(b));
+  } catch {
+    return false;
+  }
 }
 
 function resolveFsDocRef(ref, allowedRoots) {
@@ -148,6 +164,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // The tasks document: tasks.json, or assembled from tasks.d/ (shared/tasks-files.js).
+  if (req.method === 'GET' && url.pathname === '/tasks.json') {
+    try {
+      const tf = await loadTasksFilesLib();
+      if (tf.tasksLayout(DATA_ROOT) === 'none') {
+        res.writeHead(404);
+        res.end('Not found');
+        return;
+      }
+      const text = tf.readTasksText(DATA_ROOT);
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(text);
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Save file endpoint
   if (req.method === 'POST' && url.pathname === '/api/save') {
     try {
@@ -156,6 +191,22 @@ const server = http.createServer(async (req, res) => {
       if (!relPath || (!relPath.endsWith('.md') && !relPath.endsWith('.json'))) {
         res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Only .md and .json files allowed' }));
+        return;
+      }
+      if (relPath === 'tasks.json') {
+        const tf = await loadTasksFilesLib();
+        const doc = JSON.parse(body.content);
+        if (body.baseContent !== undefined && tf.tasksLayout(DATA_ROOT) !== 'none') {
+          const current = tf.readTasksText(DATA_ROOT);
+          if (!sameTasksDoc(current, body.baseContent)) {
+            res.writeHead(409, { ...corsHeaders, 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'conflict', current }));
+            return;
+          }
+        }
+        tf.writeTasksDoc(DATA_ROOT, doc, { text: body.content });
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
         return;
       }
       const saveRoot = rootFor(relPath);
@@ -219,8 +270,8 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/tasks-backup' && req.method === 'POST') {
     try {
-      const src = path.join(DATA_ROOT, 'tasks.json');
-      if (!fs.existsSync(src)) {
+      const tf = await loadTasksFilesLib();
+      if (tf.tasksLayout(DATA_ROOT) === 'none') {
         res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'tasks.json not found' }));
         return;
@@ -229,7 +280,7 @@ const server = http.createServer(async (req, res) => {
       const name = `tasks-${backupTimestamp(new Date(createdAt))}.json`;
       const dir = ensureTasksBackupDir();
       const dest = path.join(dir, name);
-      fs.copyFileSync(src, dest);
+      fs.writeFileSync(dest, tf.readTasksText(DATA_ROOT), 'utf8');
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ name, createdAt, size: fs.statSync(dest).size }));
     } catch (e) {
@@ -255,8 +306,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const content = fs.readFileSync(src, 'utf8');
-      const dest = path.join(DATA_ROOT, 'tasks.json');
-      fs.writeFileSync(dest, content, 'utf8');
+      const tf = await loadTasksFilesLib();
+      tf.writeTasksDoc(DATA_ROOT, JSON.parse(content), { text: content });
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, name, content }));
     } catch (e) {
