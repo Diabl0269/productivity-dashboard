@@ -14,7 +14,9 @@
  *              [--review-of T1]
  *   (add/update also take --lane <slug> and update --clear-lane: run-plan lane)
  *   runplan [--json]
- *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--check "..."]...
+ *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+         [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
+ *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--result-json '<json>'] [--json]   (ship a ticket into "Ready for review")
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
  *              [--color "#RRGGBB"] [--clear-color]
@@ -735,6 +737,10 @@ function cmdReview(argv) {
     shipped:       { type: 'string', multiple: true },
     left:          { type: 'string', multiple: true },
     tests:         { type: 'string', multiple: true },
+    unverified:    { type: 'string', multiple: true },
+    risk:          { type: 'string', multiple: true },
+    fixed:         { type: 'string', multiple: true },
+    opened:        { type: 'string', multiple: true },
     ci:            { type: 'string' },
     check:         { type: 'string', multiple: true },
     'result-json': { type: 'string' },
@@ -743,7 +749,7 @@ function cmdReview(argv) {
   });
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--check "..."]... [--result-json \'<json>\']');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... [--check "..."]... [--result-json \'<json>\']');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -758,14 +764,15 @@ function cmdReview(argv) {
   const checkTexts = [...asList(base.checks), ...(values.check || [])];
   if (checkTexts.some(t => typeof t !== 'string')) die('invalid --result-json: checks must be a list of strings');
 
-  const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci'].some(k => values[k] !== undefined);
+  const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
   let result = null;
   if (hasResult) {
     const { checks: _checks, ...rest } = base;
     const merged = { ...rest };
-    for (const k of ['shipped', 'left', 'tests']) {
+    for (const k of ['shipped', 'left', 'tests', 'unverified', 'fixed', 'opened']) {
       if (values[k]) merged[k] = [...asList(rest[k]), ...values[k]];
     }
+    if (values.risk) merged.risks = [...asList(rest.risks), ...values.risk];
     if (values.ci !== undefined) merged.ci = values.ci;
     try {
       result = normalizeResult(merged);
@@ -1983,6 +1990,7 @@ Subcommands:
   plan [--pin T1] [--unpin T1] [--carry] [--json]
   runplan [--json]
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+         [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
          [--check "..."]... [--result-json '<json>'] [--json]
          ship a ticket to "Ready for review": records the result and the checks to tick
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]

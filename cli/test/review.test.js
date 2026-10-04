@@ -269,3 +269,21 @@ test('runplan lists the review queue; --active hides review tickets', () => {
   const listed = runCli(['tasks', 'list', '--section', 'review'], dir).stdout;
   assert.match(listed, /T3/);
 });
+
+test('normalizeResult: keeps unverified, risks, fixed and opened only when given', () => {
+  const r = normalizeResult({ shipped: ['x'], unverified: ['not seen in the app'], risks: [' flaky '], fixed: [], opened: ['T9 follow-up'] });
+  assert.deepEqual(r.unverified, ['not seen in the app']);
+  assert.deepEqual(r.risks, ['flaky']);
+  assert.equal('fixed' in r, false);
+  assert.deepEqual(r.opened, ['T9 follow-up']);
+  assert.deepEqual(resultLines(r).slice(-3), ['Unverified: not seen in the app', 'Risk: flaky', 'Opened: T9 follow-up']);
+});
+
+test('ch tasks review: --risk, --unverified, --fixed and --opened land on the result', () => {
+  const dir = makeTmpDir();
+  const r = runCli(['tasks', 'review', 'T1', '--shipped', 'a', '--risk', 'r1', '--unverified', 'u1', '--fixed', 'f1', '--opened', 'o1', '--json'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  const res = JSON.parse(r.stdout).result;
+  assert.deepEqual([res.risks, res.unverified, res.fixed, res.opened], [['r1'], ['u1'], ['f1'], ['o1']]);
+  assert.equal(runCli(['tasks', 'lint'], dir).status, 0);
+});
