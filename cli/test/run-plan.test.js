@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { computeRunPlan, isPickGate, modelOf } from '../../shared/run-plan.js';
+import { computeRunPlan, isPickGate, modelOf, laneDisplayName } from '../../shared/run-plan.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
@@ -224,7 +224,7 @@ test('CLI: ch tasks runplan --json and text', () => {
   const t = run(['runplan']);
   assert.equal(t.status, 0, t.stderr);
   assert.match(t.stdout, /Lane: Design round/);
-  assert.match(t.stdout, /Lane: alpha/);
+  assert.match(t.stdout, /Lane: Alpha/);
   assert.match(t.stdout, /-- after your pick T2 --/);
   assert.match(t.stdout, /\/ship-task T1/);
   assert.match(t.stdout, /At most 3 app builds at once \(0 could start now\)/);
@@ -250,7 +250,7 @@ test('dashboard routing knows the runplan tab', async () => {
 test('design round splits pick gates into draw, pick and publish stages', () => {
   const canvas = [{ label: 'Design canvas', url: 'https://x/c' }];
   const decisions = [{ at: '2026-01-01T00:00:00Z', text: 'Option B' }];
-  const gate = (id, extra) => task(id, { parentId: 'E1', title: `Co-task: ${id}`, ...extra });
+  const gate = (id, extra) => task(id, { parentId: 'E1', title: `Co-task: pick ${id}`, ...extra });
   const stages = tasks => computeRunPlan(mkDoc([epic('E1', { lane: 'a' }), ...tasks], ['E1']));
   const designNow = plan => plan.lanes[0].now;
 
@@ -370,4 +370,35 @@ test('cards carry the model from the epic model: label, null without one', () =>
   assert.equal(cards.find(c => c.id === 'E1').model, 'Opus');
   assert.equal(cards.find(c => c.id === 'E3').model, null);
   assert.equal(modelOf({ labels: ['x', 'model: sonnet'] }), 'Sonnet');
+});
+
+test('lane names are shown capitalized, slugs stay raw', () => {
+  assert.equal(laneDisplayName('timeline'), 'Timeline');
+  assert.equal(laneDisplayName('mod-lanes'), 'Mod lanes');
+  assert.equal(laneDisplayName('ai'), 'AI');
+  const l = computeRunPlan(mkDoc([epic('E1', { lane: 'timeline' }), task('T2', { parentId: 'E1' })], ['E1'])).lanes[0];
+  assert.equal(l.lane, 'timeline');
+  assert.equal(l.name, 'Timeline');
+});
+
+test('co-tasks that need no design get a to-do card, not a canvas', () => {
+  const doc = mkDoc([
+    epic('E1', { lane: 'a' }),
+    task('T2', { parentId: 'E1', title: 'Co-task: submit the form' }),
+    task('T3', { parentId: 'E1', title: 'Co-task: pick the layout' }),
+    task('T4', { parentId: 'E1', title: 'Co-task: icons', labels: ['design'] }),
+  ], ['E1']);
+  const plan = computeRunPlan(doc);
+  const design = plan.lanes[0];
+  assert.equal(design.name, 'Design round');
+  assert.match(design.now.find(c => c.id === 'design-canvases').command, /canvases for T3 and T4 /);
+  const todo = design.now.find(c => c.id === 'co-tasks');
+  assert.equal(todo.why, 'Co-tasks: T2');
+  assert.equal(plan.picks.find(p => p.id === 'T2').stage, 'todo');
+  const withCanvas = computeRunPlan(mkDoc([epic('E1', { lane: 'a' }),
+    task('T2', { parentId: 'E1', title: 'Co-task: revisit shapes', links: [{ label: 'Design canvas', url: 'https://x' }] })], ['E1']));
+  assert.equal(withCanvas.picks[0].stage, 'pick');
+  const only = computeRunPlan(mkDoc([epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1', title: 'Co-task: check it' })], ['E1']));
+  assert.equal(only.lanes[0].name, 'Co-tasks');
+  assert.deepEqual(only.lanes[0].now.map(c => c.id), ['co-tasks']);
 });

@@ -1765,7 +1765,7 @@ function cmdRunPlan(argv) {
       print(`  ${r.id}  ${r.title} · checks ${r.checks.done}/${r.checks.total} · since ${since}${fu}`);
     }
   }
-  if (plan.doneEpics.length) print(`Done epics: ${plan.doneEpics.join(', ')}`);
+  if (plan.doneEpics.length) print(`Done epics, still pinned: ${plan.doneEpics.join(', ')} (unpin with ch tasks plan --unpin <id>)`);
   print('Lanes run side by side; cards in a lane run top to bottom; a \u2016 line runs alongside the card above it');
   print(`At most ${plan.machineCap} app builds at once (${plan.appStartCount} could start now)`);
 }

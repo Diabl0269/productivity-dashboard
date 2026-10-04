@@ -47,6 +47,7 @@ button.rp-review-id { font-family: ui-monospace, Menlo, monospace; font-size: 12
 .rp-head::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); }
 .rp-name { margin: 0; font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
 .rp-note { font-size: 12.5px; color: var(--text-secondary); }
+.rp-hint { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; overflow-wrap: anywhere; }
 
 .rp-lane { display: flex; align-items: stretch; padding: 12px; overflow-x: auto; min-width: 0; }
 .rp-lane:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
