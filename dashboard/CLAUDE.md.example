@@ -24,6 +24,7 @@ Keep CLI and dashboard in sync. Optional fields are omitted when empty/false.
 | `type` / `parentId` / `color` | hierarchy | Epic → Task → Subtask; color inherits |
 | `dueDate` | `YYYY-MM-DD` | Urgency badges; Overview deadlines prefer this |
 | `blocked` / `waitingOn` | bool / string | Card badge; Overview Blocked count |
+| `checks` | `{text, checked, addedAt}[]` | Per-ticket tick-list, separate from subtasks; never blocks done; `ch tasks update --add-check/--check-check/--uncheck-check/--remove-check/--clear-checks` |
 | `labels` | `string[]` | Free-form tags; filter pills |
 | `links` | `{label?, url}[]` | Generic URLs |
 | `blockedBy` | `string[]` | Peer task ids (not parent hierarchy) |

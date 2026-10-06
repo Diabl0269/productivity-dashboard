@@ -1,6 +1,7 @@
 /**
  * cli/lib/tasks-store.js
- * CRUD operations for tasks.json.
+ * CRUD operations for the tasks document (tasks.json, or the split tasks.d/ layout —
+ * see shared/tasks-files.js).
  *
  * Exports:
  *   load(): doc
@@ -13,16 +14,17 @@
  *   todayStr(): string  — 'YYYY-MM-DD'
  */
 
-import { readJson, tasksJsonPath, atomicWrite } from './io.js';
+import { dataRoot } from './io.js';
+import { readTasksDoc, writeTasksDoc } from '../../shared/tasks-files.js';
 import { validateTasksDoc, normalizeTasksDoc } from './schema.js';
 import { nextTaskId } from '../../shared/task-ids.js';
 
 /**
- * Load tasks.json, normalize legacy fields, validate, and return the document.
+ * Load the tasks document, normalize legacy fields, validate, and return the document.
  * Throws if file is missing, invalid JSON, or fails schema validation.
  */
 export function load() {
-  const doc = normalizeTasksDoc(readJson(tasksJsonPath()));
+  const doc = normalizeTasksDoc(readTasksDoc(dataRoot()));
   const result = validateTasksDoc(doc);
   if (!result.valid) {
     throw new Error(`tasks.json validation failed:\n${result.errors.join('\n')}`);
@@ -31,8 +33,8 @@ export function load() {
 }
 
 /**
- * Normalize, validate, and atomically save doc to tasks.json.
- * Throws if validation fails.
+ * Normalize, validate, and save doc in the layout on disk (only changed ticket files are
+ * rewritten in the split layout). Throws if validation fails.
  * Pretty-printed with 2-space indent (human/dashboard-facing).
  */
 export function save(doc) {
@@ -41,7 +43,7 @@ export function save(doc) {
   if (!result.valid) {
     throw new Error(`tasks.json validation failed:\n${result.errors.join('\n')}`);
   }
-  atomicWrite(tasksJsonPath(), JSON.stringify(doc, null, 2) + '\n');
+  writeTasksDoc(dataRoot(), doc);
 }
 
 /**

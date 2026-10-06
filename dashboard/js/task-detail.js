@@ -82,6 +82,7 @@ import {
   toggleFieldPin,
   bindFieldLayoutDnD,
 } from './task-field-layout.js';
+import { REVIEW_SECTION, reviewComplete, checkProgress, resultLines } from '../../shared/review.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import {
   taskIdDisplayState,
@@ -384,6 +385,8 @@ function mountWorkPanels(task, body, { showPin = true } = {}) {
     else if (panelId === 'children') buildChildrenPanel(task, body, { showPin });
     else if (panelId === 'blockedBy') buildBlockedByPanel(task, body, { showPin });
   }
+  buildChecksPanel(task, body);
+  buildReviewOfPanel(task, body);
 }
 
 const WORK_PIN_ICON_FILLED =
@@ -784,6 +787,8 @@ function dateControl(value, { ariaLabel, onChange }) {
 function buildEssentialsForm(task, body) {
   ensureTaskFieldDefaults(task);
   body.classList.add('td-essentials-layout');
+
+  buildReviewPanel(task, body);
 
   const root = document.createElement('div');
   root.className = 'td-essentials-sections';
@@ -2395,6 +2400,261 @@ function buildSubtasksPanel(task, body, { showPin = false } = {}) {
   }
 }
 
+
+/**
+ * Checks: a per-ticket tick-list separate from subtasks. Ticking never changes
+ * the ticket's status; entries are {text, checked, addedAt}.
+ */
+function buildChecksPanel(task, body) {
+  if (!Array.isArray(task.checks)) task.checks = [];
+
+  const list = document.createElement('div');
+  list.className = 'td-subtasks td-checks';
+
+  task.checks.forEach((c, idx) => {
+    const row = document.createElement('div');
+    row.className = 'td-subtask' + (c.checked ? ' done' : '');
+
+    const cb = document.createElement('span');
+    cb.className = 'checkbox' + (c.checked ? ' checked' : '');
+    cb.setAttribute('role', 'checkbox');
+    cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
+    cb.setAttribute('aria-label', 'Check ' + (idx + 1) + ': ' + (c.text || ''));
+    cb.setAttribute('tabindex', '0');
+    cb.addEventListener('click', () => {
+      c.checked = !c.checked;
+      cb.classList.toggle('checked', c.checked);
+      cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
+      row.classList.toggle('done', c.checked);
+      commit();
+      finishReviewIfComplete(task, c.checked);
+    });
+    cb.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
+    });
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'td-subtask-input td-check-input';
+    input.dataset.idx = String(idx);
+    input.value = c.text || '';
+    input.setAttribute('aria-label', 'Check text ' + (idx + 1));
+    input.placeholder = 'Check text…';
+    let saved = false;
+    const save = () => {
+      if (saved) return;
+      saved = true;
+      const v = input.value.trim();
+      if (v) {
+        if (v !== c.text) { c.text = v; commit(); }
+      } else {
+        task.checks.splice(idx, 1);
+        commit();
+        openTaskDetail(task, { focusTitle: false });
+      }
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      else if (e.key === 'Escape') { saved = true; input.value = c.text || ''; input.blur(); }
+    });
+    input.addEventListener('blur', save);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'td-subtask-remove';
+    remove.setAttribute('aria-label', 'Remove check ' + (idx + 1));
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      task.checks.splice(idx, 1);
+      commit();
+      openTaskDetail(task, { focusTitle: false });
+    });
+
+    row.appendChild(cb);
+    row.appendChild(input);
+    row.appendChild(remove);
+    list.appendChild(row);
+  });
+
+  if (task.checks.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'td-subtasks-empty';
+    empty.textContent = 'No checks yet';
+    list.appendChild(empty);
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'td-add-subtask';
+  addBtn.textContent = '+ Add check';
+  addBtn.addEventListener('click', () => {
+    task.checks.push({ text: '', checked: false, addedAt: new Date().toISOString() });
+    openTaskDetail(task, { focusTitle: false });
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.td-check-input[data-idx="${task.checks.length - 1}"]`);
+      if (el) el.focus();
+    });
+  });
+  list.appendChild(addBtn);
+
+  body.appendChild(sectionPanel('Checks', list, { panelId: 'checks', task, showPin: false }));
+}
+
+/* ── Ready for review ─────────────────────────────────────────── */
+
+/** Move a review ticket to Done once its last check is ticked (same path as the status select). */
+function finishReviewIfComplete(task, ticked) {
+  if (!reviewComplete(task, task.section, { ticked })) return;
+  moveTask(task.id, 'done', -1);
+  showStatus('Reviewed: moved to Done');
+}
+
+/** Tickets opened while reviewing `taskId`. */
+function reviewFollowUps(taskId) {
+  const out = [];
+  if (!taskId) return out;
+  for (const list of Object.values(getState()?.tasks || {})) {
+    for (const t of list || []) if (t.reviewOf === taskId && t.taskId) out.push(t);
+  }
+  return out;
+}
+
+/** A clickable ticket id that opens that ticket's detail. */
+function ticketLinkButton(taskId) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'td-review-link';
+  btn.textContent = taskId;
+  btn.title = 'Open ' + taskId;
+  btn.addEventListener('click', () => {
+    const t = findTaskByTaskId(getState()?.tasks, taskId);
+    if (t) openTaskDetail(t, { focusTitle: false });
+  });
+  return btn;
+}
+
+function reviewRelationRow(label, ids) {
+  const row = document.createElement('div');
+  row.className = 'td-review-rel';
+  row.appendChild(document.createTextNode(label + ' '));
+  ids.forEach((id, i) => {
+    if (i) row.appendChild(document.createTextNode(', '));
+    row.appendChild(ticketLinkButton(id));
+  });
+  return row;
+}
+
+/**
+ * Top of Essentials: the ship result, the review checks with "Tick all", and the
+ * review relations. Shown for tickets in review, or that carry a result / relation.
+ */
+function buildReviewPanel(task, body) {
+  const inReview = task.section === REVIEW_SECTION;
+  const followUps = reviewFollowUps(task.taskId);
+  const lines = resultLines(task.result);
+  if (!inReview && !lines.length && !task.reviewOf && !followUps.length) return;
+
+  const box = document.createElement('div');
+  box.className = 'td-review';
+
+  if (inReview) {
+    const { done, total } = checkProgress(task);
+    const head = document.createElement('div');
+    head.className = 'td-review-head';
+    const count = document.createElement('span');
+    count.className = 'td-review-count';
+    count.textContent = total ? `${done} of ${total} checked` : 'No checks';
+    head.appendChild(count);
+    const tickAll = document.createElement('button');
+    tickAll.type = 'button';
+    tickAll.className = 'td-review-tick-all';
+    tickAll.textContent = 'Tick all and mark reviewed';
+    tickAll.addEventListener('click', () => {
+      (task.checks || []).forEach(c => { c.checked = true; });
+      commit();
+      finishReviewIfComplete(task, true);
+    });
+    head.appendChild(tickAll);
+    box.appendChild(head);
+  }
+
+  if (lines.length) {
+    const res = document.createElement('div');
+    res.className = 'td-review-result';
+    lines.forEach(line => {
+      const idx = line.indexOf(': ');
+      const row = document.createElement('div');
+      row.className = 'td-review-line';
+      const key = document.createElement('span');
+      key.className = 'td-review-key';
+      key.textContent = line.slice(0, idx);
+      row.appendChild(key);
+      row.appendChild(document.createTextNode(line.slice(idx + 2)));
+      res.appendChild(row);
+    });
+    box.appendChild(res);
+  }
+
+  if (inReview && (task.checks || []).length) {
+    const list = document.createElement('div');
+    list.className = 'td-review-checks';
+    task.checks.forEach((c, idx) => {
+      const row = document.createElement('div');
+      row.className = 'td-subtask' + (c.checked ? ' done' : '');
+      const cb = document.createElement('span');
+      cb.className = 'checkbox' + (c.checked ? ' checked' : '');
+      cb.setAttribute('role', 'checkbox');
+      cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
+      cb.setAttribute('aria-label', 'Check ' + (idx + 1) + ': ' + (c.text || ''));
+      cb.setAttribute('tabindex', '0');
+      cb.addEventListener('click', () => {
+        c.checked = !c.checked;
+        commit();
+        if (!reviewComplete(task, task.section, { ticked: c.checked })) {
+          openTaskDetail(task, { focusTitle: false });
+        }
+        finishReviewIfComplete(task, c.checked);
+      });
+      cb.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
+      });
+      const text = document.createElement('span');
+      text.className = 'td-review-check-text';
+      text.textContent = c.text || '';
+      row.appendChild(cb);
+      row.appendChild(text);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  }
+
+  if (task.reviewOf) box.appendChild(reviewRelationRow('From review of', [task.reviewOf]));
+  if (followUps.length) {
+    box.appendChild(reviewRelationRow('Follow-ups from review:', followUps.map(t => t.taskId)));
+  }
+
+  body.appendChild(sectionPanel(inReview ? 'Ready for review' : 'Review', box));
+}
+
+/** Work tab: set or clear "From review of". */
+function buildReviewOfPanel(task, body) {
+  const host = document.createElement('div');
+  host.className = 'td-ticket-picker-host';
+  mountTicketPicker(host, {
+    tasks: blockedByCandidates(getState()?.tasks, task.taskId),
+    value: task.reviewOf || null,
+    allowNone: true,
+    noneLabel: 'None',
+    placeholder: 'Search ticket being reviewed…',
+    ariaLabel: 'From review of',
+    onChange: (id) => {
+      task.reviewOf = id || null;
+      commit(id ? 'From review of ' + id : 'Review link cleared');
+      openTaskDetail(task, { focusTitle: false });
+    },
+  });
+  body.appendChild(sectionPanel('From review of', host));
+}
 
 /* ── Init: wire up the shared overlay chrome ──────────────────── */
 

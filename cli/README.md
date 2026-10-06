@@ -23,7 +23,9 @@ After linking, `ch` is available globally. Alternatively, run `./ch` from the re
 | `ch tasks get <id> [--json]` | Show a single task (due, estimate, assignee, labels, links, deps, history) |
 | `ch tasks capture "<title>"` | Shorthand add into **inbox** |
 | `ch tasks plan [--pin T1] [--unpin T1] [--carry] [--json]` | Today plan pins in `meta.dailyPlan` |
-| `ch tasks add "<title>" [flags…]` | Create a task; prints new id. Flags: `--section`, `--priority`, `--description`, `--color`, `--type`, `--parent`, `--due YYYY-MM-DD`, `--issue URL`, `--project slug`, `--energy deep\|shallow\|errands\|creative`, `--snooze YYYY-MM-DD`, `--decision "…"`, `--estimate 2h\|30m\|1d`, `--assignee name`, `--blocked`, `--waiting-on "…"`, `--label L` (repeatable), `--link URL`, `--link-label`, `--blocked-by T1` |
+| `ch tasks runplan [--json]` | Run plan: pinned epics that can be launched now, grouped into parallel lanes (set an epic's lane with `--lane`), each split into now and after-your-picks; `Co-task:` tickets are the picks. Same view as the dashboard Run plan tab |
+| `ch tasks add "<title>" [flags…]` | Create a task; prints new id. Flags: `--section`, `--priority`, `--description`, `--color`, `--type`, `--parent`, `--due YYYY-MM-DD`, `--issue URL`, `--project slug`, `--energy deep\|shallow\|errands\|creative`, `--lane slug`, `--snooze YYYY-MM-DD`, `--decision "…"`, `--estimate 2h\|30m\|1d`, `--assignee name`, `--blocked`, `--waiting-on "…"`, `--label L` (repeatable), `--link URL`, `--link-label`, `--blocked-by T1`, `--review-of T1` |
+| `ch tasks review <id> --shipped "…" [--left "…"] [--tests "…"] [--ci "…"] [--check "…"]… [--result-json '<json>']` | Ship a ticket to **Ready for review**: records the result and the checks to tick, marks it checked and moves it (details below) |
 | `ch tasks move <id> <section>` | Move task (records `history` event) |
 | `ch tasks done <id>` | Mark checked and move to done |
 | `ch tasks update <id> [flags…]` | Update fields — see below |
@@ -33,10 +35,14 @@ After linking, `ch` is available globally. Alternatively, run `./ch` from the re
 | `ch tasks export [--md]` | Export tasks as markdown (reads dashboard parser) |
 | `ch tasks lint [--fix]` | Validate tasks.json; `--fix` deduplicates ids / normalizes legacy fields |
 | `ch tasks archive-done` | Move done tasks older than 7 days to archive |
+| `ch tasks backup` / `backups` / `restore <name>` | Timestamped snapshots of the whole document in `.backup/tasks/` (always one assembled `tasks-<ts>.json`, whichever layout is on disk) |
+| `ch tasks split` | Move a big `tasks.json` into `tasks.d/` (one file per ticket); backs up first, verifies counts and contents, then moves the original into `.backup/tasks/` |
 
-**`ch tasks update` flags:** `--title`, `--description`, `--add-description`, `--priority`, `--type`, `--parent` / `--clear-parent`, `--color` / `--clear-color`, `--due` / `--clear-due`, `--estimate` / `--clear-estimate`, `--assignee` / `--clear-assignee`, `--blocked` / `--unblocked`, `--waiting-on` / `--clear-waiting-on`, `--add-label` / `--remove-label` / `--clear-labels`, `--add-link` / `--link-label` / `--remove-link N` / `--clear-links`, `--add-blocked-by` / `--remove-blocked-by` / `--clear-blocked-by`, `--add-note` / `--remove-note N` / `--clear-notes`, `--decision` / `--remove-decision N` / `--clear-decisions`, `--remove-time-entry N` / `--clear-time-entries`, subtask flags, `--uncheck`.
+**`ch tasks update` flags:** `--title`, `--description`, `--add-description`, `--priority`, `--type`, `--parent` / `--clear-parent`, `--color` / `--clear-color`, `--due` / `--clear-due`, `--lane slug` / `--clear-lane`, `--estimate` / `--clear-estimate`, `--assignee` / `--clear-assignee`, `--blocked` / `--unblocked`, `--waiting-on` / `--clear-waiting-on`, `--add-label` / `--remove-label` / `--clear-labels`, `--add-link` / `--link-label` / `--remove-link N` / `--clear-links`, `--add-blocked-by` / `--remove-blocked-by` / `--clear-blocked-by`, `--add-note` / `--remove-note N` / `--clear-notes`, `--decision` / `--remove-decision N` / `--clear-decisions`, `--remove-time-entry N` / `--clear-time-entries`, subtask flags, `--add-check "text"` (repeatable) / `--check-check N` / `--uncheck-check N` / `--remove-check N` / `--clear-checks` / `--check-all-checks` / `--review-of T1` / `--clear-review-of` / `--clear-result` (the per-ticket **checks** tick-list: separate from subtasks, never blocks marking a ticket done; `ch tasks get` shows `Checks (n/m)`), `--uncheck`.
 
-Valid sections: `inbox`, `backlog`, `todo`, `in-progress`, `done`, `archive`.  
+Valid sections: `inbox`, `backlog`, `todo`, `in-progress`, `review`, `done`, `archive`.  
+
+**Ready for review** (section `review`, between In progress and Done): where shipped work waits for your own look. `ch tasks review <id>` records a `result` (`shipped[]`, optional `left[]` and `tests[]`, `ci`, default "all passed", and optional `unverified[]` (major things not checked for real), `risks[]`, `fixed[]` (fixed on the way) and `opened[]` (tickets opened) via `--unverified`, `--risk`, `--fixed`, `--opened`; judgment calls go on the ticket as `--decision`; `--shipped`, `--left`, `--tests` are repeatable, or pass `--result-json '{"shipped":[…],"checks":[…]}'`), adds the **checks** (`--check`, repeatable, skips duplicates) and moves the ticket there (it counts as checked, so `--active` hides it). Run it again to add checks or replace the result. Ticking the last check (`update --check-check N` or `--check-all-checks`) moves the ticket to Done on its own. Moving it back out to todo/in-progress/backlog/inbox unchecks it. A ticket opened while reviewing another carries `reviewOf: <id>` (`add --review-of`); `ch tasks get` shows the result, `From review of:` and `Follow-ups from review:`, and `ch tasks runplan` lists the review queue, oldest first.  
 Valid priorities: `low`, `medium`, `high`.  
 Valid energy: `deep`, `shallow`, `errands`, `creative`.
 
@@ -135,7 +141,14 @@ not a replacement for these message/data commands.
 
 ## tasks.json schema
 
-Tasks live in `tasks.json` at the repo root (gitignored). Copy `tasks.example.json` to get started.
+Tasks live in `tasks.json` at the repo root (gitignored), or in `$CH_HOME` when set. Copy `tasks.example.json` to get started.
+
+**Split layout.** Once the file gets large, `ch tasks split` stores the same document as
+`tasks.d/index.json` (everything below, with each section's `tasks` reduced to an ordered list of
+ids) plus `tasks.d/tickets/<ID>.json` (one ticket each). When `tasks.d/index.json` exists it wins;
+`ch`, the dashboard (`GET /tasks.json` is assembled on the fly) and backups behave the same in both
+layouts. Saves rewrite only the tickets that changed and write the index last. Code that needs the
+document should go through `shared/tasks-files.js` rather than reading `tasks.json` directly.
 
 ```jsonc
 {

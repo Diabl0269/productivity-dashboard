@@ -1,6 +1,7 @@
 // task-fields.js — Shared helpers for due dates, blocked state, labels, links, WIP.
 
 import { escapeHtml, findTaskByTaskId } from './ticket-types.js';
+import { REVIEW_SECTION } from '../../shared/review.js';
 import { normalizeModel } from '../../shared/model.js';
 import { nextTaskIdFromState, projectPrefix, derivePrefixFromSlug } from '../../shared/task-ids.js';
 
@@ -84,23 +85,23 @@ export function indexTasksById(tasksBySection) {
  * Peer deps that are still unresolved (not done/archive/checked).
  * @returns {string[]} unresolved task ids
  */
-export function unresolvedBlockedBy(task, tasksBySection) {
+export function unresolvedBlockedBy(task, tasksBySection, byId) {
   const deps = Array.isArray(task.blockedBy) ? task.blockedBy : [];
   if (deps.length === 0) return [];
-  const byId = indexTasksById(tasksBySection);
+  const index = byId || indexTasksById(tasksBySection);
   return deps.filter(id => {
-    const dep = byId.get(id);
+    const dep = index.get(id);
     if (!dep) return true; // missing = still blocking
     if (isTaskDone(dep)) return false;
     const sec = dep.section || '';
-    return sec !== 'done' && sec !== 'archive';
+    return sec !== 'done' && sec !== 'archive' && sec !== REVIEW_SECTION;
   });
 }
 
-/** True if flagged blocked OR has unresolved peer deps. */
-export function isEffectivelyBlocked(task, tasksBySection) {
+/** True if flagged blocked OR has unresolved peer deps. Pass a prebuilt `byId` in loops. */
+export function isEffectivelyBlocked(task, tasksBySection, byId) {
   if (task.blocked) return true;
-  return unresolvedBlockedBy(task, tasksBySection).length > 0;
+  return unresolvedBlockedBy(task, tasksBySection, byId).length > 0;
 }
 
 /** True when a task is finished (checkbox or done/archive column). */
@@ -108,7 +109,7 @@ export function isTaskDone(task) {
   if (!task) return false;
   if (task.checked) return true;
   const sec = task.section || '';
-  return sec === 'done' || sec === 'archive';
+  return sec === 'done' || sec === 'archive' || sec === REVIEW_SECTION;
 }
 
 /**
@@ -116,13 +117,17 @@ export function isTaskDone(task) {
  * Checkbox toggle sets checked before moveTask; drag/status only change section.
  */
 export function syncTaskCompletionWithSection(task, toSectionId, prevSectionId) {
-  const finishing = toSectionId === 'done' || toSectionId === 'archive';
-  const wasFinished = prevSectionId === 'done' || prevSectionId === 'archive';
+  // Ready for review counts as shipped (checked), but only Done stamps the finish date,
+  // so reviewing a ticket (review -> done) stamps it even though it is already checked.
+  const finishing = toSectionId === 'done' || toSectionId === 'archive' || toSectionId === REVIEW_SECTION;
+  const wasFinished = prevSectionId === 'done' || prevSectionId === 'archive' || prevSectionId === REVIEW_SECTION;
   if (finishing && !task.checked) {
     task.checked = true;
     if (toSectionId === 'done' && prevSectionId !== 'done') {
       task.updated = todayYmd();
     }
+  } else if (toSectionId === 'done' && prevSectionId === REVIEW_SECTION) {
+    task.updated = todayYmd();
   } else if (!finishing && wasFinished && task.checked) {
     task.checked = false;
   }
@@ -207,6 +212,15 @@ export function estimateBadgeHtml(task) {
   if (!task.estimateMinutes) return '';
   const label = formatEstimate(task.estimateMinutes);
   return `<span class="task-estimate-badge" title="Estimate ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+}
+
+/** Small n/m badge for the per-ticket checks tick-list; only when some are unticked. */
+export function checksBadgeHtml(task) {
+  const checks = Array.isArray(task.checks) ? task.checks : [];
+  const done = checks.filter(c => c.checked).length;
+  if (checks.length === 0 || done === checks.length) return '';
+  const label = `${done}/${checks.length}`;
+  return `<span class="task-checks-badge" title="Checks ${label}" aria-label="Checks ${label}">&#10003; ${label}</span>`;
 }
 
 export function loggedBadgeHtml(task) {
@@ -429,7 +443,7 @@ export function advanceDateByRecurrence(ymd, recurrence) {
 export function focusScore(task, tasksBySection, now = new Date()) {
   if (!task || task.checked) return -Infinity;
   const sec = task.section || '';
-  if (sec === 'done' || sec === 'archive' || sec === 'backlog' || sec === 'inbox') return -Infinity;
+  if (sec === 'done' || sec === 'archive' || sec === REVIEW_SECTION || sec === 'backlog' || sec === 'inbox') return -Infinity;
   if (isSnoozed(task, now)) return -Infinity;
 
   let score = 0;
@@ -507,7 +521,7 @@ export function nextActionForEpic(epic, tasksBySection, now = new Date()) {
     for (const t of list || []) {
       if (t.parentId === epic.taskId && !t.checked) {
         const sec = t.section || '';
-        if (sec === 'done' || sec === 'archive') continue;
+        if (sec === 'done' || sec === 'archive' || sec === REVIEW_SECTION) continue;
         children.push(t);
       }
     }
@@ -717,19 +731,49 @@ export function dependencyEdges(tasksBySection) {
   return edges;
 }
 
-/** True when `task` is the epic or a direct/indirect child of `epicId`. */
-export function taskUnderEpic(task, epicId, tasksBySection) {
+/**
+ * True when `task` is the epic or a direct/indirect child of `epicId`.
+ * Pass a prebuilt `byId` (indexTasksById) when calling in a loop.
+ */
+export function taskUnderEpic(task, epicId, tasksBySection, byId) {
   if (!task || !epicId) return false;
   if (task.taskId === epicId) return true;
-  const byId = indexTasksById(tasksBySection);
+  if (!task.parentId) return false;
+  const index = byId || indexTasksById(tasksBySection);
   let cur = task;
   const seen = new Set();
   while (cur?.parentId && !seen.has(cur.parentId)) {
     if (cur.parentId === epicId) return true;
     seen.add(cur.parentId);
-    cur = byId.get(cur.parentId);
+    cur = index.get(cur.parentId);
   }
   return false;
+}
+
+/**
+ * Epic id -> number of tasks under it (the epic itself plus every descendant via the
+ * parentId chain, cycle-safe). One pass; equals counting `taskUnderEpic` per epic.
+ * Only ids that appear as a task or an ancestor get an entry.
+ */
+export function countTasksUnderEpics(tasksBySection, byId) {
+  const index = byId || indexTasksById(tasksBySection);
+  const counts = new Map();
+  for (const list of Object.values(tasksBySection || {})) {
+    for (const t of list || []) {
+      const matched = new Set();
+      if (t.taskId) matched.add(t.taskId);
+      // Same walk as taskUnderEpic: every parentId along the chain, stopping on a cycle.
+      const seen = new Set();
+      let cur = t;
+      while (cur?.parentId && !seen.has(cur.parentId)) {
+        matched.add(cur.parentId);
+        seen.add(cur.parentId);
+        cur = index.get(cur.parentId);
+      }
+      for (const id of matched) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+  }
+  return counts;
 }
 
 /**
@@ -737,7 +781,7 @@ export function taskUnderEpic(task, epicId, tasksBySection) {
  * filters: { priorities:Set, types:Set, due:Set, labels:Set, sections:Set,
  *            hasParent:bool|null, blocked:bool|null, parentEpics:Set }
  */
-export function taskMatchesFacets(task, filters, tasksBySection) {
+export function taskMatchesFacets(task, filters, tasksBySection, byId) {
   if (!filters) return true;
 
   if (filters.sections && filters.sections.size > 0) {
@@ -770,8 +814,8 @@ export function taskMatchesFacets(task, filters, tasksBySection) {
   }
   if (filters.hasParent === true && !task.parentId) return false;
   if (filters.hasParent === false && task.parentId) return false;
-  if (filters.blocked === true && !isEffectivelyBlocked(task, tasksBySection)) return false;
-  if (filters.blocked === false && isEffectivelyBlocked(task, tasksBySection)) return false;
+  if (filters.blocked === true && !isEffectivelyBlocked(task, tasksBySection, byId)) return false;
+  if (filters.blocked === false && isEffectivelyBlocked(task, tasksBySection, byId)) return false;
   if (filters.dueExact && task.dueDate !== filters.dueExact && task.startDate !== filters.dueExact) {
     return false;
   }
@@ -790,8 +834,9 @@ export function taskMatchesFacets(task, filters, tasksBySection) {
   if (filters.snoozed === false && isSnoozed(task)) return false;
   if (filters.parentEpics && filters.parentEpics.size > 0) {
     let ok = false;
+    const index = byId || indexTasksById(tasksBySection);
     for (const epicId of filters.parentEpics) {
-      if (taskUnderEpic(task, epicId, tasksBySection)) { ok = true; break; }
+      if (taskUnderEpic(task, epicId, tasksBySection, index)) { ok = true; break; }
     }
     if (!ok) return false;
   }

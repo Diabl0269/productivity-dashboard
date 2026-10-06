@@ -64,6 +64,7 @@
   <link rel="stylesheet" href="./styles/settings.css">
   <link rel="stylesheet" href="./styles/projects.css">
   <link rel="stylesheet" href="./styles/mobile.css">
+  <link rel="stylesheet" href="./styles/run-plan.css">
 </head>
 <body>
   <header>
@@ -100,6 +101,7 @@
         <button id="tasksTabBtn" role="tab" aria-selected="false" aria-controls="tasksPanel">Tasks</button>
         <button id="searchTabBtn" role="tab" aria-selected="false" aria-controls="searchPanel">Search</button>
         <button id="projectsTabBtn" role="tab" aria-selected="false" aria-controls="projectsPanel">Projects</button>
+        <button id="runPlanTabBtn" role="tab" aria-selected="false" aria-controls="runPlanPanel">Run plan</button>
         <button id="memoryTabBtn" role="tab" aria-selected="false" aria-controls="memoryPanel">Memory</button>
         <button id="settingsTabBtn" role="tab" aria-selected="false" aria-controls="settingsPanel">Settings</button>
       </div>
@@ -352,6 +354,11 @@
       <div class="tasks-filters is-collapsed" id="searchFilters" aria-label="Search filters"></div>
       <div class="search-page-results" id="searchPageResults" aria-live="polite"></div>
     </div>
+  </div>
+
+  <!-- RUN PLAN TAB PANEL -->
+  <div class="tab-panel" id="runPlanPanel" role="tabpanel" aria-labelledby="runPlanTabBtn">
+    <div class="rp-root" id="runPlanMain"></div>
   </div>
 
   <!-- PROJECTS TAB PANEL -->

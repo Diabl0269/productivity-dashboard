@@ -20,6 +20,7 @@ const SHELL = [
   './styles/settings.css',
   './styles/projects.css',
   './styles/mobile.css',
+  './styles/run-plan.css',
   './js/main.js',
 ];
 

@@ -11,6 +11,13 @@
  *              [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--log-time 30m|2h]
  *              [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
  *              [--blocked] [--waiting-on "..."] [--label L] [--link URL] [--link-label "..."] [--blocked-by T1]
+ *              [--review-of T1]
+ *   (add/update also take --lane <slug> and update --clear-lane: run-plan lane)
+ *   runplan [--json]
+ *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+         [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
+ *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
+ *              [--result-json '<json>'] [--json]   (ship a ticket into "Ready for review")
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
  *              [--color "#RRGGBB"] [--clear-color]
  *              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
@@ -26,6 +33,9 @@
  *              [--add-subtask "text"] [--check-subtask N] [--uncheck-subtask N]
  *              [--remove-subtask N] [--clear-subtasks]
  *              [--edit-subtask N --subtask-text "..."]
+ *              [--add-check "text"] [--check-check N] [--uncheck-check N]
+ *              [--remove-check N] [--clear-checks] [--check-all-checks]
+ *              [--review-of T1] [--clear-review-of] [--clear-result]
  *   set-priority <id> <low|medium|high>
  *   next-id
  *   dump [--active] [--json]
@@ -36,7 +46,8 @@
 
 import { parse } from '../lib/args.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
-import { readJson, tasksJsonPath } from '../lib/io.js';
+import { dataRoot } from '../lib/io.js';
+import { readTasksDoc, layoutWarnings, migrateToSplit, splitDir } from '../../shared/tasks-files.js';
 import {
   isValidTaskId,
   collectKnownPrefixes,
@@ -48,12 +59,17 @@ import {
   SECTION_IDS, PRIORITIES, DEFAULT_TICKET_TYPE_ID, normalizeTicketTypes,
   isSectionId, isPriority, isHexColor, validateTasksDoc, normalizeTasksDoc,
   appendHistory, isJiraKey, RECURRENCE_FREQS, ENERGY_VALUES, isEnergy,
-  isHttpsUrl, ensureSections, normalizeMeta, defaultMeta,
+  isHttpsUrl, ensureSections, normalizeMeta, defaultMeta, isLaneSlug,
 } from '../lib/schema.js';
 import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
-import { createTasksBackup, listTasksBackups, restoreTasksBackup } from '../lib/backup.js';
+import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
+import path from 'node:path';
+import { computeRunPlan } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
+import {
+  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete,
+} from '../../shared/review.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -149,6 +165,7 @@ function spawnRecurringNext(doc, completedTask, today) {
     created: today,
     updated: null,
     subtasks: (completedTask.subtasks || []).map(st => ({ text: st.text, checked: false })),
+    checks: [],
     recurrence: {
       freq: completedTask.recurrence.freq,
       interval: completedTask.recurrence.interval > 0 ? completedTask.recurrence.interval : 1,
@@ -298,6 +315,7 @@ function docToDashboardShape(doc) {
       description: taskDescription(t),
       checked: t.checked,
       subtasks: t.subtasks || [],
+      checks: t.checks || [],
       created: t.created || null,
       updated: t.updated || null,
       priority: t.priority,
@@ -381,8 +399,9 @@ function cmdGet(argv) {
   const doc = load();
   const { task, section } = resolveTask(doc, id, values.section);
 
+  const followUps = followUpsOf(doc, task.id);
   if (values.json) {
-    jsonOut({ ...task, section: section.id });
+    jsonOut({ ...task, section: section.id, followUps });
     return;
   }
 
@@ -395,6 +414,7 @@ function cmdGet(argv) {
   if (task.jiraKey) print(`  jira: ${task.jiraKey}`);
   if (task.issueUrl) print(`  issue: ${task.issueUrl}`);
   if (task.project) print(`  project: ${task.project}`);
+  if (task.lane) print(`  lane: ${task.lane}`);
   if (task.energy) print(`  energy: ${task.energy}`);
   if (task.model) print(`  model: ${task.model}`);
   if (task.snoozeUntil) print(`  snoozeUntil: ${task.snoozeUntil}`);
@@ -438,6 +458,17 @@ function cmdGet(argv) {
     });
     print(`  subtasks: ${subTaskParts.join(', ')}`);
   }
+  if (task.reviewOf) {
+    const found = findTask(doc, task.reviewOf);
+    print(`  From review of: ${task.reviewOf}${found ? ` ${found.task.title}` : ''}`);
+  }
+  if (followUps.length) {
+    print(`  Follow-ups from review: ${followUps.map(f => `${f.id} (${f.section})`).join(', ')}`);
+  }
+  if (task.result) {
+    print('  Result:');
+    for (const l of resultLines(task.result)) print(`    ${l}`);
+  }
   if (Array.isArray(task.history) && task.history.length) {
     print(`  history: ${task.history.length} event(s)`);
   }
@@ -461,6 +492,12 @@ function cmdGet(argv) {
       print(`  ${i + 1}. [${st.checked ? 'x' : ' '}] ${st.text}`);
     });
   }
+  if (Array.isArray(task.checks) && task.checks.length > 0) {
+    print(`  Checks (${task.checks.filter(c => c.checked).length}/${task.checks.length}):`);
+    task.checks.forEach((c, i) => {
+      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}`);
+    });
+  }
   print(`  created: ${task.created || 'n/a'}  updated: ${task.updated || 'n/a'}`);
 }
 
@@ -479,6 +516,7 @@ function cmdAdd(argv) {
     issue:         { type: 'string' },
     project:       { type: 'string' },
     energy:        { type: 'string' },
+    lane:          { type: 'string' },
     model: { type: 'string' },
     snooze:        { type: 'string' },
     decision:      { type: 'string' },
@@ -492,6 +530,7 @@ function cmdAdd(argv) {
     link:          { type: 'string', multiple: true },
     'link-label':  { type: 'string', multiple: true },
     'blocked-by':  { type: 'string', multiple: true },
+    'review-of':   { type: 'string' },
     assignee:      { type: 'string' },
     estimate:      { type: 'string' },
     json:          { type: 'boolean', short: 'j' },
@@ -521,6 +560,9 @@ function cmdAdd(argv) {
       die(`parent task ${values.parent} not found. Try: ch tasks list`);
     }
   }
+  if (values['review-of'] && !findTask(doc, values['review-of'])) {
+    die(`--review-of task ${values['review-of']} not found. Try: ch tasks list`);
+  }
   if (values.color && !isHexColor(values.color)) {
     die(`invalid color "${values.color}". Use #RRGGBB`);
   }
@@ -533,6 +575,7 @@ function cmdAdd(argv) {
   if (values.energy && !isEnergy(values.energy)) {
     die(`invalid --energy "${values.energy}". Valid: ${ENERGY_VALUES.join(', ')}`);
   }
+  assertLane(values.lane);
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
 
@@ -570,9 +613,11 @@ function cmdAdd(argv) {
     created: todayStr(),
     updated: null,
     subtasks: [],
+    checks: [],
   };
   if (description) task.description = description;
   if (values.parent) task.parentId = values.parent;
+  if (values['review-of']) task.reviewOf = values['review-of'];
   if (values.color) task.color = values.color;
   if (values.due) task.dueDate = values.due;
   if (values.start) task.startDate = values.start;
@@ -580,6 +625,7 @@ function cmdAdd(argv) {
   if (values.issue) task.issueUrl = values.issue.trim();
   if (values.project) task.project = values.project.trim();
   if (values.energy) task.energy = values.energy;
+  if (values.lane) task.lane = values.lane.trim();
   if (values.model) task.model = normalizeModel(values.model);
   if (values.snooze) task.snoozeUntil = values.snooze;
   if (values.decision) {
@@ -650,6 +696,7 @@ function cmdMove(argv) {
     return;
   }
 
+  if (targetSectionId === REVIEW_SECTION) ensureSections(doc);
   const toSection = sectionById(doc, targetSectionId);
   if (!toSection) die(`section "${targetSectionId}" not found in document. Try 'ch tasks lint --fix'`);
 
@@ -657,8 +704,10 @@ function cmdMove(argv) {
   fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
   // Update
   const today = todayStr();
-  if (targetSectionId === 'done') {
-    task.checked = true;
+  if (targetSectionId === 'done' || targetSectionId === REVIEW_SECTION) {
+    task.checked = true; // review counts as shipped
+  } else if (fromSection.id === REVIEW_SECTION) {
+    task.checked = false; // pulled back out of review (done keeps its flag, as before)
   }
   task.updated = today;
   appendHistory(task, { event: 'moved', from: fromSection.id, to: targetSectionId });
@@ -676,6 +725,86 @@ function cmdMove(argv) {
     return;
   }
   ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}`);
+}
+
+/**
+ * Ship a ticket into "Ready for review": record what shipped (result), add the
+ * "worth checking yourself" list (checks) and move it to the review section.
+ * Everything is inline flags so a cloud session can file it as one argv.
+ */
+function cmdReview(argv) {
+  const { values, positionals } = parse(argv, {
+    shipped:       { type: 'string', multiple: true },
+    left:          { type: 'string', multiple: true },
+    tests:         { type: 'string', multiple: true },
+    unverified:    { type: 'string', multiple: true },
+    risk:          { type: 'string', multiple: true },
+    fixed:         { type: 'string', multiple: true },
+    opened:        { type: 'string', multiple: true },
+    ci:            { type: 'string' },
+    check:         { type: 'string', multiple: true },
+    'result-json': { type: 'string' },
+    section:       { type: 'string',  short: 's' },
+    json:          { type: 'boolean', short: 'j' },
+  });
+
+  const id = positionals[0];
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... [--check "..."]... [--result-json \'<json>\']');
+
+  let base = {};
+  if (values['result-json'] !== undefined) {
+    try {
+      base = JSON.parse(values['result-json']);
+    } catch (e) {
+      die(`invalid --result-json: ${e.message}`);
+    }
+    if (!base || typeof base !== 'object' || Array.isArray(base)) die('invalid --result-json: must be a JSON object');
+  }
+  const asList = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
+  const checkTexts = [...asList(base.checks), ...(values.check || [])];
+  if (checkTexts.some(t => typeof t !== 'string')) die('invalid --result-json: checks must be a list of strings');
+
+  const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
+  let result = null;
+  if (hasResult) {
+    const { checks: _checks, ...rest } = base;
+    const merged = { ...rest };
+    for (const k of ['shipped', 'left', 'tests', 'unverified', 'fixed', 'opened']) {
+      if (values[k]) merged[k] = [...asList(rest[k]), ...values[k]];
+    }
+    if (values.risk) merged.risks = [...asList(rest.risks), ...values.risk];
+    if (values.ci !== undefined) merged.ci = values.ci;
+    try {
+      result = normalizeResult(merged);
+    } catch (e) {
+      die(`invalid result: ${e.message}`);
+    }
+  }
+
+  const doc = load();
+  const { task, section: fromSection } = resolveTask(doc, id, values.section);
+  ensureSections(doc); // documents from before "Ready for review" lack the section
+  const toSection = sectionById(doc, REVIEW_SECTION);
+  if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
+
+  if (result) task.result = result;
+  const added = addChecks(task, checkTexts);
+  task.checked = true;
+  task.updated = todayStr();
+
+  const moved = fromSection.id !== REVIEW_SECTION;
+  if (moved) {
+    fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
+    appendHistory(task, { event: 'moved', from: fromSection.id, to: REVIEW_SECTION });
+    toSection.tasks.push(task);
+  }
+  save(doc);
+
+  if (values.json) {
+    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, result: task.result || null });
+    return;
+  }
+  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added`);
 }
 
 function cmdDone(argv) {
@@ -741,6 +870,8 @@ function cmdUpdate(argv) {
     'clear-project': { type: 'boolean' },
     energy:          { type: 'string' },
     'clear-energy':  { type: 'boolean' },
+    lane:            { type: 'string' },
+    'clear-lane':    { type: 'boolean' },
     model: { type: 'string' },
     'clear-model': { type: 'boolean' },
     snooze:          { type: 'string' },
@@ -783,6 +914,15 @@ function cmdUpdate(argv) {
     'clear-subtasks': { type: 'boolean' },
     'edit-subtask':  { type: 'string' },  // N (1-based); pairs with --subtask-text
     'subtask-text':  { type: 'string' },
+    'add-check':     { type: 'string', multiple: true },
+    'check-check':   { type: 'string' },  // N (1-based) as string
+    'uncheck-check': { type: 'string' },
+    'remove-check':  { type: 'string' },
+    'clear-checks':  { type: 'boolean' },
+    'check-all-checks': { type: 'boolean' },
+    'review-of':     { type: 'string' },
+    'clear-review-of': { type: 'boolean' },
+    'clear-result':  { type: 'boolean' },
     section:         { type: 'string',  short: 's' },
     uncheck:         { type: 'boolean' }, // reopen a task that was marked done
     check:           { type: 'boolean' }, // mark task checked (triggers recurrence spawn)
@@ -807,11 +947,15 @@ function cmdUpdate(argv) {
   if (values.energy && !isEnergy(values.energy)) {
     die(`invalid --energy "${values.energy}". Valid: ${ENERGY_VALUES.join(', ')}`);
   }
+  assertLane(values.lane);
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
 
   const doc = load();
-  const { task } = resolveTask(doc, id, values.section);
+  const { task, section: taskSection } = resolveTask(doc, id, values.section);
+  if (values['review-of'] !== undefined && !findTask(doc, values['review-of'])) {
+    die(`--review-of task ${values['review-of']} not found. Try: ch tasks list`);
+  }
 
   const wasChecked = task.checked;
   let changed = false;
@@ -931,6 +1075,14 @@ function cmdUpdate(argv) {
     changed = true;
   } else if (values.energy !== undefined) {
     task.energy = values.energy;
+    changed = true;
+  }
+
+  if (values['clear-lane']) {
+    delete task.lane;
+    changed = true;
+  } else if (values.lane !== undefined) {
+    task.lane = values.lane.trim();
     changed = true;
   }
 
@@ -1205,6 +1357,53 @@ function cmdUpdate(argv) {
     die('--subtask-text requires --edit-subtask N');
   }
 
+  if (values['clear-checks']) {
+    task.checks = [];
+    changed = true;
+  } else if (values['remove-check'] !== undefined) {
+    const n = parseInt(values['remove-check'], 10);
+    if (!Array.isArray(task.checks) || isNaN(n) || n < 1 || n > task.checks.length) {
+      die(`--remove-check N must be between 1 and ${(task.checks || []).length}`);
+    }
+    task.checks.splice(n - 1, 1);
+    changed = true;
+  }
+  if (values['add-check'] && values['add-check'].length) {
+    if (!Array.isArray(task.checks)) task.checks = [];
+    for (const text of values['add-check']) {
+      task.checks.push({ text, checked: false, addedAt: new Date().toISOString() });
+    }
+    changed = true;
+  }
+  let ticked = false;
+  for (const [flag, state] of [['check-check', true], ['uncheck-check', false]]) {
+    if (values[flag] === undefined) continue;
+    const n = parseInt(values[flag], 10);
+    if (isNaN(n) || n < 1 || n > (task.checks || []).length) {
+      die(`--${flag} N must be between 1 and ${(task.checks || []).length}`);
+    }
+    task.checks[n - 1].checked = state;
+    if (state) ticked = true;
+    changed = true;
+  }
+  if (values['check-all-checks']) {
+    for (const c of task.checks || []) c.checked = true;
+    ticked = true;
+    changed = true;
+  }
+  if (values['clear-review-of']) {
+    delete task.reviewOf;
+    changed = true;
+  } else if (values['review-of'] !== undefined) {
+    if (values['review-of'] === id) die('--review-of cannot be the task itself');
+    task.reviewOf = values['review-of'];
+    changed = true;
+  }
+  if (values['clear-result']) {
+    delete task.result;
+    changed = true;
+  }
+
   if (!changed) {
     die('no update flags provided. See: ch tasks update --help');
   }
@@ -1216,13 +1415,26 @@ function cmdUpdate(argv) {
   if (values.check && !wasChecked && task.checked && task.recurrence?.freq) {
     spawned = maybeSpawnRecurrence(doc, task, today);
   }
+  // Ticking the last check of a ticket in review finishes it.
+  let movedToDone = false;
+  if (reviewComplete(task, taskSection.id, { ticked })) {
+    const doneSection = sectionById(doc, 'done');
+    if (!doneSection) die('section "done" not found in document. Try \'ch tasks lint --fix\'');
+    taskSection.tasks = taskSection.tasks.filter(t => t.id !== task.id);
+    task.checked = true;
+    appendHistory(task, { event: 'moved', from: taskSection.id, to: 'done' });
+    doneSection.tasks.push(task);
+    movedToDone = true;
+  }
   save(doc);
 
   if (values.json) {
-    jsonOut(spawned ? { ...task, spawned: spawned.id } : task);
+    const out = spawned ? { ...task, spawned: spawned.id } : { ...task };
+    if (movedToDone) out.movedToDone = true;
+    jsonOut(out);
     return;
   }
-  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}`);
+  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}`);
 }
 
 function cmdSetPriority(argv) {
@@ -1352,10 +1564,10 @@ function cmdLint(argv) {
     json: { type: 'boolean', short: 'j' },
   });
 
-  // Use readJson directly — lint must work even when load() would throw
+  // Read without load() — lint must work even when validation would throw
   let doc;
   try {
-    doc = normalizeTasksDoc(readJson(tasksJsonPath()));
+    doc = normalizeTasksDoc(readTasksDoc(dataRoot()));
   } catch (e) {
     if (values.json) {
       jsonOut({ valid: false, errors: [e.message], duplicateIds: [] });
@@ -1373,6 +1585,7 @@ function cmdLint(argv) {
   }
 
   const result = validateTasksDoc(doc);
+  for (const w of layoutWarnings(dataRoot())) printErr(`lint: warning: ${w}`);
 
   if (result.valid) {
     // Persist note→description, missing sections, meta when --fix is set
@@ -1505,6 +1718,58 @@ function cmdCapture(argv) {
   return cmdAdd(rest);
 }
 
+/** Reject a --lane value that is not a lowercase slug. */
+function assertLane(value) {
+  if (value !== undefined && !isLaneSlug(String(value).trim())) {
+    die(`invalid --lane "${value}". Use lowercase letters, digits and hyphens`);
+  }
+}
+
+/** Run plan: which pinned epics can be launched now, as parallel lanes. */
+function cmdRunPlan(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const plan = computeRunPlan(load());
+  if (values.json) return jsonOut(plan);
+
+  if (plan.lanes.length === 0) {
+    print('No pinned epics. Pin one with: ch tasks plan --pin <id>');
+  }
+  const line = (c, prev) => {
+    const mark = c.inProgress && (c.state === 'ready' || c.state === 'partial')
+      ? '[running]'
+      : { ready: '[ready]  ', partial: '[partial]', later: '[later]  ', pick: '[you]    ' }[c.state] || c.state;
+    const rest = c.isRest ? ' (rest)' : '';
+    const alongside = prev && prev.step === c.step ? '\u2016' : ' '; // ‖ = runs alongside the card above
+    return ` ${alongside}${mark} ${c.id}  ${c.title}${rest}${c.why ? `  - ${c.why}` : ''}`;
+  };
+  for (const lane of plan.lanes) {
+    print(`Lane: ${lane.name}${lane.needsBuild ? ' (app build)' : ''}`);
+    lane.now.forEach((c, i) => {
+      print(line(c, lane.now[i - 1]));
+      if (c.command) print(`      ${c.isPrompt ? 'prompt: ' : ''}${c.command}${c.model ? `  (model: ${c.model})` : ''}`);
+    });
+    if (lane.later.length) {
+      const { picks, epics } = lane.waitsOn || { picks: [], epics: [] };
+      const pickWords = `your ${picks.length > 1 ? 'picks' : 'pick'} ${picks.join(', ')}`;
+      const words = epics.length && picks.length ? `${epics.join(', ')} and ${pickWords}`
+        : epics.length ? epics.join(', ') : picks.length ? pickWords : 'later';
+      print(`  -- ${words === 'later' ? 'later' : `after ${words}`} --`);
+      lane.later.forEach((c, i) => print(line(c, lane.later[i - 1])));
+    }
+  }
+  if (plan.review && plan.review.length) {
+    print(`Ready for review (${plan.review.length}), oldest first:`);
+    for (const r of plan.review) {
+      const since = (r.enteredAt || '').slice(0, 10) || 'n/a';
+      const fu = r.followUps.length ? ` · follow-ups ${r.followUps.map(f => `${f.id} (${f.section})`).join(', ')}` : '';
+      print(`  ${r.id}  ${r.title} · checks ${r.checks.done}/${r.checks.total} · since ${since}${fu}`);
+    }
+  }
+  if (plan.doneEpics.length) print(`Done epics, still pinned: ${plan.doneEpics.join(', ')} (unpin with ch tasks plan --unpin <id>)`);
+  print('Lanes run side by side; cards in a lane run top to bottom; a \u2016 line runs alongside the card above it');
+  print(`At most ${plan.machineCap} app builds at once (${plan.appStartCount} could start now)`);
+}
+
 /** Today plan: show / pin / unpin / carry unfinished pins. */
 function cmdPlan(argv) {
   const { values } = parse(argv, {
@@ -1534,7 +1799,7 @@ function cmdPlan(argv) {
     plan = {
       date: today,
       taskIds: unfinished,
-      carriedIds: unfinished,
+      carriedIds: [...unfinished],
     };
     doc.meta.dailyPlan = plan;
     changed = true;
@@ -1552,7 +1817,7 @@ function cmdPlan(argv) {
       return true;
     });
     plan.taskIds = unfinished;
-    plan.carriedIds = unfinished;
+    plan.carriedIds = [...unfinished];
     plan.date = today;
     changed = true;
   }
@@ -1686,6 +1951,21 @@ async function cmdBackups(argv) {
   }
 }
 
+async function cmdSplit(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const root = dataRoot();
+  // Validate first: a document `ch` can't load shouldn't be migrated.
+  load();
+  const moveSingleTo = path.join(ensureBackupDir(), backupFileName());
+  const result = migrateToSplit(root, { moveSingleTo });
+  if (values.json) {
+    jsonOut({ ...result, dir: splitDir(root) });
+    return;
+  }
+  const counts = result.sections.map(s => `${s.id} ${s.count}`).join(', ');
+  ok(`split: ${result.tickets} tickets -> ${splitDir(root)} (${counts}); verified; original moved to ${result.movedTo}`);
+}
+
 async function cmdRestore(argv) {
   const { positionals, values } = parse(argv, {
     json: { type: 'boolean', short: 'j' },
@@ -1708,14 +1988,19 @@ Subcommands:
   get <id> [--json]
   capture "<title>" [--priority medium] [--json]
   plan [--pin T1] [--unpin T1] [--carry] [--json]
+  runplan [--json]
+  review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+         [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
+         [--check "..."]... [--result-json '<json>'] [--json]
+         ship a ticket to "Ready for review": records the result and the checks to tick
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
-      [--project slug] [--energy deep|shallow|errands|creative]
+      [--project slug] [--energy deep|shallow|errands|creative] [--lane slug]
       [--model "claude-sonnet"] [--snooze YYYY-MM-DD]
       [--decision "..."] [--log-time 30m|2h]
       [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
       [--estimate 2h|30m|1d] [--assignee name] [--blocked] [--waiting-on "..."]
-      [--label L] [--link URL] [--blocked-by T1]
+      [--label L] [--link URL] [--blocked-by T1] [--review-of T1]
   move <id> <section>
   done <id>
   update <id> [--title "..."] [--description "..."] [--add-description "..."] [--priority P]
@@ -1723,6 +2008,7 @@ Subcommands:
              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
              [--jira PROJECT-123] [--clear-jira] [--issue URL] [--clear-issue]
              [--project slug] [--clear-project] [--energy E] [--clear-energy]
+             [--lane slug] [--clear-lane]
              [--model "name"] [--clear-model]
              [--snooze YYYY-MM-DD] [--clear-snooze] [--decision "..."]
              [--log-time 30m|2h] [--set-logged 2h] [--clear-logged]
@@ -1738,6 +2024,9 @@ Subcommands:
              [--add-blocked-by T1] [--remove-blocked-by T1] [--clear-blocked-by]
              [--add-subtask "text"] [--check-subtask N] [--uncheck-subtask N]
              [--remove-subtask N] [--clear-subtasks]
+             [--add-check "text"] [--check-check N] [--uncheck-check N]
+             [--remove-check N] [--clear-checks] [--check-all-checks]
+             [--review-of T1] [--clear-review-of] [--clear-result]
   set-priority <id> <low|medium|high>
   next-id
   dump [--active]
@@ -1746,15 +2035,18 @@ Subcommands:
   archive-done
   backup [--json]
   backups [--json]
-  restore <backup-name> [--json]`;
+  restore <backup-name> [--json]
+  split [--json]        move tasks.json into tasks.d/ (one file per ticket); backs up first`;
 
 const SUBCOMMANDS = {
   list:          cmdList,
   get:           cmdGet,
   capture:       cmdCapture,
   plan:          cmdPlan,
+  runplan:       cmdRunPlan,
   add:           cmdAdd,
   move:          cmdMove,
+  review:        cmdReview,
   done:          cmdDone,
   update:        cmdUpdate,
   'set-priority': cmdSetPriority,
@@ -1766,6 +2058,7 @@ const SUBCOMMANDS = {
   backup:        cmdBackup,
   backups:       cmdBackups,
   restore:       cmdRestore,
+  split:         cmdSplit,
 };
 
 export default async function tasks(argv) {

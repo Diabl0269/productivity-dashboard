@@ -21,9 +21,9 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-test('SECTIONS has all six canonical ids', () => {
+test('SECTIONS has all seven canonical ids', () => {
   const ids = SECTIONS.map(s => s.id);
-  assert.deepEqual(ids, ['inbox', 'backlog', 'todo', 'in-progress', 'done', 'archive']);
+  assert.deepEqual(ids, ['inbox', 'backlog', 'todo', 'in-progress', 'review', 'done', 'archive']);
 });
 
 test('SECTION_IDS matches SECTIONS map', () => {
@@ -588,7 +588,7 @@ test('ensureSections adds inbox and orders sections', async () => {
   const doc = makeValidDoc();
   const { added } = ensureSections(doc);
   assert.ok(added.includes('inbox'));
-  assert.deepEqual(doc.sections.map(s => s.id).filter(id => SECTION_IDS.includes(id)).slice(0, 6), SECTION_IDS);
+  assert.deepEqual(doc.sections.map(s => s.id).filter(id => SECTION_IDS.includes(id)).slice(0, 7), SECTION_IDS);
 });
 
 test('normalizeMeta fills defaults', async () => {
@@ -598,4 +598,31 @@ test('normalizeMeta fills defaults', async () => {
   assert.deepEqual(meta.projects, []);
   assert.deepEqual(meta.ideas, []);
   assert.ok(meta.dailyPlan);
+});
+
+// ---------------------------------------------------------------------------
+// lane (optional run-plan lane slug)
+// ---------------------------------------------------------------------------
+
+import { normalizeTasksDoc, isLaneSlug } from '../lib/schema.js';
+
+test('isLaneSlug accepts lowercase slugs only', () => {
+  assert.equal(isLaneSlug('frontend-2'), true);
+  for (const bad of ['', 'Front', 'a b', '-a', 'a-', 'a--b', 5]) assert.equal(isLaneSlug(bad), false);
+});
+
+test('lane: normalize trims / drops empty; validate rejects bad slug', () => {
+  const doc = makeValidDoc();
+  const t = doc.sections[0].tasks[0] ?? (doc.sections[0].tasks[0] = {});
+  t.lane = '  alpha ';
+  normalizeTasksDoc(doc);
+  assert.equal(t.lane, 'alpha');
+  assert.equal(validateTasksDoc(doc).valid, true);
+  t.lane = 'Not A Slug';
+  const r = validateTasksDoc(doc);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.includes('.lane')));
+  t.lane = '   ';
+  normalizeTasksDoc(doc);
+  assert.equal('lane' in t, false);
 });

@@ -19,6 +19,7 @@ import {
   normalizeProjectRow,
 } from '../../shared/projects.js';
 import { normalizeModel } from '../../shared/model.js';
+import { resultErrors } from '../../shared/review.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -26,6 +27,7 @@ export const SECTIONS = [
   { id: 'backlog',     name: 'Backlog' },
   { id: 'todo',        name: 'Todo' },
   { id: 'in-progress', name: 'In Progress' },
+  { id: 'review',      name: 'Ready for review' },
   { id: 'done',        name: 'Done' },
   { id: 'archive',     name: 'Archive' },
 ];
@@ -35,6 +37,14 @@ export const SECTION_IDS = SECTIONS.map(s => s.id);
 
 /** Valid priority values. */
 export const PRIORITIES = ['low', 'medium', 'high'];
+
+/** Run-plan lane: lowercase slug (a-z, digits, hyphens). */
+const LANE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** @param {unknown} value */
+export function isLaneSlug(value) {
+  return typeof value === 'string' && LANE_SLUG_RE.test(value);
+}
 
 /** Valid energy contexts for solo focus filtering. */
 export const ENERGY_VALUES = ['deep', 'shallow', 'errands', 'creative'];
@@ -231,6 +241,13 @@ export function normalizeTask(task) {
 
   if (task.project === '' || task.project == null) delete task.project;
   else if (typeof task.project === 'string') task.project = task.project.trim();
+
+  // lane (optional run-plan lane slug); empty -> removed, invalid slug kept so validate reports it
+  if (task.lane === '' || task.lane == null) delete task.lane;
+  else if (typeof task.lane === 'string') {
+    task.lane = task.lane.trim();
+    if (task.lane === '') delete task.lane;
+  }
 
   if (task.energy === '' || task.energy == null) delete task.energy;
   else if (typeof task.energy === 'string' && !ENERGY_VALUES.includes(task.energy)) delete task.energy;
@@ -531,6 +548,7 @@ export { TASK_ID_RE };
  *       created is 'YYYY-MM-DD' or null/undefined/empty (should be set — warned, not errored)
  *       updated is 'YYYY-MM-DD' or null/undefined/empty
  *       subtasks is array of {text:string, checked:boolean}
+ *       checks (optional) is array of {text:string, checked:boolean, addedAt:ISO string}
  *       type (optional) is a known ticket-type id (defaults to "task")
  *       parentId (optional) is a task id that exists and is not self
  *       description (optional) free-text; legacy `note` is also accepted
@@ -541,6 +559,8 @@ export { TASK_ID_RE };
  *       labels (optional) string[]
  *       links (optional) [{label?: string, url: string}]
  *       blockedBy (optional) string[] of peer task ids
+ *       reviewOf (optional) id of the ticket whose review this one came from
+ *       result (optional) ship result {at, shipped[], left?[], tests?[], ci} (shared/review.js)
  *   - doc.ticketTypes (optional): array of {id, name, color}
  *
  * @param {any} doc
@@ -724,6 +744,26 @@ export function validateTasksDoc(doc) {
         }
       }
 
+      // checks (optional tick-list, separate from subtasks)
+      if (task.checks !== undefined) {
+        if (!Array.isArray(task.checks)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .checks must be an array`);
+        } else {
+          for (let ci = 0; ci < task.checks.length; ci++) {
+            const c = task.checks[ci];
+            if (!c || typeof c !== 'object') {
+              errors.push(`${ref}.checks[${ci}] must be an object`);
+              continue;
+            }
+            if (typeof c.text !== 'string') errors.push(`${ref}.checks[${ci}].text must be a string`);
+            if (typeof c.checked !== 'boolean') errors.push(`${ref}.checks[${ci}].checked must be a boolean`);
+            if (c.addedAt !== undefined && typeof c.addedAt !== 'string') {
+              errors.push(`${ref}.checks[${ci}].addedAt must be an ISO string`);
+            }
+          }
+        }
+      }
+
       // type (optional — default "task")
       if (task.type !== undefined && task.type !== null && task.type !== '') {
         if (typeof task.type !== 'string' || !typeIds.has(task.type)) {
@@ -790,6 +830,13 @@ export function validateTasksDoc(doc) {
       // project (optional slug)
       if (task.project !== undefined && task.project !== null && typeof task.project !== 'string') {
         errors.push(`${ref} (id=${task.id ?? '?'}) .project must be a string`);
+      }
+
+      // lane (optional run-plan lane slug)
+      if (task.lane !== undefined && task.lane !== null) {
+        if (typeof task.lane !== 'string' || !isLaneSlug(task.lane)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .lane "${task.lane}" must be a slug (lowercase letters, digits, hyphens)`);
+        }
       }
 
       // energy (optional)
@@ -878,6 +925,20 @@ export function validateTasksDoc(doc) {
       // blocked (optional)
       if (task.blocked !== undefined && task.blocked !== null && typeof task.blocked !== 'boolean') {
         errors.push(`${ref} (id=${task.id ?? '?'}) .blocked must be a boolean`);
+      }
+
+      // reviewOf (optional): opened while reviewing another ticket
+      if (task.reviewOf !== undefined && task.reviewOf !== null && task.reviewOf !== '') {
+        if (typeof task.reviewOf !== 'string' || !isValidTaskId(task.reviewOf, knownPrefixes)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .reviewOf "${task.reviewOf}" must be a valid task id`);
+        } else if (task.reviewOf === task.id) {
+          errors.push(`${ref} (id=${task.id}) .reviewOf cannot reference itself`);
+        }
+      }
+
+      // result (optional): what shipped (shared/review.js)
+      if (task.result !== undefined && task.result !== null) {
+        errors.push(...resultErrors(task.result, `${ref} (id=${task.id ?? '?'})`));
       }
 
       // waitingOn (optional)

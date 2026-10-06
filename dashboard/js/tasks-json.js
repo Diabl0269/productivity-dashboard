@@ -36,6 +36,11 @@ function readLabels(t) {
   return t.labels.map(l => String(l).trim()).filter(Boolean);
 }
 
+/** Plain `{}` object (not null, not an array): the shape of a review `result`. */
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
 function readBlockedBy(t) {
   if (!Array.isArray(t.blockedBy)) return [];
   return [...new Set(t.blockedBy.map(id => String(id).trim()).filter(Boolean))];
@@ -117,6 +122,19 @@ export function defaultTasksMeta() {
     ideas: [],
     review: { weeklyDate: null, checks: {} },
   };
+}
+
+/** Normalise a task's `checks` tick-list: drop malformed entries, keep addedAt. */
+export function normalizeChecks(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const c of raw) {
+    if (!c || typeof c !== 'object' || typeof c.text !== 'string' || !c.text.trim()) continue;
+    const e = { text: c.text, checked: !!c.checked };
+    if (typeof c.addedAt === 'string' && c.addedAt) e.addedAt = c.addedAt;
+    out.push(e);
+  }
+  return out;
 }
 
 /**
@@ -206,6 +224,7 @@ export function loadTasksJson(text) {
       issueUrl: readIssueUrl(t),
       project: (typeof t.project === 'string' && t.project.trim()) ? t.project.trim() : null,
       energy: readEnergy(t),
+      lane: (typeof t.lane === 'string' && t.lane.trim()) ? t.lane.trim() : null,
       model: readModel(t),
       custom: readCustomFromJson(t),
       snoozeUntil: (typeof t.snoozeUntil === 'string' && DATE_RE.test(t.snoozeUntil)) ? t.snoozeUntil : null,
@@ -228,6 +247,9 @@ export function loadTasksJson(text) {
       created: t.created || null,
       updated: t.updated || null,
       subtasks: Array.isArray(t.subtasks) ? t.subtasks.map(st => ({ text: st.text || '', checked: !!st.checked })) : [],
+      checks: normalizeChecks(t.checks),
+      reviewOf: (typeof t.reviewOf === 'string' && t.reviewOf.trim()) ? t.reviewOf.trim() : null,
+      result: isPlainObject(t.result) ? t.result : null,
       section: sec.id,
     }));
   }
@@ -261,6 +283,10 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
           updated: t.updated || null,
           subtasks: (t.subtasks || []).map(st => ({ text: st.text, checked: !!st.checked })),
         };
+        const checks = normalizeChecks(t.checks);
+        if (checks.length) row.checks = checks;
+        if (typeof t.reviewOf === 'string' && t.reviewOf.trim()) row.reviewOf = t.reviewOf.trim();
+        if (isPlainObject(t.result)) row.result = t.result;
         const desc = (t.description || '').trim();
         if (desc) row.description = desc;
         if (t.parentId) row.parentId = t.parentId;
@@ -271,6 +297,7 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (t.issueUrl) row.issueUrl = String(t.issueUrl).trim();
         if (t.project) row.project = String(t.project).trim();
         if (t.energy && ENERGY_VALUES.has(t.energy)) row.energy = t.energy;
+        if (typeof t.lane === 'string' && t.lane.trim()) row.lane = t.lane.trim();
         const model = normalizeModel(t.model);
         if (model) row.model = model;
         const custom = serializeCustomToJson(t);

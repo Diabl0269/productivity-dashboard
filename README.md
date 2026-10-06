@@ -134,6 +134,14 @@ See `memory.example/` for the expected format.
 - Add, rename, reorder, or remove types in Settings → Ticket Types (saved to `tasks.json`)
 - Colors flow onto cards, parent chips, and the detail/create modals
 
+### Run Plan Tab
+- Shows which pinned epics (`ch tasks plan --pin <id>`) can be launched now, as horizontal lanes that run side by side (set an epic's lane with `ch tasks update <id> --lane <slug>`); cards in a lane run left to right
+- A dashed divider splits each lane into what can run now and what comes later, and names what it waits on ("after your pick T12", "after E4"); each id opens that ticket. `Co-task:` tickets are yours: ones with "pick" in the title or a `design` label get a design canvas in the Design round lane, other co-tasks show as a to-do card there. Lane names show capitalized ("timeline" reads Timeline), and each lane head counts its epics and open tickets
+- Each card shows an In progress chip (the epic, or an open ticket in it, is in the In progress column) or a Ready now / Partly ready / Later chip, why it waits, a copy button for `/ship-task <id>`, and a Start / Started / Done toggle (remembered in this browser). The card's id opens the ticket in place
+- Cards in a lane run in order; in "No lane yet" epics with no dependency between them are stacked in one column and can run at the same time. The first pill shows how many app builds could start now
+- Same data from the CLI: `ch tasks runplan` (`[running]` marks in-progress cards, `‖` a card that runs alongside the one above)
+- Start on a card also opens the Claude desktop app on a new Claude Code session with the card's `/ship-task` command typed in (a `claude://code/new` link; the app has no model parameter, so pick the model there). Set `claudeSessionFolder` in `config.json` to choose the folder it opens in.
+
 ### Memory Viewer
 - Browse all memory files organized by directory
 - View detailed content of people, projects, and context files
@@ -143,6 +151,7 @@ See `memory.example/` for the expected format.
 ### Overview Tab
 - **Sprint Tracker:** Progress bar for current sprint (configured in `config.json`)
 - **Task Summary:** Counts for in-progress, todo, done, and blocked — click to open Tasks with that filter; total time estimate for active work
+- **Today Plan:** Filter (Pinned / Epics in progress / Both, default Both) over `ch tasks plan --pin` tickets and in-progress epics, with done/total progress on epic rows; the choice is remembered in localStorage
 - **Upcoming Deadlines:** Prefer `dueDate`; fall back to dates scraped from descriptions
 - **Quick Links:** Configurable shortcuts to your tools (Jira, Notion, Slack, etc.)
 - **1:1 Topics:** Scratchpad for manager meeting topics
@@ -321,9 +330,9 @@ The `serve.js` server provides:
 
 ### tasks.json
 
-Canonical task store (gitignored). Copy `tasks.example.json`. Full schema: [`cli/README.md`](cli/README.md).
+Canonical task store (gitignored). Copy `tasks.example.json`. Full schema: [`cli/README.md`](cli/README.md). Large stores can be split into one file per ticket with `ch tasks split` (`tasks.d/`); the server assembles them so `/tasks.json` looks the same.
 
-Notable optional fields: `dueDate`, `blocked`, `waitingOn`, `assignee`, `estimateMinutes` (minutes — **not** story points; display as `30m`/`2h`/`1d`), `labels`, `links`, `blockedBy`, `history`.
+Notable optional fields: `dueDate`, `blocked`, `waitingOn`, `assignee`, `estimateMinutes` (minutes — **not** story points; display as `30m`/`2h`/`1d`), `labels`, `links`, `blockedBy`, `history`, `checks` (per-ticket tick-list `{text, checked, addedAt}`, separate from subtasks and never blocks done; `ch tasks update T7 --add-check "text" --check-check 1`), `result` (what shipped: `{at, shipped[], left?[], tests?[], ci}`) and `reviewOf` (the ticket whose review this one came from). Shipped work waits in the **Ready for review** column (`ch tasks review T7 --shipped "..." --check "..."`) and moves to Done when its last check is ticked; the Run plan tab lists it oldest first.
 
 ```bash
 ch tasks add "Ship release notes" --due 2026-09-01 --estimate 2h --assignee alex --label docs
