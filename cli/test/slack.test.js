@@ -28,12 +28,172 @@ import {
   isTs,
   resetMemo,
   proxyAuthHeader,
+  slackCall,
+  downloadSlackText,
 } from '../lib/slack.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT  = path.resolve(__dirname, '../..', 'ch');
+
+async function withResponses(handler, fn) {
+  const originalFetch = globalThis.fetch;
+  const saved = Object.fromEntries(['SLACK_API_BASE', 'SLACK_TOKEN', 'HTTPS_PROXY', 'https_proxy'].map(k => [k, process.env[k]]));
+  process.env.SLACK_API_BASE = 'http://mock/';
+  process.env.SLACK_TOKEN = 'xoxp-test';
+  delete process.env.HTTPS_PROXY;
+  delete process.env.https_proxy;
+  resetMemo();
+  globalThis.fetch = handler;
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    resetMemo();
+  }
+}
+
+function response(body, status = 200, type = 'application/json', headers = {}) {
+  return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+    status, headers: { 'content-type': type, ...headers },
+  });
+}
+
+test('Slack mutations use POST JSON, keep text out of URLs, and do not retry failures', async () => {
+  let calls = 0;
+  await withResponses(async (url, options) => {
+    calls++;
+    assert.equal(options.method, 'POST');
+    assert.equal(new URL(url).search, '');
+    assert.deepEqual(JSON.parse(options.body), { channel: CH1, text: 'private text' });
+    assert.match(options.headers['Content-Type'], /application\/json/);
+    return response({ ok: false, error: 'ratelimited' }, 429);
+  }, async () => {
+    await assert.rejects(slackCall('chat.postMessage', { channel: CH1, text: 'private text' }, { post: true }), /ratelimited/);
+  });
+  assert.equal(calls, 1);
+});
+
+test('Slack HTTP failures cannot be reported as success', async () => {
+  await withResponses(async () => response({ ok: true }, 500), async () => {
+    await assert.rejects(slackCall('files.info'), /HTTP 500/);
+  });
+});
+
+test('slack send requires explicit confirmation before making requests', async () => {
+  await withResponses(async () => { throw new Error('must not contact Slack'); }, async () => {
+    const { default: command } = await import('../commands/slack.js');
+    const result = await capture(() => command(['send', '--user', USER_ME, '--text', 'notice']));
+    assert.notEqual(result.exitCode, 0);
+    assert.match(result.stderr, /requires --confirm/);
+  });
+});
+
+test('slack send opens a DM and posts once with a result permalink', async () => {
+  const calls = [];
+  await withResponses(async (url, options) => {
+    const method = new URL(url).pathname.slice(1);
+    calls.push(method);
+    if (method === 'auth.test') return response({ ok: true, url: 'https://test.slack.com/' });
+    assert.equal(options.method, 'POST');
+    const body = JSON.parse(options.body);
+    if (method === 'conversations.open') {
+      assert.equal(body.users, USER_ME);
+      return response({ ok: true, channel: { id: DM1 } });
+    }
+    assert.equal(method, 'chat.postMessage');
+    assert.equal(body.channel, DM1);
+    assert.equal(body.text, 'notice');
+    return response({ ok: true, ts: TS_FROM });
+  }, async () => {
+    const { default: command } = await import('../commands/slack.js');
+    const result = await capture(() => command(['send', '--user', USER_ME, '--text', 'notice', '--confirm']));
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.match(JSON.parse(result.stdout).permalink, /archives\/D01TESTDM1\/p/);
+  });
+  assert.deepEqual(calls, ['auth.test', 'conversations.open', 'chat.postMessage']);
+});
+
+test('slack canvas returns paginated text with explicit coverage', async () => {
+  await withResponses(async (url) => {
+    if (new URL(url).hostname === 'mock') return response({
+      ok: true, file: {
+        mimetype: 'application/vnd.slack-docs', title: 'Review',
+        permalink: 'https://test.slack.com/docs/TTEST/FTEST',
+        url_private_download: 'https://files.slack.com/review.html',
+      },
+    });
+    return response('abcdef', 200, 'text/html');
+  }, async () => {
+    const { default: command } = await import('../commands/slack.js');
+    const result = await capture(() => command(['canvas', '--id', 'FTEST', '--offset', '1', '--max-chars', '3']));
+    assert.equal(result.exitCode, 0, result.stderr);
+    const data = JSON.parse(result.stdout);
+    assert.equal(data.content, 'bcd');
+    assert.equal(data.next_offset, 4);
+    assert.equal(data.total_chars, 6);
+    assert.equal(data.truncated, true);
+  });
+});
+
+test('slack canvas fails explicitly when content is not exposed', async () => {
+  await withResponses(async () => response({
+    ok: true, file: { mimetype: 'application/vnd.slack-docs', title: 'Metadata only' },
+  }), async () => {
+    const { default: command } = await import('../commands/slack.js');
+    const result = await capture(() => command(['canvas', '--id', 'FTEST']));
+    assert.notEqual(result.exitCode, 0);
+    assert.match(result.stderr, /no download URL/);
+    assert.equal(result.stdout, '');
+  });
+});
+
+test('canvas download rejects untrusted hosts and credential-leaking redirects', async () => {
+  let calls = 0;
+  await withResponses(async () => {
+    calls++;
+    return response('', 302, 'text/html', { location: 'https://attacker.example/file' });
+  }, async () => {
+    for (const url of ['https://slack.com.attacker.example/file', 'http://files.slack.com/file', 'https://user:pass@files.slack.com/file']) {
+      await assert.rejects(downloadSlackText(url, 'secret'), /refused/);
+    }
+    assert.equal(calls, 0);
+    await assert.rejects(downloadSlackText('https://files.slack.com/file', 'secret'), /refused/);
+    assert.equal(calls, 1);
+  });
+});
+
+test('canvas download follows checked Slack redirects with authentication', async () => {
+  let calls = 0;
+  await withResponses(async (url, options) => {
+    assert.equal(options.headers.Authorization, 'Bearer secret');
+    assert.equal(options.redirect, 'manual');
+    calls++;
+    if (calls === 1) return response('', 302, 'text/html', { location: 'https://test.slack.com/content' });
+    assert.equal(new URL(url).hostname, 'test.slack.com');
+    return response('# Review', 200, 'text/markdown');
+  }, async () => {
+    assert.equal((await downloadSlackText('https://files.slack.com/file', 'secret')).content, '# Review');
+  });
+  assert.equal(calls, 2);
+});
+
+test('canvas download rejects binary, oversized and login-page responses', async () => {
+  for (const [body, type, expected] of [
+    ['binary', 'application/octet-stream', /supported text/],
+    ['x'.repeat(2 * 1024 * 1024 + 1), 'text/plain', /size limit/],
+    ['<html><input type="password"></html>', 'text/html', /login page/],
+  ]) {
+    await withResponses(async () => response(body, 200, type), async () => {
+      await assert.rejects(downloadSlackText('https://files.slack.com/file', 'secret'), expected);
+    });
+  }
+});
 
 // ─── Temp dir helpers ─────────────────────────────────────────────────────────
 
