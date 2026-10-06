@@ -38,6 +38,14 @@ Keep CLI and dashboard in sync. Optional fields are omitted when empty/false.
 - `dashboard.hideCorporate` (`1` = hide; solo default on). Migrates legacy `dashboard.hideSprints`.
 - Hides sprints, Jira key fields/badges, assignee chips/filters. Mark with `data-corporate-ui`.
 
+## AI provider and ticket launch (`js/claude-launch.js`)
+- Task modal header has a split button: main part opens the selected provider, ⋮ offers Edit prompt & start / Copy prompt / Reset / Edit default templates.
+- Deep link is **undocumented** (read from the Claude Desktop app bundle): `claude://code/new?q=<prompt>&folder=<abs path>`. The app pre-fills the composer and silently truncates `q` at 14336 chars. Keep all deep-link knowledge in `claude-launch.js`.
+- GitHub Copilot uses the documented `ghapp://session/new/OWNER/REPO?prompt=...&mode=interactive` app link. Prefer the task's GitHub issue/PR repository; otherwise use the `OWNER/REPO` fallback configured in Settings → Display. No session is created until the user confirms in Copilot.
+- Templates live in Settings → Display: ticket prompt, parent prompt (used when the ticket has children, e.g. epics), default folder. `{{placeholder}}` substitution is single-pass; lines whose placeholders are all empty are dropped.
+- Folder: first absolute `docDirs` entry of the ticket's project (walking up `parentId`), else the Settings default, else omitted.
+- Provider/repository settings are stored in `dashboard.aiProvider` and `dashboard.copilotRepository`. Prompt settings use `dashboard.claudeLaunch.taskTemplate`, `.epicTemplate`, `.defaultFolder`, `.taskPrompts` (per-ticket saved prompt, keyed by task id — not in tasks.json).
+
 ## Board / list UX
 - Faceted filters (priority, type, due, parent, blocked, section, labels, project, energy; assignee when corporate shown) AND with text search
 - Bulk select + toolbar (move, priority, archive, label, block, delete); Esc clears selection/filters

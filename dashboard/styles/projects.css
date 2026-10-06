@@ -1320,8 +1320,10 @@ body.pv-docs-preview-resizing {
   }
 }
 
-@media (max-width: 720px) {
-  .pv-layout {
+@media (max-width: 768px) {
+  .pv-layout,
+  .pv-layout.pv-docs-collapsed,
+  .pv-layout.pv-docs-expanded {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
   }

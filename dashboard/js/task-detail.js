@@ -6,6 +6,7 @@
 // can be added later without restructuring. Edits apply live and trigger autosave.
 
 import { markChanged } from './tasks-io.js';
+import { createClaudeLaunchButton } from './claude-launch.js';
 import { todayStr } from './tasks-parser.js';
 import { deleteTask, moveTask } from './tasks-board.js';
 import { showStatus } from './state.js';
@@ -67,10 +68,20 @@ import {
   isWorkPanelOnEssentials,
   toggleWorkPanelOnEssentials,
   workPanelLabel,
+  WORK_PANEL_IDS,
+  readEssentialsSectionOrder,
+  moveEssentialsSection,
+  readWorkPanelOrder,
 } from './work-panels-prefs.js';
 import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
-import { mountFieldLayoutSections } from './task-field-layout.js';
+import {
+  createFieldSection,
+  makeSectionDragHandle,
+  loadFieldLayout,
+  toggleFieldPin,
+  bindFieldLayoutDnD,
+} from './task-field-layout.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import {
   taskIdDisplayState,
@@ -155,6 +166,7 @@ export function openTaskDetail(task, opts = {}) {
   if (titleInput) {
     titleInput.value = task.title || '';
   }
+  document.querySelector('#tdClaudeSlot .cl-split')?._sync?.();
 
   requestAnimationFrame(() => {
     if (Number.isInteger(focusSubtaskIdx)) {
@@ -186,6 +198,7 @@ export function closeTaskDetail(opts = {}) {
   overlay.classList.remove('visible');
   overlay.hidden = true;
   activeTask = null;
+  lastBuiltTaskId = null;
   if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
@@ -293,10 +306,17 @@ const DETAIL_TABS = [
 ];
 
 let activeDetailTab = 'essentials';
+let lastBuiltTaskId = null;
 
 function buildPanels(task) {
   const body = document.getElementById('tdBody');
   if (!body) return;
+  // Rebuilding the same ticket (pin a panel, toggle a column, live refresh) keeps
+  // the scroll position instead of jumping back to the top.
+  const prevScroll = lastBuiltTaskId && lastBuiltTaskId === task.taskId
+    ? body.querySelector('.td-tab-panes')?.scrollTop || 0
+    : 0;
+  lastBuiltTaskId = task.taskId;
   body.innerHTML = '';
   body.classList.add('td-body-structured');
 
@@ -354,12 +374,16 @@ function buildPanels(task) {
 
   // Notes — sub-tabbed: thread, decisions, activity
   buildNotesTabContent(task, paneEls.notes);
+
+  if (prevScroll) panes.scrollTop = prevScroll;
 }
 
 function mountWorkPanels(task, body, { showPin = true } = {}) {
-  buildSubtasksPanel(task, body, { showPin });
-  buildChildrenPanel(task, body, { showPin });
-  buildBlockedByPanel(task, body, { showPin });
+  for (const panelId of readWorkPanelOrder()) {
+    if (panelId === 'subtasks') buildSubtasksPanel(task, body, { showPin });
+    else if (panelId === 'children') buildChildrenPanel(task, body, { showPin });
+    else if (panelId === 'blockedBy') buildBlockedByPanel(task, body, { showPin });
+  }
 }
 
 const WORK_PIN_ICON_FILLED =
@@ -761,37 +785,70 @@ function buildEssentialsForm(task, body) {
   ensureTaskFieldDefaults(task);
   body.classList.add('td-essentials-layout');
 
-  const wrap = document.createElement('div');
-  wrap.className = 'td-essentials-fields';
+  const root = document.createElement('div');
+  root.className = 'td-essentials-sections';
 
   const refresh = () => openTaskDetail(task, { focusTitle: false });
+  const factories = getEssentialsFieldFactories(task);
+  const layout = loadFieldLayout();
+  const pinToggle = (fieldId) => {
+    toggleFieldPin(fieldId);
+    refresh();
+  };
+  const markShell = (fieldId, shell) => {
+    if (fieldId === 'jiraKey') markCorporateUi(shell);
+  };
 
-  mountFieldLayoutSections(wrap, {
-    factories: getEssentialsFieldFactories(task),
-    onLayoutChange: refresh,
-    markShell: (fieldId, shell) => {
-      if (fieldId === 'jiraKey') markCorporateUi(shell);
-    },
-  });
+  const order = readEssentialsSectionOrder();
+  for (const sectionId of order) {
+    if (sectionId === 'pinned') {
+      root.appendChild(createFieldSection({
+        title: 'Pinned Fields',
+        sectionKey: 'pinned',
+        fieldIds: layout.pinned,
+        factories,
+        collapsible: false,
+        onPinToggle: pinToggle,
+        markShell,
+        sectionDraggable: true,
+      }));
+      continue;
+    }
+    if (sectionId === 'unpinned') {
+      root.appendChild(createFieldSection({
+        title: 'More fields',
+        sectionKey: 'unpinned',
+        fieldIds: layout.unpinned,
+        factories,
+        collapsible: true,
+        onPinToggle: pinToggle,
+        markShell,
+        sectionDraggable: true,
+      }));
+      continue;
+    }
+    if (!WORK_PANEL_IDS.includes(sectionId)) continue;
+    if (!isWorkPanelOnEssentials(sectionId)) continue;
 
-  body.appendChild(wrap);
+    const slot = document.createElement('div');
+    slot.className = 'td-essentials-work-slot';
+    slot.dataset.essentialsSection = sectionId;
+    if (sectionId === 'subtasks') buildSubtasksPanel(task, slot, { showPin: true });
+    else if (sectionId === 'children') buildChildrenPanel(task, slot, { showPin: true });
+    else if (sectionId === 'blockedBy') buildBlockedByPanel(task, slot, { showPin: true });
+    attachWorkSectionDragHandle(slot);
+    root.appendChild(slot);
+  }
 
-  const pinnedWork = document.createElement('div');
-  pinnedWork.className = 'td-essentials-work';
-  const pinned = [];
-  if (isWorkPanelOnEssentials('subtasks')) {
-    buildSubtasksPanel(task, pinnedWork, { showPin: true });
-    pinned.push('subtasks');
+  // Discoverability: add any Work panels not yet mirrored onto Essentials
+  const missing = WORK_PANEL_IDS.filter(id => !isWorkPanelOnEssentials(id));
+  if (missing.length) {
+    root.appendChild(buildWorkPanelAddBar(task, missing));
   }
-  if (isWorkPanelOnEssentials('children')) {
-    buildChildrenPanel(task, pinnedWork, { showPin: true });
-    pinned.push('children');
-  }
-  if (isWorkPanelOnEssentials('blockedBy')) {
-    buildBlockedByPanel(task, pinnedWork, { showPin: true });
-    pinned.push('blockedBy');
-  }
-  if (pinned.length) body.appendChild(pinnedWork);
+
+  bindFieldLayoutDnD(root, refresh);
+  bindEssentialsSectionDnD(root, refresh);
+  body.appendChild(root);
 
   const foot = document.createElement('div');
   foot.className = 'td-form-footer';
@@ -801,6 +858,114 @@ function buildEssentialsForm(task, body) {
     `<span>Updated <strong>${escapeHtml(task.updated || '—')}</strong></span>`;
 
   body.appendChild(foot);
+}
+
+function buildWorkPanelAddBar(task, missingIds) {
+  const bar = document.createElement('div');
+  bar.className = 'td-work-add-bar';
+  const label = document.createElement('span');
+  label.className = 'td-work-add-label';
+  label.textContent = 'Show on Essentials';
+  bar.appendChild(label);
+  missingIds.forEach(panelId => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'td-work-add-btn';
+    btn.textContent = '+ ' + workPanelLabel(panelId);
+    btn.title = `Show ${workPanelLabel(panelId)} on this tab`;
+    btn.addEventListener('click', () => {
+      toggleWorkPanelOnEssentials(panelId);
+      openTaskDetail(task, { focusTitle: false });
+    });
+    bar.appendChild(btn);
+  });
+  return bar;
+}
+
+function attachWorkSectionDragHandle(slot) {
+  const panel = slot.querySelector('.td-panel, .td-children-panel') || slot.firstElementChild;
+  if (!panel) return;
+  const head = panel.querySelector('.td-panel-head') || panel.querySelector('.td-children-panel-head');
+  if (!head) {
+    panel.prepend(makeSectionDragHandle());
+    return;
+  }
+  const titleRow = head.querySelector('.td-panel-head') || head;
+  if (!titleRow.querySelector('.td-section-drag-handle')) {
+    titleRow.prepend(makeSectionDragHandle());
+  }
+}
+
+let essentialsSectionDragId = null;
+
+function bindEssentialsSectionDnD(root, onLayoutChange) {
+  if (root.dataset.sectionDndBound === '1') return;
+  root.dataset.sectionDndBound = '1';
+
+  // dragstart's target is the draggable section, not the handle, so remember
+  // which section the handle armed on mousedown and only accept that one.
+  let armedSection = null;
+
+  root.addEventListener('dragstart', (e) => {
+    const section = e.target.closest?.('[data-essentials-section]');
+    if (!section || section !== armedSection) return;
+    essentialsSectionDragId = section.dataset.essentialsSection;
+    section.classList.add('td-section-dragging');
+    section.draggable = true;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', essentialsSectionDragId);
+  });
+
+  root.addEventListener('dragend', (e) => {
+    const section = e.target.closest?.('[data-essentials-section]') || root.querySelector('.td-section-dragging');
+    if (section) {
+      section.classList.remove('td-section-dragging');
+      section.draggable = false;
+    }
+    armedSection = null;
+    essentialsSectionDragId = null;
+    root.querySelectorAll('.td-section-drag-over').forEach(el => el.classList.remove('td-section-drag-over'));
+  });
+
+  root.addEventListener('dragover', (e) => {
+    if (!essentialsSectionDragId) return;
+    e.preventDefault();
+    const over = e.target.closest('[data-essentials-section]');
+    root.querySelectorAll('.td-section-drag-over').forEach(el => el.classList.remove('td-section-drag-over'));
+    if (over && over.dataset.essentialsSection !== essentialsSectionDragId) {
+      over.classList.add('td-section-drag-over');
+    }
+  });
+
+  root.addEventListener('drop', (e) => {
+    if (!essentialsSectionDragId) return;
+    e.preventDefault();
+    const over = e.target.closest('[data-essentials-section]');
+    root.querySelectorAll('.td-section-drag-over').forEach(el => el.classList.remove('td-section-drag-over'));
+    const beforeId = over && over.dataset.essentialsSection !== essentialsSectionDragId
+      ? over.dataset.essentialsSection
+      : null;
+    moveEssentialsSection(essentialsSectionDragId, beforeId);
+    essentialsSectionDragId = null;
+    onLayoutChange();
+  });
+
+  // Enable drag only from the handle (mousedown)
+  root.addEventListener('mousedown', (e) => {
+    const handle = e.target.closest('.td-section-drag-handle');
+    if (!handle || !root.contains(handle)) return;
+    const section = handle.closest('[data-essentials-section]');
+    if (section) {
+      section.draggable = true;
+      armedSection = section;
+    }
+  });
+  root.addEventListener('mouseup', (e) => {
+    armedSection = null;
+    root.querySelectorAll('[data-essentials-section][draggable="true"]').forEach(el => {
+      if (!e.target.closest?.('.td-section-drag-handle')) el.draggable = false;
+    });
+  });
 }
 
 function essentialsField(label, control, { hint = '', block = false } = {}) {
@@ -2239,6 +2404,20 @@ export function initTaskDetail() {
   const closeBtn2 = document.getElementById('tdCloseBtn');
   const deleteBtn = document.getElementById('tdDelete');
   const titleInput = document.getElementById('tdTitle');
+
+  const claudeSlot = document.getElementById('tdClaudeSlot');
+  if (claudeSlot) {
+    claudeSlot.appendChild(createClaudeLaunchButton({
+      getTask: () => activeTask,
+      getState: () => getState?.() || {},
+      onOpenSettings: () => {
+        closeTaskDetail();
+        document.getElementById('settingsTabBtn')?.click();
+        document.querySelector('#settingsPanel .settings-sub-tab[data-subtab="display"]')?.click();
+        requestAnimationFrame(() => document.getElementById('claudeLaunchSettings')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+      },
+    }));
+  }
 
   if (closeBtn) closeBtn.addEventListener('click', closeTaskDetail);
   if (closeBtn2) closeBtn2.addEventListener('click', () => {
