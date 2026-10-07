@@ -166,3 +166,73 @@ export function reviewQueue(doc) {
     }))
     .sort((a, b) => (a.enteredAt < b.enteredAt ? -1 : a.enteredAt > b.enteredAt ? 1 : 0));
 }
+
+function findRow(doc, id) {
+  return flat(doc).find(({ task }) => task.id === id) || null;
+}
+
+/** The nearest ancestor of `task` that is an epic, or null (standalone tickets have none). */
+export function epicOf(doc, task) {
+  const seen = new Set([task.id]);
+  let parentId = task.parentId;
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const row = findRow(doc, parentId);
+    if (!row) return null;
+    if (row.task.type === 'epic') return row;
+    parentId = row.task.parentId;
+  }
+  return null;
+}
+
+/** Every ticket under `epicId`, at any depth. */
+function descendantsOf(doc, epicId) {
+  const rows = flat(doc);
+  const out = [];
+  const queue = [epicId];
+  while (queue.length) {
+    const parent = queue.shift();
+    for (const row of rows) {
+      if (row.task.parentId === parent) { out.push(row); queue.push(row.task.id); }
+    }
+  }
+  return out;
+}
+
+/**
+ * Fold a shipped child's result and checks into its epic, so the Plan page's "Ready for
+ * review" holds one card per epic. Lines are prefixed with the child's id; the child keeps
+ * its own result and goes to Done. Returns { epic, epicSection, moveEpicToReview } for the
+ * caller to apply, or null when the ticket has no epic.
+ *
+ * The epic moves to review once every other ticket under it is Done or Ready for review
+ * (checks ticked on it finish it as for any ticket). An epic already in Done comes back to
+ * review only when the child added checks.
+ */
+export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOString() } = {}) {
+  const found = epicOf(doc, task);
+  if (!found) return null;
+  const { task: epic, section: epicSection } = found;
+  const prefix = (s) => `${task.id}: ${s}`;
+
+  const result = task.result;
+  const already = (epic.result?.shipped || []);
+  const fresh = (result?.shipped || []).map(prefix).filter(l => !already.includes(l));
+  if (result && fresh.length) {
+    const mine = epic.result || { at: result.at, shipped: [], ci: result.ci || 'all passed' };
+    mine.shipped = [...(mine.shipped || []), ...fresh];
+    for (const key of ['left', 'tests', 'unverified', 'risks', 'fixed', 'opened']) {
+      const lines = (result[key] || []).map(prefix);
+      if (lines.length) mine[key] = [...(mine[key] || []), ...lines];
+    }
+    if (mine.ci === 'all passed' && result.ci && result.ci !== 'all passed') mine.ci = prefix(result.ci);
+    epic.result = mine;
+  }
+  const added = addChecks(epic, checkTexts.map(prefix), { now });
+
+  const siblingsOpen = descendantsOf(doc, epic.id).some(
+    ({ task: t, section }) => t.id !== task.id && t.type !== 'epic' && section !== 'done' && section !== REVIEW_SECTION,
+  );
+  const moveEpicToReview = epicSection !== REVIEW_SECTION && !siblingsOpen && (epicSection !== 'done' || added > 0);
+  return { epic, epicSection, added, moveEpicToReview };
+}
