@@ -375,7 +375,7 @@ export function createClaudeLaunchButton({ getTask, getState, onOpenSettings }) 
     const r = resolveLaunch(task, getState());
     const providerName = r.aiProvider === 'copilot' ? 'Copilot' : 'Claude';
     const repoInfo = r.aiProvider === 'copilot'
-      ? (r.repo ? ` · ${r.repo}` : ' · GitHub repository required in Settings')
+      ? (isValidCopilotRepository(r.repo) ? ` · ${r.repo}` : ' · choose a GitHub repository before starting')
       : (r.folder ? ` · ${r.folder}` : ' · no folder set');
     main.querySelector('.cl-label').textContent = `Start in ${providerName}`;
     wrap.classList.toggle('cl-custom', r.custom);
@@ -392,9 +392,8 @@ export function createClaudeLaunchButton({ getTask, getState, onOpenSettings }) 
     if (!task) return;
     sync();
     const launch = resolveLaunch(task, getState());
-    if (launch.aiProvider === 'copilot' && !launch.repo) {
-      flash(main, 'Set repo in Settings');
-      onOpenSettings?.();
+    if (launch.aiProvider === 'copilot' && !isValidCopilotRepository(launch.repo)) {
+      openEditDialog({ task, state: getState(), returnFocus: main, onSaved: sync });
       return;
     }
     launchWithProvider(launch);
@@ -475,6 +474,7 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
   if (!task) return;
   closeDialog();
   const r = resolveLaunch(task, state);
+  const needsRepository = r.aiProvider === 'copilot' && !isValidCopilotRepository(r.repo);
 
   const overlay = document.createElement('div');
   overlay.className = 'cl-dialog-overlay';
@@ -492,6 +492,11 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
         <label class="cl-field-label" for="clFolder">Folder <span class="cl-muted">(absolute path — the session's working directory)</span></label>
         <input id="clFolder" class="cl-folder" type="text" spellcheck="false" placeholder="/Users/you/projects/repo" value="${escapeHtml(r.folder)}">
         <div class="cl-folder-warn" hidden>Not an absolute path — it won't be sent.</div>
+      </div>
+      <div class="cl-repo-field">
+        <label class="cl-field-label" for="clRepo">GitHub repository <span class="cl-muted">(owner/repo — saved as the default when you start)</span></label>
+        <input id="clRepo" class="cl-folder" type="text" spellcheck="false" placeholder="owner/repository" aria-describedby="clRepoWarn">
+        <div id="clRepoWarn" class="cl-repo-warn cl-folder-warn" hidden>Enter a repository in owner/repo format to start in Copilot.</div>
       </div>
       <label class="cl-remember"><input type="checkbox" id="clRemember" ${r.custom ? 'checked' : ''}> Remember this prompt for ${escapeHtml(task.taskId || 'this ticket')}</label>
       <details class="cl-url-details">
@@ -511,11 +516,18 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
   const counter = overlay.querySelector('.cl-counter');
   const urlEl = overlay.querySelector('.cl-url');
   const folderWarn = overlay.querySelector('.cl-folder-warn');
+  const repoEl = overlay.querySelector('#clRepo');
+  const repoWarn = overlay.querySelector('.cl-repo-warn');
   const remember = overlay.querySelector('#clRemember');
   const startBtn = overlay.querySelector('[data-act="start"]');
   overlay.querySelector('#clDialogTitle').textContent =
     `Start ${task.taskId || 'ticket'} in ${r.aiProvider === 'copilot' ? 'Copilot' : 'Claude'}`;
   promptEl.value = r.prompt;
+  repoEl.value = r.repo;
+  overlay.querySelector('.cl-repo-field').hidden = !needsRepository;
+  const repository = () => needsRepository
+    ? repoEl.value.trim()
+    : githubRepositoryFromUrl(task?.issueUrl) || readCopilotRepository();
 
   const update = () => {
     const n = promptEl.value.length;
@@ -530,16 +542,18 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
       ...r,
       prompt: promptEl.value,
       folder: f,
-      repo: githubRepositoryFromUrl(task?.issueUrl) || readCopilotRepository(),
+      repo: repository(),
     };
     const url = buildProviderLaunchUrl(launch);
     urlEl.textContent = url;
     startBtn.dataset.launchUrl = url;
     overlay.querySelector('.cl-folder-field').hidden = r.aiProvider === 'copilot';
-    startBtn.disabled = r.aiProvider === 'copilot' && !launch.repo;
+    startBtn.disabled = r.aiProvider === 'copilot' && !isValidCopilotRepository(launch.repo);
+    repoWarn.hidden = !needsRepository || isValidCopilotRepository(launch.repo);
   };
   promptEl.addEventListener('input', update);
   folderEl.addEventListener('input', update);
+  repoEl.addEventListener('input', update);
   update();
 
   overlay.addEventListener('click', (e) => {
@@ -555,7 +569,14 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
     if (act === 'start') {
       const prompt = promptEl.value;
       const folder = folderEl.value.trim();
-      const repo = githubRepositoryFromUrl(task?.issueUrl) || readCopilotRepository();
+      const repo = repository();
+      update();
+      if (startBtn.disabled) return;
+      if (needsRepository) {
+        writeCopilotRepository(repo);
+        const settingsRepo = document.getElementById('copilotRepositoryInput');
+        if (settingsRepo) settingsRepo.value = readCopilotRepository();
+      }
       const def = { prompt: defaultPromptFor(task, state), folder: defaultFolderFor(task, state) };
       if (remember.checked && (prompt !== def.prompt || folder !== def.folder)) {
         writeTaskOverride(task.taskId, { prompt, folder: folder === def.folder ? '' : folder });
@@ -573,7 +594,7 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
 
   document.body.appendChild(overlay);
   openDialogEl = overlay;
-  promptEl.focus();
+  (needsRepository ? repoEl : promptEl).focus();
   promptEl.setSelectionRange(0, 0);
   promptEl.scrollTop = 0;
 }
