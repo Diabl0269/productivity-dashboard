@@ -44,6 +44,7 @@ scripts/__pycache__/
 # Engineering metrics suite (commits adoption + Jira delivery) — EXTRACTED 2026-06-10 into the
 # standalone project ../engineering-metrics/ (sibling of Claude's Home). No longer lives here.
 tasks.json
+tasks.d/
 !dashboard/e2e/fixtures/tasks.json
 
 # CLI working drafts (user-specific, not for public template)

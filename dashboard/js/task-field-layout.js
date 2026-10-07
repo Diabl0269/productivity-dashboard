@@ -312,11 +312,27 @@ export function mountFieldLayoutSections(container, { factories, onLayoutChange,
   bindFieldLayoutDnD(container, onLayoutChange);
 }
 
-function createFieldSection({
+/**
+ * Build one pinned/unpinned field section (used by Essentials section order).
+ * @param {{
+ *   title: string,
+ *   hint?: string,
+ *   sectionKey: 'pinned'|'unpinned',
+ *   fieldIds: string[],
+ *   factories: Record<string, () => (HTMLElement|null|undefined)>,
+ *   collapsible?: boolean,
+ *   onPinToggle: (fieldId: string) => void,
+ *   markShell?: (fieldId: string, shell: HTMLElement) => void,
+ *   sectionDraggable?: boolean,
+ * }} opts
+ */
+export function createFieldSection({
   title, hint, sectionKey, fieldIds, factories, collapsible, onPinToggle, markShell,
+  sectionDraggable = false,
 }) {
   const section = document.createElement('section');
   section.className = 'tc-field-section tc-field-section-' + sectionKey;
+  section.dataset.essentialsSection = sectionKey;
 
   const header = document.createElement(collapsible ? 'button' : 'div');
   if (collapsible) header.type = 'button';
@@ -340,7 +356,15 @@ function createFieldSection({
     header.appendChild(chevron);
   }
 
-  section.appendChild(header);
+  if (sectionDraggable) {
+    const headRow = document.createElement('div');
+    headRow.className = 'tc-field-section-head-row';
+    headRow.appendChild(makeSectionDragHandle());
+    headRow.appendChild(header);
+    section.appendChild(headRow);
+  } else {
+    section.appendChild(header);
+  }
 
   if (hint) {
     const hintEl = document.createElement('p');
@@ -372,7 +396,8 @@ function createFieldSection({
     const expanded = isUnpinnedExpanded();
     section.classList.toggle('is-collapsed', !expanded);
     header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    header.addEventListener('click', () => {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('.td-section-drag-handle')) return;
       const next = section.classList.contains('is-collapsed');
       section.classList.toggle('is-collapsed', !next);
       header.setAttribute('aria-expanded', next ? 'true' : 'false');
@@ -381,4 +406,14 @@ function createFieldSection({
   }
 
   return section;
+}
+
+export function makeSectionDragHandle() {
+  const handle = document.createElement('button');
+  handle.type = 'button';
+  handle.className = 'td-section-drag-handle';
+  handle.title = 'Drag to reorder section';
+  handle.setAttribute('aria-label', 'Drag to reorder section');
+  handle.textContent = '⋮⋮';
+  return handle;
 }

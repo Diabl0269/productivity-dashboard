@@ -1152,3 +1152,27 @@ body.td-children-resizing iframe {
   accent-color: var(--accent);
   margin: 0;
 }
+
+.settings-pref-subtitle {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.settings-pref-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+select.settings-pref-input { cursor: pointer; }
+
+.settings-pref-actions { display: flex; justify-content: flex-end; }
+#claudePlaceholderList code { margin-right: 4px; white-space: nowrap; }

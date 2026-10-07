@@ -1,7 +1,7 @@
 /* Service worker — caches the dashboard shell for offline / installable PWA use.
    API routes and tasks.json are network-only (they need the live server). */
 
-const CACHE = 'productivity-shell-v6';
+const CACHE = 'productivity-shell-v7';
 const SHELL = [
   './',
   './index.html',
@@ -19,6 +19,7 @@ const SHELL = [
   './styles/global-memory.css',
   './styles/settings.css',
   './styles/projects.css',
+  './styles/mobile.css',
   './styles/run-plan.css',
   './js/main.js',
 ];

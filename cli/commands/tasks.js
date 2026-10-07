@@ -11,8 +11,13 @@
  *              [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--log-time 30m|2h]
  *              [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
  *              [--blocked] [--waiting-on "..."] [--label L] [--link URL] [--link-label "..."] [--blocked-by T1]
+ *              [--review-of T1]
  *   (add/update also take --lane <slug> and update --clear-lane: run-plan lane)
  *   runplan [--json]
+ *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+         [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
+ *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
+ *              [--result-json '<json>'] [--json]   (ship a ticket into "Ready for review")
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
  *              [--color "#RRGGBB"] [--clear-color]
  *              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
@@ -29,7 +34,8 @@
  *              [--remove-subtask N] [--clear-subtasks]
  *              [--edit-subtask N --subtask-text "..."]
  *              [--add-check "text"] [--check-check N] [--uncheck-check N]
- *              [--remove-check N] [--clear-checks]
+ *              [--remove-check N] [--clear-checks] [--check-all-checks]
+ *              [--review-of T1] [--clear-review-of] [--clear-result]
  *   set-priority <id> <low|medium|high>
  *   next-id
  *   dump [--active] [--json]
@@ -40,7 +46,8 @@
 
 import { parse } from '../lib/args.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
-import { readJson, tasksJsonPath } from '../lib/io.js';
+import { dataRoot } from '../lib/io.js';
+import { readTasksDoc, layoutWarnings, migrateToSplit, splitDir } from '../../shared/tasks-files.js';
 import {
   isValidTaskId,
   collectKnownPrefixes,
@@ -56,9 +63,13 @@ import {
 } from '../lib/schema.js';
 import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
-import { createTasksBackup, listTasksBackups, restoreTasksBackup } from '../lib/backup.js';
+import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
+import path from 'node:path';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
+import {
+  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, epicOf, rollUpIntoEpic,
+} from '../../shared/review.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -388,8 +399,9 @@ function cmdGet(argv) {
   const doc = load();
   const { task, section } = resolveTask(doc, id, values.section);
 
+  const followUps = followUpsOf(doc, task.id);
   if (values.json) {
-    jsonOut({ ...task, section: section.id });
+    jsonOut({ ...task, section: section.id, followUps });
     return;
   }
 
@@ -445,6 +457,17 @@ function cmdGet(argv) {
       return `${st.id} [${status}]`;
     });
     print(`  subtasks: ${subTaskParts.join(', ')}`);
+  }
+  if (task.reviewOf) {
+    const found = findTask(doc, task.reviewOf);
+    print(`  From review of: ${task.reviewOf}${found ? ` ${found.task.title}` : ''}`);
+  }
+  if (followUps.length) {
+    print(`  Follow-ups from review: ${followUps.map(f => `${f.id} (${f.section})`).join(', ')}`);
+  }
+  if (task.result) {
+    print('  Result:');
+    for (const l of resultLines(task.result)) print(`    ${l}`);
   }
   if (Array.isArray(task.history) && task.history.length) {
     print(`  history: ${task.history.length} event(s)`);
@@ -507,6 +530,7 @@ function cmdAdd(argv) {
     link:          { type: 'string', multiple: true },
     'link-label':  { type: 'string', multiple: true },
     'blocked-by':  { type: 'string', multiple: true },
+    'review-of':   { type: 'string' },
     assignee:      { type: 'string' },
     estimate:      { type: 'string' },
     json:          { type: 'boolean', short: 'j' },
@@ -535,6 +559,9 @@ function cmdAdd(argv) {
     if (!findTask(doc, values.parent)) {
       die(`parent task ${values.parent} not found. Try: ch tasks list`);
     }
+  }
+  if (values['review-of'] && !findTask(doc, values['review-of'])) {
+    die(`--review-of task ${values['review-of']} not found. Try: ch tasks list`);
   }
   if (values.color && !isHexColor(values.color)) {
     die(`invalid color "${values.color}". Use #RRGGBB`);
@@ -590,6 +617,7 @@ function cmdAdd(argv) {
   };
   if (description) task.description = description;
   if (values.parent) task.parentId = values.parent;
+  if (values['review-of']) task.reviewOf = values['review-of'];
   if (values.color) task.color = values.color;
   if (values.due) task.dueDate = values.due;
   if (values.start) task.startDate = values.start;
@@ -668,6 +696,7 @@ function cmdMove(argv) {
     return;
   }
 
+  if (targetSectionId === REVIEW_SECTION) ensureSections(doc);
   const toSection = sectionById(doc, targetSectionId);
   if (!toSection) die(`section "${targetSectionId}" not found in document. Try 'ch tasks lint --fix'`);
 
@@ -675,8 +704,10 @@ function cmdMove(argv) {
   fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
   // Update
   const today = todayStr();
-  if (targetSectionId === 'done') {
-    task.checked = true;
+  if (targetSectionId === 'done' || targetSectionId === REVIEW_SECTION) {
+    task.checked = true; // review counts as shipped
+  } else if (fromSection.id === REVIEW_SECTION) {
+    task.checked = false; // pulled back out of review (done keeps its flag, as before)
   }
   task.updated = today;
   appendHistory(task, { event: 'moved', from: fromSection.id, to: targetSectionId });
@@ -694,6 +725,151 @@ function cmdMove(argv) {
     return;
   }
   ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}`);
+}
+
+/**
+ * Ship a ticket into "Ready for review": record what shipped (result), add the
+ * "worth checking yourself" list (checks) and move it to the review section.
+ * Everything is inline flags so a cloud session can file it as one argv.
+ */
+function cmdReview(argv) {
+  const { values, positionals } = parse(argv, {
+    shipped:       { type: 'string', multiple: true },
+    left:          { type: 'string', multiple: true },
+    tests:         { type: 'string', multiple: true },
+    unverified:    { type: 'string', multiple: true },
+    risk:          { type: 'string', multiple: true },
+    fixed:         { type: 'string', multiple: true },
+    opened:        { type: 'string', multiple: true },
+    ci:            { type: 'string' },
+    check:         { type: 'string', multiple: true },
+    'result-json': { type: 'string' },
+    section:       { type: 'string',  short: 's' },
+    json:          { type: 'boolean', short: 'j' },
+    rollup:        { type: 'boolean' },
+  });
+
+  if (values.rollup) {
+    // One-off tidy: children of an epic still sitting in Ready for review fold into their epic.
+    const doc = load();
+    ensureSections(doc);
+    const reviewSection = sectionById(doc, REVIEW_SECTION);
+    const doneSection = sectionById(doc, 'done');
+    const children = reviewSection.tasks.filter(t => epicOf(doc, t));
+    const today = todayStr();
+    const moved = [];
+    for (const child of children) {
+      const checkTexts = (child.checks || []).filter(c => !c.checked).map(c => c.text);
+      const rolled = rollUpIntoEpic(doc, child, checkTexts);
+      reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
+      appendHistory(child, { event: 'moved', from: REVIEW_SECTION, to: 'done' });
+      child.updated = today;
+      doneSection.tasks.push(child);
+      rolled.epic.checked = true;
+      rolled.epic.updated = today;
+      if (rolled.moveEpicToReview) {
+        const src = sectionById(doc, rolled.epicSection);
+        src.tasks = src.tasks.filter(t => t.id !== rolled.epic.id);
+        appendHistory(rolled.epic, { event: 'moved', from: rolled.epicSection, to: REVIEW_SECTION });
+        reviewSection.tasks.push(rolled.epic);
+      }
+      moved.push(`${child.id}->${rolled.epic.id}`);
+    }
+    save(doc);
+    if (values.json) { jsonOut({ rolledUp: moved }); return; }
+    ok(moved.length ? `rolled up ${moved.length}: ${moved.join(', ')}` : 'no children of an epic in review');
+    return;
+  }
+
+  const id = positionals[0];
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... [--check "..."]... [--result-json \'<json>\']');
+
+  let base = {};
+  if (values['result-json'] !== undefined) {
+    try {
+      base = JSON.parse(values['result-json']);
+    } catch (e) {
+      die(`invalid --result-json: ${e.message}`);
+    }
+    if (!base || typeof base !== 'object' || Array.isArray(base)) die('invalid --result-json: must be a JSON object');
+  }
+  const asList = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
+  const checkTexts = [...asList(base.checks), ...(values.check || [])];
+  if (checkTexts.some(t => typeof t !== 'string')) die('invalid --result-json: checks must be a list of strings');
+
+  const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
+  let result = null;
+  if (hasResult) {
+    const { checks: _checks, ...rest } = base;
+    const merged = { ...rest };
+    for (const k of ['shipped', 'left', 'tests', 'unverified', 'fixed', 'opened']) {
+      if (values[k]) merged[k] = [...asList(rest[k]), ...values[k]];
+    }
+    if (values.risk) merged.risks = [...asList(rest.risks), ...values.risk];
+    if (values.ci !== undefined) merged.ci = values.ci;
+    try {
+      result = normalizeResult(merged);
+    } catch (e) {
+      die(`invalid result: ${e.message}`);
+    }
+  }
+
+  const doc = load();
+  const { task, section: fromSection } = resolveTask(doc, id, values.section);
+  ensureSections(doc); // documents from before "Ready for review" lack the section
+  const toSection = sectionById(doc, REVIEW_SECTION);
+  if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
+
+  if (result) task.result = result;
+  const today = todayStr();
+
+  // A ticket under an epic hands its result and checks to the epic and goes to Done, so
+  // "Ready for review" only ever holds epics (and standalone tickets).
+  const rolled = epicOf(doc, task) ? rollUpIntoEpic(doc, task, checkTexts) : null;
+  if (rolled) {
+    const doneSection = sectionById(doc, 'done');
+    task.checked = true;
+    task.updated = today;
+    if (fromSection.id !== 'done') {
+      fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
+      appendHistory(task, { event: 'moved', from: fromSection.id, to: 'done' });
+      doneSection.tasks.push(task);
+    }
+    const { epic, epicSection } = rolled;
+    epic.checked = true;
+    epic.updated = today;
+    if (rolled.moveEpicToReview) {
+      const src = sectionById(doc, epicSection);
+      src.tasks = src.tasks.filter(t => t.id !== epic.id);
+      appendHistory(epic, { event: 'moved', from: epicSection, to: REVIEW_SECTION });
+      toSection.tasks.push(epic);
+    }
+    save(doc);
+    if (values.json) {
+      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview, added: rolled.added, result: task.result || null });
+      return;
+    }
+    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToReview ? ' (now in review)' : ''}`);
+    return;
+  }
+
+  const added = addChecks(task, checkTexts);
+  task.checked = true;
+  task.updated = today;
+
+  const moved = fromSection.id !== REVIEW_SECTION;
+  if (moved) {
+    fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
+    appendHistory(task, { event: 'moved', from: fromSection.id, to: REVIEW_SECTION });
+    toSection.tasks.push(task);
+  }
+  save(doc);
+
+  if (values.json) {
+    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, result: task.result || null });
+    return;
+  }
+  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added`);
 }
 
 function cmdDone(argv) {
@@ -808,6 +984,10 @@ function cmdUpdate(argv) {
     'uncheck-check': { type: 'string' },
     'remove-check':  { type: 'string' },
     'clear-checks':  { type: 'boolean' },
+    'check-all-checks': { type: 'boolean' },
+    'review-of':     { type: 'string' },
+    'clear-review-of': { type: 'boolean' },
+    'clear-result':  { type: 'boolean' },
     section:         { type: 'string',  short: 's' },
     uncheck:         { type: 'boolean' }, // reopen a task that was marked done
     check:           { type: 'boolean' }, // mark task checked (triggers recurrence spawn)
@@ -837,7 +1017,10 @@ function cmdUpdate(argv) {
   assertRecurrenceFreq(values.recur, '--recur');
 
   const doc = load();
-  const { task } = resolveTask(doc, id, values.section);
+  const { task, section: taskSection } = resolveTask(doc, id, values.section);
+  if (values['review-of'] !== undefined && !findTask(doc, values['review-of'])) {
+    die(`--review-of task ${values['review-of']} not found. Try: ch tasks list`);
+  }
 
   const wasChecked = task.checked;
   let changed = false;
@@ -1257,6 +1440,7 @@ function cmdUpdate(argv) {
     }
     changed = true;
   }
+  let ticked = false;
   for (const [flag, state] of [['check-check', true], ['uncheck-check', false]]) {
     if (values[flag] === undefined) continue;
     const n = parseInt(values[flag], 10);
@@ -1264,6 +1448,24 @@ function cmdUpdate(argv) {
       die(`--${flag} N must be between 1 and ${(task.checks || []).length}`);
     }
     task.checks[n - 1].checked = state;
+    if (state) ticked = true;
+    changed = true;
+  }
+  if (values['check-all-checks']) {
+    for (const c of task.checks || []) c.checked = true;
+    ticked = true;
+    changed = true;
+  }
+  if (values['clear-review-of']) {
+    delete task.reviewOf;
+    changed = true;
+  } else if (values['review-of'] !== undefined) {
+    if (values['review-of'] === id) die('--review-of cannot be the task itself');
+    task.reviewOf = values['review-of'];
+    changed = true;
+  }
+  if (values['clear-result']) {
+    delete task.result;
     changed = true;
   }
 
@@ -1278,13 +1480,26 @@ function cmdUpdate(argv) {
   if (values.check && !wasChecked && task.checked && task.recurrence?.freq) {
     spawned = maybeSpawnRecurrence(doc, task, today);
   }
+  // Ticking the last check of a ticket in review finishes it.
+  let movedToDone = false;
+  if (reviewComplete(task, taskSection.id, { ticked })) {
+    const doneSection = sectionById(doc, 'done');
+    if (!doneSection) die('section "done" not found in document. Try \'ch tasks lint --fix\'');
+    taskSection.tasks = taskSection.tasks.filter(t => t.id !== task.id);
+    task.checked = true;
+    appendHistory(task, { event: 'moved', from: taskSection.id, to: 'done' });
+    doneSection.tasks.push(task);
+    movedToDone = true;
+  }
   save(doc);
 
   if (values.json) {
-    jsonOut(spawned ? { ...task, spawned: spawned.id } : task);
+    const out = spawned ? { ...task, spawned: spawned.id } : { ...task };
+    if (movedToDone) out.movedToDone = true;
+    jsonOut(out);
     return;
   }
-  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}`);
+  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}`);
 }
 
 function cmdSetPriority(argv) {
@@ -1414,10 +1629,10 @@ function cmdLint(argv) {
     json: { type: 'boolean', short: 'j' },
   });
 
-  // Use readJson directly — lint must work even when load() would throw
+  // Read without load() — lint must work even when validation would throw
   let doc;
   try {
-    doc = normalizeTasksDoc(readJson(tasksJsonPath()));
+    doc = normalizeTasksDoc(readTasksDoc(dataRoot()));
   } catch (e) {
     if (values.json) {
       jsonOut({ valid: false, errors: [e.message], duplicateIds: [] });
@@ -1435,6 +1650,7 @@ function cmdLint(argv) {
   }
 
   const result = validateTasksDoc(doc);
+  for (const w of layoutWarnings(dataRoot())) printErr(`lint: warning: ${w}`);
 
   if (result.valid) {
     // Persist note→description, missing sections, meta when --fix is set
@@ -1606,7 +1822,15 @@ function cmdRunPlan(argv) {
       lane.later.forEach((c, i) => print(line(c, lane.later[i - 1])));
     }
   }
-  if (plan.doneEpics.length) print(`Done epics: ${plan.doneEpics.join(', ')}`);
+  if (plan.review && plan.review.length) {
+    print(`Ready for review (${plan.review.length}), oldest first:`);
+    for (const r of plan.review) {
+      const since = (r.enteredAt || '').slice(0, 10) || 'n/a';
+      const fu = r.followUps.length ? ` · follow-ups ${r.followUps.map(f => `${f.id} (${f.section})`).join(', ')}` : '';
+      print(`  ${r.id}  ${r.title} · checks ${r.checks.done}/${r.checks.total} · since ${since}${fu}`);
+    }
+  }
+  if (plan.doneEpics.length) print(`Done epics, still pinned: ${plan.doneEpics.join(', ')} (unpin with ch tasks plan --unpin <id>)`);
   print('Lanes run side by side; cards in a lane run top to bottom; a \u2016 line runs alongside the card above it');
   print(`At most ${plan.machineCap} app builds at once (${plan.appStartCount} could start now)`);
 }
@@ -1792,6 +2016,21 @@ async function cmdBackups(argv) {
   }
 }
 
+async function cmdSplit(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const root = dataRoot();
+  // Validate first: a document `ch` can't load shouldn't be migrated.
+  load();
+  const moveSingleTo = path.join(ensureBackupDir(), backupFileName());
+  const result = migrateToSplit(root, { moveSingleTo });
+  if (values.json) {
+    jsonOut({ ...result, dir: splitDir(root) });
+    return;
+  }
+  const counts = result.sections.map(s => `${s.id} ${s.count}`).join(', ');
+  ok(`split: ${result.tickets} tickets -> ${splitDir(root)} (${counts}); verified; original moved to ${result.movedTo}`);
+}
+
 async function cmdRestore(argv) {
   const { positionals, values } = parse(argv, {
     json: { type: 'boolean', short: 'j' },
@@ -1815,6 +2054,10 @@ Subcommands:
   capture "<title>" [--priority medium] [--json]
   plan [--pin T1] [--unpin T1] [--carry] [--json]
   runplan [--json]
+  review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+         [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
+         [--check "..."]... [--result-json '<json>'] [--json]
+         ship a ticket to "Ready for review": records the result and the checks to tick
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
       [--project slug] [--energy deep|shallow|errands|creative] [--lane slug]
@@ -1822,7 +2065,7 @@ Subcommands:
       [--decision "..."] [--log-time 30m|2h]
       [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
       [--estimate 2h|30m|1d] [--assignee name] [--blocked] [--waiting-on "..."]
-      [--label L] [--link URL] [--blocked-by T1]
+      [--label L] [--link URL] [--blocked-by T1] [--review-of T1]
   move <id> <section>
   done <id>
   update <id> [--title "..."] [--description "..."] [--add-description "..."] [--priority P]
@@ -1847,7 +2090,8 @@ Subcommands:
              [--add-subtask "text"] [--check-subtask N] [--uncheck-subtask N]
              [--remove-subtask N] [--clear-subtasks]
              [--add-check "text"] [--check-check N] [--uncheck-check N]
-             [--remove-check N] [--clear-checks]
+             [--remove-check N] [--clear-checks] [--check-all-checks]
+             [--review-of T1] [--clear-review-of] [--clear-result]
   set-priority <id> <low|medium|high>
   next-id
   dump [--active]
@@ -1856,7 +2100,8 @@ Subcommands:
   archive-done
   backup [--json]
   backups [--json]
-  restore <backup-name> [--json]`;
+  restore <backup-name> [--json]
+  split [--json]        move tasks.json into tasks.d/ (one file per ticket); backs up first`;
 
 const SUBCOMMANDS = {
   list:          cmdList,
@@ -1866,6 +2111,7 @@ const SUBCOMMANDS = {
   runplan:       cmdRunPlan,
   add:           cmdAdd,
   move:          cmdMove,
+  review:        cmdReview,
   done:          cmdDone,
   update:        cmdUpdate,
   'set-priority': cmdSetPriority,
@@ -1877,6 +2123,7 @@ const SUBCOMMANDS = {
   backup:        cmdBackup,
   backups:       cmdBackups,
   restore:       cmdRestore,
+  split:         cmdSplit,
 };
 
 export default async function tasks(argv) {

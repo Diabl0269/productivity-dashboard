@@ -54,7 +54,7 @@ export function proxyAuthHeader(proxyUrl) {
  * Forces IPv4 for "localhost" proxy hosts to avoid Node's IPv6-first
  * resolution which breaks most local proxy servers.
  */
-function proxyTunnelRequest(urlObj, { method = 'GET', headers = {}, timeoutMs = 20000 }) {
+function proxyTunnelRequest(urlObj, { method = 'GET', headers = {}, body, timeoutMs = 20000, maxBytes = 8 * 1024 * 1024 }) {
   return new Promise((resolve, reject) => {
     const proxy = new URL(process.env.HTTPS_PROXY || process.env.https_proxy);
     const phost = proxy.hostname === 'localhost' ? '127.0.0.1' : proxy.hostname;
@@ -75,14 +75,19 @@ function proxyTunnelRequest(urlObj, { method = 'GET', headers = {}, timeoutMs = 
       const r = https.request(
         { host: urlObj.hostname, port, path: urlObj.pathname + urlObj.search, method, headers, socket, agent: false, servername: urlObj.hostname },
         (resp) => {
-          let data = ''; resp.setEncoding('utf8');
-          resp.on('data', (c) => { data += c; });
+          let data = ''; let bytes = 0; resp.setEncoding('utf8');
+          resp.on('error', reject);
+          resp.on('data', (c) => {
+            bytes += Buffer.byteLength(c);
+            if (bytes > maxBytes) resp.destroy(new Error('Slack response exceeds download size limit'));
+            else data += c;
+          });
           resp.on('end', () => resolve({ status: resp.statusCode, header: (n) => resp.headers[String(n).toLowerCase()], text: data }));
         }
       );
       r.on('error', reject);
       r.setTimeout(timeoutMs, () => r.destroy(new Error('slack request timeout')));
-      r.end();
+      r.end(body);
     });
     cr.on('error', reject);
     cr.setTimeout(timeoutMs, () => cr.destroy(new Error('proxy CONNECT timeout')));
@@ -97,19 +102,40 @@ function proxyTunnelRequest(urlObj, { method = 'GET', headers = {}, timeoutMs = 
  *
  * Returns a normalized response object: { status, header(name), text }
  */
-async function httpRequest(urlObj, { method = 'GET', headers = {} } = {}) {
+async function httpRequest(urlObj, { method = 'GET', headers = {}, body, maxBytes = 8 * 1024 * 1024 } = {}) {
   const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
   // Inside the sandbox, egress is via an HTTP proxy that global fetch ignores -> tunnel.
   if (proxy && urlObj.protocol === 'https:') {
-    return proxyTunnelRequest(urlObj, { method, headers });
+    return proxyTunnelRequest(urlObj, { method, headers, body, maxBytes });
   }
   // Direct path: global fetch (normal terminal use + the http:// test mock).
-  const res = await fetch(urlObj, { method, headers });
+  const res = await fetch(urlObj, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(20000) });
   // Use .text() when available (real fetch Response); fall back to .json() for
   // test mocks that only implement json() and not text().
-  const text = typeof res.text === 'function'
-    ? await res.text()
-    : JSON.stringify(await res.json());
+  let text;
+  if (res.body?.getReader) {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > maxBytes) {
+          await reader.cancel();
+          throw new Error('Slack response exceeds download size limit');
+        }
+        chunks.push(Buffer.from(value));
+      }
+      text = Buffer.concat(chunks).toString('utf8');
+    } finally {
+      reader.releaseLock();
+    }
+  } else {
+    text = typeof res.text === 'function' ? await res.text() : JSON.stringify(await res.json());
+    if (Buffer.byteLength(text) > maxBytes) throw new Error('Slack response exceeds download size limit');
+  }
   return { status: res.status, header: (n) => res.headers.get(n), text };
 }
 
@@ -188,7 +214,7 @@ export function getToken() {
  *
  * @param {string} method - Slack API method name (e.g. 'search.messages')
  * @param {Record<string,string|number|boolean>} params - query parameters (undefined values skipped)
- * @param {{token?: string}} opts - optional overrides
+ * @param {{token?: string, post?: boolean}} opts - POST mutations are never retried
  * @returns {Promise<object>} - parsed Slack API response (always ok:true on return)
  */
 export async function slackCall(method, params = {}, opts = {}) {
@@ -206,10 +232,16 @@ export async function slackCall(method, params = {}, opts = {}) {
     Authorization: 'Bearer ' + token,
     Accept: 'application/json',
   };
+  const body = opts.post ? JSON.stringify(params) : undefined;
+  if (opts.post) {
+    url.search = '';
+    reqHeaders['Content-Type'] = 'application/json; charset=utf-8';
+  }
 
-  const MAX_RETRIES = 3;
+  // Mutations must never be retried after an ambiguous delivery result.
+  const MAX_RETRIES = opts.post ? 0 : 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await httpRequest(url, { method: 'GET', headers: reqHeaders });
+    const res = await httpRequest(url, { method: opts.post ? 'POST' : 'GET', headers: reqHeaders, body });
 
     // Rate-limit: retry with Retry-After
     if (res.status === 429) {
@@ -236,7 +268,7 @@ export async function slackCall(method, params = {}, opts = {}) {
       }
     }
 
-    if (!data.ok) {
+    if (res.status < 200 || res.status >= 300 || !data.ok) {
       const err = new Error(
         `Slack API ${method} failed: ${data.error || ('HTTP ' + res.status)}`
       );
@@ -246,6 +278,35 @@ export async function slackCall(method, params = {}, opts = {}) {
 
     return data;
   }
+}
+
+/** Download only authenticated Slack-hosted text, without forwarding credentials elsewhere. */
+export async function downloadSlackText(downloadUrl, token) {
+  let url = new URL(downloadUrl);
+  for (let hop = 0; hop < 4; hop++) {
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+        !(url.hostname === 'slack.com' || url.hostname.endsWith('.slack.com') ||
+          url.hostname === 'slack-files.com' || url.hostname.endsWith('.slack-files.com'))) {
+      throw new Error('Slack file download refused: expected an HTTPS Slack-hosted URL');
+    }
+    const res = await httpRequest(url, { headers: { Authorization: 'Bearer ' + token }, maxBytes: 2 * 1024 * 1024 });
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.header('location');
+      if (!location) throw new Error('Slack file download: redirect missing location');
+      url = new URL(location, url);
+      continue;
+    }
+    if (res.status !== 200) throw new Error(`Slack file download failed: HTTP ${res.status}`);
+    const type = (res.header('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!['text/html', 'text/plain', 'text/markdown'].includes(type)) {
+      throw new Error('Slack canvas download did not return supported text content');
+    }
+    if (/<!doctype html|<html/i.test(res.text) && /<input[^>]+type=["']?password/i.test(res.text)) {
+      throw new Error('Slack canvas download returned a login page, not canvas content');
+    }
+    return { content: res.text, content_type: type };
+  }
+  throw new Error('Slack file download: too many redirects');
 }
 
 /**

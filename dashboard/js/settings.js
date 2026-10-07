@@ -34,6 +34,21 @@ import {
   writeDocFilterPatterns,
 } from './project-docs-prefs.js';
 import { clearProjectDocsCache } from './project-docs.js';
+import {
+  TEMPLATE_PLACEHOLDERS,
+  isAbsolutePath,
+  isValidCopilotRepository,
+  readAiProvider,
+  writeAiProvider,
+  readCopilotRepository,
+  writeCopilotRepository,
+  readDefaultFolder,
+  writeDefaultFolder,
+  readTaskTemplate,
+  writeTaskTemplate,
+  readEpicTemplate,
+  writeEpicTemplate,
+} from './claude-launch.js';
 
 const HIDE_CORPORATE_KEY = 'dashboard.hideCorporate';
 const LEGACY_HIDE_SPRINTS_KEY = 'dashboard.hideSprints';
@@ -141,7 +156,80 @@ function initDisplayPrefs() {
       showStatus('Project doc filters updated');
     });
   }
+
+  initClaudeLaunchPrefs();
 }
+
+function initClaudeLaunchPrefs() {
+  const provider = document.getElementById('aiProviderSelect');
+  const copilotRepo = document.getElementById('copilotRepositoryInput');
+  const folder = document.getElementById('claudeDefaultFolderInput');
+  const taskTpl = document.getElementById('claudeTaskTemplateInput');
+  const epicTpl = document.getElementById('claudeEpicTemplateInput');
+  const placeholders = document.getElementById('claudePlaceholderList');
+  const reset = document.getElementById('claudeTemplatesReset');
+  if (!provider || !copilotRepo || !folder || !taskTpl || !epicTpl) return;
+
+  const load = () => {
+    provider.value = readAiProvider();
+    copilotRepo.value = readCopilotRepository();
+    folder.value = readDefaultFolder();
+    taskTpl.value = readTaskTemplate();
+    epicTpl.value = readEpicTemplate();
+  };
+  load();
+
+  provider.addEventListener('change', () => {
+    writeAiProvider(provider.value);
+    showStatus(`AI provider set to ${provider.value === 'copilot' ? 'GitHub Copilot' : 'Claude Desktop'}`);
+  });
+  copilotRepo.addEventListener('blur', () => {
+    const value = copilotRepo.value.trim();
+    if (value && !isValidCopilotRepository(value)) {
+      showStatus('Copilot repository must be in owner/repo format');
+      copilotRepo.value = readCopilotRepository();
+      return;
+    }
+    if (value === readCopilotRepository()) return;
+    writeCopilotRepository(value);
+    showStatus(value ? 'Copilot repository saved' : 'Copilot repository cleared');
+  });
+
+  if (placeholders) {
+    placeholders.innerHTML = 'Placeholders: ' + TEMPLATE_PLACEHOLDERS
+      .map(([k, desc]) => `<code title="${escapeHtml(desc)}">{{${escapeHtml(k)}}}</code>`)
+      .join(' ');
+  }
+
+  folder.addEventListener('blur', () => {
+    const v = folder.value.trim();
+    if (v && !isAbsolutePath(v)) {
+      showStatus('Default folder must be an absolute path');
+      return;
+    }
+    if (v === readDefaultFolder()) return;
+    writeDefaultFolder(v);
+    showStatus('Claude default folder saved');
+  });
+  const bindTemplate = (el, read, write, label) => {
+    el.addEventListener('blur', () => {
+      if (el.value === read()) return;
+      write(el.value.trim() ? el.value : null);
+      el.value = read();
+      showStatus(`${label} saved`);
+    });
+  };
+  bindTemplate(taskTpl, readTaskTemplate, writeTaskTemplate, 'Ticket prompt template');
+  bindTemplate(epicTpl, readEpicTemplate, writeEpicTemplate, 'Parent prompt template');
+
+  reset?.addEventListener('click', () => {
+    writeTaskTemplate(null);
+    writeEpicTemplate(null);
+    load();
+    showStatus('Claude prompt templates reset');
+  });
+}
+
 
 function initSettingsSubtabs() {
   document.querySelectorAll('#settingsPanel .settings-sub-tab').forEach(btn => {

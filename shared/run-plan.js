@@ -5,12 +5,42 @@
  * Input is the tasks.json document shape: { sections: [{ id, tasks: [...] }], meta }.
  */
 
+import { reviewQueue } from './review.js';
+
 export const DEFAULT_MACHINE_CAP = 3;
 export const UNASSIGNED_LANE = 'unassigned';
 export const DESIGN_LANE = 'design';
 
-/** Stage of an open pick gate: draw a canvas, wait for Tal's pick, or publish the pick. */
+/** Lane slugs shown as words: "timeline" -> "Timeline", "mod-lanes" -> "Mod lanes", "ai" -> "AI". */
+const LANE_ACRONYMS = new Set(['ai', 'ui', 'ux', 'cli', 'midi', 'api', 'ci']);
+export function laneDisplayName(slug) {
+  const words = String(slug || '').split('-').filter(Boolean)
+    .map(w => (LANE_ACRONYMS.has(w) ? w.toUpperCase() : w));
+  if (!words.length) return '';
+  words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
+  return words.join(' ');
+}
+
+/**
+ * A co-task that needs a design board: a "design" label, "pick" in its title, or a design canvas
+ * link already on it. Other co-tasks
+ * (submit a form, check something in the app) are plain to-dos for Tal and get no canvas.
+ */
+export function isDesignPick(task) {
+  if ((task?.labels || []).some(l => /^design$/i.test(String(l).trim()))) return true;
+  if (Array.isArray(task?.links) && task.links.some(l => l && /design canvas/i.test(l.label || ''))) return true;
+  return /\bpick\b/i.test(String(task?.title || ''));
+}
+
+/** The design canvas link on a ticket ({ label?, url }), or null while none is drawn. */
+function canvasLink(t) {
+  const link = (Array.isArray(t?.links) ? t.links : []).find(l => l && l.url && /design canvas/i.test(l.label || ''));
+  return link ? { label: link.label, url: link.url } : null;
+}
+
+/** Stage of an open pick gate: draw a canvas, wait for Tal's pick, publish the pick, or (no design) do it. */
 function pickStage(t) {
+  if (!isDesignPick(t)) return 'todo';
   const waiting = String((t && t.waitingOn) || '');
   const hasCanvas = Array.isArray(t && t.links) && t.links.some(l => l && /design canvas/i.test(l.label || ''));
   const hasDecision = Array.isArray(t && t.decisions) && t.decisions.length > 0;
@@ -274,7 +304,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     }
     return {
       lane,
-      name: lane === UNASSIGNED_LANE ? 'No lane yet' : lane,
+      name: lane === UNASSIGNED_LANE ? 'No lane yet' : laneDisplayName(lane),
       needsBuild: ids.some(id => needsBuildEpic(byId.get(id))),
       now: assignSteps(now, lane),
       later: assignSteps(later, lane),
@@ -285,7 +315,13 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     (n, l) => n + l.now.filter(c => c.step === 0 && needsBuildEpic(byId.get(c.id))).length, 0);
 
   const pickList = [...picks.values()]
-    .map(p => ({ ...p, gates: p.gates.sort(compareIds), stage: pickStage(byId.get(p.id)) }))
+    .map(p => ({
+      ...p,
+      gates: p.gates.sort(compareIds),
+      stage: pickStage(byId.get(p.id)),
+      epic: owningEpic(p.id),
+      canvas: canvasLink(byId.get(p.id)),
+    }))
     .sort((a, b) => compareIds(a.id, b.id));
 
   if (pickList.length) {
@@ -293,6 +329,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     const drawIds = idsAt('draw');
     const pickIds = idsAt('pick');
     const publishIds = idsAt('publish');
+    const todoIds = idsAt('todo');
     const now = [];
     if (drawIds.length) {
       now.push({
@@ -301,6 +338,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         state: 'ready',
         isRest: false,
         openTickets: drawIds.length,
+        ticketIds: drawIds,
         why: 'An agent draws one board per pick ticket',
         command: `Draw the design canvases for ${joinList(drawIds)} (one board per ticket, options plus a recommended default, Design System components), link each canvas on its ticket, then stop for my picks.`,
         isPrompt: true,
@@ -315,6 +353,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         state: 'pick',
         isRest: false,
         openTickets: pickIds.length,
+        ticketIds: pickIds,
         why: `Picks: ${joinList(pickIds)}`,
         command: null,
         inProgress: false,
@@ -328,6 +367,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         state: 'ready',
         isRest: false,
         openTickets: publishIds.length,
+        ticketIds: publishIds,
         why: 'An agent adds the chosen options to the Design System',
         command: `Publish the picked designs for ${joinList(publishIds)} to the AgentSynth Design System and Storybook (chosen option only, as recorded in each ticket's decisions), then close each pick ticket.`,
         isPrompt: true,
@@ -335,9 +375,23 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         step: now.length,
       });
     }
+    if (todoIds.length) {
+      now.push({
+        id: 'co-tasks',
+        title: 'You: do the co-tasks',
+        state: 'pick',
+        isRest: false,
+        openTickets: todoIds.length,
+        ticketIds: todoIds,
+        why: `Co-tasks: ${joinList(todoIds)}`,
+        command: null,
+        inProgress: false,
+        step: now.length,
+      });
+    }
     lanes.unshift({
       lane: DESIGN_LANE,
-      name: 'Design round',
+      name: drawIds.length || pickIds.length || publishIds.length ? 'Design round' : 'Co-tasks',
       needsBuild: false,
       now,
       later: [],
@@ -352,5 +406,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     machineCap,
     appLaneCount: lanes.filter(l => l.needsBuild).length,
     appStartCount,
+    // Shipped work waiting for Tal's own look, oldest first (shared/review.js).
+    review: reviewQueue(doc),
   };
 }

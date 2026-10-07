@@ -25,6 +25,16 @@ function toDoc(state) {
         labels: t.labels || [],
         lane: t.lane || undefined,
         project: t.project || undefined,
+        // Review queue inputs (shared/review.js reads these).
+        links: t.links || [],
+        waitingOn: t.waitingOn || undefined,
+        decisions: t.decisions || [],
+        reviewOf: t.reviewOf || undefined,
+        result: t.result || undefined,
+        checks: t.checks || [],
+        history: t.history || [],
+        created: t.created || undefined,
+        updated: t.updated || undefined,
       })),
     })),
   };
@@ -55,9 +65,163 @@ function idButton(id, className = 'rp-id rp-link') {
   btn.type = 'button';
   btn.title = `Open ${id}`;
   btn.setAttribute('aria-label', `Open ticket ${id}`);
+  btn.dataset.ticket = id;
   btn.addEventListener('click', () => openTicket(id));
   return btn;
 }
+
+/** The ticket (dashboard shape) with this id, or null. */
+function findTicket(id) {
+  for (const list of Object.values(getState?.()?.tasks || {})) {
+    const task = (list || []).find(t => t.taskId === id);
+    if (task) return task;
+  }
+  return null;
+}
+
+/** Section name a ticket sits in, or ''. */
+function sectionNameOf(id) {
+  const state = getState?.();
+  for (const [secId, list] of Object.entries(state?.tasks || {})) {
+    if ((list || []).some(t => t.taskId === id)) return (state.sections || []).find(s => s.id === secId)?.title || secId;
+  }
+  return '';
+}
+
+/** "Co-task: pick the layout" -> "Pick the layout". */
+function plainTitle(title) {
+  const t = String(title || '').replace(/^\s*co-task\s*:\s*/i, '');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/** First "What you'll notice" sentence of a ticket's description, else its first line. */
+function noticeLine(task) {
+  const text = String(task?.description || '');
+  const m = /What you'll notice:\*{0,2}\s*([^\n]+)/i.exec(text);
+  const line = m ? m[1] : text.split('\n').find(l => l.trim() && !l.startsWith('#')) || '';
+  const clean = line.replace(/\*\*/g, '').trim();
+  return truncate(clean.charAt(0).toUpperCase() + clean.slice(1), 170);
+}
+
+/** "From review of <id>" note, or null when the ticket has none. */
+function reviewOfNote(reviewOf, className = 'rp-review-of') {
+  if (!reviewOf) return null;
+  const note = el('div', className, 'From review of ');
+  note.appendChild(idButton(reviewOf, 'rp-link rp-review-id'));
+  return note;
+}
+
+const SHIPPED_MAX = 120;
+function truncate(text, max) {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/** "3 Oct" style short date from an ISO timestamp (empty when unparseable). */
+function shortDate(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+/** "Ready for review" block above the lanes: shipped tickets waiting for Tal's look, oldest first. */
+function renderReview(review) {
+  const block = el('section', 'rp-review');
+  block.setAttribute('aria-label', 'Ready for review');
+  block.appendChild(el('h2', 'rp-review-title', 'Ready for review'));
+  if (!review.length) {
+    block.appendChild(el('p', 'rp-review-empty', 'Nothing waiting for review.'));
+    return block;
+  }
+  const list = el('ol', 'rp-review-list');
+  for (const item of review) {
+    const li = el('li', 'rp-review-item');
+    const row = el('div', 'rp-row');
+    row.appendChild(idButton(item.id));
+    const since = shortDate(item.enteredAt);
+    if (since) row.appendChild(el('span', 'rp-review-since', `since ${since}`));
+    row.appendChild(el('span', 'rp-chip rp-chip-review', `${item.checks.done}/${item.checks.total} checked`));
+    li.appendChild(row);
+    li.appendChild(el('div', 'rp-title', item.title));
+    const shipped = item.result?.shipped?.[0];
+    if (shipped) li.appendChild(el('div', 'rp-why', truncate(shipped, SHIPPED_MAX)));
+    const from = reviewOfNote(item.reviewOf);
+    if (from) li.appendChild(from);
+    for (const fu of item.followUps) {
+      const line = el('div', 'rp-review-of', 'Follow-up: ');
+      line.appendChild(idButton(fu.id, 'rp-link rp-review-id'));
+      line.appendChild(document.createTextNode(` (${fu.section})`));
+      li.appendChild(line);
+    }
+    list.appendChild(li);
+  }
+  block.appendChild(list);
+  return block;
+}
+
+// ----- Hover preview + same-ticket highlight (delegated, installed once per render root) -----
+let previewEl = null;
+function hidePreview() { if (previewEl) previewEl.hidden = true; }
+function showPreview(btn) {
+  const id = btn.dataset.ticket;
+  const task = findTicket(id);
+  if (!task) return;
+  if (!previewEl) {
+    previewEl = el('div', 'rp-preview');
+    previewEl.setAttribute('role', 'tooltip');
+    document.body.appendChild(previewEl);
+  }
+  previewEl.textContent = '';
+  const head = el('div', 'rp-preview-head');
+  head.appendChild(el('b', null, id));
+  const sec = sectionNameOf(id);
+  if (sec) head.appendChild(el('span', 'rp-preview-sec', sec));
+  previewEl.appendChild(head);
+  previewEl.appendChild(el('div', 'rp-preview-title', plainTitle(task.title)));
+  const epic = task.parentId ? findTicket(task.parentId) : null;
+  if (epic) previewEl.appendChild(el('div', 'rp-preview-line', `In ${task.parentId}: ${truncate(epic.title || '', 70)}`));
+  const notice = noticeLine(task);
+  if (notice) previewEl.appendChild(el('div', 'rp-preview-line', notice));
+  const canvas = (task.links || []).find(l => /design canvas/i.test(l.label || ''));
+  previewEl.appendChild(el('div', 'rp-preview-line', canvas ? 'Canvas linked' : (task.links?.length ? `${task.links.length} link${task.links.length > 1 ? 's' : ''}` : '')));
+  previewEl.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const w = previewEl.offsetWidth;
+  const h = previewEl.offsetHeight;
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+  const top = r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6;
+  previewEl.style.left = `${left}px`;
+  previewEl.style.top = `${top}px`;
+}
+function highlight(root, id, on) {
+  root.querySelectorAll('[data-ticket]').forEach(n => {
+    if (n.dataset.ticket === id) n.classList.toggle('rp-hl', on);
+  });
+}
+function installHover(root) {
+  if (root.dataset.rpHover) return;
+  root.dataset.rpHover = '1';
+  const target = e => e.target.closest?.('[data-ticket]');
+  const enter = e => {
+    const t = target(e);
+    if (!t) return;
+    highlight(root, t.dataset.ticket, true);
+    if (t.tagName === 'BUTTON') showPreview(t);
+  };
+  const leave = e => {
+    const t = target(e);
+    if (!t) return;
+    highlight(root, t.dataset.ticket, false);
+    hidePreview();
+  };
+  root.addEventListener('mouseover', enter);
+  root.addEventListener('mouseout', leave);
+  root.addEventListener('focusin', enter);
+  root.addEventListener('focusout', leave);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') hidePreview(); });
+}
+
+// Which design card's ticket list is open (survives re-renders).
+let openDrawer = null;
+
 const LANE_COLORS = 4; // --rp-c1..4; the design lane uses the pick colour
 const PROGRESS_KEY = 'runPlanProgress';
 
@@ -118,19 +282,40 @@ function renderCard(card, phase) {
   const key = `${card.id}:${phase}`;
   const article = el('article', `rp-card rp-${card.state}`);
   article.setAttribute('aria-label', `${card.id} ${card.title}`);
+  if (!card.ticketIds) article.dataset.ticket = card.id;
 
   const row = el('div', 'rp-row');
-  row.appendChild(card.state === 'pick' || card.isPrompt ? el('span', 'rp-id', 'Design') : idButton(card.id));
+  const coTasks = card.id === 'co-tasks';
+  row.appendChild(card.state === 'pick' || card.isPrompt ? el('span', 'rp-id', coTasks ? 'Co-tasks' : 'Design') : idButton(card.id));
   const running = card.inProgress && (card.state === 'ready' || card.state === 'partial');
   row.appendChild(running
     ? el('span', 'rp-chip rp-chip-running', 'In progress')
-    : el('span', `rp-chip rp-chip-${card.state}`, STATE_LABEL[card.state] || card.state));
+    : el('span', `rp-chip rp-chip-${card.state}`, coTasks ? 'Your to-do' : (STATE_LABEL[card.state] || card.state)));
   article.appendChild(row);
 
   article.appendChild(el('div', 'rp-title', card.isRest ? `${card.title} (rest)` : card.title));
   const n = card.openTickets;
-  article.appendChild(el('div', 'rp-items', `${n} open ${n === 1 ? 'ticket' : 'tickets'}`));
-  if (card.why) article.appendChild(el('div', 'rp-why', card.why));
+  const countText = `${n} open ${n === 1 ? 'ticket' : 'tickets'}`;
+  if (card.ticketIds) {
+    const open = openDrawer === card.id;
+    const count = el('button', 'rp-btn rp-count-btn', `${countText} ${open ? '▴' : '▾'}`);
+    count.type = 'button';
+    count.setAttribute('aria-expanded', open ? 'true' : 'false');
+    count.title = open ? 'Hide the ticket list' : 'Show these tickets';
+    count.addEventListener('click', () => {
+      openDrawer = openDrawer === card.id ? null : card.id;
+      renderRunPlanView();
+    });
+    article.appendChild(count);
+    const ids = el('div', 'rp-ids');
+    card.ticketIds.forEach(id => ids.appendChild(idButton(id, 'rp-link rp-chip-id')));
+    article.appendChild(ids);
+  } else {
+    article.appendChild(el('div', 'rp-items', countText));
+  }
+  const fromReview = reviewOfNote(findTicket(card.id)?.reviewOf);
+  if (fromReview) article.appendChild(fromReview);
+  if (card.why && !(card.ticketIds && /^(Picks|Co-tasks): /.test(card.why))) article.appendChild(el('div', 'rp-why', card.why));
 
   const actions = el('div', 'rp-actions');
   if (card.command) {
@@ -210,7 +395,45 @@ function renderDivider(waitsOn) {
   return divider;
 }
 
-function renderLane(lane, index) {
+const STAGE_LABEL = { draw: 'Canvas to draw', pick: 'Waiting for your pick', publish: 'Pick made, publish it', todo: 'Your to-do' };
+
+/** Ticket list under the design lane: id, title, epic it belongs to, and its canvas once linked. */
+function renderDrawer(card, picks) {
+  const drawer = el('div', 'rp-drawer');
+  drawer.setAttribute('role', 'region');
+  drawer.setAttribute('aria-label', `${card.title}: tickets`);
+  drawer.appendChild(el('div', 'rp-drawer-title', card.title));
+  const list = el('ul', 'rp-drawer-list');
+  const rows = card.ticketIds.map(id => picks.find(p => p.id === id)).filter(Boolean);
+  for (const p of rows) {
+    const li = el('li', 'rp-drawer-row');
+    li.dataset.ticket = p.id;
+    li.appendChild(idButton(p.id));
+    li.appendChild(el('span', 'rp-drawer-name', plainTitle(p.title)));
+    const epic = el('span', 'rp-drawer-epic');
+    if (p.epic) {
+      epic.appendChild(document.createTextNode('in '));
+      epic.appendChild(idButton(p.epic, 'rp-link rp-review-id'));
+      epic.appendChild(document.createTextNode(` ${truncate(findTicket(p.epic)?.title || '', 48)}`));
+    }
+    li.appendChild(epic);
+    li.appendChild(el('span', `rp-chip rp-chip-${p.stage === 'todo' ? 'pick' : 'later'}`, STAGE_LABEL[p.stage] || p.stage));
+    if (p.canvas) {
+      const a = el('a', 'rp-canvas-link', 'Open canvas ↗');
+      a.href = p.canvas.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      li.appendChild(a);
+    } else if (p.stage !== 'todo') {
+      li.appendChild(el('span', 'rp-no-canvas', 'No canvas yet'));
+    }
+    list.appendChild(li);
+  }
+  drawer.appendChild(list);
+  return drawer;
+}
+
+function renderLane(lane, index, picks) {
   const track = el('section', 'rp-track');
   track.setAttribute('aria-label', `Lane ${lane.name}`);
   const colorIdx = lane.lane === 'design' ? 'pick' : (index % LANE_COLORS) + 1;
@@ -219,6 +442,21 @@ function renderLane(lane, index) {
   const head = el('div', 'rp-head');
   head.appendChild(el('h3', 'rp-name', lane.name));
   head.appendChild(el('div', 'rp-note', lane.needsBuild ? 'Needs an app build' : 'No app build'));
+  if (lane.lane !== 'design') {
+    const epics = new Set([...lane.now, ...lane.later].map(c => c.id)).size;
+    const open = [...lane.now, ...lane.later].reduce((n, c) => n + (c.openTickets || 0), 0);
+    head.appendChild(el('div', 'rp-note rp-count',
+      `${epics} ${epics === 1 ? 'epic' : 'epics'} · ${open} open ${open === 1 ? 'ticket' : 'tickets'}`));
+  }
+  if (lane.lane !== 'design') {
+    const epicIds = [...new Set([...lane.now, ...lane.later].map(c => c.id))];
+    const wrap = el('div', 'rp-lane-epics');
+    epicIds.forEach(id => wrap.appendChild(idButton(id, 'rp-link rp-chip-id')));
+    head.appendChild(wrap);
+  }
+  if (lane.lane === 'unassigned') {
+    head.appendChild(el('div', 'rp-note rp-hint', 'Give each a lane: ch tasks update <id> --lane <slug>'));
+  }
   track.appendChild(head);
 
   const row = el('div', 'rp-lane');
@@ -231,7 +469,20 @@ function renderLane(lane, index) {
     appendCards(row, lane.later, 'later');
   }
   track.appendChild(row);
+  const openCard = lane.lane === 'design' && lane.now.find(c => c.ticketIds && c.id === openDrawer);
+  if (openCard) track.appendChild(renderDrawer(openCard, picks));
   return track;
+}
+
+/** Pinned epics that are finished: each id opens it, with the unpin command. */
+function renderDoneNote(ids) {
+  const note = el('p', 'rp-done-note', 'Done, still pinned: ');
+  ids.forEach((id, i) => {
+    if (i > 0) note.appendChild(document.createTextNode(', '));
+    note.appendChild(idButton(id, 'rp-link rp-review-id'));
+  });
+  note.appendChild(document.createTextNode(` (unpin with ch tasks plan --unpin ${ids[0]})`));
+  return note;
 }
 
 function renderRules(plan) {
@@ -250,7 +501,7 @@ function renderRules(plan) {
 
 function renderLegend() {
   const legend = el('div', 'rp-legend');
-  for (const [cls, text] of [['running', 'In progress'], ['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your design picks']]) {
+  for (const [cls, text] of [['running', 'In progress'], ['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your picks and co-tasks']]) {
     const item = el('span');
     item.appendChild(el('span', `rp-dot rp-dot-${cls}`));
     item.appendChild(document.createTextNode(text));
@@ -263,6 +514,8 @@ export function renderRunPlanView() {
   const root = document.getElementById('runPlanMain');
   if (!root) return;
   root.textContent = '';
+  installHover(root);
+  hidePreview();
   const state = getState?.();
   if (!state?.tasks) {
     root.appendChild(el('p', 'rp-empty', 'Load tasks to see the plan.'));
@@ -270,6 +523,7 @@ export function renderRunPlanView() {
   }
   const plan = computeRunPlan(toDoc(state));
 
+  root.appendChild(renderReview(plan.review || []));
   if (plan.lanes.length === 0) {
     root.appendChild(el('p', 'rp-empty', 'No pinned epics. Pin one with ch tasks plan --pin <id>'));
     return;
@@ -277,9 +531,9 @@ export function renderRunPlanView() {
   root.appendChild(renderRules(plan));
   root.appendChild(renderLegend());
   const tracks = el('div', 'rp-tracks');
-  plan.lanes.forEach((lane, i) => tracks.appendChild(renderLane(lane, i)));
+  plan.lanes.forEach((lane, i) => tracks.appendChild(renderLane(lane, i, plan.picks || [])));
   root.appendChild(tracks);
-  if (plan.doneEpics.length) root.appendChild(el('p', 'rp-done-note', `Done: ${plan.doneEpics.join(', ')}`));
+  if (plan.doneEpics.length) root.appendChild(renderDoneNote(plan.doneEpics));
 }
 
 /** Re-render when tasks change (called from renderTasks); only if the tab is showing. */

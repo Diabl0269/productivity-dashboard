@@ -6,6 +6,7 @@
 // can be added later without restructuring. Edits apply live and trigger autosave.
 
 import { markChanged } from './tasks-io.js';
+import { createClaudeLaunchButton } from './claude-launch.js';
 import { todayStr } from './tasks-parser.js';
 import { deleteTask, moveTask } from './tasks-board.js';
 import { showStatus } from './state.js';
@@ -67,10 +68,21 @@ import {
   isWorkPanelOnEssentials,
   toggleWorkPanelOnEssentials,
   workPanelLabel,
+  WORK_PANEL_IDS,
+  readEssentialsSectionOrder,
+  moveEssentialsSection,
+  readWorkPanelOrder,
 } from './work-panels-prefs.js';
 import { memoryState } from './memory-renderer.js';
 import { timerControlsHtml, bindTimerControls, timerExplainerHtml } from './task-timer.js';
-import { mountFieldLayoutSections } from './task-field-layout.js';
+import {
+  createFieldSection,
+  makeSectionDragHandle,
+  loadFieldLayout,
+  toggleFieldPin,
+  bindFieldLayoutDnD,
+} from './task-field-layout.js';
+import { REVIEW_SECTION, reviewComplete, checkProgress, resultLines } from '../../shared/review.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import {
   taskIdDisplayState,
@@ -155,6 +167,7 @@ export function openTaskDetail(task, opts = {}) {
   if (titleInput) {
     titleInput.value = task.title || '';
   }
+  document.querySelector('#tdClaudeSlot .cl-split')?._sync?.();
 
   requestAnimationFrame(() => {
     if (Number.isInteger(focusSubtaskIdx)) {
@@ -186,6 +199,7 @@ export function closeTaskDetail(opts = {}) {
   overlay.classList.remove('visible');
   overlay.hidden = true;
   activeTask = null;
+  lastBuiltTaskId = null;
   if (!opts.fromRoute && isRoutingReady()) syncUrl();
 }
 
@@ -293,10 +307,17 @@ const DETAIL_TABS = [
 ];
 
 let activeDetailTab = 'essentials';
+let lastBuiltTaskId = null;
 
 function buildPanels(task) {
   const body = document.getElementById('tdBody');
   if (!body) return;
+  // Rebuilding the same ticket (pin a panel, toggle a column, live refresh) keeps
+  // the scroll position instead of jumping back to the top.
+  const prevScroll = lastBuiltTaskId && lastBuiltTaskId === task.taskId
+    ? body.querySelector('.td-tab-panes')?.scrollTop || 0
+    : 0;
+  lastBuiltTaskId = task.taskId;
   body.innerHTML = '';
   body.classList.add('td-body-structured');
 
@@ -354,13 +375,18 @@ function buildPanels(task) {
 
   // Notes — sub-tabbed: thread, decisions, activity
   buildNotesTabContent(task, paneEls.notes);
+
+  if (prevScroll) panes.scrollTop = prevScroll;
 }
 
 function mountWorkPanels(task, body, { showPin = true } = {}) {
-  buildSubtasksPanel(task, body, { showPin });
+  for (const panelId of readWorkPanelOrder()) {
+    if (panelId === 'subtasks') buildSubtasksPanel(task, body, { showPin });
+    else if (panelId === 'children') buildChildrenPanel(task, body, { showPin });
+    else if (panelId === 'blockedBy') buildBlockedByPanel(task, body, { showPin });
+  }
   buildChecksPanel(task, body);
-  buildChildrenPanel(task, body, { showPin });
-  buildBlockedByPanel(task, body, { showPin });
+  buildReviewOfPanel(task, body);
 }
 
 const WORK_PIN_ICON_FILLED =
@@ -762,37 +788,72 @@ function buildEssentialsForm(task, body) {
   ensureTaskFieldDefaults(task);
   body.classList.add('td-essentials-layout');
 
-  const wrap = document.createElement('div');
-  wrap.className = 'td-essentials-fields';
+  buildReviewPanel(task, body);
+
+  const root = document.createElement('div');
+  root.className = 'td-essentials-sections';
 
   const refresh = () => openTaskDetail(task, { focusTitle: false });
+  const factories = getEssentialsFieldFactories(task);
+  const layout = loadFieldLayout();
+  const pinToggle = (fieldId) => {
+    toggleFieldPin(fieldId);
+    refresh();
+  };
+  const markShell = (fieldId, shell) => {
+    if (fieldId === 'jiraKey') markCorporateUi(shell);
+  };
 
-  mountFieldLayoutSections(wrap, {
-    factories: getEssentialsFieldFactories(task),
-    onLayoutChange: refresh,
-    markShell: (fieldId, shell) => {
-      if (fieldId === 'jiraKey') markCorporateUi(shell);
-    },
-  });
+  const order = readEssentialsSectionOrder();
+  for (const sectionId of order) {
+    if (sectionId === 'pinned') {
+      root.appendChild(createFieldSection({
+        title: 'Pinned Fields',
+        sectionKey: 'pinned',
+        fieldIds: layout.pinned,
+        factories,
+        collapsible: false,
+        onPinToggle: pinToggle,
+        markShell,
+        sectionDraggable: true,
+      }));
+      continue;
+    }
+    if (sectionId === 'unpinned') {
+      root.appendChild(createFieldSection({
+        title: 'More fields',
+        sectionKey: 'unpinned',
+        fieldIds: layout.unpinned,
+        factories,
+        collapsible: true,
+        onPinToggle: pinToggle,
+        markShell,
+        sectionDraggable: true,
+      }));
+      continue;
+    }
+    if (!WORK_PANEL_IDS.includes(sectionId)) continue;
+    if (!isWorkPanelOnEssentials(sectionId)) continue;
 
-  body.appendChild(wrap);
+    const slot = document.createElement('div');
+    slot.className = 'td-essentials-work-slot';
+    slot.dataset.essentialsSection = sectionId;
+    if (sectionId === 'subtasks') buildSubtasksPanel(task, slot, { showPin: true });
+    else if (sectionId === 'children') buildChildrenPanel(task, slot, { showPin: true });
+    else if (sectionId === 'blockedBy') buildBlockedByPanel(task, slot, { showPin: true });
+    attachWorkSectionDragHandle(slot);
+    root.appendChild(slot);
+  }
 
-  const pinnedWork = document.createElement('div');
-  pinnedWork.className = 'td-essentials-work';
-  const pinned = [];
-  if (isWorkPanelOnEssentials('subtasks')) {
-    buildSubtasksPanel(task, pinnedWork, { showPin: true });
-    pinned.push('subtasks');
+  // Discoverability: add any Work panels not yet mirrored onto Essentials
+  const missing = WORK_PANEL_IDS.filter(id => !isWorkPanelOnEssentials(id));
+  if (missing.length) {
+    root.appendChild(buildWorkPanelAddBar(task, missing));
   }
-  if (isWorkPanelOnEssentials('children')) {
-    buildChildrenPanel(task, pinnedWork, { showPin: true });
-    pinned.push('children');
-  }
-  if (isWorkPanelOnEssentials('blockedBy')) {
-    buildBlockedByPanel(task, pinnedWork, { showPin: true });
-    pinned.push('blockedBy');
-  }
-  if (pinned.length) body.appendChild(pinnedWork);
+
+  bindFieldLayoutDnD(root, refresh);
+  bindEssentialsSectionDnD(root, refresh);
+  body.appendChild(root);
 
   const foot = document.createElement('div');
   foot.className = 'td-form-footer';
@@ -802,6 +863,114 @@ function buildEssentialsForm(task, body) {
     `<span>Updated <strong>${escapeHtml(task.updated || '—')}</strong></span>`;
 
   body.appendChild(foot);
+}
+
+function buildWorkPanelAddBar(task, missingIds) {
+  const bar = document.createElement('div');
+  bar.className = 'td-work-add-bar';
+  const label = document.createElement('span');
+  label.className = 'td-work-add-label';
+  label.textContent = 'Show on Essentials';
+  bar.appendChild(label);
+  missingIds.forEach(panelId => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'td-work-add-btn';
+    btn.textContent = '+ ' + workPanelLabel(panelId);
+    btn.title = `Show ${workPanelLabel(panelId)} on this tab`;
+    btn.addEventListener('click', () => {
+      toggleWorkPanelOnEssentials(panelId);
+      openTaskDetail(task, { focusTitle: false });
+    });
+    bar.appendChild(btn);
+  });
+  return bar;
+}
+
+function attachWorkSectionDragHandle(slot) {
+  const panel = slot.querySelector('.td-panel, .td-children-panel') || slot.firstElementChild;
+  if (!panel) return;
+  const head = panel.querySelector('.td-panel-head') || panel.querySelector('.td-children-panel-head');
+  if (!head) {
+    panel.prepend(makeSectionDragHandle());
+    return;
+  }
+  const titleRow = head.querySelector('.td-panel-head') || head;
+  if (!titleRow.querySelector('.td-section-drag-handle')) {
+    titleRow.prepend(makeSectionDragHandle());
+  }
+}
+
+let essentialsSectionDragId = null;
+
+function bindEssentialsSectionDnD(root, onLayoutChange) {
+  if (root.dataset.sectionDndBound === '1') return;
+  root.dataset.sectionDndBound = '1';
+
+  // dragstart's target is the draggable section, not the handle, so remember
+  // which section the handle armed on mousedown and only accept that one.
+  let armedSection = null;
+
+  root.addEventListener('dragstart', (e) => {
+    const section = e.target.closest?.('[data-essentials-section]');
+    if (!section || section !== armedSection) return;
+    essentialsSectionDragId = section.dataset.essentialsSection;
+    section.classList.add('td-section-dragging');
+    section.draggable = true;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', essentialsSectionDragId);
+  });
+
+  root.addEventListener('dragend', (e) => {
+    const section = e.target.closest?.('[data-essentials-section]') || root.querySelector('.td-section-dragging');
+    if (section) {
+      section.classList.remove('td-section-dragging');
+      section.draggable = false;
+    }
+    armedSection = null;
+    essentialsSectionDragId = null;
+    root.querySelectorAll('.td-section-drag-over').forEach(el => el.classList.remove('td-section-drag-over'));
+  });
+
+  root.addEventListener('dragover', (e) => {
+    if (!essentialsSectionDragId) return;
+    e.preventDefault();
+    const over = e.target.closest('[data-essentials-section]');
+    root.querySelectorAll('.td-section-drag-over').forEach(el => el.classList.remove('td-section-drag-over'));
+    if (over && over.dataset.essentialsSection !== essentialsSectionDragId) {
+      over.classList.add('td-section-drag-over');
+    }
+  });
+
+  root.addEventListener('drop', (e) => {
+    if (!essentialsSectionDragId) return;
+    e.preventDefault();
+    const over = e.target.closest('[data-essentials-section]');
+    root.querySelectorAll('.td-section-drag-over').forEach(el => el.classList.remove('td-section-drag-over'));
+    const beforeId = over && over.dataset.essentialsSection !== essentialsSectionDragId
+      ? over.dataset.essentialsSection
+      : null;
+    moveEssentialsSection(essentialsSectionDragId, beforeId);
+    essentialsSectionDragId = null;
+    onLayoutChange();
+  });
+
+  // Enable drag only from the handle (mousedown)
+  root.addEventListener('mousedown', (e) => {
+    const handle = e.target.closest('.td-section-drag-handle');
+    if (!handle || !root.contains(handle)) return;
+    const section = handle.closest('[data-essentials-section]');
+    if (section) {
+      section.draggable = true;
+      armedSection = section;
+    }
+  });
+  root.addEventListener('mouseup', (e) => {
+    armedSection = null;
+    root.querySelectorAll('[data-essentials-section][draggable="true"]').forEach(el => {
+      if (!e.target.closest?.('.td-section-drag-handle')) el.draggable = false;
+    });
+  });
 }
 
 function essentialsField(label, control, { hint = '', block = false } = {}) {
@@ -2258,6 +2427,7 @@ function buildChecksPanel(task, body) {
       cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
       row.classList.toggle('done', c.checked);
       commit();
+      finishReviewIfComplete(task, c.checked);
     });
     cb.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
@@ -2330,6 +2500,162 @@ function buildChecksPanel(task, body) {
   body.appendChild(sectionPanel('Checks', list, { panelId: 'checks', task, showPin: false }));
 }
 
+/* ── Ready for review ─────────────────────────────────────────── */
+
+/** Move a review ticket to Done once its last check is ticked (same path as the status select). */
+function finishReviewIfComplete(task, ticked) {
+  if (!reviewComplete(task, task.section, { ticked })) return;
+  moveTask(task.id, 'done', -1);
+  showStatus('Reviewed: moved to Done');
+}
+
+/** Tickets opened while reviewing `taskId`. */
+function reviewFollowUps(taskId) {
+  const out = [];
+  if (!taskId) return out;
+  for (const list of Object.values(getState()?.tasks || {})) {
+    for (const t of list || []) if (t.reviewOf === taskId && t.taskId) out.push(t);
+  }
+  return out;
+}
+
+/** A clickable ticket id that opens that ticket's detail. */
+function ticketLinkButton(taskId) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'td-review-link';
+  btn.textContent = taskId;
+  btn.title = 'Open ' + taskId;
+  btn.addEventListener('click', () => {
+    const t = findTaskByTaskId(getState()?.tasks, taskId);
+    if (t) openTaskDetail(t, { focusTitle: false });
+  });
+  return btn;
+}
+
+function reviewRelationRow(label, ids) {
+  const row = document.createElement('div');
+  row.className = 'td-review-rel';
+  row.appendChild(document.createTextNode(label + ' '));
+  ids.forEach((id, i) => {
+    if (i) row.appendChild(document.createTextNode(', '));
+    row.appendChild(ticketLinkButton(id));
+  });
+  return row;
+}
+
+/**
+ * Top of Essentials: the ship result, the review checks with "Tick all", and the
+ * review relations. Shown for tickets in review, or that carry a result / relation.
+ */
+function buildReviewPanel(task, body) {
+  const inReview = task.section === REVIEW_SECTION;
+  const followUps = reviewFollowUps(task.taskId);
+  const lines = resultLines(task.result);
+  if (!inReview && !lines.length && !task.reviewOf && !followUps.length) return;
+
+  const box = document.createElement('div');
+  box.className = 'td-review';
+
+  if (inReview) {
+    const { done, total } = checkProgress(task);
+    const head = document.createElement('div');
+    head.className = 'td-review-head';
+    const count = document.createElement('span');
+    count.className = 'td-review-count';
+    count.textContent = total ? `${done} of ${total} checked` : 'No checks';
+    head.appendChild(count);
+    const tickAll = document.createElement('button');
+    tickAll.type = 'button';
+    tickAll.className = 'td-review-tick-all';
+    tickAll.textContent = 'Tick all and mark reviewed';
+    tickAll.addEventListener('click', () => {
+      (task.checks || []).forEach(c => { c.checked = true; });
+      commit();
+      finishReviewIfComplete(task, true);
+    });
+    head.appendChild(tickAll);
+    box.appendChild(head);
+  }
+
+  if (lines.length) {
+    const res = document.createElement('div');
+    res.className = 'td-review-result';
+    lines.forEach(line => {
+      const idx = line.indexOf(': ');
+      const row = document.createElement('div');
+      row.className = 'td-review-line';
+      const key = document.createElement('span');
+      key.className = 'td-review-key';
+      key.textContent = line.slice(0, idx);
+      row.appendChild(key);
+      row.appendChild(document.createTextNode(line.slice(idx + 2)));
+      res.appendChild(row);
+    });
+    box.appendChild(res);
+  }
+
+  if (inReview && (task.checks || []).length) {
+    const list = document.createElement('div');
+    list.className = 'td-review-checks';
+    task.checks.forEach((c, idx) => {
+      const row = document.createElement('div');
+      row.className = 'td-subtask' + (c.checked ? ' done' : '');
+      const cb = document.createElement('span');
+      cb.className = 'checkbox' + (c.checked ? ' checked' : '');
+      cb.setAttribute('role', 'checkbox');
+      cb.setAttribute('aria-checked', c.checked ? 'true' : 'false');
+      cb.setAttribute('aria-label', 'Check ' + (idx + 1) + ': ' + (c.text || ''));
+      cb.setAttribute('tabindex', '0');
+      cb.addEventListener('click', () => {
+        c.checked = !c.checked;
+        commit();
+        if (!reviewComplete(task, task.section, { ticked: c.checked })) {
+          openTaskDetail(task, { focusTitle: false });
+        }
+        finishReviewIfComplete(task, c.checked);
+      });
+      cb.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
+      });
+      const text = document.createElement('span');
+      text.className = 'td-review-check-text';
+      text.textContent = c.text || '';
+      row.appendChild(cb);
+      row.appendChild(text);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  }
+
+  if (task.reviewOf) box.appendChild(reviewRelationRow('From review of', [task.reviewOf]));
+  if (followUps.length) {
+    box.appendChild(reviewRelationRow('Follow-ups from review:', followUps.map(t => t.taskId)));
+  }
+
+  body.appendChild(sectionPanel(inReview ? 'Ready for review' : 'Review', box));
+}
+
+/** Work tab: set or clear "From review of". */
+function buildReviewOfPanel(task, body) {
+  const host = document.createElement('div');
+  host.className = 'td-ticket-picker-host';
+  mountTicketPicker(host, {
+    tasks: blockedByCandidates(getState()?.tasks, task.taskId),
+    value: task.reviewOf || null,
+    allowNone: true,
+    noneLabel: 'None',
+    placeholder: 'Search ticket being reviewed…',
+    ariaLabel: 'From review of',
+    onChange: (id) => {
+      task.reviewOf = id || null;
+      commit(id ? 'From review of ' + id : 'Review link cleared');
+      openTaskDetail(task, { focusTitle: false });
+    },
+  });
+  body.appendChild(sectionPanel('From review of', host));
+}
+
 /* ── Init: wire up the shared overlay chrome ──────────────────── */
 
 export function initTaskDetail() {
@@ -2338,6 +2664,20 @@ export function initTaskDetail() {
   const closeBtn2 = document.getElementById('tdCloseBtn');
   const deleteBtn = document.getElementById('tdDelete');
   const titleInput = document.getElementById('tdTitle');
+
+  const claudeSlot = document.getElementById('tdClaudeSlot');
+  if (claudeSlot) {
+    claudeSlot.appendChild(createClaudeLaunchButton({
+      getTask: () => activeTask,
+      getState: () => getState?.() || {},
+      onOpenSettings: () => {
+        closeTaskDetail();
+        document.getElementById('settingsTabBtn')?.click();
+        document.querySelector('#settingsPanel .settings-sub-tab[data-subtab="display"]')?.click();
+        requestAnimationFrame(() => document.getElementById('claudeLaunchSettings')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+      },
+    }));
+  }
 
   if (closeBtn) closeBtn.addEventListener('click', closeTaskDetail);
   if (closeBtn2) closeBtn2.addEventListener('click', () => {

@@ -2,6 +2,7 @@
 
 :root {
   --rp-c1: #f2a33a; --rp-c2: #3fc6ec; --rp-c3: #6ccf72; --rp-c4: #f2789c; --rp-cpick: #a790f5;
+  --rp-c-review: var(--status-review);
   --rp-c-ready: #6ccf72; --rp-c-partial: #f2a33a; --rp-c-running: #6ea8ff; --rp-c-later: var(--text-secondary);
   --rp-tint: .16;
 }
@@ -29,12 +30,24 @@
 .rp-dot-later { background: var(--rp-c-later); }
 .rp-dot-pick { background: var(--rp-cpick); }
 
+/* Ready for review: shipped tickets waiting for a look, oldest first, above the lanes */
+.rp-review { background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--rp-c-review); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rp-review-title { margin: 0; font-size: 15px; font-weight: 700; }
+.rp-review-empty { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.rp-review-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.rp-review-item { --c: var(--rp-c-review); border-radius: 8px; padding: 10px 11px; display: flex; flex-direction: column; gap: 6px; background: color-mix(in srgb, var(--c) calc(var(--rp-tint) * 100%), var(--surface-2)); border: 1px solid color-mix(in srgb, var(--c) 45%, var(--border)); }
+.rp-review-since { font-size: 12px; color: var(--text-secondary); margin-right: auto; }
+.rp-chip-review { color: var(--rp-c-review); }
+.rp-review-of { font-size: 12px; color: var(--text-secondary); }
+button.rp-review-id { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
 .rp-tracks { display: flex; flex-direction: column; gap: 10px; }
 .rp-track { display: grid; grid-template-columns: 190px 1fr; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .rp-head { padding: 14px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; position: relative; }
 .rp-head::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); }
 .rp-name { margin: 0; font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
 .rp-note { font-size: 12.5px; color: var(--text-secondary); }
+.rp-hint { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; overflow-wrap: anywhere; }
 
 .rp-lane { display: flex; align-items: stretch; padding: 12px; overflow-x: auto; min-width: 0; }
 .rp-lane:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -79,7 +92,34 @@ button.rp-picks-id { color: var(--rp-cpick); }
 .rp-toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text-primary); color: var(--surface-0); padding: 7px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 1000; }
 .rp-toast.show { opacity: 1; }
 
+/* Navigation: ticket chips, lane epic links, design ticket list, hover preview */
+.rp-ids, .rp-lane-epics { display: flex; flex-wrap: wrap; gap: 3px 8px; }
+.rp-lane-epics { margin-top: 4px; }
+button.rp-chip-id { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.rp-count-btn { align-self: flex-start; padding: 2px 8px; font-size: 12px; color: var(--text-secondary); }
+.rp-count-btn[aria-expanded="true"] { border-color: var(--c); color: var(--text-primary); }
+.rp-hl { outline: 2px solid var(--c, var(--accent)); outline-offset: 1px; border-radius: 4px; }
+.rp-card { transition: opacity .2s, transform .15s, box-shadow .15s; }
+.rp-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, .18); }
+.rp-drawer { grid-column: 1 / -1; border-top: 1px solid var(--border); padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
+.rp-drawer-title { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+.rp-drawer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rp-drawer-row { --c: var(--rp-cpick); display: grid; grid-template-columns: 64px minmax(0, 2fr) minmax(0, 1.5fr) auto auto; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 6px; font-size: 13px; }
+.rp-drawer-row:hover { background: color-mix(in srgb, var(--c) 10%, transparent); }
+.rp-drawer-name { overflow-wrap: anywhere; }
+.rp-drawer-epic, .rp-no-canvas { font-size: 12px; color: var(--text-secondary); }
+.rp-canvas-link { font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; white-space: nowrap; }
+.rp-canvas-link:hover { text-decoration: underline; }
+.rp-preview { position: fixed; z-index: 1001; max-width: 320px; padding: 9px 11px; border-radius: 8px; background: var(--surface-0); color: var(--text-primary); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .3); font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.rp-preview[hidden] { display: none; }
+.rp-preview-head { display: flex; gap: 8px; align-items: baseline; font-family: ui-monospace, Menlo, monospace; }
+.rp-preview-sec { font-family: inherit; color: var(--text-secondary); font-size: 11.5px; }
+.rp-preview-title { font-weight: 600; font-size: 13px; }
+.rp-preview-line { color: var(--text-secondary); }
+.rp-preview-line:empty { display: none; }
+
 @media (max-width: 720px) {
+  .rp-drawer-row { grid-template-columns: 1fr; gap: 3px; }
   .rp-track { grid-template-columns: 1fr; }
   .rp-head { border-right: 0; border-bottom: 1px solid var(--border); }
   .rp-lane { flex-direction: column; }

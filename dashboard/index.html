@@ -63,6 +63,7 @@
   <link rel="stylesheet" href="./styles/global-memory.css">
   <link rel="stylesheet" href="./styles/settings.css">
   <link rel="stylesheet" href="./styles/projects.css">
+  <link rel="stylesheet" href="./styles/mobile.css">
   <link rel="stylesheet" href="./styles/run-plan.css">
 </head>
 <body>
@@ -455,6 +456,31 @@
           <textarea id="docFilterPatternsInput" class="settings-pref-textarea" rows="6" spellcheck="false" aria-describedby="docFilterPatternsDesc"></textarea>
           <p id="docFilterPatternsDesc" class="settings-pref-desc">Examples: <code>CLAUDE.md</code>, <code>**/agents/**</code>, <code>**/memory/**</code></p>
         </div>
+        <div class="settings-pref-block" id="claudeLaunchSettings">
+          <span class="settings-pref-title">AI provider and ticket launch</span>
+          <p class="settings-pref-desc">Choose which desktop app opens from the task details header. Copilot starts an interactive app session; Claude starts a Claude Desktop Code session. Ticket prompts are pre-filled and are not submitted automatically.</p>
+          <label class="settings-pref-subtitle" for="aiProviderSelect">AI provider</label>
+          <select id="aiProviderSelect" class="settings-pref-input">
+            <option value="claude">Claude Desktop</option>
+            <option value="copilot">GitHub Copilot</option>
+          </select>
+          <label class="settings-pref-subtitle" for="copilotRepositoryInput">Copilot repository</label>
+          <p class="settings-pref-desc">Used when a ticket has no GitHub issue or pull-request URL. Format: <code>OWNER/REPO</code>.</p>
+          <input type="text" id="copilotRepositoryInput" class="settings-pref-input" spellcheck="false" placeholder="owner/repository">
+          <span class="settings-pref-title">Prompt templates</span>
+          <p class="settings-pref-desc">Use <strong>⋮ → Edit prompt &amp; start</strong> on a ticket to change its prompt once or save a per-ticket prompt. Lines whose placeholders are all empty are dropped. Template changes are saved on blur.</p>
+          <label class="settings-pref-subtitle" for="claudeDefaultFolderInput">Default folder</label>
+          <p class="settings-pref-desc">Claude Desktop only. Used when the ticket's project has no docs directory. Absolute path; leave empty to let Claude ask.</p>
+          <input type="text" id="claudeDefaultFolderInput" class="settings-pref-input" spellcheck="false" placeholder="/Users/you/projects/repo">
+          <label class="settings-pref-subtitle" for="claudeTaskTemplateInput">Ticket prompt</label>
+          <textarea id="claudeTaskTemplateInput" class="settings-pref-textarea" rows="10" spellcheck="false"></textarea>
+          <label class="settings-pref-subtitle" for="claudeEpicTemplateInput">Parent prompt <span class="settings-pref-desc">(used when the ticket has child tickets, e.g. epics)</span></label>
+          <textarea id="claudeEpicTemplateInput" class="settings-pref-textarea" rows="10" spellcheck="false"></textarea>
+          <p class="settings-pref-desc" id="claudePlaceholderList"></p>
+          <div class="settings-pref-actions">
+            <button type="button" id="claudeTemplatesReset" class="settings-install-btn">Reset templates to default</button>
+          </div>
+        </div>
         <div class="settings-pref-row settings-pref-row-static" id="pwaInstallRow">
           <div class="settings-pref-text">
             <span class="settings-pref-title">Install as app (PWA)</span>
@@ -536,6 +562,7 @@
           <input type="text" class="td-id td-id-input" id="tdTaskId" aria-label="Task ID" spellcheck="false" hidden>
         </span>
         <input type="text" class="td-title-input" id="tdTitle" aria-label="Task title" placeholder="Task title" />
+        <div class="td-claude-slot" id="tdClaudeSlot"></div>
         <button class="td-close" id="tdClose" aria-label="Close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

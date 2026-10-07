@@ -19,6 +19,7 @@ import {
   normalizeProjectRow,
 } from '../../shared/projects.js';
 import { normalizeModel } from '../../shared/model.js';
+import { resultErrors } from '../../shared/review.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -26,6 +27,7 @@ export const SECTIONS = [
   { id: 'backlog',     name: 'Backlog' },
   { id: 'todo',        name: 'Todo' },
   { id: 'in-progress', name: 'In Progress' },
+  { id: 'review',      name: 'Ready for review' },
   { id: 'done',        name: 'Done' },
   { id: 'archive',     name: 'Archive' },
 ];
@@ -557,6 +559,8 @@ export { TASK_ID_RE };
  *       labels (optional) string[]
  *       links (optional) [{label?: string, url: string}]
  *       blockedBy (optional) string[] of peer task ids
+ *       reviewOf (optional) id of the ticket whose review this one came from
+ *       result (optional) ship result {at, shipped[], left?[], tests?[], ci} (shared/review.js)
  *   - doc.ticketTypes (optional): array of {id, name, color}
  *
  * @param {any} doc
@@ -921,6 +925,20 @@ export function validateTasksDoc(doc) {
       // blocked (optional)
       if (task.blocked !== undefined && task.blocked !== null && typeof task.blocked !== 'boolean') {
         errors.push(`${ref} (id=${task.id ?? '?'}) .blocked must be a boolean`);
+      }
+
+      // reviewOf (optional): opened while reviewing another ticket
+      if (task.reviewOf !== undefined && task.reviewOf !== null && task.reviewOf !== '') {
+        if (typeof task.reviewOf !== 'string' || !isValidTaskId(task.reviewOf, knownPrefixes)) {
+          errors.push(`${ref} (id=${task.id ?? '?'}) .reviewOf "${task.reviewOf}" must be a valid task id`);
+        } else if (task.reviewOf === task.id) {
+          errors.push(`${ref} (id=${task.id}) .reviewOf cannot reference itself`);
+        }
+      }
+
+      // result (optional): what shipped (shared/review.js)
+      if (task.result !== undefined && task.result !== null) {
+        errors.push(...resultErrors(task.result, `${ref} (id=${task.id ?? '?'})`));
       }
 
       // waitingOn (optional)

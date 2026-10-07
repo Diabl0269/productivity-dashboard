@@ -28,6 +28,7 @@ import {
   isUserId,
   isChannelId,
   isTs,
+  downloadSlackText,
 } from '../lib/slack.js';
 
 // ─── recent ──────────────────────────────────────────────────────────────────
@@ -457,6 +458,58 @@ async function cmdReactions(argv) {
   jsonOut(result);
 }
 
+async function cmdCanvas(argv) {
+  const { values } = parse(argv, {
+    id: { type: 'string' },
+    offset: { type: 'string' },
+    'max-chars': { type: 'string' },
+  });
+  if (!/^F[A-Z0-9]{2,}$/i.test(values.id || '')) die('--id must be a valid Slack canvas file ID', 1);
+  const offset = Number(values.offset || '0');
+  const maxChars = Number(values['max-chars'] || '20000');
+  if (!Number.isSafeInteger(offset) || offset < 0 ||
+      !Number.isSafeInteger(maxChars) || maxChars < 1 || maxChars > 100000) {
+    die('--offset must be a non-negative integer; --max-chars must be 1..100000', 1);
+  }
+  const token = getToken();
+  const { file } = await slackCall('files.info', { file: values.id }, { token });
+  if (!file || file.mimetype !== 'application/vnd.slack-docs') {
+    throw new Error('Requested file is not a Slack canvas');
+  }
+  const url = file.url_private_download || file.url_private;
+  if (!url) {
+    throw new Error('Canvas content unavailable: files.info exposes no download URL; no public canvases.read API exists');
+  }
+  const downloaded = await downloadSlackText(url, token);
+  const end = Math.min(offset + maxChars, downloaded.content.length);
+  jsonOut({
+    id: values.id, title: file.title || file.name, permalink: file.permalink,
+    content_type: downloaded.content_type,
+    content: downloaded.content.slice(offset, end),
+    offset, total_chars: downloaded.content.length,
+    next_offset: end < downloaded.content.length ? end : null,
+    truncated: offset > 0 || end < downloaded.content.length,
+  });
+}
+
+async function cmdSend(argv) {
+  const { values } = parse(argv, {
+    user: { type: 'string' }, text: { type: 'string' }, confirm: { type: 'boolean' },
+  });
+  if (!isUserId(values.user || '')) die('--user must be a valid Slack user ID', 1);
+  if (!values.text?.trim() || values.text.length > 4000) die('--text must contain 1..4000 characters', 1);
+  if (!values.confirm) die('Sending a DM requires --confirm and prior authorization for its recipient and content', 1);
+  const token = getToken();
+  const base = await workspaceBaseUrl(token);
+  const opened = await slackCall('conversations.open', { users: values.user }, { token, post: true });
+  if (!isChannelId(opened.channel?.id)) throw new Error('Slack did not return a valid DM channel');
+  const sent = await slackCall('chat.postMessage', {
+    channel: opened.channel.id, text: values.text, unfurl_links: false, unfurl_media: false,
+  }, { token, post: true });
+  if (!isTs(sent.ts)) throw new Error('Slack accepted the request but returned no message timestamp; do not retry');
+  jsonOut({ channel: opened.channel.id, timestamp: sent.ts, permalink: buildPermalink(base, opened.channel.id, sent.ts) });
+}
+
 // ─── dispatcher ──────────────────────────────────────────────────────────────
 
 const USAGE = `ch slack <subcommand> [args...]
@@ -467,6 +520,8 @@ Subcommands:
   channels  --ids <C1,C2,...> --days <N> [--limit 200] [--max-pages 5]
   thread    --channel <C> --ts <timestamp>
   reactions --channel <C> --ts <timestamp> [--user <U>]
+  canvas    --id <F> [--offset 0] [--max-chars 20000]
+  send      --user <U> --text "<message>" --confirm
 
 awaiting: returns only messages directed at <UID> with NO reply/reaction from <UID> —
 fully verified server-side (no follow-up thread/reaction calls or JSON post-processing needed).
@@ -490,6 +545,8 @@ export default async function slack(argv) {
       case 'channels':  return await cmdChannels(rest);
       case 'thread':    return await cmdThread(rest);
       case 'reactions': return await cmdReactions(rest);
+      case 'canvas':    return await cmdCanvas(rest);
+      case 'send':      return await cmdSend(rest);
       default:
         die(`unknown slack subcommand: "${sub}"\n${USAGE}`, 1);
     }
