@@ -308,6 +308,10 @@
   cursor: pointer;
   transition: border-color var(--transition-fast);
   box-shadow: var(--shadow-sm);
+  min-width: 0;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .memory-card:hover {
@@ -325,6 +329,41 @@
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
   margin-bottom: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.memory-card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  min-width: 0;
+}
+
+.memory-card-field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+
+.memory-card-field-label {
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+  flex-shrink: 0;
+}
+
+.memory-card-field-value {
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .memory-card-preview {
@@ -336,6 +375,9 @@
   overflow: hidden;
   line-clamp: 3;
   line-height: var(--leading-relaxed);
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* ── §7.6 Inline Edit (Context Page) ── */
