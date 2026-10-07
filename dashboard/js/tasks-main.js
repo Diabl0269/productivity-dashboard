@@ -218,7 +218,9 @@ export async function loadTaskFromHandle(handle) {
   if (autoArchive(taskState.sections, taskState.tasks)) {
     taskState.hasChanges = true;
   }
-  switchTaskView('board');
+  // Keep the view the route chose and don't sync the URL here: a /tasks/<id>
+  // route is still pending until tasks load, and syncing now would drop it.
+  switchTaskView(taskState.currentView || 'board', { fromRoute: true });
   startWatching();
   taskState.taskFileName = file.name;
   if (activeMainTab === 'tasks') filePathEl.textContent = file.name;
@@ -229,7 +231,7 @@ export function loadTaskFromHttp(parsed) {
   taskState.taskFileHandle = null;
   applyLoadedTasks(parsed);
   autoArchive(taskState.sections, taskState.tasks);
-  switchTaskView('board');
+  switchTaskView(taskState.currentView || 'board', { fromRoute: true });
   taskState.taskFileName = 'tasks.json';
   if (activeMainTab === 'tasks') filePathEl.textContent = 'tasks.json';
   showStatus('Loaded tasks.json via HTTP');
