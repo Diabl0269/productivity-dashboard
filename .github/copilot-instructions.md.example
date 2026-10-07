@@ -1,0 +1,7 @@
+# Repository guidance
+
+- Run the dashboard from the repository root with `node serve.js`, then open `http://localhost:3000/dashboard/`.
+- For dashboard-specific conventions, consult `dashboard/CLAUDE.md` or `dashboard/CLAUDE.md.example`.
+- Personal files and data (`CLAUDE.md`, `TASKS.md`, `memory/`, `config.json`, and `scripts/daily-update.sh`) are user-specific and gitignored. Never add them to or expose them in commits.
+- For task or memory work, follow the existing `ch` CLI conventions in the repository documentation and source rather than reading task JSON directly.
+- Validate changes with the relevant existing tools, such as the tests or lint commands documented for the affected area.
