@@ -3,10 +3,10 @@
 import { onTabSwitch } from './search.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
-export let activeMainTab = 'overview'; // overview | tasks | search | projects | runplan | memory | settings
+export let activeMainTab = 'overview'; // overview | tasks | search | projects | plan | memory | settings
 
 const MAIN_TAB_ORDER = [
-  'overview', 'tasks', 'search', 'projects', 'runplan', 'memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings',
 ];
 
 // Externally-configured tabs (config.json externalTabs) register themselves here so
@@ -141,7 +141,7 @@ export function switchMainTab(tab, opts = {}) {
     { btn: tasksTabBtn, id: 'tasks' },
     { btn: searchTabBtn, id: 'search' },
     { btn: projectsTabBtn, id: 'projects' },
-    { btn: runPlanTabBtn, id: 'runplan' },
+    { btn: runPlanTabBtn, id: 'plan' },
     { btn: memoryTabBtn, id: 'memory' },
     { btn: settingsTabBtn, id: 'settings' },
   ];
@@ -156,7 +156,7 @@ export function switchMainTab(tab, opts = {}) {
   tasksPanel.classList.toggle('active', tab === 'tasks');
   if (searchPanel) searchPanel.classList.toggle('active', tab === 'search');
   if (projectsPanel) projectsPanel.classList.toggle('active', tab === 'projects');
-  if (runPlanPanel) runPlanPanel.classList.toggle('active', tab === 'runplan');
+  if (runPlanPanel) runPlanPanel.classList.toggle('active', tab === 'plan');
   memoryPanel.classList.toggle('active', tab === 'memory');
   if (settingsPanel) settingsPanel.classList.toggle('active', tab === 'settings');
 
@@ -210,7 +210,7 @@ export function switchMainTab(tab, opts = {}) {
     import('./projects-view.js').then(m => m.renderProjectsView()).catch(() => {});
   }
 
-  if (tab === 'runplan') {
+  if (tab === 'plan') {
     import('./run-plan-view.js').then(m => m.renderRunPlanView()).catch(() => {});
   }
 
@@ -239,7 +239,7 @@ export function initStateListeners() {
   tasksTabBtn.addEventListener('click', () => switchMainTab('tasks'));
   if (searchTabBtn) searchTabBtn.addEventListener('click', () => switchMainTab('search'));
   if (projectsTabBtn) projectsTabBtn.addEventListener('click', () => switchMainTab('projects'));
-  if (runPlanTabBtn) runPlanTabBtn.addEventListener('click', () => switchMainTab('runplan'));
+  if (runPlanTabBtn) runPlanTabBtn.addEventListener('click', () => switchMainTab('plan'));
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
 
