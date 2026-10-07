@@ -1,6 +1,7 @@
 # Personal data — never commit
 CLAUDE.md
 AGENTS.md
+.github/copilot-instructions.md
 TASKS.md
 memory/
 config.json
