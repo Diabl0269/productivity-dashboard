@@ -287,3 +287,72 @@ test('ch tasks review: --risk, --unverified, --fixed and --opened land on the re
   assert.deepEqual([res.risks, res.unverified, res.fixed, res.opened], [['r1'], ['u1'], ['f1'], ['o1']]);
   assert.equal(runCli(['tasks', 'lint'], dir).status, 0);
 });
+
+// ---------------------------------------------------------------------------
+// Children of an epic roll up into the epic
+// ---------------------------------------------------------------------------
+
+function addEpicWithChildren(tmpDir) {
+  const epic = runCli(['tasks', 'add', 'Epic E', '--type', 'epic', '--json'], tmpDir);
+  const epicId = JSON.parse(epic.stdout).id;
+  const ids = [];
+  for (const title of ['Child A', 'Child B']) {
+    const r = runCli(['tasks', 'add', title, '--parent', epicId, '--json'], tmpDir);
+    ids.push(JSON.parse(r.stdout).id);
+  }
+  return { epicId, ids };
+}
+
+test('review on an epic child: result and checks go to the epic, child goes to Done', () => {
+  const tmpDir = makeTmpDir();
+  const { epicId, ids } = addEpicWithChildren(tmpDir);
+  const [a, b] = ids;
+
+  let r = runCli(['tasks', 'review', a, '--shipped', 'did A', '--check', 'look at A'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(find(tmpDir, a).section, 'done');
+  assert.deepEqual(find(tmpDir, a).task.result.shipped, ['did A']);
+  // B still open: the epic collects but stays out of review
+  assert.notEqual(find(tmpDir, epicId).section, 'review');
+  assert.deepEqual(find(tmpDir, epicId).task.checks.map(c => c.text), [`${a}: look at A`]);
+
+  r = runCli(['tasks', 'review', b, '--shipped', 'did B', '--check', 'look at B'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  const epic = find(tmpDir, epicId);
+  assert.equal(epic.section, 'review');
+  assert.deepEqual(epic.task.result.shipped, [`${a}: did A`, `${b}: did B`]);
+  assert.equal(epic.task.checks.length, 2);
+
+  const doc = readTasks(tmpDir);
+  assert.deepEqual(reviewQueue(doc).map(q => q.id), [epicId]);
+});
+
+test('review rollup: tidies children already sitting in review', () => {
+  const tmpDir = makeTmpDir();
+  const { epicId, ids } = addEpicWithChildren(tmpDir);
+  for (const id of ids) {
+    runCli(['tasks', 'move', id, 'review'], tmpDir);
+    runCli(['tasks', 'update', id, '--add-check', `check ${id}`], tmpDir);
+  }
+  const data = readTasks(tmpDir);
+  const t = data.sections.flatMap(s => s.tasks).find(x => x.id === ids[0]);
+  t.result = { at: '2026-01-01T00:00:00.000Z', shipped: ['old A'], ci: 'all passed' };
+  fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(data));
+
+  const r = runCli(['tasks', 'review', '--rollup'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  for (const id of ids) assert.equal(find(tmpDir, id).section, 'done');
+  const epic = find(tmpDir, epicId);
+  assert.equal(epic.section, 'review');
+  assert.equal(epic.task.checks.length, 2);
+  assert.deepEqual(epic.task.result.shipped, [`${ids[0]}: old A`]);
+});
+
+test('review on a standalone ticket still gets its own review card', () => {
+  const tmpDir = makeTmpDir();
+  const id = JSON.parse(runCli(['tasks', 'add', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', 'Ep', '--type', 'epic', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
+  runCli(['tasks', 'update', id, '--clear-parent'], tmpDir);
+  const r = runCli(['tasks', 'review', id, '--shipped', 'x'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(find(tmpDir, id).section, 'review');
+});

@@ -68,7 +68,7 @@ import path from 'node:path';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
-  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete,
+  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, epicOf, rollUpIntoEpic,
 } from '../../shared/review.js';
 
 // ---------------------------------------------------------------------------
@@ -746,7 +746,40 @@ function cmdReview(argv) {
     'result-json': { type: 'string' },
     section:       { type: 'string',  short: 's' },
     json:          { type: 'boolean', short: 'j' },
+    rollup:        { type: 'boolean' },
   });
+
+  if (values.rollup) {
+    // One-off tidy: children of an epic still sitting in Ready for review fold into their epic.
+    const doc = load();
+    ensureSections(doc);
+    const reviewSection = sectionById(doc, REVIEW_SECTION);
+    const doneSection = sectionById(doc, 'done');
+    const children = reviewSection.tasks.filter(t => epicOf(doc, t));
+    const today = todayStr();
+    const moved = [];
+    for (const child of children) {
+      const checkTexts = (child.checks || []).filter(c => !c.checked).map(c => c.text);
+      const rolled = rollUpIntoEpic(doc, child, checkTexts);
+      reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
+      appendHistory(child, { event: 'moved', from: REVIEW_SECTION, to: 'done' });
+      child.updated = today;
+      doneSection.tasks.push(child);
+      rolled.epic.checked = true;
+      rolled.epic.updated = today;
+      if (rolled.moveEpicToReview) {
+        const src = sectionById(doc, rolled.epicSection);
+        src.tasks = src.tasks.filter(t => t.id !== rolled.epic.id);
+        appendHistory(rolled.epic, { event: 'moved', from: rolled.epicSection, to: REVIEW_SECTION });
+        reviewSection.tasks.push(rolled.epic);
+      }
+      moved.push(`${child.id}->${rolled.epic.id}`);
+    }
+    save(doc);
+    if (values.json) { jsonOut({ rolledUp: moved }); return; }
+    ok(moved.length ? `rolled up ${moved.length}: ${moved.join(', ')}` : 'no children of an epic in review');
+    return;
+  }
 
   const id = positionals[0];
   if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... [--check "..."]... [--result-json \'<json>\']');
@@ -788,9 +821,41 @@ function cmdReview(argv) {
   if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
 
   if (result) task.result = result;
+  const today = todayStr();
+
+  // A ticket under an epic hands its result and checks to the epic and goes to Done, so
+  // "Ready for review" only ever holds epics (and standalone tickets).
+  const rolled = epicOf(doc, task) ? rollUpIntoEpic(doc, task, checkTexts) : null;
+  if (rolled) {
+    const doneSection = sectionById(doc, 'done');
+    task.checked = true;
+    task.updated = today;
+    if (fromSection.id !== 'done') {
+      fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
+      appendHistory(task, { event: 'moved', from: fromSection.id, to: 'done' });
+      doneSection.tasks.push(task);
+    }
+    const { epic, epicSection } = rolled;
+    epic.checked = true;
+    epic.updated = today;
+    if (rolled.moveEpicToReview) {
+      const src = sectionById(doc, epicSection);
+      src.tasks = src.tasks.filter(t => t.id !== epic.id);
+      appendHistory(epic, { event: 'moved', from: epicSection, to: REVIEW_SECTION });
+      toSection.tasks.push(epic);
+    }
+    save(doc);
+    if (values.json) {
+      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview, added: rolled.added, result: task.result || null });
+      return;
+    }
+    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToReview ? ' (now in review)' : ''}`);
+    return;
+  }
+
   const added = addChecks(task, checkTexts);
   task.checked = true;
-  task.updated = todayStr();
+  task.updated = today;
 
   const moved = fromSection.id !== REVIEW_SECTION;
   if (moved) {
