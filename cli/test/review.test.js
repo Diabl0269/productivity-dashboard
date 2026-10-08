@@ -447,3 +447,22 @@ test('an archived sibling counts as closed: the last review moves the epic to re
   assert.equal(r.status, 0, r.stderr);
   assert.equal(find(tmpDir, epicId).section, 'review');
 });
+
+test('review: a design ticket needs a design-board link', () => {
+  const dir = makeTmpDir();
+  const doc = readTasks(dir);
+  const t3 = doc.sections.flatMap(s => s.tasks).find(t => t.id === 'T3');
+  t3.labels = ['design'];
+  fs.writeFileSync(path.join(dir, 'tasks.json'), JSON.stringify(doc));
+  const no = runCli(['tasks', 'review', 'T3', '--shipped', 'x'], dir);
+  assert.notEqual(no.status, 0);
+  assert.match(no.stderr, /--design-link/);
+  assert.equal(find(dir, 'T3').section, 'in-progress');
+  const bad = runCli(['tasks', 'review', 'T3', '--shipped', 'x', '--design-link', 'http://x'], dir);
+  assert.notEqual(bad.status, 0);
+  const ok = runCli(['tasks', 'review', 'T3', '--shipped', 'x', '--design-link', 'https://claude.ai/artifact/abc'], dir);
+  assert.equal(ok.status, 0, ok.stderr);
+  const { task, section } = find(dir, 'T3');
+  assert.equal(section, 'review');
+  assert.deepEqual(task.links, [{ url: 'https://claude.ai/artifact/abc', label: 'Design canvas' }]);
+});
