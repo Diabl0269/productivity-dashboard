@@ -231,7 +231,7 @@ export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOSt
   const added = addChecks(epic, checkTexts.map(prefix), { now });
 
   const siblingsOpen = descendantsOf(doc, epic.id).some(
-    ({ task: t, section }) => t.id !== task.id && t.type !== 'epic' && section !== 'done' && section !== REVIEW_SECTION,
+    ({ task: t, section }) => t.id !== task.id && t.type !== 'epic' && !CLOSED_SECTIONS.has(section),
   );
   const moveEpicToReview = epicSection !== REVIEW_SECTION && !siblingsOpen && (epicSection !== 'done' || added > 0);
   return { epic, epicSection, added, moveEpicToReview };
