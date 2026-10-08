@@ -18,7 +18,7 @@
  *   stale [--days N] [--json]
  *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
- *              [--result-json '<json>'] [--file-left] [--json]   (ship a ticket into "Ready for review")
+ *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
  *              [--color "#RRGGBB"] [--clear-color]
  *              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
@@ -784,6 +784,7 @@ function cmdReview(argv) {
     json:          { type: 'boolean', short: 'j' },
     rollup:        { type: 'boolean' },
     'file-left':   { type: 'boolean' },
+    'design-link': { type: 'string' },
   });
 
   if (values.rollup) {
@@ -857,6 +858,16 @@ function cmdReview(argv) {
   const toSection = sectionById(doc, REVIEW_SECTION);
   if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
 
+  if (isDesignTicket(task)) {
+    if (values['design-link']) {
+      if (!/^https:\/\//.test(values['design-link'])) die('--design-link must be an https URL');
+      if (!Array.isArray(task.links)) task.links = [];
+      if (!task.links.some(l => l.url === values['design-link'])) task.links.push({ url: values['design-link'], label: 'Design canvas' });
+    } else if (!hasDesignLink(task)) {
+      die(`${task.id} needs design review: pass --design-link <artifact url> so the review card links the design board (or add one with ch tasks update ${task.id} --add-link <url> --link-label "Design canvas")`);
+    }
+  }
+
   if (result) task.result = result;
   const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
   const today = todayStr();
@@ -910,6 +921,16 @@ function cmdReview(argv) {
     return;
   }
   ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added${unpinNote(unpinned)}${filedNote(filed)}`);
+}
+
+/** A ticket that is a design pick or design review (label `design`, or a Co-task pick / Design: title). */
+function isDesignTicket(task) {
+  return (task.labels || []).includes('design') || /^(Co-task: pick|Design:)/i.test(task.title || '');
+}
+
+/** True when the ticket links a published design artifact (a claude.ai artifact page). */
+function hasDesignLink(task) {
+  return (task.links || []).some(l => /^https:\/\/claude\.ai\/(code\/)?artifact\//.test(l.url || ''));
 }
 
 /**
@@ -2198,9 +2219,10 @@ Subcommands:
   runplan [--json]
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
-         [--check "..."]... [--result-json '<json>'] [--file-left] [--json]
+         [--check "..."]... [--result-json '<json>'] [--file-left] [--design-link URL] [--json]
          ship a ticket to "Ready for review": records the result and the checks to tick;
          --file-left files each left/unverified line as a follow-up ticket (same epic, review-of)
+         a design ticket (label design) needs a design-board link: --design-link URL or an existing artifact link
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
       [--project slug] [--energy deep|shallow|errands|creative] [--lane slug]
