@@ -10,6 +10,14 @@
  *   die(msg, code=1): never — printErr(msg) + process.exit(code)
  */
 
+// A reader that closes the pipe early (`ch ... | head -2`) makes the next
+// write fail with EPIPE. That is a normal end of output, not a crash: exit
+// quietly instead of letting Node print an unhandled 'error' stack trace.
+process.stdout.on('error', (e) => {
+  if (e.code === 'EPIPE') process.exit(0);
+  throw e;
+});
+
 /** Write a line to stdout. */
 export function print(s) {
   process.stdout.write(String(s) + '\n');
