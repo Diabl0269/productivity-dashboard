@@ -356,3 +356,54 @@ test('review on a standalone ticket still gets its own review card', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.equal(find(tmpDir, id).section, 'review');
 });
+
+// ---------------------------------------------------------------------------
+// Auto pin/unpin (PRO15)
+// ---------------------------------------------------------------------------
+
+const pins = (tmpDir) => {
+  const plan = readTasks(tmpDir).meta?.dailyPlan || {};
+  return [...(plan.taskIds || []), ...(plan.carriedIds || [])];
+};
+
+test('closing the last child of a pinned epic unpins the epic', () => {
+  const tmpDir = makeTmpDir();
+  const { epicId, ids: [a, b] } = addEpicWithChildren(tmpDir);
+  assert.equal(runCli(['tasks', 'plan', '--pin', epicId], tmpDir).status, 0);
+
+  runCli(['tasks', 'review', a, '--shipped', 'did A'], tmpDir);
+  assert.ok(pins(tmpDir).includes(epicId), 'still pinned while B is open');
+
+  const r = runCli(['tasks', 'done', b], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, new RegExp(`unpinned ${epicId}`));
+  assert.ok(!pins(tmpDir).includes(epicId));
+});
+
+test('moving a pinned epic to done unpins it; moving a child to review counts as closed', () => {
+  const tmpDir = makeTmpDir();
+  const { epicId, ids: [a, b] } = addEpicWithChildren(tmpDir);
+  runCli(['tasks', 'plan', '--pin', epicId], tmpDir);
+  runCli(['tasks', 'move', a, 'review'], tmpDir);
+  assert.ok(pins(tmpDir).includes(epicId));
+  runCli(['tasks', 'move', b, 'review'], tmpDir);
+  assert.ok(!pins(tmpDir).includes(epicId));
+
+  const other = addEpicWithChildren(tmpDir).epicId;
+  runCli(['tasks', 'plan', '--pin', other], tmpDir);
+  runCli(['tasks', 'done', other], tmpDir);
+  assert.ok(!pins(tmpDir).includes(other));
+});
+
+test('an epic added or updated with a lane is pinned; one without a lane is not', () => {
+  const tmpDir = makeTmpDir();
+  const add = (...extra) => JSON.parse(runCli(['tasks', 'add', 'E', '--type', 'epic', '--json', ...extra], tmpDir).stdout).id;
+  const laned = add('--lane', 'canvas');
+  const bare = add();
+  assert.ok(pins(tmpDir).includes(laned));
+  assert.ok(!pins(tmpDir).includes(bare));
+
+  const r = runCli(['tasks', 'update', bare, '--lane', 'website'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(pins(tmpDir).includes(bare));
+});
