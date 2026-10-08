@@ -407,3 +407,34 @@ test('an epic added or updated with a lane is pinned; one without a lane is not'
   assert.equal(r.status, 0, r.stderr);
   assert.ok(pins(tmpDir).includes(bare));
 });
+
+test('review --file-left: left and unverified lines become follow-ups under the epic', () => {
+  const tmpDir = makeTmpDir();
+  const { epicId, ids: [a] } = addEpicWithChildren(tmpDir);
+  const args = ['tasks', 'review', a, '--shipped', 'did A', '--left', 'Wire the button', '--unverified', 'Dark mode look', '--file-left', '--json'];
+  const r = runCli(args, tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  const { filed } = JSON.parse(r.stdout);
+  assert.deepEqual(filed.map(f => f.title), ['Wire the button', 'Verify: Dark mode look']);
+  for (const f of filed) {
+    const { task, section } = find(tmpDir, f.id);
+    assert.equal(section, 'todo');
+    assert.equal(task.parentId, epicId);
+    assert.equal(task.reviewOf, a);
+    assert.deepEqual(task.labels, ['model:sonnet']);
+    assert.match(task.description, /^## In plain words/);
+  }
+  assert.deepEqual(find(tmpDir, a).task.result.opened, filed.map(f => `${f.id}: ${f.title}`));
+
+  // Running it again files nothing new.
+  const again = JSON.parse(runCli(args, tmpDir).stdout);
+  assert.deepEqual(again.filed, []);
+});
+
+test('review without --file-left files nothing', () => {
+  const tmpDir = makeTmpDir();
+  const before = readTasks(tmpDir).sections.flatMap(s => s.tasks).length;
+  const r = runCli(['tasks', 'review', 'T1', '--shipped', 'x', '--left', 'y'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readTasks(tmpDir).sections.flatMap(s => s.tasks).length, before);
+});
