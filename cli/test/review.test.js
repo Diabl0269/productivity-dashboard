@@ -438,3 +438,12 @@ test('review without --file-left files nothing', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.equal(readTasks(tmpDir).sections.flatMap(s => s.tasks).length, before);
 });
+
+test('an archived sibling counts as closed: the last review moves the epic to review', () => {
+  const tmpDir = makeTmpDir();
+  const { epicId, ids: [a, b] } = addEpicWithChildren(tmpDir);
+  runCli(['tasks', 'move', a, 'archive'], tmpDir);
+  const r = runCli(['tasks', 'review', b, '--shipped', 'did B'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(find(tmpDir, epicId).section, 'review');
+});

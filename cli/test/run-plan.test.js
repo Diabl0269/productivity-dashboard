@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { computeRunPlan, isPickGate, modelOf, laneDisplayName } from '../../shared/run-plan.js';
+import { computeRunPlan, isPickGate, modelOf, laneDisplayName, threadLink } from '../../shared/run-plan.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
@@ -407,4 +407,20 @@ test('co-tasks that need no design get a to-do card, not a canvas', () => {
   const only = computeRunPlan(mkDoc([epic('E1', { lane: 'a' }), task('T2', { parentId: 'E1', title: 'Co-task: check it' })], ['E1']));
   assert.equal(only.lanes[0].name, 'Co-tasks');
   assert.deepEqual(only.lanes[0].now.map(c => c.id), ['co-tasks']);
+});
+
+test('threadLink: newest "Thread" link, https or claude only', () => {
+  assert.equal(threadLink({}), null);
+  assert.equal(threadLink({ links: [{ label: 'PR #1', url: 'https://github.com/x' }] }), null);
+  assert.deepEqual(
+    threadLink({ links: [
+      { label: 'Thread', url: 'https://claude.ai/old' },
+      { label: 'thread', url: 'claude://claude.ai/epitaxy/local_abc' },
+    ] }),
+    { label: 'thread', url: 'claude://claude.ai/epitaxy/local_abc' },
+  );
+  assert.deepEqual(
+    threadLink({ links: [{ label: 'Thread', url: 'https://claude.ai/ok' }, { label: 'Thread', url: 'javascript:alert(1)' }] }),
+    { label: 'Thread', url: 'https://claude.ai/ok' },
+  );
 });
