@@ -1,6 +1,6 @@
 // run-plan-view.js — "Plan" tab: pinned epics as lanes (rows); see shared/run-plan.js
 
-import { computeRunPlan } from '../../shared/run-plan.js';
+import { computeRunPlan, threadLink } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { openTaskDetail } from './task-detail.js';
 
@@ -104,6 +104,18 @@ function noticeLine(task) {
 }
 
 /** "From review of <id>" note, or null when the ticket has none. */
+/** "Open thread" link to the Claude thread working on a ticket, or null when none is linked. */
+function threadAnchor(task) {
+  const link = threadLink(task);
+  if (!link) return null;
+  const a = el('a', 'rp-canvas-link rp-thread-link', 'Open thread ↗');
+  a.href = link.url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.title = 'Open the Claude thread working on this ticket';
+  return a;
+}
+
 function reviewOfNote(reviewOf, className = 'rp-review-of') {
   if (!reviewOf) return null;
   const note = el('div', className, 'From review of ');
@@ -139,6 +151,8 @@ function renderReview(review) {
     const since = shortDate(item.enteredAt);
     if (since) row.appendChild(el('span', 'rp-review-since', `since ${since}`));
     row.appendChild(el('span', 'rp-chip rp-chip-review', `${item.checks.done}/${item.checks.total} checked`));
+    const thread = threadAnchor(findTicket(item.id));
+    if (thread) row.appendChild(thread);
     li.appendChild(row);
     li.appendChild(el('div', 'rp-title', item.title));
     const shipped = item.result?.shipped?.[0];
@@ -352,6 +366,8 @@ function renderCard(card, phase) {
   });
   apply();
   actions.appendChild(toggle);
+  const thread = card.ticketIds ? null : threadAnchor(findTicket(card.id));
+  if (thread) actions.appendChild(thread);
   article.appendChild(actions);
   return article;
 }

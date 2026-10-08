@@ -38,6 +38,21 @@ function canvasLink(t) {
   return link ? { label: link.label, url: link.url } : null;
 }
 
+/**
+ * The Claude thread or session working on a ticket: its newest link labelled "Thread"
+ * (ch tasks update <id> --add-link <url> --link-label Thread). Only https: and claude:
+ * links count, so a stored link can't run script when the Plan page renders it.
+ */
+export function threadLink(t) {
+  const links = (Array.isArray(t?.links) ? t.links : []).filter(l => l && l.url && /^thread$/i.test((l.label || '').trim()));
+  for (const link of links.reverse()) {
+    try {
+      if (['https:', 'claude:'].includes(new URL(link.url).protocol)) return { label: link.label, url: link.url };
+    } catch { /* not a URL */ }
+  }
+  return null;
+}
+
 /** Stage of an open pick gate: draw a canvas, wait for Tal's pick, publish the pick, or (no design) do it. */
 function pickStage(t) {
   if (!isDesignPick(t)) return 'todo';
