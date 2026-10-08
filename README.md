@@ -135,7 +135,7 @@ See `memory.example/` for the expected format.
 - Colors flow onto cards, parent chips, and the detail/create modals
 
 ### Plan Tab
-- Shows which pinned epics (`ch tasks plan --pin <id>`) can be launched now, as horizontal lanes that run side by side (set an epic's lane with `ch tasks update <id> --lane <slug>`); cards in a lane run left to right
+- Shows which pinned epics (`ch tasks plan --pin <id>`; epics with a lane pin themselves and unpin once their last ticket closes) can be launched now, as horizontal lanes that run side by side (set an epic's lane with `ch tasks update <id> --lane <slug>`); cards in a lane run left to right
 - A dashed divider splits each lane into what can run now and what comes later, and names what it waits on ("after your pick T12", "after E4"); each id opens that ticket. `Co-task:` tickets are yours: ones with "pick" in the title or a `design` label get a design canvas in the Design round lane, other co-tasks show as a to-do card there. Lane names show capitalized ("timeline" reads Timeline), and each lane head counts its epics and open tickets
 - Each card shows an In progress chip (the epic, or an open ticket in it, is in the In progress column) or a Ready now / Partly ready / Later chip, why it waits, a copy button for `/ship-task <id>`, and a Start / Started / Done toggle (remembered in this browser). The card's id opens the ticket in place
 - Cards in a lane run in order; in "No lane yet" epics with no dependency between them are stacked in one column and can run at the same time. The first pill shows how many app builds could start now

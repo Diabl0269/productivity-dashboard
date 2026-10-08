@@ -236,3 +236,27 @@ export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOSt
   const moveEpicToReview = epicSection !== REVIEW_SECTION && !siblingsOpen && (epicSection !== 'done' || added > 0);
   return { epic, epicSection, added, moveEpicToReview };
 }
+
+const CLOSED_SECTIONS = new Set(['done', REVIEW_SECTION, 'archive']);
+
+/**
+ * Epics to drop from the day plan now that `task` has closed (done, review or archive):
+ * the ticket itself when it is an epic, and each enclosing epic once nothing under it is
+ * still open. Call after the move, so sections reflect the new state.
+ */
+export function epicsToUnpin(doc, task) {
+  const row = findRow(doc, task.id);
+  if (!row || !CLOSED_SECTIONS.has(row.section)) return [];
+  const out = task.type === 'epic' ? [task.id] : [];
+  let found = epicOf(doc, task);
+  while (found) {
+    const { task: epic } = found;
+    const open = descendantsOf(doc, epic.id).some(
+      ({ task: t, section }) => t.type !== 'epic' && !CLOSED_SECTIONS.has(section),
+    );
+    if (open) break;
+    out.push(epic.id);
+    found = epicOf(doc, epic);
+  }
+  return out;
+}

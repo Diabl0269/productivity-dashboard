@@ -68,12 +68,45 @@ import path from 'node:path';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
-  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, epicOf, rollUpIntoEpic,
+  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, epicOf, rollUpIntoEpic, epicsToUnpin,
 } from '../../shared/review.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Remove ids from the day plan (pins and carried). Returns the ids that were pinned. */
+function unpinFromPlan(doc, ids) {
+  const plan = doc.meta?.dailyPlan;
+  if (!plan || !ids.length) return [];
+  const drop = new Set(ids);
+  const was = [...(plan.taskIds || []), ...(plan.carriedIds || [])];
+  const removed = [...new Set(was.filter(id => drop.has(id)))];
+  if (!removed.length) return [];
+  plan.taskIds = (plan.taskIds || []).filter(id => !drop.has(id));
+  plan.carriedIds = (plan.carriedIds || []).filter(id => !drop.has(id));
+  return removed;
+}
+
+/** After `task` closed: unpin it if it is an epic, and its epic once nothing under it is open. */
+function autoUnpin(doc, task) {
+  return unpinFromPlan(doc, epicsToUnpin(doc, task));
+}
+
+/** An open epic with a lane is planned work: pin it so it shows on the Plan page. */
+function autoPinLaneEpic(doc, task, sectionId) {
+  if (task.type !== 'epic' || !task.lane || ['done', REVIEW_SECTION, 'archive'].includes(sectionId)) return false;
+  if (!doc.meta) doc.meta = defaultMeta();
+  doc.meta = normalizeMeta(doc.meta);
+  const plan = doc.meta.dailyPlan;
+  if (!Array.isArray(plan.taskIds)) plan.taskIds = [];
+  if (plan.taskIds.includes(task.id)) return false;
+  plan.taskIds.push(task.id);
+  if (!plan.date) plan.date = todayStr();
+  return true;
+}
+
+const unpinNote = (ids) => (ids.length ? ` (unpinned ${ids.join(', ')})` : '');
 
 /** Prefer description; fall back to legacy note. */
 function taskDescription(task) {
@@ -666,13 +699,14 @@ function cmdAdd(argv) {
     die(`section "${values.section}" not found in document. Try 'ch tasks lint --fix'`);
   }
   sec.tasks.push(task);
+  const pinned = autoPinLaneEpic(doc, task, values.section);
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, section: values.section, type: ticketType, parentId: values.parent || null });
+    jsonOut({ id, section: values.section, type: ticketType, parentId: values.parent || null, pinned });
     return;
   }
-  ok(`added ${id} to ${values.section}`);
+  ok(`added ${id} to ${values.section}${pinned ? ' (pinned to the plan)' : ''}`);
 }
 
 function cmdMove(argv) {
@@ -718,13 +752,14 @@ function cmdMove(argv) {
   if (targetSectionId === 'done') {
     spawned = maybeSpawnRecurrence(doc, task, today);
   }
+  const unpinned = autoUnpin(doc, task);
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, from: fromSection.id, to: targetSectionId, spawned: spawned?.id || null });
+    jsonOut({ id, from: fromSection.id, to: targetSectionId, spawned: spawned?.id || null, unpinned });
     return;
   }
-  ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}`);
+  ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}`);
 }
 
 /**
@@ -844,12 +879,13 @@ function cmdReview(argv) {
       appendHistory(epic, { event: 'moved', from: epicSection, to: REVIEW_SECTION });
       toSection.tasks.push(epic);
     }
+    const unpinned = autoUnpin(doc, task);
     save(doc);
     if (values.json) {
-      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview, added: rolled.added, result: task.result || null });
+      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview, added: rolled.added, result: task.result || null, unpinned });
       return;
     }
-    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToReview ? ' (now in review)' : ''}`);
+    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToReview ? ' (now in review)' : ''}${unpinNote(unpinned)}`);
     return;
   }
 
@@ -863,13 +899,14 @@ function cmdReview(argv) {
     appendHistory(task, { event: 'moved', from: fromSection.id, to: REVIEW_SECTION });
     toSection.tasks.push(task);
   }
+  const unpinned = autoUnpin(doc, task);
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, result: task.result || null });
+    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, result: task.result || null, unpinned });
     return;
   }
-  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added`);
+  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added${unpinNote(unpinned)}`);
 }
 
 function cmdDone(argv) {
@@ -901,13 +938,14 @@ function cmdDone(argv) {
   }
 
   const spawned = !alreadyDone ? maybeSpawnRecurrence(doc, task, today) : null;
+  const unpinned = autoUnpin(doc, task);
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, section: 'done', checked: true, spawned: spawned?.id || null });
+    jsonOut({ id, section: 'done', checked: true, spawned: spawned?.id || null, unpinned });
     return;
   }
-  ok(`done ${id}${alreadyDone ? ' (already in done)' : ` moved from ${fromSection.id}`}${spawned ? ` (spawned ${spawned.id})` : ''}`);
+  ok(`done ${id}${alreadyDone ? ' (already in done)' : ` moved from ${fromSection.id}`}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}`);
 }
 
 function cmdUpdate(argv) {
@@ -1491,15 +1529,19 @@ function cmdUpdate(argv) {
     doneSection.tasks.push(task);
     movedToDone = true;
   }
+  const unpinned = movedToDone ? autoUnpin(doc, task) : [];
+  const pinned = values.lane !== undefined && !values['clear-lane'] && autoPinLaneEpic(doc, task, movedToDone ? 'done' : taskSection.id);
   save(doc);
 
   if (values.json) {
     const out = spawned ? { ...task, spawned: spawned.id } : { ...task };
     if (movedToDone) out.movedToDone = true;
+    if (unpinned.length) out.unpinned = unpinned;
+    if (pinned) out.pinned = true;
     jsonOut(out);
     return;
   }
-  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}`);
+  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}${unpinNote(unpinned)}${pinned ? ' (pinned to the plan)' : ''}`);
 }
 
 function cmdSetPriority(argv) {
