@@ -980,3 +980,38 @@ test('tasks done: unticked checks do not block marking a ticket done', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('ch tasks stale: lists open tickets untouched for N days, oldest first, with epic', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-stale-'));
+  const doc = {
+    version: 1,
+    sections: [
+      { id: 'todo', name: 'Todo', tasks: [
+        { id: 'T1', title: 'Epic', type: 'epic', checked: false, created: '2020-01-01', updated: null },
+        { id: 'T2', title: 'Old child', checked: false, created: '2020-01-01', updated: '2020-02-01', parentId: 'T1' },
+        { id: 'T3', title: 'Old but noted', checked: false, created: '2020-01-01', updated: null,
+          notes: [{ at: new Date().toISOString(), text: 'fresh' }] },
+        { id: 'T4', title: 'Older', checked: false, created: '2019-01-01', updated: null },
+      ] },
+      { id: 'done', name: 'Done', tasks: [
+        { id: 'T5', title: 'Old but done', checked: true, created: '2019-01-01', updated: null },
+      ] },
+    ],
+  };
+  for (const sec of doc.sections) for (const t of sec.tasks) Object.assign(t, { priority: 'medium', subtasks: [] });
+  fs.writeFileSync(path.join(home, 'tasks.json'), JSON.stringify(doc));
+  const r = spawnSync(process.execPath, [CH_SCRIPT, 'tasks', 'stale', '--days', '30', '--json'], {
+    env: { ...process.env, CH_HOME: home }, encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.tasks.map(t => t.id), ['T4', 'T1', 'T2']);
+  assert.equal(out.tasks.find(t => t.id === 'T2').epic, 'T1');
+  assert.equal(out.tasks.find(t => t.id === 'T2').lastTouched, '2020-02-01');
+
+  const text = spawnSync(process.execPath, [CH_SCRIPT, 'tasks', 'stale'], {
+    env: { ...process.env, CH_HOME: home }, encoding: 'utf8',
+  });
+  assert.match(text.stdout, /T2 \[todo\] \d+d epic T1 {2}Old child/);
+  fs.rmSync(home, { recursive: true, force: true });
+});

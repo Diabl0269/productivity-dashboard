@@ -14,6 +14,8 @@
  *              [--review-of T1]
  *   (add/update also take --lane <slug> and update --clear-lane: run-plan lane)
  *   runplan [--json]
+  stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
+ *   stale [--days N] [--json]
  *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
@@ -1877,6 +1879,55 @@ function cmdRunPlan(argv) {
   print(`At most ${plan.machineCap} app builds at once (${plan.appStartCount} could start now)`);
 }
 
+/**
+ * Open tickets nobody has touched for --days (default 30): last touch is the newest of
+ * created, updated and any history / note / decision time. Oldest first.
+ */
+function cmdStale(argv) {
+  const { values } = parse(argv, {
+    days: { type: 'string', default: '30' },
+    json: { type: 'boolean', short: 'j' },
+  });
+  const days = Number(values.days);
+  if (!Number.isInteger(days) || days < 0) die(`invalid --days "${values.days}". Must be a whole number`);
+
+  const doc = load();
+  const now = Date.now();
+  const DAY = 86400000;
+  const rows = [];
+  for (const section of doc.sections || []) {
+    if (['done', REVIEW_SECTION, 'archive'].includes(section.id)) continue;
+    for (const task of section.tasks || []) {
+      const stamps = [task.created, task.updated,
+        ...(task.history || []).map(h => h.at),
+        ...(task.notes || []).map(n => n.at),
+        ...(task.decisions || []).map(d => d.at)]
+        .map(t => (t ? Date.parse(t) : NaN)).filter(Number.isFinite);
+      if (!stamps.length) continue;
+      const last = Math.max(...stamps);
+      const age = Math.floor((now - last) / DAY);
+      if (age < days) continue;
+      rows.push({
+        id: task.id,
+        section: section.id,
+        ageDays: age,
+        lastTouched: new Date(last).toISOString().slice(0, 10),
+        epic: epicOf(doc, task)?.task.id || null,
+        title: task.title,
+      });
+    }
+  }
+  rows.sort((a, b) => b.ageDays - a.ageDays);
+
+  if (values.json) { jsonOut({ days, count: rows.length, tasks: rows }); return; }
+  if (!rows.length) { ok(`no open tickets untouched for ${days}+ days`); return; }
+  print(`${rows.length} open ticket(s) untouched for ${days}+ days, oldest first:`);
+  for (const r of rows) {
+    const title = r.title.length > 70 ? `${r.title.slice(0, 69)}\u2026` : r.title;
+    print(`  ${r.id} [${r.section}] ${r.ageDays}d${r.epic ? ` epic ${r.epic}` : ''}  ${title}`);
+  }
+}
+
 /** Today plan: show / pin / unpin / carry unfinished pins. */
 function cmdPlan(argv) {
   const { values } = parse(argv, {
@@ -2151,6 +2202,7 @@ const SUBCOMMANDS = {
   capture:       cmdCapture,
   plan:          cmdPlan,
   runplan:       cmdRunPlan,
+  stale:         cmdStale,
   add:           cmdAdd,
   move:          cmdMove,
   review:        cmdReview,
