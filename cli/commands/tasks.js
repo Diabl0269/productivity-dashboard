@@ -17,9 +17,8 @@
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
  *   stale [--days N] [--json]
  *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
-         [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
- *              [--result-json '<json>'] [--json]   (ship a ticket into "Ready for review")
+ *              [--result-json '<json>'] [--file-left] [--json]   (ship a ticket into "Ready for review")
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
  *              [--color "#RRGGBB"] [--clear-color]
  *              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
@@ -784,6 +783,7 @@ function cmdReview(argv) {
     section:       { type: 'string',  short: 's' },
     json:          { type: 'boolean', short: 'j' },
     rollup:        { type: 'boolean' },
+    'file-left':   { type: 'boolean' },
   });
 
   if (values.rollup) {
@@ -858,6 +858,7 @@ function cmdReview(argv) {
   if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
 
   if (result) task.result = result;
+  const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
   const today = todayStr();
 
   // A ticket under an epic hands its result and checks to the epic and goes to Done, so
@@ -884,10 +885,10 @@ function cmdReview(argv) {
     const unpinned = autoUnpin(doc, task);
     save(doc);
     if (values.json) {
-      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview, added: rolled.added, result: task.result || null, unpinned });
+      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview, added: rolled.added, result: task.result || null, unpinned, filed });
       return;
     }
-    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToReview ? ' (now in review)' : ''}${unpinNote(unpinned)}`);
+    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToReview ? ' (now in review)' : ''}${unpinNote(unpinned)}${filedNote(filed)}`);
     return;
   }
 
@@ -905,11 +906,59 @@ function cmdReview(argv) {
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, result: task.result || null, unpinned });
+    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, result: task.result || null, unpinned, filed });
     return;
   }
-  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added${unpinNote(unpinned)}`);
+  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added${unpinNote(unpinned)}${filedNote(filed)}`);
 }
+
+/**
+ * `review --file-left`: one follow-up ticket per left-over / unverified line of `task`'s
+ * result, under the same epic (else the same parent), linked back with reviewOf and listed
+ * in the result's `opened`. A line already filed for this ticket is skipped, so re-running
+ * the review doesn't duplicate. Returns [{ id, title, kind }].
+ */
+function fileLeftovers(doc, task) {
+  const parentId = epicOf(doc, task)?.task.id || task.parentId || null;
+  const existing = new Set(flatTasks(doc).filter(t => t.reviewOf === task.id).map(t => t.title));
+  const todo = sectionById(doc, 'todo');
+  if (!todo) die('section "todo" not found in document. Try \'ch tasks lint --fix\'');
+  const filed = [];
+  for (const [kind, lines] of [['left', task.result?.left], ['unverified', task.result?.unverified]]) {
+    for (const line of lines || []) {
+      const title = kind === 'unverified' ? `Verify: ${line}` : line;
+      if (existing.has(title)) continue;
+      existing.add(title);
+      const id = nextId(doc, task.project || null);
+      const why = kind === 'unverified' ? 'could not be checked' : 'was left over';
+      const child = {
+        id,
+        title,
+        checked: false,
+        priority: 'medium',
+        type: DEFAULT_TICKET_TYPE_ID,
+        created: todayStr(),
+        updated: null,
+        subtasks: [],
+        checks: [],
+        description: `## In plain words\n**What you'll notice:** ${line}\n**Why it matters:** this ${why} when ${task.id} shipped.\n**How to check it:** see ${task.id}'s review card.\n\n## Technical detail (for Claude)\nFiled by \`ch tasks review ${task.id} --file-left\` from its result's \`${kind}\` list.`,
+        reviewOf: task.id,
+        labels: ['model:sonnet'],
+      };
+      if (parentId) child.parentId = parentId;
+      if (task.project) child.project = task.project;
+      appendHistory(child, { event: 'created', to: 'todo' });
+      todo.tasks.push(child);
+      filed.push({ id, title, kind });
+    }
+  }
+  if (filed.length && task.result) {
+    task.result.opened = [...(task.result.opened || []), ...filed.map(f => `${f.id}: ${f.title}`)];
+  }
+  return filed;
+}
+
+const filedNote = (filed) => (filed.length ? `; filed ${filed.map(f => f.id).join(', ')}` : '');
 
 function cmdDone(argv) {
   const { values, positionals } = parse(argv, {
@@ -2149,8 +2198,9 @@ Subcommands:
   runplan [--json]
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
-         [--check "..."]... [--result-json '<json>'] [--json]
-         ship a ticket to "Ready for review": records the result and the checks to tick
+         [--check "..."]... [--result-json '<json>'] [--file-left] [--json]
+         ship a ticket to "Ready for review": records the result and the checks to tick;
+         --file-left files each left/unverified line as a follow-up ticket (same epic, review-of)
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
       [--project slug] [--energy deep|shallow|errands|creative] [--lane slug]
