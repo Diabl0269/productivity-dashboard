@@ -66,7 +66,7 @@ import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
-import { computeRunPlan } from '../../shared/run-plan.js';
+import { computeRunPlan, isLiveCheckedEpic } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, epicOf, rollUpIntoEpic, epicsToUnpin,
@@ -803,7 +803,7 @@ function cmdReview(argv) {
       appendHistory(child, { event: 'moved', from: REVIEW_SECTION, to: 'done' });
       child.updated = today;
       doneSection.tasks.push(child);
-      rolled.epic.checked = true;
+      if (rolled.moveEpicToReview) rolled.epic.checked = true;
       rolled.epic.updated = today;
       if (rolled.moveEpicToReview) {
         const src = sectionById(doc, rolled.epicSection);
@@ -885,7 +885,7 @@ function cmdReview(argv) {
       doneSection.tasks.push(task);
     }
     const { epic, epicSection } = rolled;
-    epic.checked = true;
+    if (rolled.moveEpicToReview) epic.checked = true;
     epic.updated = today;
     if (rolled.moveEpicToReview) {
       const src = sectionById(doc, epicSection);
@@ -2020,7 +2020,7 @@ function cmdPlan(argv) {
     const unfinished = (plan.taskIds || []).filter(id => {
       const found = findTask(doc, id);
       if (!found) return false;
-      if (found.task.checked) return false;
+      if (found.task.checked && !isLiveCheckedEpic(found.task, found.section.id)) return false;
       if (found.section.id === 'done' || found.section.id === 'archive') return false;
       return true;
     });
@@ -2040,7 +2040,7 @@ function cmdPlan(argv) {
     const unfinished = (plan.taskIds || []).filter(id => {
       const found = findTask(doc, id);
       if (!found) return false;
-      if (found.task.checked) return false;
+      if (found.task.checked && !isLiveCheckedEpic(found.task, found.section.id)) return false;
       if (found.section.id === 'done' || found.section.id === 'archive') return false;
       return true;
     });
