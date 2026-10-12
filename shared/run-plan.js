@@ -114,6 +114,18 @@ export function modelOf(task) {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
+const FINISHED_SECTIONS = new Set(['done', 'review', 'archive']);
+
+/** A checked epic only counts as shipped once it sits in done/review/archive (PRO25). */
+export function isCheckedDone(task, sectionId) {
+  return !!task?.checked && FINISHED_SECTIONS.has(sectionId);
+}
+
+/** A checked epic still in an open section is live, not shipped: its check is stale. */
+export function isLiveCheckedEpic(task, sectionId) {
+  return !!task?.checked && task.type === 'epic' && !FINISHED_SECTIONS.has(sectionId);
+}
+
 /** "A", "A and B", "A, B and C". */
 function joinList(items) {
   if (items.length <= 1) return items.join('');
@@ -171,7 +183,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   const members = new Map();
   for (const id of pinned) {
     const kids = descendants(id);
-    const done = byId.get(id).checked || (kids.length > 0 && kids.every(k => !isOpen(k)));
+    const done = isCheckedDone(byId.get(id), sectionOf.get(id)) || (kids.length > 0 && kids.every(k => !isOpen(k)));
     if (done) { doneEpics.push(id); continue; }
     live.push(id);
     members.set(id, new Set(kids));

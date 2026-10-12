@@ -134,14 +134,22 @@ test('in-lane blocker that is later makes the dependant later', () => {
 });
 
 test('done epics are counted and skipped', () => {
-  const doc = mkDoc([
-    epic('E1'), task('T2', { parentId: 'E1', checked: true }),
-    epic('E3', { checked: true }),
-    epic('E4'), task('T5', { parentId: 'E4' }),
-  ], ['E1', 'E3', 'E4']);
+  const doc = mkSectionDoc({
+    todo: [epic('E1'), task('T2', { parentId: 'E1', checked: true }), epic('E4'), task('T5', { parentId: 'E4' })],
+    done: [epic('E3', { checked: true })],
+  }, ['E1', 'E3', 'E4']);
   const plan = computeRunPlan(doc);
   assert.deepEqual(plan.doneEpics, ['E1', 'E3']);
   assert.deepEqual(plan.lanes.flatMap(l => ids(l.now)), ['E4']);
+});
+
+test('a checked epic with open kids in an open section is still a live lane (PRO25)', () => {
+  const doc = mkSectionDoc({
+    'in-progress': [epic('E1', { checked: true }), task('T2', { parentId: 'E1' })],
+  }, ['E1']);
+  const plan = computeRunPlan(doc);
+  assert.deepEqual(plan.doneEpics, []);
+  assert.deepEqual(plan.lanes.flatMap(l => ids(l.now)), ['E1']);
 });
 
 test('design lane appears when picks exist, with a prompt card and a human card', () => {

@@ -314,12 +314,14 @@ test('review on an epic child: result and checks go to the epic, child goes to D
   assert.deepEqual(find(tmpDir, a).task.result.shipped, ['did A']);
   // B still open: the epic collects but stays out of review
   assert.notEqual(find(tmpDir, epicId).section, 'review');
+  assert.notEqual(find(tmpDir, epicId).task.checked, true, 'epic with an open sibling is not shipped');
   assert.deepEqual(find(tmpDir, epicId).task.checks.map(c => c.text), [`${a}: look at A`]);
 
   r = runCli(['tasks', 'review', b, '--shipped', 'did B', '--check', 'look at B'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
   const epic = find(tmpDir, epicId);
   assert.equal(epic.section, 'review');
+  assert.equal(epic.task.checked, true);
   assert.deepEqual(epic.task.result.shipped, [`${a}: did A`, `${b}: did B`]);
   assert.equal(epic.task.checks.length, 2);
 
