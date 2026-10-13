@@ -144,8 +144,8 @@ function shortDate(iso) {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-// Review cards that are expanded into their check rows (survives re-renders).
-const expandedReview = new Set();
+// Review cards open on their check rows; ids here were collapsed by hand (survives re-renders).
+const collapsedReview = new Set();
 // Whether the File review preview is open (survives re-renders).
 let filingOpen = false;
 // The tasks.json-shaped doc of the render in progress (used for areas and filing).
@@ -396,7 +396,7 @@ function renderReview(review) {
   const list = el('ol', 'rp-review-list');
   for (const item of review) {
     const task = findTicket(item.id);
-    const open = expandedReview.has(item.id);
+    const open = !collapsedReview.has(item.id);
     const li = el('li', 'rp-review-item' + (open ? ' rp-open' : ''));
     const row = el('div', 'rp-row');
     row.appendChild(idButton(item.id));
@@ -407,7 +407,7 @@ function renderReview(review) {
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     toggle.title = open ? 'Hide the checks' : 'Show the checks and add notes';
     toggle.addEventListener('click', () => {
-      if (open) expandedReview.delete(item.id); else expandedReview.add(item.id);
+      if (open) collapsedReview.add(item.id); else collapsedReview.delete(item.id);
       renderRunPlanView();
     });
     row.appendChild(toggle);
