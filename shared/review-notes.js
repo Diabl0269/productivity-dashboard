@@ -2,8 +2,9 @@
  * shared/review-notes.js — notes written while reviewing a shipped ticket.
  *
  * A ticket in `review` can carry `reviewNotes`, beside its `checks`:
- *   { n, at, text, kind: 'fix'|'idea'|'design', check?, state: 'new'|'filed'|'dismissed', filed? }
+ *   { n, at, text, kind: 'fix'|'idea'|'design', check?, area?, state: 'new'|'filed'|'dismissed', filed? }
  * `n` is a per-ticket counter that is never reused; a note's handle is `<ticketId>#<n>`.
+ * `area` (optional) is a lane slug that overrides the noted ticket's own lane when filing.
  * `check` is the text of the check the note was written against (absent = general note).
  * Notes in state `new` are "unsent": they block the ticket from finishing review until
  * they are filed as tickets or dismissed.
@@ -18,13 +19,13 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T/;
 const HANDLE_RE = /^([A-Za-z][A-Za-z0-9]*-?\d+)#(\d+)$/;
 
 /** Add a note to a ticket. Returns the note. */
-export function addReviewNote(task, { text, kind = 'fix', check, now = new Date().toISOString() } = {}) {
+export function addReviewNote(task, { text, kind = 'fix', check, area, now = new Date().toISOString() } = {}) {
   const clean = String(text ?? '').trim();
   if (!clean) throw new Error('note text is empty');
   if (!NOTE_KINDS.includes(kind)) throw new Error(`unknown note kind "${kind}". Valid: ${NOTE_KINDS.join(', ')}`);
   if (!Array.isArray(task.reviewNotes)) task.reviewNotes = [];
   const n = task.reviewNotes.reduce((m, x) => Math.max(m, Number(x?.n) || 0), 0) + 1;
-  const note = { n, at: now, text: clean, kind, state: 'new', ...(check ? { check } : {}) };
+  const note = { n, at: now, text: clean, kind, state: 'new', ...(check ? { check } : {}), ...(area ? { area } : {}) };
   task.reviewNotes.push(note);
   return note;
 }
@@ -81,6 +82,7 @@ export function reviewNoteErrors(notes, ref) {
     if (!NOTE_KINDS.includes(x.kind)) errors.push(`${at}.kind must be one of ${NOTE_KINDS.join(', ')}`);
     if (!NOTE_STATES.includes(x.state)) errors.push(`${at}.state must be one of ${NOTE_STATES.join(', ')}`);
     if (x.check !== undefined && typeof x.check !== 'string') errors.push(`${at}.check must be a string`);
+    if (x.area !== undefined && typeof x.area !== 'string') errors.push(`${at}.area must be a string`);
     if (x.filed !== undefined && typeof x.filed !== 'string') errors.push(`${at}.filed must be a string`);
   });
   return errors;

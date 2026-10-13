@@ -762,6 +762,9 @@ export function validateTasksDoc(doc) {
             if (c.addedAt !== undefined && typeof c.addedAt !== 'string') {
               errors.push(`${ref}.checks[${ci}].addedAt must be an ISO string`);
             }
+            if (c.handedTo !== undefined && typeof c.handedTo !== 'string') {
+              errors.push(`${ref}.checks[${ci}].handedTo must be a ticket id string`);
+            }
           }
         }
       }

@@ -133,6 +133,7 @@ export function normalizeChecks(raw) {
     if (!c || typeof c !== 'object' || typeof c.text !== 'string' || !c.text.trim()) continue;
     const e = { text: c.text, checked: !!c.checked };
     if (typeof c.addedAt === 'string' && c.addedAt) e.addedAt = c.addedAt;
+    if (typeof c.handedTo === 'string' && c.handedTo) e.handedTo = c.handedTo;
     out.push(e);
   }
   return out;
@@ -149,6 +150,7 @@ export function normalizeReviewNotes(raw) {
     const e = { n: x.n, at: x.at, text: x.text, kind: x.kind, state: x.state };
     if (typeof x.check === 'string' && x.check) e.check = x.check;
     if (typeof x.filed === 'string' && x.filed) e.filed = x.filed;
+    if (typeof x.area === 'string' && x.area) e.area = x.area;
     out.push(e);
   }
   return out;

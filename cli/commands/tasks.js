@@ -17,7 +17,9 @@
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
  *   stale [--days N] [--json]
  *   notes [--ticket ID] [--json]       list unsent review notes
-  notes add <id> "<text>" [--kind fix|idea|design] [--check N]
+ *   notes route [--ticket ID] [--json] show which epic each unsent note would be filed under
+ *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note, under its area's epic
+  notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
   notes dismiss <id>#<n>
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
@@ -69,7 +71,7 @@ import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
-import { computeRunPlan, isLiveCheckedEpic } from '../../shared/run-plan.js';
+import { computeRunPlan, isLiveCheckedEpic, laneDisplayName } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
@@ -77,6 +79,7 @@ import {
 import {
   NOTE_KINDS, addReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
 } from '../../shared/review-notes.js';
+import { planFiling, applyFiling } from '../../shared/review-filing.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1638,13 +1641,15 @@ function cmdNotes(argv) {
     const { values, positionals } = parse(argv.slice(1), {
       kind:    { type: 'string' },
       check:   { type: 'string' },
+      area:    { type: 'string' },
       section: { type: 'string', short: 's' },
       json:    { type: 'boolean', short: 'j' },
     });
     const doc = load();
     if (sub === 'add') {
       const [id, text] = positionals;
-      if (!id || !text) die('usage: ch tasks notes add <id> "<text>" [--kind fix|idea|design] [--check N]');
+      if (!id || !text) die('usage: ch tasks notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]');
+      if (values.area && !isLaneSlug(values.area.trim())) die(`invalid --area "${values.area}". Use lowercase letters, digits and hyphens`);
       const { task } = resolveTask(doc, id, values.section);
       let check;
       if (values.check !== undefined) {
@@ -1655,7 +1660,7 @@ function cmdNotes(argv) {
         check = task.checks[n - 1].text;
       }
       let note;
-      try { note = addReviewNote(task, { text, kind: values.kind || 'fix', check }); } catch (e) { die(e.message); }
+      try { note = addReviewNote(task, { text, kind: values.kind || 'fix', check, area: values.area?.trim() }); } catch (e) { die(e.message); }
       task.updated = todayStr();
       save(doc);
       if (values.json) { jsonOut({ id, ...note }); return; }
@@ -1670,6 +1675,43 @@ function cmdNotes(argv) {
     save(doc);
     if (values.json) { jsonOut({ id: handle.id, n: handle.n, state: 'dismissed' }); return; }
     ok(`dismissed ${handle.id}#${handle.n}`);
+    return;
+  }
+
+  if (sub === 'route' || sub === 'send') {
+    const { values } = parse(argv.slice(1), {
+      ticket: { type: 'string' },
+      json:   { type: 'boolean', short: 'j' },
+    });
+    const doc = load();
+    if (values.ticket) resolveTask(doc, values.ticket);
+    const plan = planFiling(doc, { ticket: values.ticket });
+    if (sub === 'route') {
+      if (values.json) { jsonOut(plan); return; }
+      if (!plan.groups.length && !plan.unrouted.length) { print('No new review notes.'); return; }
+      for (const g of plan.groups) {
+        const e = g.epic;
+        const where = e.isNew ? `new epic "${e.title}" (${e.section}${e.section === 'backlog' ? '' : ', pinned'})` : `${e.id} ${e.title} (${e.section})`;
+        print(`${g.area ? laneDisplayName(g.area) : 'No area'} -> ${where}`);
+        for (const it of g.items) print(`  ${it.handle} [${it.noteKind}] ${it.title}`);
+      }
+      if (plan.unrouted.length) {
+        print('Needs an area:');
+        for (const u of plan.unrouted) print(`  ${u.handle}`);
+      }
+      return;
+    }
+    const res = applyFiling(doc, plan, { newId: (project) => nextId(doc, project) });
+    const pinned = res.pin.filter(id => autoPinLaneEpic(doc, findTask(doc, id).task, 'todo'));
+    const unpinned = res.movedToDone.flatMap(id => autoUnpin(doc, findTask(doc, id).task));
+    if (res.created.length || res.movedToDone.length) save(doc);
+    if (values.json) { jsonOut({ ...res, pinned, unpinned, unrouted: plan.unrouted }); return; }
+    if (!res.filed.length) print('Nothing filed.');
+    for (const f of res.filed) {
+      print(`filed ${f.handle} -> ${f.id} (in ${findTask(doc, f.id).task.parentId})`);
+    }
+    for (const id of res.movedToDone) print(`moved ${id} to done`);
+    if (plan.unrouted.length) print(`Needs an area: ${plan.unrouted.map(u => u.handle).join(', ')}`);
     return;
   }
 
