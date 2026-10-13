@@ -1,8 +1,16 @@
 // run-plan-view.js — "Plan" tab: pinned epics as lanes (rows); see shared/run-plan.js
 
-import { computeRunPlan, threadLink } from '../../shared/run-plan.js';
+import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
-import { openTaskDetail } from './task-detail.js';
+import { epicsToUnpin } from '../../shared/review.js';
+import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
+import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
+import { nextTaskId } from '../../shared/task-ids.js';
+import { openTaskDetail, toggleReviewCheck, commitReviewChange } from './task-detail.js';
+import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
+import { moveTask } from './tasks-board.js';
+import { loadTasksJson } from './tasks-json.js';
+import { todayStr } from './tasks-parser.js';
 
 let getState = null;
 let toastTimer = null;
@@ -11,6 +19,7 @@ export function setRunPlanStateGetter(fn) { getState = fn; }
 
 /** Adapt the dashboard in-memory shape (taskId, per-section arrays) to the tasks.json doc shape. */
 function toDoc(state) {
+  if (!state.meta) state.meta = {};
   return {
     meta: state.meta,
     sections: (state.sections || []).map(sec => ({
@@ -135,25 +144,275 @@ function shortDate(iso) {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
+// Review cards that are expanded into their check rows (survives re-renders).
+const expandedReview = new Set();
+// Whether the File review preview is open (survives re-renders).
+let filingOpen = false;
+// The tasks.json-shaped doc of the render in progress (used for areas and filing).
+let currentDoc = null;
+
+const HAND_TO_CLAUDE = 'File my review notes: run ch tasks notes route, adjust areas or merge near-duplicates if needed (ch tasks notes add --area / dismiss), then ch tasks notes send. Reply with the new ids only.';
+
+/** Area chip data for a note: its area (own or computed) and the lanes it can move to. */
+function areaFor(task, note) {
+  const docTask = currentDoc.sections.flatMap(s => s.tasks).find(t => t.id === task.taskId);
+  const current = docTask ? noteArea(currentDoc, docTask, note) : null;
+  return { current, options: areaOptions(currentDoc, current) };
+}
+
+/** Note rows for one place on a card (a check, or "not tied to a check"). */
+function noteCell(task, notes, { check, key, placeholder, label }) {
+  const cell = el('div', 'rp-check-notes');
+  notes.forEach(n => cell.appendChild(reviewNoteRow(task, n, { onChange: commitReviewChange, area: areaFor(task, n) })));
+  cell.appendChild(reviewNoteAddRow(task, { check, key, placeholder, label, onChange: commitReviewChange }));
+  return cell;
+}
+
+/** The expanded check grid: Pass | What to check | Your note, then a row for general notes. */
+function renderCheckGrid(task) {
+  const grid = el('div', 'rp-checks');
+  grid.setAttribute('role', 'group');
+  grid.setAttribute('aria-label', `${task.taskId}: checks and notes`);
+  const head = el('div', 'rp-check-row rp-check-head');
+  ['Pass', 'What to check', 'Your note'].forEach(t => head.appendChild(el('div', 'rp-check-h', t)));
+  grid.appendChild(head);
+  const checks = task.checks || [];
+  const unsent = unsentNotes(task);
+  checks.forEach((c, i) => {
+    const row = el('div', 'rp-check-row');
+    const pass = el('div', 'rp-check-pass');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = !!c.checked;
+    cb.setAttribute('aria-label', `Pass check ${i + 1}: ${c.text}`);
+    if (c.handedTo) {
+      cb.checked = true;
+      cb.disabled = true;
+      cb.title = `Handed to ${c.handedTo}`;
+    } else {
+      cb.addEventListener('change', () => toggleReviewCheck(task, c));
+    }
+    pass.appendChild(cb);
+    row.appendChild(pass);
+    const what = el('div', 'rp-check-what' + (c.checked ? ' rp-check-done' : ''));
+    what.appendChild(el('span', null, c.text || ''));
+    if (c.handedTo) {
+      what.appendChild(document.createTextNode(' → '));
+      what.appendChild(idButton(c.handedTo, 'rp-link rp-review-id'));
+    }
+    row.appendChild(what);
+    row.appendChild(noteCell(task, unsent.filter(n => n.check === c.text), {
+      check: c.text, key: i, placeholder: 'What did you see? Enter saves', label: `Note on check ${i + 1}`,
+    }));
+    grid.appendChild(row);
+  });
+  const texts = new Set(checks.map(c => c.text));
+  const general = el('div', 'rp-check-row rp-check-general');
+  general.appendChild(el('div', 'rp-check-pass'));
+  general.appendChild(el('div', 'rp-check-what rp-check-muted', 'Anything not tied to a check'));
+  general.appendChild(noteCell(task, unsent.filter(n => !n.check || !texts.has(n.check)), {
+    key: 'general', placeholder: 'What did you see? Enter saves', label: 'General note',
+  }));
+  grid.appendChild(general);
+  return grid;
+}
+
+/** Tickets File review would create from `plan` (a design pick files two; new epics are extra). */
+function ticketCount(plan) {
+  return plan.groups.reduce((n, g) => n + g.items.reduce((m, it) => m + (it.noteKind === 'design' ? 2 : 1), 0), 0);
+}
+
+/** Open a new Claude session that files the notes through the CLI. */
+function handToClaude() {
+  const url = claudeCodeSessionUrl(HAND_TO_CLAUDE, window.dashboardConfig?.claudeSessionFolder);
+  if (!url) return;
+  window.location.assign(url);
+  showToast('Opening Claude to file your review notes');
+}
+
+/** Lane <select> that sets the area of an unrouted note. */
+function unroutedRow(handle) {
+  const [id, n] = handle.split('#');
+  const task = findTicket(id);
+  const note = (task?.reviewNotes || []).find(x => String(x.n) === n);
+  const row = el('li', 'rp-file-item');
+  if (!note) return row;
+  row.appendChild(el('span', `td-note-kind kind-${note.kind}`, note.kind[0].toUpperCase() + note.kind.slice(1)));
+  row.appendChild(el('span', 'rp-file-text', `${note.text} (from ${id})`));
+  const sel = el('select', 'rn-area-select');
+  sel.setAttribute('aria-label', `Area for the note from ${id}`);
+  const none = el('option', null, 'Pick an area');
+  none.value = '';
+  sel.appendChild(none);
+  for (const slug of areaOptions(currentDoc, null)) {
+    const opt = el('option', null, laneDisplayName(slug));
+    opt.value = slug;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    note.area = sel.value;
+    commitReviewChange(task);
+  });
+  row.appendChild(sel);
+  return row;
+}
+
+/** Inline preview of where every unsent note would go, with Apply and Cancel. */
+function renderFilePreview() {
+  const plan = planFiling(currentDoc);
+  const panel = el('div', 'rp-file-preview');
+  panel.setAttribute('role', 'region');
+  panel.setAttribute('aria-label', 'File review preview');
+  for (const g of plan.groups) {
+    const block = el('div', 'rp-file-group');
+    const where = g.epic.isNew ? `new epic "${g.epic.title}"` : `${g.epic.id} ${g.epic.title}`;
+    block.appendChild(el('div', 'rp-file-head', `${g.area ? laneDisplayName(g.area) : 'Own epic'} → ${where}`));
+    const list = el('ul', 'rp-file-list');
+    g.items.forEach(it => list.appendChild(el('li', 'rp-file-item', `[${it.noteKind}] ${it.title} (from ${it.sourceId})`)));
+    block.appendChild(list);
+    panel.appendChild(block);
+  }
+  if (plan.unrouted.length) {
+    const block = el('div', 'rp-file-group');
+    block.appendChild(el('div', 'rp-file-head', 'Needs an area'));
+    const list = el('ul', 'rp-file-list');
+    plan.unrouted.forEach(u => list.appendChild(unroutedRow(u.handle)));
+    block.appendChild(list);
+    panel.appendChild(block);
+  }
+  const actions = el('div', 'rp-actions');
+  const count = ticketCount(plan);
+  const apply = el('button', 'rp-btn rp-btn-primary', `File ${count} ticket${count === 1 ? '' : 's'}`);
+  apply.type = 'button';
+  apply.disabled = count === 0;
+  apply.addEventListener('click', () => fileReview(plan));
+  const cancel = el('button', 'rp-btn', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', () => { filingOpen = false; renderRunPlanView(); });
+  actions.appendChild(apply);
+  actions.appendChild(cancel);
+  panel.appendChild(actions);
+  return panel;
+}
+
+/** Id helper for applyFiling: next free id in `doc`, which already holds the tickets added so far. */
+function idAllocator(doc, state) {
+  return (projectId) => {
+    const flat = doc.sections.flatMap(s => s.tasks.map(t => ({ id: t.id })));
+    return nextTaskId(flat, projectId || null, state.meta?.projects || []);
+  };
+}
+
+/**
+ * Apply `plan` to a doc built from dashboard state (applyFiling mutates it), then copy the
+ * result back: new tickets are parsed with loadTasksJson (the dashboard's own loader) and
+ * appended to their sections; notes and checks were edited in place (the doc shares those
+ * arrays with the state's tickets); finished reviews go through moveTask; new epics are
+ * pinned in meta.dailyPlan (what `ch tasks plan --pin` writes) and closed ones unpinned.
+ */
+function fileReview(plan) {
+  const state = getState();
+  const doc = toDoc(state);
+  const out = applyFiling(doc, plan, { newId: idAllocator(doc, state) });
+  const newEpics = plan.groups.filter(g => g.epic.isNew).length;
+
+  const bySection = new Map();
+  for (const id of out.created) {
+    const sec = doc.sections.find(s => s.tasks.some(t => t.id === id));
+    const task = sec.tasks.find(t => t.id === id);
+    if (!bySection.has(sec.id)) bySection.set(sec.id, []);
+    bySection.get(sec.id).push(task);
+  }
+  for (const [secId, list] of bySection) {
+    const parsed = loadTasksJson(JSON.stringify({ sections: [{ id: secId, tasks: list }] }));
+    if (!state.tasks[secId]) state.tasks[secId] = [];
+    state.tasks[secId].push(...parsed.tasks[secId]);
+  }
+
+  const touched = new Set(out.filed.map(f => f.handle.split('#')[0]));
+  const today = todayStr();
+  touched.forEach(id => { const t = findTicket(id); if (t) t.updated = today; });
+
+  const unpin = new Set();
+  for (const id of out.movedToDone) {
+    const docTask = doc.sections.flatMap(s => s.tasks).find(t => t.id === id);
+    if (docTask) epicsToUnpin(doc, docTask).forEach(x => unpin.add(x));
+    const task = findTicket(id);
+    if (task) moveTask(task.id, 'done', -1, { skipRender: true });
+  }
+  if (!state.meta.dailyPlan) state.meta.dailyPlan = { date: null, taskIds: [], carriedIds: [] };
+  const daily = state.meta.dailyPlan;
+  for (const id of out.pin) {
+    if (!(daily.taskIds || (daily.taskIds = [])).includes(id)) daily.taskIds.push(id);
+    if (!daily.date) daily.date = today;
+  }
+  if (unpin.size) {
+    daily.taskIds = (daily.taskIds || []).filter(id => !unpin.has(id));
+    daily.carriedIds = (daily.carriedIds || []).filter(id => !unpin.has(id));
+  }
+
+  filingOpen = false;
+  commitReviewChange(null);
+  const created = out.created.length - newEpics;
+  const areas = new Set(plan.groups.map(g => g.area || g.epic.id)).size;
+  showToast(`Filed ${created} ticket${created === 1 ? '' : 's'} into ${areas} area${areas === 1 ? '' : 's'}`);
+}
+
+/** Bar above the review cards: how many notes wait, File review and Hand to Claude. */
+function renderFileBar() {
+  const notes = countUnsentNotes(currentDoc);
+  if (!notes) { filingOpen = false; return null; }
+  const cards = pendingReviewNotes(currentDoc).length;
+  const wrap = el('div', 'rp-file');
+  const bar = el('div', 'rp-file-bar');
+  bar.appendChild(el('span', 'rp-file-count', `${notes} note${notes === 1 ? '' : 's'} on ${cards} ticket${cards === 1 ? "" : "s"}`));
+  const file = el('button', 'rp-btn rp-btn-primary', 'File review');
+  file.type = 'button';
+  file.setAttribute('aria-expanded', filingOpen ? 'true' : 'false');
+  file.addEventListener('click', () => { filingOpen = !filingOpen; renderRunPlanView(); });
+  const hand = el('button', 'rp-btn', 'Hand to Claude');
+  hand.type = 'button';
+  hand.title = 'Open Claude to file the notes with the CLI';
+  hand.addEventListener('click', handToClaude);
+  bar.appendChild(file);
+  bar.appendChild(hand);
+  wrap.appendChild(bar);
+  if (filingOpen) wrap.appendChild(renderFilePreview());
+  return wrap;
+}
+
 /** "Ready for review" block above the lanes: shipped tickets waiting for Tal's look, oldest first. */
 function renderReview(review) {
   const block = el('section', 'rp-review');
   block.setAttribute('aria-label', 'Ready for review');
   block.appendChild(el('h2', 'rp-review-title', 'Ready for review'));
+  const fileBar = renderFileBar();
+  if (fileBar) block.appendChild(fileBar);
   if (!review.length) {
     block.appendChild(el('p', 'rp-review-empty', 'Nothing waiting for review.'));
     return block;
   }
   const list = el('ol', 'rp-review-list');
   for (const item of review) {
-    const li = el('li', 'rp-review-item');
+    const task = findTicket(item.id);
+    const open = expandedReview.has(item.id);
+    const li = el('li', 'rp-review-item' + (open ? ' rp-open' : ''));
     const row = el('div', 'rp-row');
     row.appendChild(idButton(item.id));
     const since = shortDate(item.enteredAt);
     if (since) row.appendChild(el('span', 'rp-review-since', `since ${since}`));
-    row.appendChild(el('span', 'rp-chip rp-chip-review', `${item.checks.done}/${item.checks.total} checked`));
+    const toggle = el('button', 'rp-chip rp-chip-review rp-chip-toggle', `${item.checks.done}/${item.checks.total} checked ${open ? '▴' : '▾'}`);
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.title = open ? 'Hide the checks' : 'Show the checks and add notes';
+    toggle.addEventListener('click', () => {
+      if (open) expandedReview.delete(item.id); else expandedReview.add(item.id);
+      renderRunPlanView();
+    });
+    row.appendChild(toggle);
     if (item.notes > 0) row.appendChild(el('span', 'rp-chip rp-chip-notes', `${item.notes} note${item.notes > 1 ? 's' : ''} unsent`));
-    const thread = threadAnchor(findTicket(item.id));
+    const thread = threadAnchor(task);
     if (thread) row.appendChild(thread);
     li.appendChild(row);
     li.appendChild(el('div', 'rp-title', item.title));
@@ -167,6 +426,7 @@ function renderReview(review) {
       line.appendChild(document.createTextNode(` (${fu.section})`));
       li.appendChild(line);
     }
+    if (open && task) li.appendChild(renderCheckGrid(task));
     list.appendChild(li);
   }
   block.appendChild(list);
@@ -539,7 +799,8 @@ export function renderRunPlanView() {
     root.appendChild(el('p', 'rp-empty', 'Load tasks to see the plan.'));
     return;
   }
-  const plan = computeRunPlan(toDoc(state));
+  currentDoc = toDoc(state);
+  const plan = computeRunPlan(currentDoc);
 
   root.appendChild(renderReview(plan.review || []));
   if (plan.lanes.length === 0) {

@@ -71,3 +71,33 @@ test('computeRunPlan review queue is oldest first with follow-ups', () => {
   assert.deepEqual(plan.review[1].followUps, [{ id: 'T3', title: 'Follow-up', section: 'todo' }]);
   assert.deepEqual(plan.review[0].followUps, []);
 });
+
+import { noteArea, areaOptions } from '../../shared/review-filing.js';
+
+function areaDoc() {
+  return {
+    sections: [
+      { id: 'todo', tasks: [
+        { id: 'E1', title: 'Canvas epic', type: 'epic', lane: 'canvas' },
+        { id: 'E2', title: 'Account epic', type: 'epic', lane: 'account' },
+      ] },
+      { id: 'done', tasks: [{ id: 'E3', title: 'Old epic', type: 'epic', lane: 'old' }] },
+      { id: 'review', tasks: [{ id: 'T1', title: 'Shipped', parentId: 'E1' }, { id: 'T2', title: 'Loose' }] },
+    ],
+  };
+}
+
+test('noteArea: note area wins, else the ticket epic lane, else null', () => {
+  const doc = areaDoc();
+  const t1 = doc.sections[2].tasks[0];
+  assert.equal(noteArea(doc, t1, { n: 1 }), 'canvas');
+  assert.equal(noteArea(doc, t1, { n: 1, area: 'account' }), 'account');
+  assert.equal(noteArea(doc, doc.sections[2].tasks[1], { n: 1 }), null);
+  assert.equal(noteArea(doc, doc.sections[0].tasks[1], { n: 1 }), 'account');
+});
+
+test('areaOptions: lanes of open epics plus the current one, sorted', () => {
+  const doc = areaDoc();
+  assert.deepEqual(areaOptions(doc, null), ['account', 'canvas']);
+  assert.deepEqual(areaOptions(doc, 'old'), ['account', 'canvas', 'old']);
+});

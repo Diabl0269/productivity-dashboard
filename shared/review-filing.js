@@ -38,11 +38,21 @@ function titleOf(text) {
   return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1).trimEnd()}…` : t;
 }
 
-/** The area (lane slug) a note files into, or null. */
-function areaOf(doc, ticket, note) {
+/** The area (lane slug) a note files into, or null: its own `area`, else the lane of the ticket / its epic. */
+export function noteArea(doc, ticket, note) {
   if (note.area) return note.area;
   if (ticket.type === 'epic') return ticket.lane || null;
   return epicOf(doc, ticket)?.task.lane || null;
+}
+
+/** Lane slugs offered for a note's area: lanes of open epics, plus `current`. Sorted. */
+export function areaOptions(doc, current) {
+  const set = new Set();
+  for (const { task, section } of rows(doc)) {
+    if (task.type === 'epic' && task.lane && OPEN_SECTIONS.includes(section)) set.add(task.lane);
+  }
+  if (current) set.add(current);
+  return [...set].sort();
 }
 
 /** First open epic in `lane`/`project` matching `pick`, ordered by `order` sections then document order. */
@@ -70,7 +80,7 @@ export function planFiling(doc, { ticket } = {}) {
     for (const note of unsentNotes(task)) {
       const handle = `${task.id}#${note.n}`;
       const item = { handle, noteKind: note.kind, title: titleOf(note.text), sourceId: task.id };
-      const area = areaOf(doc, task, note);
+      const area = noteArea(doc, task, note);
       const project = task.project || null;
       let epic = null;
       let key;
