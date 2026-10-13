@@ -366,7 +366,7 @@ function renderFileBar() {
   const cards = pendingReviewNotes(currentDoc).length;
   const wrap = el('div', 'rp-file');
   const bar = el('div', 'rp-file-bar');
-  bar.appendChild(el('span', 'rp-file-count', `${notes} note${notes === 1 ? '' : 's'} on ${cards} ticket${cards === 1 ? "" : "s"}`));
+  bar.appendChild(el('span', 'rp-file-count', `${notes} note${notes === 1 ? '' : 's'} on ${cards} ticket${cards === 1 ? '' : 's'}`));
   const file = el('button', 'rp-btn rp-btn-primary', 'File review');
   file.type = 'button';
   file.setAttribute('aria-expanded', filingOpen ? 'true' : 'false');
