@@ -1,7 +1,7 @@
 /* Service worker — caches the dashboard shell for offline / installable PWA use.
    API routes and tasks.json are network-only (they need the live server). */
 
-const CACHE = 'productivity-shell-v7';
+const CACHE = 'productivity-shell-v8';
 const SHELL = [
   './',
   './index.html',
@@ -59,19 +59,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Same-origin static assets: stale-while-revalidate
+  // Same-origin static assets: network first, cache only when offline. Stale-while-revalidate
+  // served the previous build's JS on the first load after an update (PRO19).
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(req).then((cached) => {
-        const network = fetch(req).then((res) => {
-          if (res && res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, clone));
-          }
-          return res;
-        }).catch(() => cached);
-        return cached || network;
-      })
+      fetch(req).then((res) => {
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, clone));
+        }
+        return res;
+      }).catch(() => caches.match(req))
     );
   }
 });

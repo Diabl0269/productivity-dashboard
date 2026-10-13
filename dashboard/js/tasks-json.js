@@ -9,6 +9,7 @@ import { isValidTaskId, collectKnownPrefixes } from '../../shared/task-ids.js';
 import { normalizeProjectRow } from '../../shared/projects.js';
 
 import { normalizeModel } from '../../shared/model.js';
+import { NOTE_KINDS, NOTE_STATES } from '../../shared/review-notes.js';
 import { readCustomFromJson, serializeCustomToJson } from './custom-fields.js';
 
 const ENERGY_VALUES = new Set(['deep', 'shallow', 'errands', 'creative']);
@@ -132,6 +133,24 @@ export function normalizeChecks(raw) {
     if (!c || typeof c !== 'object' || typeof c.text !== 'string' || !c.text.trim()) continue;
     const e = { text: c.text, checked: !!c.checked };
     if (typeof c.addedAt === 'string' && c.addedAt) e.addedAt = c.addedAt;
+    if (typeof c.handedTo === 'string' && c.handedTo) e.handedTo = c.handedTo;
+    out.push(e);
+  }
+  return out;
+}
+
+/** Normalise a task's `reviewNotes`: keep well-formed entries only (shared/review-notes.js). */
+export function normalizeReviewNotes(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const x of raw) {
+    if (!x || typeof x !== 'object' || !Number.isInteger(x.n) || x.n < 1) continue;
+    if (typeof x.text !== 'string' || !x.text.trim() || typeof x.at !== 'string') continue;
+    if (!NOTE_KINDS.includes(x.kind) || !NOTE_STATES.includes(x.state)) continue;
+    const e = { n: x.n, at: x.at, text: x.text, kind: x.kind, state: x.state };
+    if (typeof x.check === 'string' && x.check) e.check = x.check;
+    if (typeof x.filed === 'string' && x.filed) e.filed = x.filed;
+    if (typeof x.area === 'string' && x.area) e.area = x.area;
     out.push(e);
   }
   return out;
@@ -248,6 +267,7 @@ export function loadTasksJson(text) {
       updated: t.updated || null,
       subtasks: Array.isArray(t.subtasks) ? t.subtasks.map(st => ({ text: st.text || '', checked: !!st.checked })) : [],
       checks: normalizeChecks(t.checks),
+      reviewNotes: normalizeReviewNotes(t.reviewNotes),
       reviewOf: (typeof t.reviewOf === 'string' && t.reviewOf.trim()) ? t.reviewOf.trim() : null,
       result: isPlainObject(t.result) ? t.result : null,
       section: sec.id,
@@ -285,6 +305,8 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         };
         const checks = normalizeChecks(t.checks);
         if (checks.length) row.checks = checks;
+        const reviewNotes = normalizeReviewNotes(t.reviewNotes);
+        if (reviewNotes.length) row.reviewNotes = reviewNotes;
         if (typeof t.reviewOf === 'string' && t.reviewOf.trim()) row.reviewOf = t.reviewOf.trim();
         if (isPlainObject(t.result)) row.result = t.result;
         const desc = (t.description || '').trim();

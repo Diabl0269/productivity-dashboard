@@ -13,6 +13,7 @@ import { print, jsonOut, die } from '../lib/output.js';
 import { memoryPath, readText, listMd, exists, readConfig } from '../lib/io.js';
 import { load, flatTasks, nextId } from '../lib/tasks-store.js';
 import { extractFields } from '../lib/field-extractor.js';
+import { countUnsentNotes } from '../../shared/review-notes.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,6 +151,7 @@ export default function context(argv) {
   const team = loadTeam();
   const glossary = loadGlossary();
   const peopleSlugs = loadPeopleSlugs();
+  const newNotes = countUnsentNotes(doc);
 
   if (values.json) {
     jsonOut({
@@ -158,12 +160,14 @@ export default function context(argv) {
       team,
       glossary,
       people: peopleSlugs,
+      new_review_notes: newNotes,
     });
     return;
   }
 
   // Terse text output
   const lines = [];
+  if (newNotes > 0) lines.push(`${newNotes} new review note(s): ch tasks notes`);
 
   // Active tasks
   lines.push(`=== Active Tasks (${activeTasks.length}) ===`);

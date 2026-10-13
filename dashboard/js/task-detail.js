@@ -82,7 +82,9 @@ import {
   toggleFieldPin,
   bindFieldLayoutDnD,
 } from './task-field-layout.js';
-import { REVIEW_SECTION, reviewComplete, checkProgress, resultLines } from '../../shared/review.js';
+import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines } from '../../shared/review.js';
+import { unsentNotes } from '../../shared/review-notes.js';
+import { reviewNoteAddRow, reviewNoteRow } from './review-notes-ui.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import {
   taskIdDisplayState,
@@ -2504,9 +2506,39 @@ function buildChecksPanel(task, body) {
 
 /** Move a review ticket to Done once its last check is ticked (same path as the status select). */
 function finishReviewIfComplete(task, ticked) {
+  const unsent = unsentNotes(task).length;
+  if (ticked && task.section === REVIEW_SECTION && allChecksTicked(task) && unsent) {
+    showStatus(`${unsent} note(s) not sent: send or dismiss them first`);
+    return;
+  }
   if (!reviewComplete(task, task.section, { ticked })) return;
   moveTask(task.id, 'done', -1);
   showStatus('Reviewed: moved to Done');
+}
+
+/** Save a review-note change and redraw the panel. */
+function reviewNotesChanged(task) {
+  commit();
+  openTaskDetail(task, { focusTitle: false });
+}
+
+/**
+ * Tick or untick one review check, from the ticket panel or the Plan's review card. Saves and
+ * redraws; a finished review (last check ticked, no unsent notes) moves to Done.
+ */
+export function toggleReviewCheck(task, check, { onRefresh } = {}) {
+  check.checked = !check.checked;
+  markChanged(task);
+  getRenderTasks && getRenderTasks()();
+  if (!reviewComplete(task, task.section, { ticked: check.checked })) onRefresh?.();
+  finishReviewIfComplete(task, check.checked);
+}
+
+/** Save a review-note change made outside the ticket panel (the Plan) and redraw everything. */
+export function commitReviewChange(task) {
+  markChanged(task);
+  getRenderTasks && getRenderTasks()();
+  refreshTaskDetailIfAffected(task);
 }
 
 /** Tickets opened while reviewing `taskId`. */
@@ -2565,10 +2597,21 @@ function buildReviewPanel(task, body) {
     count.className = 'td-review-count';
     count.textContent = total ? `${done} of ${total} checked` : 'No checks';
     head.appendChild(count);
+    const unsent = unsentNotes(task).length;
+    if (unsent) {
+      const flag = document.createElement('span');
+      flag.className = 'td-review-unsent';
+      flag.textContent = `${unsent} note(s) not sent`;
+      head.appendChild(flag);
+    }
     const tickAll = document.createElement('button');
     tickAll.type = 'button';
     tickAll.className = 'td-review-tick-all';
     tickAll.textContent = 'Tick all and mark reviewed';
+    if (unsent) {
+      tickAll.disabled = true;
+      tickAll.title = 'Send or dismiss the notes first';
+    }
     tickAll.addEventListener('click', () => {
       (task.checks || []).forEach(c => { c.checked = true; });
       commit();
@@ -2608,12 +2651,7 @@ function buildReviewPanel(task, body) {
       cb.setAttribute('aria-label', 'Check ' + (idx + 1) + ': ' + (c.text || ''));
       cb.setAttribute('tabindex', '0');
       cb.addEventListener('click', () => {
-        c.checked = !c.checked;
-        commit();
-        if (!reviewComplete(task, task.section, { ticked: c.checked })) {
-          openTaskDetail(task, { focusTitle: false });
-        }
-        finishReviewIfComplete(task, c.checked);
+        toggleReviewCheck(task, c, { onRefresh: () => openTaskDetail(task, { focusTitle: false }) });
       });
       cb.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.click(); }
@@ -2624,8 +2662,23 @@ function buildReviewPanel(task, body) {
       row.appendChild(cb);
       row.appendChild(text);
       list.appendChild(row);
+      unsentNotes(task).filter(x => x.check === c.text).forEach(x => list.appendChild(reviewNoteRow(task, x, { onChange: reviewNotesChanged })));
+      list.appendChild(reviewNoteAddRow(task, {
+        check: c.text, key: idx, placeholder: 'Note on this check… Enter saves', label: 'Note on check ' + (idx + 1), onChange: reviewNotesChanged,
+      }));
     });
     box.appendChild(list);
+  }
+
+  if (inReview) {
+    const general = document.createElement('div');
+    general.className = 'td-review-notes-general';
+    const checkTexts = new Set((task.checks || []).map(c => c.text));
+    unsentNotes(task).filter(x => !x.check || !checkTexts.has(x.check)).forEach(x => general.appendChild(reviewNoteRow(task, x, { onChange: reviewNotesChanged })));
+    general.appendChild(reviewNoteAddRow(task, {
+      key: 'general', placeholder: 'General note or idea… Enter saves', label: 'General note', onChange: reviewNotesChanged,
+    }));
+    box.appendChild(general);
   }
 
   if (task.reviewOf) box.appendChild(reviewRelationRow('From review of', [task.reviewOf]));

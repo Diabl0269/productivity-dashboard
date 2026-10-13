@@ -16,7 +16,12 @@
  *   runplan [--json]
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
  *   stale [--days N] [--json]
- *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+ *   notes [--ticket ID] [--json]       list unsent review notes
+ *   notes route [--ticket ID] [--json] show which epic each unsent note would be filed under
+ *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note, under its area's epic
+  notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
+  notes dismiss <id>#<n>
+  review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
@@ -66,11 +71,15 @@ import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
-import { computeRunPlan, isLiveCheckedEpic } from '../../shared/run-plan.js';
+import { computeRunPlan, isLiveCheckedEpic, laneDisplayName } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
-  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, epicOf, rollUpIntoEpic, epicsToUnpin,
+  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
 } from '../../shared/review.js';
+import {
+  NOTE_KINDS, addReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
+} from '../../shared/review-notes.js';
+import { planFiling, applyFiling } from '../../shared/review-filing.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -502,6 +511,11 @@ function cmdGet(argv) {
   if (task.result) {
     print('  Result:');
     for (const l of resultLines(task.result)) print(`    ${l}`);
+  }
+  if (Array.isArray(task.reviewNotes) && task.reviewNotes.length) {
+    const count = (st) => task.reviewNotes.filter(x => x.state === st).length;
+    print(`  review notes: ${count('new')} new, ${count('filed')} filed, ${count('dismissed')} dismissed`);
+    for (const x of unsentNotes(task)) print(`    ${noteLine(task.id, x)}`);
   }
   if (Array.isArray(task.history) && task.history.length) {
     print(`  history: ${task.history.length} event(s)`);
@@ -1601,6 +1615,8 @@ function cmdUpdate(argv) {
     doneSection.tasks.push(task);
     movedToDone = true;
   }
+  const heldByNotes = !movedToDone && ticked && taskSection.id === REVIEW_SECTION && allChecksTicked(task) && hasUnsentNotes(task)
+    ? unsentNotes(task).length : 0;
   const unpinned = movedToDone ? autoUnpin(doc, task) : [];
   const pinned = values.lane !== undefined && !values['clear-lane'] && autoPinLaneEpic(doc, task, movedToDone ? 'done' : taskSection.id);
   save(doc);
@@ -1610,10 +1626,108 @@ function cmdUpdate(argv) {
     if (movedToDone) out.movedToDone = true;
     if (unpinned.length) out.unpinned = unpinned;
     if (pinned) out.pinned = true;
+    if (heldByNotes) out.unsentNotes = heldByNotes;
     jsonOut(out);
     return;
   }
+  if (heldByNotes) print(`${heldByNotes} review note(s) unsent: ch tasks notes --ticket ${id}`);
   ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}${unpinNote(unpinned)}${pinned ? ' (pinned to the plan)' : ''}`);
+}
+
+/** ch tasks notes — list, add and dismiss review notes. */
+function cmdNotes(argv) {
+  const sub = argv[0];
+  if (sub === 'add' || sub === 'dismiss') {
+    const { values, positionals } = parse(argv.slice(1), {
+      kind:    { type: 'string' },
+      check:   { type: 'string' },
+      area:    { type: 'string' },
+      section: { type: 'string', short: 's' },
+      json:    { type: 'boolean', short: 'j' },
+    });
+    const doc = load();
+    if (sub === 'add') {
+      const [id, text] = positionals;
+      if (!id || !text) die('usage: ch tasks notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]');
+      if (values.area && !isLaneSlug(values.area.trim())) die(`invalid --area "${values.area}". Use lowercase letters, digits and hyphens`);
+      const { task } = resolveTask(doc, id, values.section);
+      let check;
+      if (values.check !== undefined) {
+        const n = parseInt(values.check, 10);
+        if (isNaN(n) || n < 1 || n > (task.checks || []).length) {
+          die(`--check N must be between 1 and ${(task.checks || []).length}`);
+        }
+        check = task.checks[n - 1].text;
+      }
+      let note;
+      try { note = addReviewNote(task, { text, kind: values.kind || 'fix', check, area: values.area?.trim() }); } catch (e) { die(e.message); }
+      task.updated = todayStr();
+      save(doc);
+      if (values.json) { jsonOut({ id, ...note }); return; }
+      ok(`added ${id}#${note.n}`);
+      return;
+    }
+    const handle = parseNoteHandle(positionals[0]);
+    if (!handle) die('usage: ch tasks notes dismiss <id>#<n>');
+    const { task } = resolveTask(doc, handle.id, values.section);
+    try { setNoteState(task, handle.n, 'dismissed'); } catch (e) { die(e.message); }
+    task.updated = todayStr();
+    save(doc);
+    if (values.json) { jsonOut({ id: handle.id, n: handle.n, state: 'dismissed' }); return; }
+    ok(`dismissed ${handle.id}#${handle.n}`);
+    return;
+  }
+
+  if (sub === 'route' || sub === 'send') {
+    const { values } = parse(argv.slice(1), {
+      ticket: { type: 'string' },
+      json:   { type: 'boolean', short: 'j' },
+    });
+    const doc = load();
+    if (values.ticket) resolveTask(doc, values.ticket);
+    const plan = planFiling(doc, { ticket: values.ticket });
+    if (sub === 'route') {
+      if (values.json) { jsonOut(plan); return; }
+      if (!plan.groups.length && !plan.unrouted.length) { print('No new review notes.'); return; }
+      for (const g of plan.groups) {
+        const e = g.epic;
+        const where = e.isNew ? `new epic "${e.title}" (${e.section}${e.section === 'backlog' ? '' : ', pinned'})` : `${e.id} ${e.title} (${e.section})`;
+        print(`${g.area ? laneDisplayName(g.area) : 'No area'} -> ${where}`);
+        for (const it of g.items) print(`  ${it.handle} [${it.noteKind}] ${it.title}`);
+      }
+      if (plan.unrouted.length) {
+        print('Needs an area:');
+        for (const u of plan.unrouted) print(`  ${u.handle}`);
+      }
+      return;
+    }
+    const res = applyFiling(doc, plan, { newId: (project) => nextId(doc, project) });
+    const pinned = res.pin.filter(id => autoPinLaneEpic(doc, findTask(doc, id).task, 'todo'));
+    const unpinned = res.movedToDone.flatMap(id => autoUnpin(doc, findTask(doc, id).task));
+    if (res.created.length || res.movedToDone.length) save(doc);
+    if (values.json) { jsonOut({ ...res, pinned, unpinned, unrouted: plan.unrouted }); return; }
+    if (!res.filed.length) print('Nothing filed.');
+    for (const f of res.filed) {
+      print(`filed ${f.handle} -> ${f.id} (in ${findTask(doc, f.id).task.parentId})`);
+    }
+    for (const id of res.movedToDone) print(`moved ${id} to done`);
+    if (plan.unrouted.length) print(`Needs an area: ${plan.unrouted.map(u => u.handle).join(', ')}`);
+    return;
+  }
+
+  const { values } = parse(argv, {
+    ticket: { type: 'string' },
+    json:   { type: 'boolean', short: 'j' },
+  });
+  const doc = load();
+  const pending = pendingReviewNotes(doc).filter(t => !values.ticket || t.id === values.ticket);
+  if (values.json) { jsonOut(pending); return; }
+  if (!pending.length) { print('No new review notes.'); return; }
+  const clip = (str, n) => (str.length > n ? `${str.slice(0, n - 1)}…` : str);
+  for (const t of pending) {
+    print(`${t.id} ${t.type || 'task'}${t.lane ? ` lane:${t.lane}` : ''} ${clip(t.title || '', 60)}`);
+    for (const x of t.notes) print(`  ${noteLine(t.id, x)}`);
+  }
 }
 
 function cmdSetPriority(argv) {
@@ -1704,6 +1818,7 @@ function cmdDump(argv) {
     notes: Array.isArray(t.notes) ? t.notes.length : 0,
     subtasks: (t.subtasks || []).length,
     subtasksDone: (t.subtasks || []).filter(s => s.checked).length,
+    reviewNotesNew: unsentNotes(t).length,
   }));
 
   // dump always outputs JSON (compact)
@@ -2278,6 +2393,7 @@ const SUBCOMMANDS = {
   add:           cmdAdd,
   move:          cmdMove,
   review:        cmdReview,
+  notes:         cmdNotes,
   done:          cmdDone,
   update:        cmdUpdate,
   'set-priority': cmdSetPriority,
