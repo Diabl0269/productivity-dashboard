@@ -82,7 +82,8 @@ import {
   toggleFieldPin,
   bindFieldLayoutDnD,
 } from './task-field-layout.js';
-import { REVIEW_SECTION, reviewComplete, checkProgress, resultLines } from '../../shared/review.js';
+import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines } from '../../shared/review.js';
+import { NOTE_KINDS, addReviewNote, setNoteState, unsentNotes } from '../../shared/review-notes.js';
 import { mountTicketPicker, touchRecentTicket } from './ticket-picker.js';
 import {
   taskIdDisplayState,
@@ -2504,9 +2505,77 @@ function buildChecksPanel(task, body) {
 
 /** Move a review ticket to Done once its last check is ticked (same path as the status select). */
 function finishReviewIfComplete(task, ticked) {
+  const unsent = unsentNotes(task).length;
+  if (ticked && task.section === REVIEW_SECTION && allChecksTicked(task) && unsent) {
+    showStatus(`${unsent} note(s) not sent: send or dismiss them first`);
+    return;
+  }
   if (!reviewComplete(task, task.section, { ticked })) return;
   moveTask(task.id, 'done', -1);
   showStatus('Reviewed: moved to Done');
+}
+
+/** A note input row (text + kind select). Enter saves; `idx` marks which input to re-focus. */
+function reviewNoteAddRow(task, { check, idx, placeholder, label }) {
+  const row = document.createElement('div');
+  row.className = 'td-review-note-add';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'td-review-note-input';
+  input.placeholder = placeholder;
+  input.setAttribute('aria-label', label);
+  input.dataset.idx = String(idx);
+  const kind = document.createElement('select');
+  kind.className = 'td-review-note-kind';
+  kind.setAttribute('aria-label', 'Note kind');
+  for (const k of NOTE_KINDS) {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = k[0].toUpperCase() + k.slice(1);
+    kind.appendChild(opt);
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    addReviewNote(task, { text, kind: kind.value, check });
+    commit();
+    openTaskDetail(task, { focusTitle: false });
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.td-review-note-input[data-idx="${idx}"]`);
+      if (el) el.focus();
+    });
+  });
+  row.appendChild(input);
+  row.appendChild(kind);
+  return row;
+}
+
+/** One unsent note: kind chip, text, and a dismiss button. */
+function reviewNoteRow(task, note) {
+  const row = document.createElement('div');
+  row.className = 'td-review-note';
+  const chip = document.createElement('span');
+  chip.className = `td-note-kind kind-${note.kind}`;
+  chip.textContent = note.kind[0].toUpperCase() + note.kind.slice(1);
+  const text = document.createElement('span');
+  text.className = 'td-review-note-text';
+  text.textContent = note.text;
+  const x = document.createElement('button');
+  x.type = 'button';
+  x.className = 'td-review-note-dismiss';
+  x.setAttribute('aria-label', 'Dismiss note');
+  x.textContent = '×';
+  x.addEventListener('click', () => {
+    setNoteState(task, note.n, 'dismissed');
+    commit();
+    openTaskDetail(task, { focusTitle: false });
+  });
+  row.appendChild(chip);
+  row.appendChild(text);
+  row.appendChild(x);
+  return row;
 }
 
 /** Tickets opened while reviewing `taskId`. */
@@ -2565,10 +2634,21 @@ function buildReviewPanel(task, body) {
     count.className = 'td-review-count';
     count.textContent = total ? `${done} of ${total} checked` : 'No checks';
     head.appendChild(count);
+    const unsent = unsentNotes(task).length;
+    if (unsent) {
+      const flag = document.createElement('span');
+      flag.className = 'td-review-unsent';
+      flag.textContent = `${unsent} note(s) not sent`;
+      head.appendChild(flag);
+    }
     const tickAll = document.createElement('button');
     tickAll.type = 'button';
     tickAll.className = 'td-review-tick-all';
     tickAll.textContent = 'Tick all and mark reviewed';
+    if (unsent) {
+      tickAll.disabled = true;
+      tickAll.title = 'Send or dismiss the notes first';
+    }
     tickAll.addEventListener('click', () => {
       (task.checks || []).forEach(c => { c.checked = true; });
       commit();
@@ -2624,8 +2704,23 @@ function buildReviewPanel(task, body) {
       row.appendChild(cb);
       row.appendChild(text);
       list.appendChild(row);
+      unsentNotes(task).filter(x => x.check === c.text).forEach(x => list.appendChild(reviewNoteRow(task, x)));
+      list.appendChild(reviewNoteAddRow(task, {
+        check: c.text, idx: idx, placeholder: 'Note on this check… Enter saves', label: 'Note on check ' + (idx + 1),
+      }));
     });
     box.appendChild(list);
+  }
+
+  if (inReview) {
+    const general = document.createElement('div');
+    general.className = 'td-review-notes-general';
+    const checkTexts = new Set((task.checks || []).map(c => c.text));
+    unsentNotes(task).filter(x => !x.check || !checkTexts.has(x.check)).forEach(x => general.appendChild(reviewNoteRow(task, x)));
+    general.appendChild(reviewNoteAddRow(task, {
+      idx: 'general', placeholder: 'General note or idea… Enter saves', label: 'General note',
+    }));
+    box.appendChild(general);
   }
 
   if (task.reviewOf) box.appendChild(reviewRelationRow('From review of', [task.reviewOf]));

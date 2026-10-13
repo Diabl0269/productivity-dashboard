@@ -20,6 +20,7 @@ import {
 } from '../../shared/projects.js';
 import { normalizeModel } from '../../shared/model.js';
 import { resultErrors } from '../../shared/review.js';
+import { reviewNoteErrors } from '../../shared/review-notes.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -561,6 +562,7 @@ export { TASK_ID_RE };
  *       blockedBy (optional) string[] of peer task ids
  *       reviewOf (optional) id of the ticket whose review this one came from
  *       result (optional) ship result {at, shipped[], left?[], tests?[], ci} (shared/review.js)
+ *       reviewNotes (optional) [{n, at, text, kind, check?, state, filed?}] (shared/review-notes.js)
  *   - doc.ticketTypes (optional): array of {id, name, color}
  *
  * @param {any} doc
@@ -939,6 +941,11 @@ export function validateTasksDoc(doc) {
       // result (optional): what shipped (shared/review.js)
       if (task.result !== undefined && task.result !== null) {
         errors.push(...resultErrors(task.result, `${ref} (id=${task.id ?? '?'})`));
+      }
+
+      // reviewNotes (optional): notes written while reviewing (shared/review-notes.js)
+      if (task.reviewNotes !== undefined && task.reviewNotes !== null) {
+        errors.push(...reviewNoteErrors(task.reviewNotes, `${ref} (id=${task.id ?? '?'})`));
       }
 
       // waitingOn (optional)

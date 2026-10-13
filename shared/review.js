@@ -11,6 +11,8 @@
  * Pure (no fs, no DOM); used by the CLI, the run plan and the dashboard.
  */
 
+import { hasUnsentNotes, unsentNotes } from './review-notes.js';
+
 export const REVIEW_SECTION = 'review';
 export const REVIEW_SECTION_NAME = 'Ready for review';
 
@@ -29,10 +31,11 @@ export function checkProgress(task) {
 
 /**
  * Should a review ticket move to Done now? Only after a tick in this action, so a ticket
- * with no checks doesn't jump to Done on an unrelated edit.
+ * with no checks doesn't jump to Done on an unrelated edit. Never while review notes are
+ * still unsent (neither filed nor dismissed).
  */
 export function reviewComplete(task, sectionId, { ticked }) {
-  return sectionId === REVIEW_SECTION && !!ticked && allChecksTicked(task);
+  return sectionId === REVIEW_SECTION && !!ticked && allChecksTicked(task) && !hasUnsentNotes(task);
 }
 
 /**
@@ -161,6 +164,7 @@ export function reviewQueue(doc) {
       reviewOf: task.reviewOf || null,
       enteredAt: enteredReviewAt(task),
       checks: checkProgress(task),
+      notes: unsentNotes(task).length,
       result: task.result || null,
       followUps: followUpsOf(doc, task.id),
     }))

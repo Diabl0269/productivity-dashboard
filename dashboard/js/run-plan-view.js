@@ -32,6 +32,7 @@ function toDoc(state) {
         reviewOf: t.reviewOf || undefined,
         result: t.result || undefined,
         checks: t.checks || [],
+        reviewNotes: t.reviewNotes || [],
         history: t.history || [],
         created: t.created || undefined,
         updated: t.updated || undefined,
@@ -151,6 +152,7 @@ function renderReview(review) {
     const since = shortDate(item.enteredAt);
     if (since) row.appendChild(el('span', 'rp-review-since', `since ${since}`));
     row.appendChild(el('span', 'rp-chip rp-chip-review', `${item.checks.done}/${item.checks.total} checked`));
+    if (item.notes > 0) row.appendChild(el('span', 'rp-chip rp-chip-notes', `${item.notes} note${item.notes > 1 ? 's' : ''} unsent`));
     const thread = threadAnchor(findTicket(item.id));
     if (thread) row.appendChild(thread);
     li.appendChild(row);

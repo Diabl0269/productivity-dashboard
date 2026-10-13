@@ -16,7 +16,10 @@
  *   runplan [--json]
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
  *   stale [--days N] [--json]
- *   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
+ *   notes [--ticket ID] [--json]       list unsent review notes
+  notes add <id> "<text>" [--kind fix|idea|design] [--check N]
+  notes dismiss <id>#<n>
+  review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
@@ -69,8 +72,11 @@ import path from 'node:path';
 import { computeRunPlan, isLiveCheckedEpic } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
-  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, epicOf, rollUpIntoEpic, epicsToUnpin,
+  REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
 } from '../../shared/review.js';
+import {
+  NOTE_KINDS, addReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
+} from '../../shared/review-notes.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -502,6 +508,11 @@ function cmdGet(argv) {
   if (task.result) {
     print('  Result:');
     for (const l of resultLines(task.result)) print(`    ${l}`);
+  }
+  if (Array.isArray(task.reviewNotes) && task.reviewNotes.length) {
+    const count = (st) => task.reviewNotes.filter(x => x.state === st).length;
+    print(`  review notes: ${count('new')} new, ${count('filed')} filed, ${count('dismissed')} dismissed`);
+    for (const x of unsentNotes(task)) print(`    ${noteLine(task.id, x)}`);
   }
   if (Array.isArray(task.history) && task.history.length) {
     print(`  history: ${task.history.length} event(s)`);
@@ -1601,6 +1612,8 @@ function cmdUpdate(argv) {
     doneSection.tasks.push(task);
     movedToDone = true;
   }
+  const heldByNotes = !movedToDone && ticked && taskSection.id === REVIEW_SECTION && allChecksTicked(task) && hasUnsentNotes(task)
+    ? unsentNotes(task).length : 0;
   const unpinned = movedToDone ? autoUnpin(doc, task) : [];
   const pinned = values.lane !== undefined && !values['clear-lane'] && autoPinLaneEpic(doc, task, movedToDone ? 'done' : taskSection.id);
   save(doc);
@@ -1610,10 +1623,69 @@ function cmdUpdate(argv) {
     if (movedToDone) out.movedToDone = true;
     if (unpinned.length) out.unpinned = unpinned;
     if (pinned) out.pinned = true;
+    if (heldByNotes) out.unsentNotes = heldByNotes;
     jsonOut(out);
     return;
   }
+  if (heldByNotes) print(`${heldByNotes} review note(s) unsent: ch tasks notes --ticket ${id}`);
   ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}${unpinNote(unpinned)}${pinned ? ' (pinned to the plan)' : ''}`);
+}
+
+/** ch tasks notes — list, add and dismiss review notes. */
+function cmdNotes(argv) {
+  const sub = argv[0];
+  if (sub === 'add' || sub === 'dismiss') {
+    const { values, positionals } = parse(argv.slice(1), {
+      kind:    { type: 'string' },
+      check:   { type: 'string' },
+      section: { type: 'string', short: 's' },
+      json:    { type: 'boolean', short: 'j' },
+    });
+    const doc = load();
+    if (sub === 'add') {
+      const [id, text] = positionals;
+      if (!id || !text) die('usage: ch tasks notes add <id> "<text>" [--kind fix|idea|design] [--check N]');
+      const { task } = resolveTask(doc, id, values.section);
+      let check;
+      if (values.check !== undefined) {
+        const n = parseInt(values.check, 10);
+        if (isNaN(n) || n < 1 || n > (task.checks || []).length) {
+          die(`--check N must be between 1 and ${(task.checks || []).length}`);
+        }
+        check = task.checks[n - 1].text;
+      }
+      let note;
+      try { note = addReviewNote(task, { text, kind: values.kind || 'fix', check }); } catch (e) { die(e.message); }
+      task.updated = todayStr();
+      save(doc);
+      if (values.json) { jsonOut({ id, ...note }); return; }
+      ok(`added ${id}#${note.n}`);
+      return;
+    }
+    const handle = parseNoteHandle(positionals[0]);
+    if (!handle) die('usage: ch tasks notes dismiss <id>#<n>');
+    const { task } = resolveTask(doc, handle.id, values.section);
+    try { setNoteState(task, handle.n, 'dismissed'); } catch (e) { die(e.message); }
+    task.updated = todayStr();
+    save(doc);
+    if (values.json) { jsonOut({ id: handle.id, n: handle.n, state: 'dismissed' }); return; }
+    ok(`dismissed ${handle.id}#${handle.n}`);
+    return;
+  }
+
+  const { values } = parse(argv, {
+    ticket: { type: 'string' },
+    json:   { type: 'boolean', short: 'j' },
+  });
+  const doc = load();
+  const pending = pendingReviewNotes(doc).filter(t => !values.ticket || t.id === values.ticket);
+  if (values.json) { jsonOut(pending); return; }
+  if (!pending.length) { print('No new review notes.'); return; }
+  const clip = (str, n) => (str.length > n ? `${str.slice(0, n - 1)}…` : str);
+  for (const t of pending) {
+    print(`${t.id} ${t.type || 'task'}${t.lane ? ` lane:${t.lane}` : ''} ${clip(t.title || '', 60)}`);
+    for (const x of t.notes) print(`  ${noteLine(t.id, x)}`);
+  }
 }
 
 function cmdSetPriority(argv) {
@@ -1704,6 +1776,7 @@ function cmdDump(argv) {
     notes: Array.isArray(t.notes) ? t.notes.length : 0,
     subtasks: (t.subtasks || []).length,
     subtasksDone: (t.subtasks || []).filter(s => s.checked).length,
+    reviewNotesNew: unsentNotes(t).length,
   }));
 
   // dump always outputs JSON (compact)
@@ -2278,6 +2351,7 @@ const SUBCOMMANDS = {
   add:           cmdAdd,
   move:          cmdMove,
   review:        cmdReview,
+  notes:         cmdNotes,
   done:          cmdDone,
   update:        cmdUpdate,
   'set-priority': cmdSetPriority,
