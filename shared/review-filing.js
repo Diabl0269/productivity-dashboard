@@ -16,7 +16,7 @@ import { laneDisplayName } from './run-plan.js';
 
 /** Sections whose epics still take new work. */
 export const OPEN_SECTIONS = ['inbox', 'backlog', 'todo', 'in-progress'];
-const NEXT_SECTIONS = ['todo', 'in-progress'];
+const NEXT_SECTIONS = ['todo']; // an in-progress epic has a session running: don't grow it under its feet
 const TITLE_MAX = 120;
 
 const isLater = (epic) => /\(later\)\s*$/i.test(epic.title || '');
