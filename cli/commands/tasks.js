@@ -103,9 +103,9 @@ function autoUnpin(doc, task) {
   return unpinFromPlan(doc, epicsToUnpin(doc, task));
 }
 
-/** An open epic with a lane is planned work: pin it so it shows on the Plan page. */
+/** Every open epic stays pinned so nothing gets lost off the Plan page (Tal, 2026-10-14; lane or not). */
 function autoPinLaneEpic(doc, task, sectionId) {
-  if (task.type !== 'epic' || !task.lane || ['done', REVIEW_SECTION, 'archive'].includes(sectionId)) return false;
+  if (task.type !== 'epic' || ['done', REVIEW_SECTION, 'archive'].includes(sectionId)) return false;
   if (!doc.meta) doc.meta = defaultMeta();
   doc.meta = normalizeMeta(doc.meta);
   const plan = doc.meta.dailyPlan;
@@ -1618,7 +1618,7 @@ function cmdUpdate(argv) {
   const heldByNotes = !movedToDone && ticked && taskSection.id === REVIEW_SECTION && allChecksTicked(task) && hasUnsentNotes(task)
     ? unsentNotes(task).length : 0;
   const unpinned = movedToDone ? autoUnpin(doc, task) : [];
-  const pinned = values.lane !== undefined && !values['clear-lane'] && autoPinLaneEpic(doc, task, movedToDone ? 'done' : taskSection.id);
+  const pinned = autoPinLaneEpic(doc, task, movedToDone ? 'done' : taskSection.id);
   save(doc);
 
   if (values.json) {

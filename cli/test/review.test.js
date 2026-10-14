@@ -397,15 +397,16 @@ test('moving a pinned epic to done unpins it; moving a child to review counts as
   assert.ok(!pins(tmpDir).includes(other));
 });
 
-test('an epic added or updated with a lane is pinned; one without a lane is not', () => {
+test('every open epic is pinned, with a lane or without; updating an unpinned open epic pins it', () => {
   const tmpDir = makeTmpDir();
   const add = (...extra) => JSON.parse(runCli(['tasks', 'add', 'E', '--type', 'epic', '--json', ...extra], tmpDir).stdout).id;
   const laned = add('--lane', 'canvas');
-  const bare = add();
+  const bare = add('--section', 'backlog');
   assert.ok(pins(tmpDir).includes(laned));
-  assert.ok(!pins(tmpDir).includes(bare));
+  assert.ok(pins(tmpDir).includes(bare));
 
-  const r = runCli(['tasks', 'update', bare, '--lane', 'website'], tmpDir);
+  runCli(['tasks', 'plan', '--unpin', bare], tmpDir);
+  const r = runCli(['tasks', 'update', bare, '--add-note', 'still planned'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(pins(tmpDir).includes(bare));
 });
