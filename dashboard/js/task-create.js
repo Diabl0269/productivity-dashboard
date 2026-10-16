@@ -445,7 +445,37 @@ function buildTypeField() {
 
   field.appendChild(tl);
   field.appendChild(typeSelect);
+  if (draft.type === 'epic') field.appendChild(buildEpicLaneInput(state));
   return field;
+}
+
+/** Lane for a new epic (required: a lane-less epic lands in "No lane yet" on the Plan page). */
+function buildEpicLaneInput(state) {
+  const wrap = document.createElement('div');
+  wrap.className = 'td-field';
+  const label = document.createElement('span');
+  label.className = 'td-field-label';
+  label.textContent = 'Lane (required for an epic)';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'td-text-input';
+  input.id = 'tcLane';
+  input.placeholder = 'e.g. canvas, website';
+  input.setAttribute('aria-label', 'Epic lane');
+  input.value = draft.lane || '';
+  const list = document.createElement('datalist');
+  list.id = 'tcLaneList';
+  const lanes = new Set();
+  for (const sectionTasks of Object.values(state.tasks || {})) {
+    for (const t of sectionTasks || []) if (t.type === 'epic' && t.lane) lanes.add(t.lane);
+  }
+  [...lanes].sort().forEach(l => { const o = document.createElement('option'); o.value = l; list.appendChild(o); });
+  input.setAttribute('list', list.id);
+  input.addEventListener('input', () => { draft.lane = input.value; input.classList.remove('tc-title-error'); });
+  wrap.appendChild(label);
+  wrap.appendChild(input);
+  wrap.appendChild(list);
+  return wrap;
 }
 
 function buildColorField() {
@@ -803,6 +833,14 @@ function submitCreate() {
   const state = getState();
   const { sections, tasks } = state;
   const sectionId = draft.section || 'todo';
+  const lane = (draft.lane || '').trim();
+  if (draft.type === 'epic' && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(lane)) {
+    const laneInput = document.getElementById('tcLane');
+    laneInput?.classList.add('tc-title-error');
+    laneInput?.focus();
+    showStatus('An epic needs a lane: lowercase letters, digits and hyphens');
+    return;
+  }
   if (!tasks[sectionId]) tasks[sectionId] = [];
 
   const projectId = (draft.project || '').trim() || null;
@@ -850,6 +888,7 @@ function submitCreate() {
     issueUrl: (draft.issueUrl || '').trim() || null,
     project: (draft.project || '').trim() || null,
     energy: draft.energy || null,
+    ...(draft.type === 'epic' ? { lane } : {}),
     model: normalizeModel(draft.model),
     custom: draft.custom && Object.keys(draft.custom).length ? { ...draft.custom } : undefined,
     snoozeUntil: draft.snoozeUntil || null,

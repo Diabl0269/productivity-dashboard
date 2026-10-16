@@ -11,6 +11,21 @@ export const DEFAULT_MACHINE_CAP = 3;
 export const UNASSIGNED_LANE = 'unassigned';
 export const DESIGN_LANE = 'design';
 
+/** Sections whose epics are finished and so need no lane. */
+const CLOSED_EPIC_SECTIONS = ['done', 'review', 'archive'];
+
+/** Open epics with no lane: the Plan page files them under "No lane yet". */
+export function openEpicsWithoutLane(doc) {
+  const out = [];
+  for (const section of doc?.sections || []) {
+    if (CLOSED_EPIC_SECTIONS.includes(section.id)) continue;
+    for (const t of section.tasks || []) {
+      if (t.type === 'epic' && !(typeof t.lane === 'string' && t.lane.trim())) out.push(t);
+    }
+  }
+  return out;
+}
+
 /** Lane slugs shown as words: "timeline" -> "Timeline", "mod-lanes" -> "Mod lanes", "ai" -> "AI". */
 const LANE_ACRONYMS = new Set(['ai', 'ui', 'ux', 'cli', 'midi', 'api', 'ci']);
 export function laneDisplayName(slug) {
