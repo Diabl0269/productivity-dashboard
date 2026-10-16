@@ -894,7 +894,7 @@ test('tasks get: shows multiple blockers with status', () => {
 
 test('lane: add/update/clear via CLI, shown by get, bad slug rejected', () => {
   const tmp = makeTmpDir(FIXTURE_SAMPLE);
-  const add = runCli(['tasks', 'add', 'Laned epic', '--type', 'epic', '--lane', 'frontend-1', '--json'], tmp);
+  const add = runCli(['tasks', 'add', 'Laned task', '--type', 'task', '--lane', 'frontend-1', '--json'], tmp);
   assert.equal(add.status, 0, add.stderr);
   const id = JSON.parse(add.stdout).id;
   const find = () => readTasks(tmp).sections.flatMap(s => s.tasks).find(t => t.id === id);

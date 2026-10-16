@@ -144,10 +144,12 @@ function shortDate(iso) {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-// Review cards open on their check rows; ids here were collapsed by hand (survives re-renders).
-const collapsedReview = new Set();
+// Review cards start collapsed; ids here were expanded by hand (survives re-renders).
+const openReview = new Set();
 // Whether the File review preview is open (survives re-renders).
 let filingOpen = false;
+// Whether the "Open notes" list is shown (survives re-renders).
+let notesListOpen = false;
 // The tasks.json-shaped doc of the render in progress (used for areas and filing).
 let currentDoc = null;
 
@@ -359,10 +361,33 @@ function fileReview(plan) {
   showToast(`Filed ${created} ticket${created === 1 ? '' : 's'} into ${areas} area${areas === 1 ? '' : 's'}`);
 }
 
+/** Every unsent note, grouped by ticket, with the ticket it came from. Works when the cards are collapsed. */
+function renderNotesList() {
+  const panel = el('div', 'rp-file-preview rp-notes-list');
+  panel.setAttribute('role', 'region');
+  panel.setAttribute('aria-label', 'Open review notes');
+  for (const entry of pendingReviewNotes(currentDoc)) {
+    const task = findTicket(entry.id);
+    if (!task) continue;
+    const block = el('div', 'rp-file-group');
+    const head = el('div', 'rp-file-head');
+    head.appendChild(idButton(entry.id));
+    head.appendChild(document.createTextNode(` ${plainTitle(entry.title)}`));
+    block.appendChild(head);
+    for (const note of unsentNotes(task)) {
+      const row = reviewNoteRow(task, note, { onChange: commitReviewChange });
+      if (note.check) row.title = `On check: ${note.check}`;
+      block.appendChild(row);
+    }
+    panel.appendChild(block);
+  }
+  return panel;
+}
+
 /** Bar above the review cards: how many notes wait, File review and Hand to Claude. */
 function renderFileBar() {
   const notes = countUnsentNotes(currentDoc);
-  if (!notes) { filingOpen = false; return null; }
+  if (!notes) { filingOpen = false; notesListOpen = false; return null; }
   const cards = pendingReviewNotes(currentDoc).length;
   const wrap = el('div', 'rp-file');
   const bar = el('div', 'rp-file-bar');
@@ -371,13 +396,20 @@ function renderFileBar() {
   file.type = 'button';
   file.setAttribute('aria-expanded', filingOpen ? 'true' : 'false');
   file.addEventListener('click', () => { filingOpen = !filingOpen; renderRunPlanView(); });
+  const list = el('button', 'rp-btn', notesListOpen ? 'Hide notes' : 'Show notes');
+  list.type = 'button';
+  list.title = 'List every open review note, whichever card it is on';
+  list.setAttribute('aria-expanded', notesListOpen ? 'true' : 'false');
+  list.addEventListener('click', () => { notesListOpen = !notesListOpen; renderRunPlanView(); });
   const hand = el('button', 'rp-btn', 'Hand to Claude');
   hand.type = 'button';
   hand.title = 'Open Claude to file the notes with the CLI';
   hand.addEventListener('click', handToClaude);
+  bar.appendChild(list);
   bar.appendChild(file);
   bar.appendChild(hand);
   wrap.appendChild(bar);
+  if (notesListOpen) wrap.appendChild(renderNotesList());
   if (filingOpen) wrap.appendChild(renderFilePreview());
   return wrap;
 }
@@ -396,7 +428,7 @@ function renderReview(review) {
   const list = el('ol', 'rp-review-list');
   for (const item of review) {
     const task = findTicket(item.id);
-    const open = !collapsedReview.has(item.id);
+    const open = openReview.has(item.id);
     const li = el('li', 'rp-review-item' + (open ? ' rp-open' : ''));
     const row = el('div', 'rp-row');
     row.appendChild(idButton(item.id));
@@ -407,7 +439,7 @@ function renderReview(review) {
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     toggle.title = open ? 'Hide the checks' : 'Show the checks and add notes';
     toggle.addEventListener('click', () => {
-      if (open) collapsedReview.add(item.id); else collapsedReview.delete(item.id);
+      if (open) openReview.delete(item.id); else openReview.add(item.id);
       renderRunPlanView();
     });
     row.appendChild(toggle);

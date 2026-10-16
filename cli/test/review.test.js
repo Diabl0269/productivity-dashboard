@@ -293,7 +293,7 @@ test('ch tasks review: --risk, --unverified, --fixed and --opened land on the re
 // ---------------------------------------------------------------------------
 
 function addEpicWithChildren(tmpDir) {
-  const epic = runCli(['tasks', 'add', 'Epic E', '--type', 'epic', '--json'], tmpDir);
+  const epic = runCli(['tasks', 'add', 'Epic E', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir);
   const epicId = JSON.parse(epic.stdout).id;
   const ids = [];
   for (const title of ['Child A', 'Child B']) {
@@ -352,7 +352,7 @@ test('review rollup: tidies children already sitting in review', () => {
 
 test('review on a standalone ticket still gets its own review card', () => {
   const tmpDir = makeTmpDir();
-  const id = JSON.parse(runCli(['tasks', 'add', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', 'Ep', '--type', 'epic', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
+  const id = JSON.parse(runCli(['tasks', 'add', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', 'Ep', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
   runCli(['tasks', 'update', id, '--clear-parent'], tmpDir);
   const r = runCli(['tasks', 'review', id, '--shipped', 'x'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
@@ -397,18 +397,49 @@ test('moving a pinned epic to done unpins it; moving a child to review counts as
   assert.ok(!pins(tmpDir).includes(other));
 });
 
-test('every open epic is pinned, with a lane or without; updating an unpinned open epic pins it', () => {
+test('every open epic is pinned; updating an unpinned open epic pins it', () => {
   const tmpDir = makeTmpDir();
   const add = (...extra) => JSON.parse(runCli(['tasks', 'add', 'E', '--type', 'epic', '--json', ...extra], tmpDir).stdout).id;
-  const laned = add('--lane', 'canvas');
-  const bare = add('--section', 'backlog');
-  assert.ok(pins(tmpDir).includes(laned));
-  assert.ok(pins(tmpDir).includes(bare));
+  const first = add('--lane', 'canvas');
+  const second = add('--lane', 'canvas', '--section', 'backlog');
+  assert.ok(pins(tmpDir).includes(first));
+  assert.ok(pins(tmpDir).includes(second));
 
-  runCli(['tasks', 'plan', '--unpin', bare], tmpDir);
-  const r = runCli(['tasks', 'update', bare, '--add-note', 'still planned'], tmpDir);
+  runCli(['tasks', 'plan', '--unpin', second], tmpDir);
+  const r = runCli(['tasks', 'update', second, '--add-note', 'still planned'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
-  assert.ok(pins(tmpDir).includes(bare));
+  assert.ok(pins(tmpDir).includes(second));
+});
+
+test('an epic needs a lane: add refuses without one, update cannot make or leave a lane-less epic', () => {
+  const tmpDir = makeTmpDir();
+  const bare = runCli(['tasks', 'add', 'E', '--type', 'epic'], tmpDir);
+  assert.notEqual(bare.status, 0);
+  assert.match(bare.stderr, /needs a lane/);
+
+  const id = JSON.parse(runCli(['tasks', 'add', 'T', '--json'], tmpDir).stdout).id;
+  const toEpic = runCli(['tasks', 'update', id, '--type', 'epic'], tmpDir);
+  assert.notEqual(toEpic.status, 0);
+  assert.equal(runCli(['tasks', 'update', id, '--type', 'epic', '--lane', 'canvas'], tmpDir).status, 0);
+
+  const clear = runCli(['tasks', 'update', id, '--clear-lane'], tmpDir);
+  assert.notEqual(clear.status, 0);
+  assert.match(clear.stderr, /needs a lane/);
+});
+
+test('lint warns about open epics with no lane, not closed ones', () => {
+  const tmpDir = makeTmpDir();
+  const doc = readTasks(tmpDir);
+  const put = (sec, t) => doc.sections.find(s => s.id === sec).tasks.push({ checked: false, priority: 'medium', created: '2026-10-01', subtasks: [], ...t });
+  put('todo', { id: 'T901', title: 'Open bare epic', type: 'epic' });
+  put('done', { id: 'T902', title: 'Closed bare epic', type: 'epic' });
+  put('todo', { id: 'T903', title: 'Laned epic', type: 'epic', lane: 'canvas' });
+  fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc));
+  const r = runCli(['tasks', 'lint'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /epic T901 has no lane/);
+  assert.doesNotMatch(r.stderr, /T902|T903/);
+  assert.deepEqual(JSON.parse(runCli(['tasks', 'lint', '--json'], tmpDir).stdout).epicsWithoutLane, ['T901']);
 });
 
 test('review --file-left: left and unverified lines become follow-ups under the epic', () => {

@@ -71,7 +71,7 @@ import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
-import { computeRunPlan, isLiveCheckedEpic, laneDisplayName } from '../../shared/run-plan.js';
+import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane } from '../../shared/run-plan.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
@@ -105,7 +105,7 @@ function autoUnpin(doc, task) {
 
 /** Every open epic stays pinned so nothing gets lost off the Plan page (Tal, 2026-10-14; lane or not). */
 function autoPinLaneEpic(doc, task, sectionId) {
-  if (task.type !== 'epic' || ['done', REVIEW_SECTION, 'archive'].includes(sectionId)) return false;
+  if (task.type !== 'epic' || isClosedSection(sectionId)) return false;
   if (!doc.meta) doc.meta = defaultMeta();
   doc.meta = normalizeMeta(doc.meta);
   const plan = doc.meta.dailyPlan;
@@ -624,6 +624,7 @@ function cmdAdd(argv) {
     die(`invalid --energy "${values.energy}". Valid: ${ENERGY_VALUES.join(', ')}`);
   }
   assertLane(values.lane);
+  if (ticketType === 'epic' && !values.lane) die(EPIC_LANE_HELP);
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
 
@@ -1274,6 +1275,8 @@ function cmdUpdate(argv) {
     task.lane = values.lane.trim();
     changed = true;
   }
+  // Only when this update makes it an epic or strips its lane; older lane-less epics stay editable.
+  if ((values.type !== undefined || values['clear-lane']) && task.type === 'epic' && !task.lane && !isClosedSection(taskSection.id)) die(EPIC_LANE_HELP);
 
   if (values['clear-model']) {
     delete task.model;
@@ -1880,6 +1883,8 @@ function cmdLint(argv) {
 
   const result = validateTasksDoc(doc);
   for (const w of layoutWarnings(dataRoot())) printErr(`lint: warning: ${w}`);
+  const noLane = openEpicsWithoutLane(doc);
+  for (const t of noLane) printErr(`lint: warning: epic ${t.id} has no lane (ch tasks update ${t.id} --lane <slug>)`);
 
   if (result.valid) {
     // Persist note→description, missing sections, meta when --fix is set
@@ -1902,7 +1907,7 @@ function cmdLint(argv) {
       return;
     }
     if (values.json) {
-      jsonOut({ valid: true, errors: [], duplicateIds: [] });
+      jsonOut({ valid: true, errors: [], duplicateIds: [], epicsWithoutLane: noLane.map(t => t.id) });
       return;
     }
     ok('lint: valid (no errors)');
@@ -2011,6 +2016,11 @@ function cmdCapture(argv) {
   if (values.json) rest.push('--json');
   return cmdAdd(rest);
 }
+
+const EPIC_LANE_HELP = 'an epic needs a lane so it shows up on the Plan page. Add --lane <slug> (e.g. canvas, website); existing lanes: ch tasks list --json';
+
+/** Sections whose epics no longer need a lane. */
+const isClosedSection = (id) => ['done', REVIEW_SECTION, 'archive'].includes(id);
 
 /** Reject a --lane value that is not a lowercase slug. */
 function assertLane(value) {
