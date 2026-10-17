@@ -139,6 +139,7 @@ See `memory.example/` for the expected format.
 - A card or review item whose ticket has a link labelled `Thread` (`ch tasks update <id> --add-link <thread url> --link-label Thread`) shows an **Open thread** link to the Claude thread working on it
 - A dashed divider splits each lane into what can run now and what comes later, and names what it waits on ("after your pick T12", "after E4"); each id opens that ticket. `Co-task:` tickets are yours: ones with "pick" in the title or a `design` label get a design canvas in the Design round lane, other co-tasks show as a to-do card there. Lane names show capitalized ("timeline" reads Timeline), and each lane head counts its epics and open tickets
 - Each card shows an In progress chip (the epic, or an open ticket in it, is in the In progress column) or a Ready now / Partly ready / Later chip, why it waits, a copy button for `/ship-task <id>`, and a Start / Started / Done toggle (remembered in this browser). The card's id opens the ticket in place
+- Every ticket needs a project: `ch tasks add` and `capture` refuse without `--project <slug>` (the error lists the valid ones) unless `--no-project` marks a personal task; a child made with `--parent`/`--review-of` inherits its parent's project, and the dashboard's New task form requires a project or the "No project" tick.
 - Every epic needs a lane (`ch tasks add --type epic` refuses without `--lane`, the dashboard's New task form asks for one, `ch tasks lint` warns about open epics without one).
 - Ready-for-review cards start collapsed (click the checks chip to open one). When review notes are open, the bar above the cards lists them (Show notes), files them into each area's next epic (File review) or hands them to Claude; the manual-only `/process-review-notes` skill does the same sweep from a session.
 - Cards in a lane run in order; in "No lane yet" epics with no dependency between them are stacked in one column and can run at the same time. The first pill shows how many app builds could start now
@@ -338,7 +339,7 @@ Canonical task store (gitignored). Copy `tasks.example.json`. Full schema: [`cli
 Notable optional fields: `dueDate`, `blocked`, `waitingOn`, `assignee`, `estimateMinutes` (minutes — **not** story points; display as `30m`/`2h`/`1d`), `labels`, `links`, `blockedBy`, `history`, `checks` (per-ticket tick-list `{text, checked, addedAt}`, separate from subtasks and never blocks done; `ch tasks update T7 --add-check "text" --check-check 1`), `result` (what shipped: `{at, shipped[], left?[], tests?[], ci}`) and `reviewOf` (the ticket whose review this one came from). Shipped work waits in the **Ready for review** column (`ch tasks review T7 --shipped "..." --check "..."`) and moves to Done when its last check is ticked (tickets under an epic fold their result and checks into the epic, so the column shows one card per epic); the Run plan tab lists it oldest first.
 
 ```bash
-ch tasks add "Ship release notes" --due 2026-09-01 --estimate 2h --assignee alex --label docs
+ch tasks add "Ship release notes" --no-project --due 2026-09-01 --estimate 2h --assignee alex --label docs
 ch tasks update T7 --blocked --waiting-on "design review" --add-link https://example.com
 ch tasks dump --active
 ```

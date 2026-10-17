@@ -30,6 +30,7 @@ import {
   mountFieldLayoutSections,
 } from './task-field-layout.js';
 import { mountTicketPicker } from './ticket-picker.js';
+import { resolveCreateProject } from '../../shared/project-required.js';
 
 const PRIORITIES = ['low', 'medium', 'high'];
 
@@ -79,6 +80,7 @@ export function openCreateTaskModal(sectionId, opts = {}) {
     jiraKey: '',
     issueUrl: '',
     project: opts.projectId || '',
+    noProject: false,
     energy: null,
     model: null,
     snoozeUntil: null,
@@ -329,8 +331,21 @@ function buildProjectField() {
   projectDatalist.innerHTML = metaProjects
     .map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name || p.id)}</option>`)
     .join('');
+  const noProjectLabel = document.createElement('label');
+  noProjectLabel.className = 'td-check-label';
+  const noProjectBox = document.createElement('input');
+  noProjectBox.type = 'checkbox';
+  noProjectBox.checked = !!draft.noProject;
+  noProjectBox.addEventListener('change', () => {
+    draft.noProject = noProjectBox.checked;
+    projectInput.disabled = draft.noProject;
+    projectInput.classList.remove('tc-title-error');
+  });
+  projectInput.disabled = !!draft.noProject;
+  noProjectLabel.append(noProjectBox, ' No project (personal task)');
   field.appendChild(pl2);
   field.appendChild(projectInput);
+  field.appendChild(noProjectLabel);
   return field;
 }
 
@@ -843,7 +858,23 @@ function submitCreate() {
   }
   if (!tasks[sectionId]) tasks[sectionId] = [];
 
-  const projectId = (draft.project || '').trim() || null;
+  const parentTask = draft.parentId
+    ? Object.values(tasks).flat().find(t => t.id === draft.parentId)
+    : null;
+  const resolved = resolveCreateProject({
+    project: draft.project,
+    noProject: draft.noProject,
+    parentProject: parentTask?.project || null,
+    metaProjects: state.meta?.projects,
+  });
+  if (resolved.error) {
+    const projectInput = document.querySelector('#taskCreateOverlay input[list="tcProjectList"]');
+    projectInput?.classList.add('tc-title-error');
+    projectInput?.focus();
+    showStatus('Pick a project (or tick "No project" for a personal task)');
+    return;
+  }
+  const projectId = resolved.project;
   const taskId = computeNextTaskId(state, projectId);
   const estimateMinutes = draft.estimate ? parseEstimate(draft.estimate) : null;
   if (draft.estimate && estimateMinutes == null) {
@@ -886,7 +917,7 @@ function submitCreate() {
     startDate: draft.startDate || null,
     jiraKey,
     issueUrl: (draft.issueUrl || '').trim() || null,
-    project: (draft.project || '').trim() || null,
+    project: projectId,
     energy: draft.energy || null,
     ...(draft.type === 'epic' ? { lane } : {}),
     model: normalizeModel(draft.model),
