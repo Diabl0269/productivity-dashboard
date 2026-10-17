@@ -179,7 +179,7 @@ test('flatTasks preserves section order then task order', () => {
 test('tasks add: assigns unique id and sets created date', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
-    const result = runCli(['tasks', 'add', 'New synthetic task', '--json'], tmpDir);
+    const result = runCli(['tasks', 'add', '--no-project', 'New synthetic task', '--json'], tmpDir);
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
     const out = JSON.parse(result.stdout.trim());
     assert.equal(out.id, 'T7', `expected T7, got ${out.id}`);
@@ -200,7 +200,7 @@ test('tasks move: preserves description, subtasks, priority and sets updated', (
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
     // Add a task with a description (--note is a legacy alias)
-    const addResult = runCli(['tasks', 'add', 'Task to move', '--section', 'todo', '--note', 'original note', '--json'], tmpDir);
+    const addResult = runCli(['tasks', 'add', '--no-project', 'Task to move', '--section', 'todo', '--note', 'original note', '--json'], tmpDir);
     assert.equal(addResult.status, 0, `add failed: ${addResult.stderr}`);
     const addOut = JSON.parse(addResult.stdout.trim());
     const addedId = addOut.id;
@@ -488,7 +488,7 @@ test('tasks add: accepts due, blocked, label, link, blocked-by', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
     const result = runCli([
-      'tasks', 'add', 'New with meta',
+      'tasks', 'add', '--no-project', 'New with meta',
       '--due', '2026-09-01',
       '--blocked',
       '--waiting-on', 'vendor',
@@ -570,7 +570,7 @@ test('tasks add: accepts estimate and assignee', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
     const result = runCli([
-      'tasks', 'add', 'Timed work',
+      'tasks', 'add', '--no-project', 'Timed work',
       '--estimate', '1d',
       '--assignee', 'jordan',
       '--json',
@@ -636,7 +636,7 @@ test('tasks dump: includes dueDate assignee estimateMinutes labels links blocked
 test('tasks capture: adds to inbox', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
-    const result = runCli(['tasks', 'capture', 'Quick idea', '--json'], tmpDir);
+    const result = runCli(['tasks', 'capture', '--no-project', 'Quick idea', '--json'], tmpDir);
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
     const out = JSON.parse(result.stdout.trim());
     assert.equal(out.section, 'inbox');
@@ -894,7 +894,7 @@ test('tasks get: shows multiple blockers with status', () => {
 
 test('lane: add/update/clear via CLI, shown by get, bad slug rejected', () => {
   const tmp = makeTmpDir(FIXTURE_SAMPLE);
-  const add = runCli(['tasks', 'add', 'Laned task', '--type', 'task', '--lane', 'frontend-1', '--json'], tmp);
+  const add = runCli(['tasks', 'add', '--no-project', 'Laned task', '--type', 'task', '--lane', 'frontend-1', '--json'], tmp);
   assert.equal(add.status, 0, add.stderr);
   const id = JSON.parse(add.stdout).id;
   const find = () => readTasks(tmp).sections.flatMap(s => s.tasks).find(t => t.id === id);
@@ -907,7 +907,7 @@ test('lane: add/update/clear via CLI, shown by get, bad slug rejected', () => {
   const bad = runCli(['tasks', 'update', id, '--lane', 'Bad Lane'], tmp);
   assert.notEqual(bad.status, 0);
   assert.equal(find().lane, 'backend');
-  assert.notEqual(runCli(['tasks', 'add', 'x', '--lane', 'UP'], tmp).status, 0);
+  assert.notEqual(runCli(['tasks', 'add', '--no-project', 'x', '--lane', 'UP'], tmp).status, 0);
 
   assert.equal(runCli(['tasks', 'update', id, '--clear-lane'], tmp).status, 0);
   assert.equal('lane' in find(), false);

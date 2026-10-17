@@ -227,7 +227,7 @@ test('move into review checks the ticket; move out unchecks it', () => {
 test('add --review-of records the link; get shows both directions', () => {
   const dir = makeTmpDir();
   runCli(['tasks', 'review', 'T3', '--shipped', 'did a thing', '--left', 'a leftover', '--check', 'c'], dir);
-  const add = runCli(['tasks', 'add', 'Follow-up', '--review-of', 'T3', '--json'], dir);
+  const add = runCli(['tasks', 'add', '--no-project', 'Follow-up', '--review-of', 'T3', '--json'], dir);
   assert.equal(add.status, 0, add.stderr);
   const newId = JSON.parse(add.stdout).id;
   assert.equal(find(dir, newId).task.reviewOf, 'T3');
@@ -241,7 +241,7 @@ test('add --review-of records the link; get shows both directions', () => {
   const json = JSON.parse(runCli(['tasks', 'get', 'T3', '--json'], dir).stdout);
   assert.deepEqual(json.followUps.map(f => f.id), [newId]);
 
-  assert.notEqual(runCli(['tasks', 'add', 'Bad', '--review-of', 'T999'], dir).status, 0);
+  assert.notEqual(runCli(['tasks', 'add', '--no-project', 'Bad', '--review-of', 'T999'], dir).status, 0);
   assert.equal(runCli(['tasks', 'lint'], dir).status, 0);
 });
 
@@ -293,11 +293,11 @@ test('ch tasks review: --risk, --unverified, --fixed and --opened land on the re
 // ---------------------------------------------------------------------------
 
 function addEpicWithChildren(tmpDir) {
-  const epic = runCli(['tasks', 'add', 'Epic E', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir);
+  const epic = runCli(['tasks', 'add', '--no-project', 'Epic E', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir);
   const epicId = JSON.parse(epic.stdout).id;
   const ids = [];
   for (const title of ['Child A', 'Child B']) {
-    const r = runCli(['tasks', 'add', title, '--parent', epicId, '--json'], tmpDir);
+    const r = runCli(['tasks', 'add', '--no-project', title, '--parent', epicId, '--json'], tmpDir);
     ids.push(JSON.parse(r.stdout).id);
   }
   return { epicId, ids };
@@ -352,7 +352,7 @@ test('review rollup: tidies children already sitting in review', () => {
 
 test('review on a standalone ticket still gets its own review card', () => {
   const tmpDir = makeTmpDir();
-  const id = JSON.parse(runCli(['tasks', 'add', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', 'Ep', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
+  const id = JSON.parse(runCli(['tasks', 'add', '--no-project', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', '--no-project', 'Ep', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
   runCli(['tasks', 'update', id, '--clear-parent'], tmpDir);
   const r = runCli(['tasks', 'review', id, '--shipped', 'x'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
@@ -399,7 +399,7 @@ test('moving a pinned epic to done unpins it; moving a child to review counts as
 
 test('every open epic is pinned; updating an unpinned open epic pins it', () => {
   const tmpDir = makeTmpDir();
-  const add = (...extra) => JSON.parse(runCli(['tasks', 'add', 'E', '--type', 'epic', '--json', ...extra], tmpDir).stdout).id;
+  const add = (...extra) => JSON.parse(runCli(['tasks', 'add', '--no-project', 'E', '--type', 'epic', '--json', ...extra], tmpDir).stdout).id;
   const first = add('--lane', 'canvas');
   const second = add('--lane', 'canvas', '--section', 'backlog');
   assert.ok(pins(tmpDir).includes(first));
@@ -413,11 +413,11 @@ test('every open epic is pinned; updating an unpinned open epic pins it', () => 
 
 test('an epic needs a lane: add refuses without one, update cannot make or leave a lane-less epic', () => {
   const tmpDir = makeTmpDir();
-  const bare = runCli(['tasks', 'add', 'E', '--type', 'epic'], tmpDir);
+  const bare = runCli(['tasks', 'add', '--no-project', 'E', '--type', 'epic'], tmpDir);
   assert.notEqual(bare.status, 0);
   assert.match(bare.stderr, /needs a lane/);
 
-  const id = JSON.parse(runCli(['tasks', 'add', 'T', '--json'], tmpDir).stdout).id;
+  const id = JSON.parse(runCli(['tasks', 'add', '--no-project', 'T', '--json'], tmpDir).stdout).id;
   const toEpic = runCli(['tasks', 'update', id, '--type', 'epic'], tmpDir);
   assert.notEqual(toEpic.status, 0);
   assert.equal(runCli(['tasks', 'update', id, '--type', 'epic', '--lane', 'canvas'], tmpDir).status, 0);

@@ -167,7 +167,7 @@ test('ch tasks split: backs up, splits, and every command keeps working', () => 
   const after = runCli(['tasks', 'list', '--json'], home);
   assert.equal(after.stdout, before.stdout);
 
-  const add = runCli(['tasks', 'add', 'Split layout ticket', '--json'], home);
+  const add = runCli(['tasks', 'add', '--no-project', 'Split layout ticket', '--json'], home);
   assert.equal(add.status, 0, add.stderr);
   const id = JSON.parse(add.stdout).id;
   assert.ok(fs.existsSync(ticketPath(home, id)), 'new ticket gets its own file');
@@ -185,7 +185,7 @@ test('ch tasks backup and restore work on a split home', () => {
   const b = JSON.parse(runCli(['tasks', 'backup', '--json'], home).stdout);
   assert.equal(fs.readFileSync(b.path, 'utf8'), snapshot, 'backup is the assembled document');
 
-  const add = JSON.parse(runCli(['tasks', 'add', 'Gone after restore', '--json'], home).stdout);
+  const add = JSON.parse(runCli(['tasks', 'add', '--no-project', 'Gone after restore', '--json'], home).stdout);
   assert.ok(fs.existsSync(ticketPath(home, add.id)));
   const r = runCli(['tasks', 'restore', b.name], home);
   assert.equal(r.status, 0, r.stderr);

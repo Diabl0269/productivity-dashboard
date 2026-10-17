@@ -7,7 +7,7 @@
  * Subcommands:
  *   list [--section S] [--priority P] [--active] [--json]
  *   get <id> [--json]
- *   add "<title>" [--section todo] [--priority medium] [--type task] [--parent T1] [--description "..."] [--color "#RRGGBB"]
+ *   add "<title>" (--project slug | --no-project) [--section todo] [--priority medium] [--type task] [--parent T1] [--description "..."] [--color "#RRGGBB"]
  *              [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--log-time 30m|2h]
  *              [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
  *              [--blocked] [--waiting-on "..."] [--label L] [--link URL] [--link-label "..."] [--blocked-by T1]
@@ -72,6 +72,7 @@ import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
 import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane } from '../../shared/run-plan.js';
+import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
@@ -563,6 +564,7 @@ function cmdAdd(argv) {
     jira:          { type: 'string' },
     issue:         { type: 'string' },
     project:       { type: 'string' },
+    'no-project':  { type: 'boolean' },
     energy:        { type: 'string' },
     lane:          { type: 'string' },
     model: { type: 'string' },
@@ -649,7 +651,15 @@ function cmdAdd(argv) {
     loggedMinutes = parseLoggedMinutes(values['log-time'], '--log-time');
   }
 
-  const projectId = values.project?.trim() || null;
+  const parentRef = values.parent || values['review-of'];
+  const resolved = resolveCreateProject({
+    project: values.project,
+    noProject: values['no-project'],
+    parentProject: parentRef ? findTask(doc, parentRef)?.task.project || null : null,
+    metaProjects: doc.meta.projects,
+  });
+  if (resolved.error) die(resolved.error);
+  const projectId = resolved.project;
   const id = nextId(doc, projectId);
   const description = values.description ?? values.note;
 
@@ -672,7 +682,7 @@ function cmdAdd(argv) {
   if (values.start) task.startDate = values.start;
   if (values.jira) task.jiraKey = values.jira.trim().toUpperCase();
   if (values.issue) task.issueUrl = values.issue.trim();
-  if (values.project) task.project = values.project.trim();
+  if (projectId) task.project = projectId;
   if (values.energy) task.energy = values.energy;
   if (values.lane) task.lane = values.lane.trim();
   if (values.model) task.model = normalizeModel(values.model);
@@ -2005,14 +2015,18 @@ function cmdLint(argv) {
 function cmdCapture(argv) {
   const { values, positionals } = parse(argv, {
     priority: { type: 'string', short: 'p', default: 'medium' },
+    project:  { type: 'string' },
+    'no-project': { type: 'boolean' },
     json:     { type: 'boolean', short: 'j' },
   });
   const title = positionals[0];
-  if (!title) die('usage: ch tasks capture "<title>"');
+  if (!title) die('usage: ch tasks capture "<title>" (--project slug | --no-project)');
 
   // Reuse add with --section inbox
   const rest = [title, '--section', 'inbox'];
   if (values.priority) rest.push('--priority', values.priority);
+  if (values.project) rest.push('--project', values.project);
+  if (values['no-project']) rest.push('--no-project');
   if (values.json) rest.push('--json');
   return cmdAdd(rest);
 }
@@ -2339,7 +2353,7 @@ const USAGE = `ch tasks <subcommand> [args...]
 Subcommands:
   list [--section S] [--priority P] [--active] [--json]
   get <id> [--json]
-  capture "<title>" [--priority medium] [--json]
+  capture "<title>" (--project slug | --no-project) [--priority medium] [--json]
   plan [--pin T1] [--unpin T1] [--carry] [--json]
   runplan [--json]
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
@@ -2350,7 +2364,7 @@ Subcommands:
          a design ticket (label design) needs a design-board link: --design-link URL or an existing artifact link
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
-      [--project slug] [--energy deep|shallow|errands|creative] [--lane slug]
+      (--project slug | --no-project; a --parent/--review-of child inherits its parent's project) [--energy deep|shallow|errands|creative] [--lane slug]
       [--model "claude-sonnet"] [--snooze YYYY-MM-DD]
       [--decision "..."] [--log-time 30m|2h]
       [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
