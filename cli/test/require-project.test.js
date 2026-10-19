@@ -56,7 +56,7 @@ test('ch tasks add --project gets that project prefix; --no-project gets a T id'
 
 test('a child inherits its --parent and --review-of project', () => {
   const dir = home();
-  const epic = JSON.parse(ch(['tasks', 'add', 'E', '--type', 'epic', '--lane', 'canvas', '--project', 'backend', '--json'], dir).out).id;
+  const epic = JSON.parse(ch(['tasks', 'add', 'E', '--type', 'epic', '--lane', 'canvas', '--label', 'model:opus', '--project', 'backend', '--json'], dir).out).id;
   const child = JSON.parse(ch(['tasks', 'add', 'C', '--parent', epic, '--json'], dir).out).id;
   assert.match(child, /^BAC\d+$/);
   const followUp = JSON.parse(ch(['tasks', 'add', 'F', '--review-of', child, '--json'], dir).out).id;

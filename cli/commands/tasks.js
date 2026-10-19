@@ -13,6 +13,7 @@
  *              [--blocked] [--waiting-on "..."] [--label L] [--link URL] [--link-label "..."] [--blocked-by T1]
  *              [--review-of T1]
  *   (add/update also take --lane <slug> and update --clear-lane: run-plan lane)
+ *   (an epic needs a lane and a model:<tier> label naming its orchestrator)
  *   runplan [--json]
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
  *   stale [--days N] [--json]
@@ -71,7 +72,7 @@ import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
-import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane } from '../../shared/run-plan.js';
+import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
@@ -627,6 +628,7 @@ function cmdAdd(argv) {
   }
   assertLane(values.lane);
   if (ticketType === 'epic' && !values.lane) die(EPIC_LANE_HELP);
+  if (ticketType === 'epic' && !(values.label || []).some(isModelLabel)) die(EPIC_MODEL_HELP);
   assertDueDate(values.snooze, '--snooze');
   assertRecurrenceFreq(values.recur, '--recur');
 
@@ -1287,6 +1289,7 @@ function cmdUpdate(argv) {
   }
   // Only when this update makes it an epic or strips its lane; older lane-less epics stay editable.
   if ((values.type !== undefined || values['clear-lane']) && task.type === 'epic' && !task.lane && !isClosedSection(taskSection.id)) die(EPIC_LANE_HELP);
+  const becomesEpic = values.type !== undefined && task.type === 'epic';
 
   if (values['clear-model']) {
     delete task.model;
@@ -1430,6 +1433,9 @@ function cmdUpdate(argv) {
       changed = true;
     }
   }
+
+  // Turning a ticket into an epic needs a model label (existing or added now); older label-less epics stay editable.
+  if (becomesEpic && !(task.labels || []).some(isModelLabel) && !isClosedSection(taskSection.id)) die(EPIC_MODEL_HELP);
 
   if (values['clear-links']) {
     delete task.links;
@@ -1895,6 +1901,7 @@ function cmdLint(argv) {
   for (const w of layoutWarnings(dataRoot())) printErr(`lint: warning: ${w}`);
   const noLane = openEpicsWithoutLane(doc);
   for (const t of noLane) printErr(`lint: warning: epic ${t.id} has no lane (ch tasks update ${t.id} --lane <slug>)`);
+  for (const t of openEpicsWithoutModel(doc)) printErr(`lint: warning: epic ${t.id} has no model label (ch tasks update ${t.id} --add-label model:opus|sonnet)`);
 
   if (result.valid) {
     // Persist note→description, missing sections, meta when --fix is set
@@ -1917,7 +1924,7 @@ function cmdLint(argv) {
       return;
     }
     if (values.json) {
-      jsonOut({ valid: true, errors: [], duplicateIds: [], epicsWithoutLane: noLane.map(t => t.id) });
+      jsonOut({ valid: true, errors: [], duplicateIds: [], epicsWithoutLane: noLane.map(t => t.id), epicsWithoutModel: openEpicsWithoutModel(doc).map(t => t.id) });
       return;
     }
     ok('lint: valid (no errors)');
@@ -2029,6 +2036,13 @@ function cmdCapture(argv) {
   if (values['no-project']) rest.push('--no-project');
   if (values.json) rest.push('--json');
   return cmdAdd(rest);
+}
+
+const EPIC_MODEL_HELP = 'an epic needs a model label naming who orchestrates it: --label model:opus (judgment, many tickets sharing files) or model:sonnet (a few independent tickets); also model:haiku or model:local';
+
+/** True for a `model:<opus|sonnet|haiku|local>` label. */
+function isModelLabel(label) {
+  return /^model:\s*(opus|sonnet|haiku|local)\s*$/i.test(String(label));
 }
 
 const EPIC_LANE_HELP = 'an epic needs a lane so it shows up on the Plan page. Add --lane <slug> (e.g. canvas, website); existing lanes: ch tasks list --json';
@@ -2370,6 +2384,7 @@ Subcommands:
       [--recur daily|weekly|monthly] [--recur-interval N] [--add-note "..."]
       [--estimate 2h|30m|1d] [--assignee name] [--blocked] [--waiting-on "..."]
       [--label L] [--link URL] [--blocked-by T1] [--review-of T1]
+      (--type epic also needs --lane and --label model:opus|sonnet|haiku|local: the model that orchestrates it)
   move <id> <section>
   done <id>
   update <id> [--title "..."] [--description "..."] [--add-description "..."] [--priority P]

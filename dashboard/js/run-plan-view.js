@@ -599,6 +599,7 @@ function renderCard(card, phase) {
   row.appendChild(running
     ? el('span', 'rp-chip rp-chip-running', 'In progress')
     : el('span', `rp-chip rp-chip-${card.state}`, coTasks ? 'Your to-do' : (STATE_LABEL[card.state] || card.state)));
+  if (card.model) row.appendChild(el('span', 'rp-chip rp-chip-model', `Orchestrator: ${card.model}`));
   article.appendChild(row);
 
   article.appendChild(el('div', 'rp-title', card.isRest ? `${card.title} (rest)` : card.title));
