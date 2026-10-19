@@ -26,6 +26,18 @@ export function openEpicsWithoutLane(doc) {
   return out;
 }
 
+/** Open epics with no `model:` label naming who orchestrates them. */
+export function openEpicsWithoutModel(doc) {
+  const out = [];
+  for (const section of doc?.sections || []) {
+    if (CLOSED_EPIC_SECTIONS.includes(section.id)) continue;
+    for (const t of section.tasks || []) {
+      if (t.type === 'epic' && !(t.labels || []).some(l => /^model:\s*\S/i.test(String(l)))) out.push(t);
+    }
+  }
+  return out;
+}
+
 /** Lane slugs shown as words: "timeline" -> "Timeline", "mod-lanes" -> "Mod lanes", "ai" -> "AI". */
 const LANE_ACRONYMS = new Set(['ai', 'ui', 'ux', 'cli', 'midi', 'api', 'ci']);
 export function laneDisplayName(slug) {

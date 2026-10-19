@@ -106,6 +106,7 @@ test('apply files tickets, the design pair, hands checks over and finishes the r
   assert.equal(idea.s, 'backlog');
   const laterEpic = find(doc, idea.t.parentId);
   assert.deepEqual([laterEpic.s, laterEpic.t.title, laterEpic.t.lane], ['backlog', 'Canvas: later', 'canvas']);
+  assert.deepEqual(laterEpic.t.labels, ['model:opus']);
   assert.ok(!res.pin.includes(laterEpic.t.id), 'later epic is not pinned');
   // no usable account epic (the in-progress one is a "(later)" epic): new one, blocked by it, pinned
   const acct = find(doc, find(doc, doc.sections.flatMap(s => s.tasks).find(x => x.reviewOf === 'T4').id).t.parentId);
@@ -155,6 +156,7 @@ test('CLI: notes route prints the plan; notes send files and moves the review to
   const after = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8'));
   const epic = after.sections.flatMap(s => s.tasks).find(t => t.title === 'Account follow-ups');
   assert.ok(epic);
+  assert.deepEqual(epic.labels, ['model:opus'], 'new epics name their orchestrator');
   assert.ok(after.meta.dailyPlan.taskIds.includes(epic.id), 'new follow-ups epic is pinned');
   assert.equal(runCli(['tasks', 'lint'], home).status, 0);
 });

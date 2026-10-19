@@ -163,7 +163,7 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
         : null;
       epicId = newId(e.project);
       const epic = makeTask(epicId, e.title, {
-        section: e.section, project: e.project, type: 'epic', lane: group.area, now,
+        section: e.section, project: e.project, type: 'epic', lane: group.area, labels: ['model:opus'], now,
         blockedBy: blocker ? [blocker.task.id] : [],
         description: `## In plain words\n**What you'll notice:** ${e.section === 'backlog' ? 'ideas noted during reviews wait here' : 'fixes and design picks noted during reviews land here'}.\n**Why it matters:** keeps review notes with the rest of the ${laneDisplayName(group.area)} work.\n**How to check it:** open the tickets under it.\n\n## Technical detail (for Claude)\nCreated by File review.`,
       });

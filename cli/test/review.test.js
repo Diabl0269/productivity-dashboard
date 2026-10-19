@@ -293,7 +293,7 @@ test('ch tasks review: --risk, --unverified, --fixed and --opened land on the re
 // ---------------------------------------------------------------------------
 
 function addEpicWithChildren(tmpDir) {
-  const epic = runCli(['tasks', 'add', '--no-project', 'Epic E', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir);
+  const epic = runCli(['tasks', 'add', '--no-project', 'Epic E', '--type', 'epic', '--lane', 'canvas', '--label', 'model:opus', '--json'], tmpDir);
   const epicId = JSON.parse(epic.stdout).id;
   const ids = [];
   for (const title of ['Child A', 'Child B']) {
@@ -352,7 +352,7 @@ test('review rollup: tidies children already sitting in review', () => {
 
 test('review on a standalone ticket still gets its own review card', () => {
   const tmpDir = makeTmpDir();
-  const id = JSON.parse(runCli(['tasks', 'add', '--no-project', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', '--no-project', 'Ep', '--type', 'epic', '--lane', 'canvas', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
+  const id = JSON.parse(runCli(['tasks', 'add', '--no-project', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', '--no-project', 'Ep', '--type', 'epic', '--lane', 'canvas', '--label', 'model:opus', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
   runCli(['tasks', 'update', id, '--clear-parent'], tmpDir);
   const r = runCli(['tasks', 'review', id, '--shipped', 'x'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
@@ -399,7 +399,7 @@ test('moving a pinned epic to done unpins it; moving a child to review counts as
 
 test('every open epic is pinned; updating an unpinned open epic pins it', () => {
   const tmpDir = makeTmpDir();
-  const add = (...extra) => JSON.parse(runCli(['tasks', 'add', '--no-project', 'E', '--type', 'epic', '--json', ...extra], tmpDir).stdout).id;
+  const add = (...extra) => JSON.parse(runCli(['tasks', 'add', '--no-project', 'E', '--type', 'epic', '--label', 'model:opus', '--json', ...extra], tmpDir).stdout).id;
   const first = add('--lane', 'canvas');
   const second = add('--lane', 'canvas', '--section', 'backlog');
   assert.ok(pins(tmpDir).includes(first));
@@ -420,11 +420,45 @@ test('an epic needs a lane: add refuses without one, update cannot make or leave
   const id = JSON.parse(runCli(['tasks', 'add', '--no-project', 'T', '--json'], tmpDir).stdout).id;
   const toEpic = runCli(['tasks', 'update', id, '--type', 'epic'], tmpDir);
   assert.notEqual(toEpic.status, 0);
-  assert.equal(runCli(['tasks', 'update', id, '--type', 'epic', '--lane', 'canvas'], tmpDir).status, 0);
+  assert.equal(runCli(['tasks', 'update', id, '--type', 'epic', '--lane', 'canvas', '--add-label', 'model:opus'], tmpDir).status, 0);
 
   const clear = runCli(['tasks', 'update', id, '--clear-lane'], tmpDir);
   assert.notEqual(clear.status, 0);
   assert.match(clear.stderr, /needs a lane/);
+});
+
+test('an epic needs a model label: add and update refuse without one, older label-less epics stay editable', () => {
+  const tmpDir = makeTmpDir();
+  const bare = runCli(['tasks', 'add', '--no-project', 'E', '--type', 'epic', '--lane', 'canvas'], tmpDir);
+  assert.notEqual(bare.status, 0);
+  assert.match(bare.stderr, /needs a model label/);
+  assert.notEqual(runCli(['tasks', 'add', '--no-project', 'E', '--type', 'epic', '--lane', 'canvas', '--label', 'model:gpt'], tmpDir).status, 0);
+
+  const id = JSON.parse(runCli(['tasks', 'add', '--no-project', 'T', '--json'], tmpDir).stdout).id;
+  const toEpic = runCli(['tasks', 'update', id, '--type', 'epic', '--lane', 'canvas'], tmpDir);
+  assert.notEqual(toEpic.status, 0);
+  assert.match(toEpic.stderr, /needs a model label/);
+  assert.equal(runCli(['tasks', 'update', id, '--type', 'epic', '--lane', 'canvas', '--add-label', 'model:sonnet'], tmpDir).status, 0);
+
+  // A label-less epic made before this rule can still be edited.
+  const doc = readTasks(tmpDir);
+  doc.sections.find(s => s.id === 'todo').tasks.push({ checked: false, priority: 'medium', created: '2026-10-01', subtasks: [], id: 'T950', title: 'Old', type: 'epic', lane: 'canvas' });
+  fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc));
+  assert.equal(runCli(['tasks', 'update', 'T950', '--title', 'Older'], tmpDir).status, 0);
+});
+
+test('lint warns about open epics with no model label, not closed or labelled ones', () => {
+  const tmpDir = makeTmpDir();
+  const doc = readTasks(tmpDir);
+  const put = (sec, t) => doc.sections.find(s => s.id === sec).tasks.push({ checked: false, priority: 'medium', created: '2026-10-01', subtasks: [], lane: 'canvas', type: 'epic', ...t });
+  put('todo', { id: 'T911', title: 'Open unlabelled epic' });
+  put('done', { id: 'T912', title: 'Closed unlabelled epic' });
+  put('todo', { id: 'T913', title: 'Labelled epic', labels: ['model:opus'] });
+  fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc));
+  const r = runCli(['tasks', 'lint'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /epic T911 has no model label \(ch tasks update T911 --add-label model:opus\|sonnet\)/);
+  assert.doesNotMatch(r.stderr, /T912|T913/);
 });
 
 test('lint warns about open epics with no lane, not closed ones', () => {
@@ -433,7 +467,7 @@ test('lint warns about open epics with no lane, not closed ones', () => {
   const put = (sec, t) => doc.sections.find(s => s.id === sec).tasks.push({ checked: false, priority: 'medium', created: '2026-10-01', subtasks: [], ...t });
   put('todo', { id: 'T901', title: 'Open bare epic', type: 'epic' });
   put('done', { id: 'T902', title: 'Closed bare epic', type: 'epic' });
-  put('todo', { id: 'T903', title: 'Laned epic', type: 'epic', lane: 'canvas' });
+  put('todo', { id: 'T903', title: 'Laned epic', type: 'epic', lane: 'canvas', labels: ['model:opus'] });
   fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc));
   const r = runCli(['tasks', 'lint'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
