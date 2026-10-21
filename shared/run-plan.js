@@ -38,6 +38,19 @@ export function openEpicsWithoutModel(doc) {
   return out;
 }
 
+/** Open epics missing from the day plan's pins: every open epic stays on the Plan page (Tal, 2026-10-14). */
+export function openEpicsNotPinned(doc) {
+  const pinned = new Set(doc?.meta?.dailyPlan?.taskIds || []);
+  const out = [];
+  for (const section of doc?.sections || []) {
+    if (CLOSED_EPIC_SECTIONS.includes(section.id)) continue;
+    for (const t of section.tasks || []) {
+      if (t.type === 'epic' && !pinned.has(t.id)) out.push(t);
+    }
+  }
+  return out;
+}
+
 /** Lane slugs shown as words: "timeline" -> "Timeline", "mod-lanes" -> "Mod lanes", "ai" -> "AI". */
 const LANE_ACRONYMS = new Set(['ai', 'ui', 'ux', 'cli', 'midi', 'api', 'ci']);
 export function laneDisplayName(slug) {

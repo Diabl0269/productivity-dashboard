@@ -458,7 +458,22 @@ test('lint warns about open epics with no model label, not closed or labelled on
   const r = runCli(['tasks', 'lint'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /epic T911 has no model label \(ch tasks update T911 --add-label model:opus\|sonnet\)/);
-  assert.doesNotMatch(r.stderr, /T912|T913/);
+  assert.doesNotMatch(r.stderr, /T91[23] has no model label/);
+});
+
+test('lint warns about open epics not pinned to the plan, not pinned or closed ones', () => {
+  const tmpDir = makeTmpDir();
+  const doc = readTasks(tmpDir);
+  const put = (sec, t) => doc.sections.find(s => s.id === sec).tasks.push({ checked: false, priority: 'medium', created: '2026-10-01', subtasks: [], lane: 'canvas', type: 'epic', labels: ['model:opus'], ...t });
+  put('in-progress', { id: 'T921', title: 'Unpinned epic' });
+  put('todo', { id: 'T922', title: 'Pinned epic' });
+  put('done', { id: 'T923', title: 'Closed epic' });
+  doc.meta = { ...(doc.meta || {}), dailyPlan: { date: '2026-10-01', taskIds: ['T922'], carriedIds: [] } };
+  fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc));
+  const r = runCli(['tasks', 'lint'], tmpDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /epic T921 is not pinned to the plan \(ch tasks plan --pin T921\)/);
+  assert.doesNotMatch(r.stderr, /T922|T923/);
 });
 
 test('lint warns about open epics with no lane, not closed ones', () => {
@@ -472,7 +487,7 @@ test('lint warns about open epics with no lane, not closed ones', () => {
   const r = runCli(['tasks', 'lint'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /epic T901 has no lane/);
-  assert.doesNotMatch(r.stderr, /T902|T903/);
+  assert.doesNotMatch(r.stderr, /T90[23] has no lane/);
   assert.deepEqual(JSON.parse(runCli(['tasks', 'lint', '--json'], tmpDir).stdout).epicsWithoutLane, ['T901']);
 });
 

@@ -72,7 +72,7 @@ import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
-import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
+import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsNotPinned, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
@@ -1902,6 +1902,8 @@ function cmdLint(argv) {
   const noLane = openEpicsWithoutLane(doc);
   for (const t of noLane) printErr(`lint: warning: epic ${t.id} has no lane (ch tasks update ${t.id} --lane <slug>)`);
   for (const t of openEpicsWithoutModel(doc)) printErr(`lint: warning: epic ${t.id} has no model label (ch tasks update ${t.id} --add-label model:opus|sonnet)`);
+  // Every open epic stays pinned (2026-10-14); a hand unpin or a write that skipped the CLI drops it off the Plan page.
+  for (const t of openEpicsNotPinned(doc)) printErr(`lint: warning: epic ${t.id} is not pinned to the plan (ch tasks plan --pin ${t.id})`);
 
   if (result.valid) {
     // Persist note→description, missing sections, meta when --fix is set
