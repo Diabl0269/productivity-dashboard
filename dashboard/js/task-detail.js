@@ -1563,6 +1563,26 @@ function buildLinksFieldContent(task) {
   return wrap;
 }
 
+// task.id is regenerated on every load, so key drafts by the file's stable taskId (title as fallback).
+function draftKey(task, field) {
+  return (task.taskId || task.title || 'untitled') + ':' + field;
+}
+
+/**
+ * Keep a textarea's unsent text in localStorage so a refresh or crash does not lose it.
+ * Restores any stored draft now; returns clearDraft() to call once the text is committed.
+ */
+function keepDraft(textarea, key) {
+  const storeKey = 'td-draft:' + key;
+  const store = (fn) => { try { return fn(localStorage); } catch { return null; } };
+  const stored = store(ls => ls.getItem(storeKey));
+  if (stored && stored !== textarea.value) textarea.value = stored;
+  textarea.addEventListener('input', () => {
+    store(ls => (textarea.value ? ls.setItem(storeKey, textarea.value) : ls.removeItem(storeKey)));
+  });
+  return () => store(ls => ls.removeItem(storeKey));
+}
+
 function buildDescriptionFieldContent(task) {
   const wrap = document.createElement('div');
   wrap.className = 'td-field td-field-block';
@@ -1574,10 +1594,12 @@ function buildDescriptionFieldContent(task) {
   textarea.placeholder = 'Optional description…';
   textarea.value = task.description || '';
   textarea.setAttribute('aria-label', 'Description');
+  const clearDraft = keepDraft(textarea, draftKey(task, 'description'));
   let saved = false;
   const save = () => {
     if (saved) return;
     saved = true;
+    clearDraft();
     const v = textarea.value.trim();
     if (v !== (task.description || '')) {
       task.description = v;
@@ -1585,7 +1607,7 @@ function buildDescriptionFieldContent(task) {
     }
   };
   textarea.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { saved = true; }
+    if (e.key === 'Escape') { saved = true; clearDraft(); }
   });
   textarea.addEventListener('blur', save);
   wrap.appendChild(lab);
@@ -1916,6 +1938,7 @@ function buildNotesPanel(task, body) {
   noteInput.rows = 2;
   noteInput.placeholder = 'Add a note…';
   noteInput.setAttribute('aria-label', 'New note');
+  const clearNoteDraft = keepDraft(noteInput, draftKey(task, 'note'));
   const noteBtn = document.createElement('button');
   noteBtn.type = 'button';
   noteBtn.className = 'td-add-btn';
@@ -1925,6 +1948,7 @@ function buildNotesPanel(task, body) {
     if (!text) return;
     appendNote(task, text);
     noteInput.value = '';
+    clearNoteDraft();
     commit('Note added');
     openTaskDetail(task, { focusTitle: false });
   };
