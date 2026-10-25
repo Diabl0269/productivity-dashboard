@@ -17,6 +17,7 @@ export function setIOCallbacks({ stateFn, renderFn, parseFn }) {
 }
 
 let saveTimeout = null;
+let changeSeq = 0; // bumped on every edit so a save can tell if newer edits landed mid-flight
 export let lastModified = 0;
 export let isSaving = false;
 
@@ -27,6 +28,7 @@ export function setLastModified(val) {
 export function markChanged(task) {
   const state = getState();
   state.hasChanges = true;
+  changeSeq++;
   if (task) {
     task.updated = todayStr();
   }
@@ -47,8 +49,15 @@ export function flushAutoSave() {
 
 export async function autoSave() {
   const state = getState();
-  if (!state.hasChanges || isSaving) return;
+  if (!state.hasChanges) return;
+  if (isSaving) {
+    // An edit arrived mid-save: retry once the in-flight save finishes instead of dropping it.
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(autoSave, 200);
+    return;
+  }
   isSaving = true;
+  const seqAtStart = changeSeq;
   try {
     const content = serializeTasksJson(state.sections, state.tasks, state.ticketTypes, state.meta);
     if (state.taskFileHandle) {
@@ -61,9 +70,14 @@ export async function autoSave() {
       await httpSave('tasks.json', content, { baseContent: getLastTaskContent() });
       setLastTaskContent(content);
     }
-    state.hasChanges = false;
-    document.getElementById('saveBtn').disabled = true;
-    showStatus('Saved');
+    if (changeSeq === seqAtStart) {
+      state.hasChanges = false;
+      document.getElementById('saveBtn').disabled = true;
+      showStatus('Saved');
+    } else {
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(autoSave, 0);
+    }
   } catch (e) {
     if (e.code === 'conflict') {
       showStatusAction('Save conflict — file changed externally', {

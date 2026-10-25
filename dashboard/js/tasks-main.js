@@ -216,7 +216,7 @@ export async function loadTaskFromHandle(handle) {
   const result = loadTasksJson(content);
   applyLoadedTasks(result);
   if (autoArchive(taskState.sections, taskState.tasks)) {
-    taskState.hasChanges = true;
+    markChanged();
   }
   // Keep the view the route chose and don't sync the URL here: a /tasks/<id>
   // route is still pending until tasks load, and syncing now would drop it.
