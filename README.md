@@ -330,6 +330,10 @@ The `serve.js` server provides:
 | `/api/save` | POST | Saves updates to `tasks.json` or memory files |
 | `/api/global-memory` | GET | Reads Claude's cross-project global memory |
 | `/api/global-save` | POST | Saves to global memory directory |
+| `/api/note-image` | POST | Stores a note image (`{ticketId, dataBase64}`, png/jpg/webp/gif, max 8 MB) in `<CH_HOME>/attachments/<ticketId>/`; returns `{path}` |
+| `/attachments/<ticketId>/<file>` | GET | Serves a stored note image |
+
+Note images are paste-able or pickable in a ticket's note box; the files stay in `attachments/` next to `tasks.json` (outside git; `attachments/` is in `.gitignore` for the repo-local data dir). **They are not included in `ch tasks backup` / the dashboard backup: copy the whole data folder to back them up.** Deleting a note leaves its files on disk. Notes can be edited (pencil button) in the dashboard or with `ch tasks update <id> --edit-note N --note-text "..."`.
 
 ## File Formats
 

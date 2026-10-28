@@ -114,14 +114,33 @@ function scanDir(dir, base = '') {
   return result;
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 0) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', c => chunks.push(c));
+    let size = 0;
+    req.on('data', c => {
+      size += c.length;
+      if (maxBytes && size > maxBytes) {
+        const err = new Error('request body too large');
+        err.status = 413;
+        req.destroy();
+        reject(err);
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString()));
     req.on('error', reject);
   });
 }
+
+// Note images: shared/note-images.js owns the rules (type by magic bytes, 8 MB cap, hash names).
+let noteImagesLibPromise = null;
+function loadNoteImagesLib() {
+  if (!noteImagesLibPromise) noteImagesLibPromise = import('./shared/note-images.js');
+  return noteImagesLibPromise;
+}
+const NOTE_IMAGE_BODY_MAX = 12 * 1024 * 1024; // ~8 MB image as base64 plus JSON wrapper
 
 function decodeProjectPath(encoded) {
   // "-Users-jane-Documents-my-project" → "/Users/jane/Documents/my-project"
@@ -633,6 +652,55 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: true }));
     } catch (e) {
       res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Note images: upload (JSON {ticketId, filename?, dataBase64}) -> {path}
+  if (url.pathname === '/api/note-image' && req.method === 'POST') {
+    try {
+      const lib = await loadNoteImagesLib();
+      const body = JSON.parse(await readBody(req, NOTE_IMAGE_BODY_MAX));
+      if (typeof body.dataBase64 !== 'string' || !body.dataBase64) throw Object.assign(new Error('dataBase64 is required'), { status: 400 });
+      const buf = Buffer.from(body.dataBase64, 'base64');
+      let rel;
+      try { rel = lib.storeImage(DATA_ROOT, body.ticketId, buf); } catch (e) { e.status = 400; throw e; }
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, path: rel }));
+    } catch (e) {
+      res.writeHead(e.status || (e instanceof SyntaxError ? 400 : 500), { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Note images: serve /attachments/<ticketId>/<file> from CH_HOME (image types only, no traversal)
+  if (url.pathname.startsWith('/attachments/') && (req.method === 'GET' || req.method === 'HEAD')) {
+    try {
+      const lib = await loadNoteImagesLib();
+      const rel = decodeURIComponent(url.pathname.slice('/attachments/'.length));
+      let abs;
+      try { abs = lib.attachmentAbsPath(DATA_ROOT, rel); } catch {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid attachment path' }));
+        return;
+      }
+      if (!fs.existsSync(abs)) {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'not found' }));
+        return;
+      }
+      const ext = path.extname(abs).slice(1).toLowerCase();
+      res.writeHead(200, {
+        ...corsHeaders,
+        'Content-Type': lib.IMAGE_MIME[ext] || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      if (req.method === 'HEAD') res.end(); else fs.createReadStream(abs).pipe(res);
+    } catch (e) {
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
     return;

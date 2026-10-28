@@ -36,6 +36,7 @@ import {
   removeNoteAt,
   removeDecisionAt,
   updateNoteAt,
+  editNoteAt,
   updateDecisionAt,
   removeTimeEntryAt,
   updateTimeEntryAt,
@@ -1913,22 +1914,7 @@ function buildNotesPanel(task, body) {
     notes.slice().reverse().forEach((n, revIdx) => {
       const idx = notes.length - 1 - revIdx;
       const when = (n.at || '').replace('T', ' ').slice(0, 16);
-      wrap.appendChild(buildEditableEntryCard({
-        when,
-        text: n.text || '',
-        variant: 'note',
-        multiline: true,
-        onSave: (next) => {
-          updateNoteAt(task, idx + 1, next);
-          commit('Note updated');
-          openTaskDetail(task, { focusTitle: false });
-        },
-        onRemove: () => {
-          removeNoteAt(task, idx + 1);
-          commit('Note removed');
-          openTaskDetail(task, { focusTitle: false });
-        },
-      }));
+      wrap.appendChild(buildNoteCard(task, n, idx, when));
     });
   }
 
@@ -1940,18 +1926,86 @@ function buildNotesPanel(task, body) {
   noteInput.placeholder = 'Add a note…';
   noteInput.setAttribute('aria-label', 'New note');
   const clearNoteDraft = keepDraft(noteInput, draftKey(task, 'note'));
+
+  // Staged images are held in memory (not drafted): a refresh before saving drops them.
+  const staged = [];
+  const stagedRow = document.createElement('div');
+  stagedRow.className = 'td-note-thumbs td-note-thumbs-staged';
+  stagedRow.hidden = true;
+  const renderStaged = () => {
+    stagedRow.textContent = '';
+    stagedRow.hidden = staged.length === 0;
+    staged.forEach((item, i) => {
+      stagedRow.appendChild(buildThumb(item.url, 'Staged image ' + (i + 1), () => {
+        URL.revokeObjectURL(item.url);
+        staged.splice(i, 1);
+        renderStaged();
+      }));
+    });
+  };
+  const stageFiles = (files) => {
+    let added = false;
+    for (const f of files) {
+      if (!f || !/^image\/(png|jpeg|webp|gif)$/.test(f.type)) {
+        showStatus('Only png, jpg, webp or gif images can be added');
+        continue;
+      }
+      if (f.size > NOTE_IMAGE_MAX_BYTES) { showStatus('Image is larger than 8 MB'); continue; }
+      staged.push({ file: f, url: URL.createObjectURL(f) });
+      added = true;
+    }
+    if (added) renderStaged();
+  };
+  noteInput.addEventListener('paste', (e) => {
+    const items = Array.from(e.clipboardData?.items || []).filter(it => it.kind === 'file' && it.type.startsWith('image/'));
+    if (!items.length) return; // plain text paste continues as normal
+    e.preventDefault();
+    stageFiles(items.map(it => it.getAsFile()).filter(Boolean));
+  });
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/*';
+  fileInput.multiple = true;
+  fileInput.hidden = true;
+  fileInput.setAttribute('aria-hidden', 'true');
+  fileInput.tabIndex = -1;
+  fileInput.addEventListener('change', () => {
+    stageFiles(Array.from(fileInput.files || []));
+    fileInput.value = '';
+  });
+  const imageBtn = document.createElement('button');
+  imageBtn.type = 'button';
+  imageBtn.className = 'td-add-btn td-add-image-btn';
+  imageBtn.textContent = 'Add image';
+  imageBtn.setAttribute('aria-label', 'Add image to note');
+  imageBtn.title = 'Attach a screenshot or image (or paste one into the note box)';
+  imageBtn.addEventListener('click', () => fileInput.click());
+
   const noteBtn = document.createElement('button');
   noteBtn.type = 'button';
   noteBtn.className = 'td-add-btn';
   noteBtn.textContent = 'Add note';
-  const addNoteFn = () => {
+  let saving = false;
+  const addNoteFn = async () => {
     const text = noteInput.value.trim();
-    if (!text) return;
-    appendNote(task, text);
-    noteInput.value = '';
-    clearNoteDraft();
-    commit('Note added');
-    openTaskDetail(task, { focusTitle: false });
+    if (saving || (!text && !staged.length)) return;
+    saving = true;
+    noteBtn.disabled = true;
+    try {
+      const paths = [];
+      for (const item of staged) paths.push(await uploadNoteImage(task, item.file));
+      appendNote(task, text, paths);
+      staged.forEach(item => URL.revokeObjectURL(item.url));
+      noteInput.value = '';
+      clearNoteDraft();
+      commit('Note added');
+      openTaskDetail(task, { focusTitle: false });
+    } catch (err) {
+      showStatus('Could not add note: ' + err.message);
+      saving = false;
+      noteBtn.disabled = false;
+    }
   };
   noteBtn.addEventListener('click', addNoteFn);
   noteInput.addEventListener('keydown', (e) => {
@@ -1960,11 +2014,198 @@ function buildNotesPanel(task, body) {
       addNoteFn();
     }
   });
+  const btnRow = document.createElement('div');
+  btnRow.className = 'td-entry-add-actions';
+  btnRow.appendChild(imageBtn);
+  btnRow.appendChild(noteBtn);
   addRow.appendChild(noteInput);
-  addRow.appendChild(noteBtn);
+  addRow.appendChild(stagedRow);
+  addRow.appendChild(fileInput);
+  addRow.appendChild(btnRow);
   wrap.appendChild(addRow);
 
   body.appendChild(wrap);
+}
+
+const NOTE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Upload one image for the ticket; resolves to the stored path `<ticketId>/<file>`. */
+async function uploadNoteImage(task, file) {
+  const ticketId = task.taskId;
+  if (!ticketId) throw new Error('this ticket has no id yet');
+  const dataBase64 = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('could not read the image'));
+    r.readAsDataURL(file);
+  });
+  const res = await fetch('/api/note-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticketId, filename: file.name || '', dataBase64 }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.path) throw new Error(data.error || 'upload failed (' + res.status + ')');
+  return data.path;
+}
+
+/** Thumbnail with an optional remove (x) button. */
+function buildThumb(src, label, onRemove) {
+  const box = document.createElement('div');
+  box.className = 'td-note-thumb';
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = label;
+  if (onRemove) {
+    box.appendChild(img);
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'td-note-thumb-remove';
+    x.textContent = '×';
+    x.setAttribute('aria-label', 'Remove ' + label.toLowerCase());
+    x.title = 'Remove image';
+    x.addEventListener('click', onRemove);
+    box.appendChild(x);
+  } else {
+    const a = document.createElement('a');
+    a.href = src;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = 'Open full size in a new tab';
+    a.setAttribute('aria-label', 'Open ' + label.toLowerCase() + ' full size');
+    a.appendChild(img);
+    box.appendChild(a);
+  }
+  return box;
+}
+
+function noteImageUrl(rel) {
+  return '/attachments/' + rel.split('/').map(encodeURIComponent).join('/');
+}
+
+/** A note: text + image thumbnails; Edit turns it into a textarea with Save / Cancel. Files stay on disk when images or notes are removed. */
+function buildNoteCard(task, n, idx, when) {
+  const card = document.createElement('div');
+  card.className = 'td-entry-card td-entry-card-note';
+
+  const meta = document.createElement('div');
+  meta.className = 'td-entry-meta';
+  meta.textContent = when;
+  if (n.edited) {
+    const ed = document.createElement('span');
+    ed.className = 'td-entry-edited';
+    ed.textContent = ' edited';
+    ed.title = 'Edited ' + String(n.edited).replace('T', ' ').slice(0, 16);
+    meta.appendChild(document.createElement('br'));
+    meta.appendChild(ed);
+  }
+
+  const content = document.createElement('div');
+  content.className = 'td-note-content';
+  const actions = document.createElement('div');
+  actions.className = 'td-entry-actions';
+
+  const renderView = () => {
+    content.textContent = '';
+    actions.textContent = '';
+    if (n.text) {
+      const t = document.createElement('div');
+      t.className = 'td-entry-text';
+      t.textContent = n.text;
+      content.appendChild(t);
+    }
+    if ((n.images || []).length) {
+      const row = document.createElement('div');
+      row.className = 'td-note-thumbs';
+      n.images.forEach((rel, i) => row.appendChild(buildThumb(noteImageUrl(rel), 'Note image ' + (i + 1))));
+      content.appendChild(row);
+    }
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'td-entry-remove td-entry-editbtn';
+    edit.textContent = '✎';
+    edit.setAttribute('aria-label', 'Edit note');
+    edit.title = 'Edit note';
+    edit.addEventListener('click', renderEdit);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'td-entry-remove';
+    remove.setAttribute('aria-label', 'Remove entry');
+    remove.title = 'Remove note';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      removeNoteAt(task, idx + 1); // attachment files stay on disk
+      commit('Note removed');
+      openTaskDetail(task, { focusTitle: false });
+    });
+    actions.appendChild(edit);
+    actions.appendChild(remove);
+  };
+
+  const renderEdit = () => {
+    content.textContent = '';
+    actions.textContent = '';
+    let keep = (n.images || []).slice();
+    const editor = document.createElement('textarea');
+    editor.className = 'td-notes-textarea td-entry-edit';
+    editor.rows = Math.min(8, Math.max(2, String(n.text || '').split('\n').length));
+    editor.value = n.text || '';
+    editor.setAttribute('aria-label', 'Edit note text');
+    const thumbs = document.createElement('div');
+    thumbs.className = 'td-note-thumbs';
+    const drawThumbs = () => {
+      thumbs.textContent = '';
+      thumbs.hidden = keep.length === 0;
+      keep.forEach((rel, i) => thumbs.appendChild(buildThumb(noteImageUrl(rel), 'Note image ' + (i + 1), () => {
+        keep.splice(i, 1);
+        drawThumbs();
+      })));
+    };
+    drawThumbs();
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'td-add-btn';
+    save.textContent = 'Save';
+    save.setAttribute('aria-label', 'Save note');
+    save.title = 'Save changes (Cmd/Ctrl+Enter)';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'td-add-btn td-add-btn-secondary';
+    cancel.textContent = 'Cancel';
+    cancel.setAttribute('aria-label', 'Cancel editing');
+    cancel.title = 'Discard changes (Esc)';
+    const doSave = () => {
+      const text = editor.value.trim();
+      const unchanged = text === (n.text || '') && keep.length === (n.images || []).length;
+      if (unchanged) { renderView(); return; }
+      if (!editNoteAt(task, idx + 1, text, keep)) {
+        showStatus('A note needs text or an image');
+        return;
+      }
+      commit('Note updated');
+      openTaskDetail(task, { focusTitle: false });
+    };
+    save.addEventListener('click', doSave);
+    cancel.addEventListener('click', renderView);
+    editor.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renderView(); return; }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSave(); }
+    });
+    const bar = document.createElement('div');
+    bar.className = 'td-entry-add-actions';
+    bar.appendChild(cancel);
+    bar.appendChild(save);
+    content.appendChild(editor);
+    content.appendChild(thumbs);
+    content.appendChild(bar);
+    editor.focus();
+  };
+
+  renderView();
+  card.appendChild(meta);
+  card.appendChild(content);
+  card.appendChild(actions);
+  return card;
 }
 
 function buildHistoryPanel(task, body) {

@@ -63,8 +63,17 @@ function readHistory(t) {
 function readNotes(t) {
   if (!Array.isArray(t.notes)) return [];
   return t.notes
-    .filter(n => n && typeof n === 'object' && typeof n.text === 'string' && n.text.trim())
-    .map(n => ({ at: String(n.at || ''), text: String(n.text).trim() }));
+    .map(n => {
+      if (!n || typeof n !== 'object') return null;
+      const text = typeof n.text === 'string' ? n.text.trim() : '';
+      const images = Array.isArray(n.images) ? n.images.filter(i => typeof i === 'string' && i) : [];
+      if (!text && !images.length) return null;
+      const row = { at: String(n.at || ''), text };
+      if (images.length) row.images = images;
+      if (typeof n.edited === 'string' && n.edited) row.edited = n.edited;
+      return row;
+    })
+    .filter(Boolean);
 }
 
 function readTimeEntries(t) {

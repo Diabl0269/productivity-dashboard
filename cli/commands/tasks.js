@@ -38,6 +38,8 @@
  *              [--jira PROJECT-123] [--clear-jira] [--log-time 30m|2h] [--set-logged 2h] [--clear-logged]
  *              [--recur daily|weekly|monthly] [--recur-interval N] [--clear-recur]
  *              [--add-note "..."] [--remove-note N] [--clear-notes]
+ *              [--note-image <file>]... (with --add-note / --edit-note: attach png/jpg/webp/gif, max 8 MB, copied to <CH_HOME>/attachments/<id>/)
+ *              [--edit-note N --note-text "..."]   (replaces the text, keeps date and images, stamps "edited")
  *              [--decision "..."] [--remove-decision N] [--clear-decisions]
  *              [--remove-time-entry N] [--clear-time-entries]
  *              [--blocked] [--unblocked] [--waiting-on "..."] [--clear-waiting-on]
@@ -83,6 +85,7 @@ import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
+import { storeImageFile, attachmentAbsPath } from '../../shared/note-images.js';
 import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsNotPinned, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
@@ -556,7 +559,12 @@ function cmdGet(argv) {
   if (Array.isArray(task.notes) && task.notes.length) {
     task.notes.forEach((n, i) => {
       const when = n.at ? n.at.split('T')[0] : 'n/a';
-      print(`  note ${i + 1} (${when}): ${n.text}`);
+      print(`  note ${i + 1} (${when}${n.edited ? ', edited' : ''}): ${n.text}`);
+      for (const img of n.images || []) {
+        let shown = img;
+        try { shown = attachmentAbsPath(dataRoot(), img); } catch { /* keep the stored value */ }
+        print(`    image: ${shown}`);
+      }
     });
   }
   if (Array.isArray(task.decisions) && task.decisions.length) {
@@ -1114,12 +1122,24 @@ function cmdDone(argv) {
   ok(`done ${id}${alreadyDone ? ' (already in done)' : ` moved from ${fromSection.id}`}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${epicNote(rolled.epics)}`);
 }
 
+/** Copy --note-image files into attachments/<id>/; dies with a clear message on a bad file. */
+function storeNoteImages(id, files) {
+  const out = [];
+  for (const f of files || []) {
+    try { out.push(storeImageFile(dataRoot(), id, path.resolve(f))); } catch (e) { die(e.message); }
+  }
+  return out;
+}
+
 function cmdUpdate(argv) {
   const { values, positionals } = parse(argv, {
     description:     { type: 'string' },
     'add-description': { type: 'string' },
     note:            { type: 'string' }, // legacy alias for description
     'add-note':      { type: 'string' },
+    'note-image':    { type: 'string', multiple: true }, // image file(s) for --add-note / --edit-note
+    'edit-note':     { type: 'string' },  // N (1-based); pairs with --note-text
+    'note-text':     { type: 'string' },
     title:           { type: 'string', short: 't' },
     priority:        { type: 'string', short: 'p' },
     type:            { type: 'string' },
@@ -1454,8 +1474,32 @@ function cmdUpdate(argv) {
     changed = true;
   } else if (values['add-note'] !== undefined) {
     if (!Array.isArray(task.notes)) task.notes = [];
-    task.notes.push({ at: new Date().toISOString(), text: values['add-note'].trim() });
+    const note = { at: new Date().toISOString(), text: values['add-note'].trim() };
+    const imgs = storeNoteImages(id, values['note-image']);
+    if (imgs.length) note.images = imgs;
+    task.notes.push(note);
     changed = true;
+  } else if (values['edit-note'] === undefined && values['note-text'] === undefined && values['note-image']?.length) {
+    die('--note-image requires --add-note "..." or --edit-note N');
+  }
+
+  if (values['edit-note'] !== undefined && values['clear-notes'] === undefined) {
+    if (values['note-text'] === undefined) die('--edit-note N requires --note-text "new text"');
+    const n = parseInt(values['edit-note'], 10);
+    if (!Array.isArray(task.notes) || isNaN(n) || n < 1 || n > task.notes.length) {
+      die(`--edit-note N must be between 1 and ${(task.notes || []).length}`);
+    }
+    if (values['add-note'] !== undefined || values['remove-note'] !== undefined) die('--edit-note cannot be combined with --add-note or --remove-note');
+    const note = task.notes[n - 1];
+    const text = values['note-text'].trim();
+    const imgs = storeNoteImages(id, values['note-image']);
+    if (imgs.length) note.images = [...new Set([...(note.images || []), ...imgs])];
+    if (!text && !(note.images && note.images.length)) die('--note-text cannot be empty (the note has no images)');
+    note.text = text;
+    note.edited = new Date().toISOString();
+    changed = true;
+  } else if (values['note-text'] !== undefined) {
+    die('--note-text requires --edit-note N');
   }
 
   if (values['clear-time-entries']) {
@@ -2505,6 +2549,8 @@ Subcommands:
              [--log-time 30m|2h] [--set-logged 2h] [--clear-logged]
              [--recur daily|weekly|monthly] [--recur-interval N] [--clear-recur]
              [--add-note "..."] [--remove-note N] [--clear-notes]
+             [--note-image <file>]... [--edit-note N --note-text "..."]
+             --note-image attaches png/jpg/webp/gif (max 8 MB) to the new or edited note; ch tasks get prints each as "image: <path>"
              [--decision "..."] [--remove-decision N] [--clear-decisions]
              [--remove-time-entry N] [--clear-time-entries]
              [--estimate 2h] [--clear-estimate]

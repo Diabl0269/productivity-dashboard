@@ -376,14 +376,22 @@ export function normalizeTask(task) {
     }
   }
 
-  // notes: [{ at, text }] — newest last, cap at NOTES_MAX
+  // notes: [{ at, text, images?, edited? }] — newest last, cap at NOTES_MAX
   if (Array.isArray(task.notes)) {
     task.notes = task.notes
-      .filter(n => n && typeof n === 'object' && typeof n.text === 'string' && n.text.trim())
-      .map(n => ({
-        at: String(n.at || new Date().toISOString()),
-        text: String(n.text).trim(),
-      }))
+      .filter(n => n && typeof n === 'object' && (
+        (typeof n.text === 'string' && n.text.trim())
+        || (Array.isArray(n.images) && n.images.some(i => typeof i === 'string' && i))))
+      .map(n => {
+        const row = {
+          at: String(n.at || new Date().toISOString()),
+          text: typeof n.text === 'string' ? n.text.trim() : '',
+        };
+        const images = Array.isArray(n.images) ? n.images.filter(i => typeof i === 'string' && i) : [];
+        if (images.length) row.images = images;
+        if (typeof n.edited === 'string' && n.edited) row.edited = n.edited;
+        return row;
+      })
       .slice(-NOTES_MAX);
     if (task.notes.length === 0) delete task.notes;
   } else if (task.notes != null) {
@@ -1057,11 +1065,18 @@ export function validateTasksDoc(doc) {
               errors.push(`${nref} must be an object`);
               continue;
             }
-            if (typeof n.text !== 'string' || !n.text.trim()) {
-              errors.push(`${nref}.text must be a non-empty string`);
+            const hasImages = Array.isArray(n.images) && n.images.length > 0;
+            if (typeof n.text !== 'string' || (!n.text.trim() && !hasImages)) {
+              errors.push(`${nref}.text must be a non-empty string (empty only when the note has images)`);
             }
             if (n.at !== undefined && n.at !== null && typeof n.at !== 'string') {
               errors.push(`${nref}.at must be a string`);
+            }
+            if (n.images !== undefined && (!Array.isArray(n.images) || n.images.some(i => typeof i !== 'string' || !i))) {
+              errors.push(`${nref}.images must be an array of attachment paths`);
+            }
+            if (n.edited !== undefined && typeof n.edited !== 'string') {
+              errors.push(`${nref}.edited must be an ISO string`);
             }
           }
         }

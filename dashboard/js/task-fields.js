@@ -286,10 +286,13 @@ export function appendHistory(task, entry) {
   if (task.history.length > HISTORY_MAX) task.history = task.history.slice(-HISTORY_MAX);
 }
 
-export function appendNote(task, text) {
-  if (!task || !text || !String(text).trim()) return;
+export function appendNote(task, text, images) {
+  const imgs = Array.isArray(images) ? images.filter(i => typeof i === 'string' && i) : [];
+  if (!task || ((!text || !String(text).trim()) && !imgs.length)) return;
   if (!Array.isArray(task.notes)) task.notes = [];
-  task.notes.push({ at: new Date().toISOString(), text: String(text).trim() });
+  const note = { at: new Date().toISOString(), text: String(text || '').trim() };
+  if (imgs.length) note.images = imgs;
+  task.notes.push(note);
   if (task.notes.length > NOTES_MAX) task.notes = task.notes.slice(-NOTES_MAX);
 }
 
@@ -319,6 +322,24 @@ export function updateNoteAt(task, oneBased, text) {
   const trimmed = String(text ?? '').trim();
   if (isNaN(n) || n < 1 || n > task.notes.length || !trimmed) return false;
   task.notes[n - 1].text = trimmed;
+  return true;
+}
+
+/**
+ * Edit a note by 1-based index: replaces text (and the image list when given), keeps `at`,
+ * stamps `edited`. Returns false for a bad index or when nothing (no text, no images) would remain.
+ */
+export function editNoteAt(task, oneBased, text, images) {
+  if (!Array.isArray(task.notes)) return false;
+  const n = parseInt(oneBased, 10);
+  if (isNaN(n) || n < 1 || n > task.notes.length) return false;
+  const note = task.notes[n - 1];
+  const trimmed = String(text ?? '').trim();
+  const imgs = Array.isArray(images) ? images : (note.images || []);
+  if (!trimmed && !imgs.length) return false;
+  note.text = trimmed;
+  if (imgs.length) note.images = imgs; else delete note.images;
+  note.edited = new Date().toISOString();
   return true;
 }
 
