@@ -4,6 +4,8 @@
 
 import { NOTE_KINDS, addReviewNote, setNoteState } from '../../shared/review-notes.js';
 import { laneDisplayName } from '../../shared/run-plan.js';
+import { showStatus } from './state.js';
+import { uploadNoteImage, buildThumb, noteImageUrl, acceptImageFiles, pastedImageFiles } from './note-images-ui.js';
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -46,19 +48,77 @@ export function reviewNoteAddRow(task, { check, key, placeholder, label, onChang
     opt.value = k;
     kind.appendChild(opt);
   }
-  input.addEventListener('keydown', (e) => {
+
+  // Images waiting to be saved with the note. Kept per input so a re-render (another note saved)
+  // doesn't drop them; not drafted to disk, so a page refresh does.
+  const stagedKey = noteInputKey(task, key);
+  const staged = stagedImages.get(stagedKey) || [];
+  stagedImages.set(stagedKey, staged);
+  const thumbs = make('div', 'td-note-thumbs td-note-thumbs-staged');
+  const renderStaged = () => {
+    thumbs.textContent = '';
+    thumbs.hidden = staged.length === 0;
+    staged.forEach((item, i) => thumbs.appendChild(buildThumb(item.url, `Staged image ${i + 1}`, () => {
+      URL.revokeObjectURL(item.url);
+      staged.splice(i, 1);
+      renderStaged();
+    })));
+  };
+  const stage = (files) => {
+    for (const f of acceptImageFiles(files)) staged.push({ file: f, url: URL.createObjectURL(f) });
+    renderStaged();
+  };
+  renderStaged();
+
+  const picker = make('input');
+  picker.type = 'file';
+  picker.accept = 'image/*';
+  picker.multiple = true;
+  picker.hidden = true;
+  picker.tabIndex = -1;
+  picker.setAttribute('aria-hidden', 'true');
+  picker.addEventListener('change', () => { stage(Array.from(picker.files || [])); picker.value = ''; });
+  const imageBtn = make('button', 'td-review-note-image-btn', 'Image');
+  imageBtn.type = 'button';
+  imageBtn.title = 'Attach a screenshot to this note (or paste one into the note box)';
+  imageBtn.setAttribute('aria-label', `${label}: add image`);
+  imageBtn.addEventListener('click', () => picker.click());
+
+  input.addEventListener('paste', (e) => {
+    const files = pastedImageFiles(e);
+    if (!files.length) return; // plain text paste continues as normal
+    e.preventDefault();
+    stage(files);
+  });
+  let saving = false;
+  input.addEventListener('keydown', async (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     const text = input.value.trim();
-    if (!text) return;
-    addReviewNote(task, { text, kind: kind.value, check });
-    onChange?.(task);
-    focusNoteInput(task, key);
+    if (saving || (!text && !staged.length)) return;
+    saving = true;
+    try {
+      const images = [];
+      for (const item of staged) images.push(await uploadNoteImage(task, item.file));
+      addReviewNote(task, { text, kind: kind.value, check, images });
+      staged.forEach(item => URL.revokeObjectURL(item.url));
+      stagedImages.delete(stagedKey);
+      onChange?.(task);
+      focusNoteInput(task, key);
+    } catch (err) {
+      showStatus(`Could not add note: ${err.message}`);
+      saving = false;
+    }
   });
   row.appendChild(input);
   row.appendChild(kind);
+  row.appendChild(imageBtn);
+  row.appendChild(picker);
+  row.appendChild(thumbs);
   return row;
 }
+
+const stagedImages = new Map();
 
 /**
  * The note's area as a small chip that turns into a select on click.
@@ -114,5 +174,10 @@ export function reviewNoteRow(task, note, { onChange, area } = {}) {
     onChange?.(task);
   });
   row.appendChild(x);
+  if (note.images?.length) {
+    const thumbs = make('div', 'td-note-thumbs');
+    note.images.forEach((rel, i) => thumbs.appendChild(buildThumb(noteImageUrl(rel), `Note image ${i + 1}`)));
+    row.appendChild(thumbs);
+  }
   return row;
 }

@@ -1805,13 +1805,14 @@ function cmdNotes(argv) {
       kind:    { type: 'string' },
       check:   { type: 'string' },
       area:    { type: 'string' },
+      image:   { type: 'string', multiple: true },
       section: { type: 'string', short: 's' },
       json:    { type: 'boolean', short: 'j' },
     });
     const doc = load();
     if (sub === 'add') {
       const [id, text] = positionals;
-      if (!id || !text) die('usage: ch tasks notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]');
+      if (!id || (!text && !values.image?.length)) die('usage: ch tasks notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>] [--image <file>]...');
       if (values.area && !isLaneSlug(values.area.trim())) die(`invalid --area "${values.area}". Use lowercase letters, digits and hyphens`);
       const { task } = resolveTask(doc, id, values.section);
       let check;
@@ -1823,7 +1824,8 @@ function cmdNotes(argv) {
         check = task.checks[n - 1].text;
       }
       let note;
-      try { note = addReviewNote(task, { text, kind: values.kind || 'fix', check, area: values.area?.trim() }); } catch (e) { die(e.message); }
+      const images = storeNoteImages(task.id, values.image);
+      try { note = addReviewNote(task, { text, kind: values.kind || 'fix', check, area: values.area?.trim(), images }); } catch (e) { die(e.message); }
       task.updated = todayStr();
       save(doc);
       if (values.json) { jsonOut({ id, ...note }); return; }
@@ -1889,7 +1891,14 @@ function cmdNotes(argv) {
   const clip = (str, n) => (str.length > n ? `${str.slice(0, n - 1)}…` : str);
   for (const t of pending) {
     print(`${t.id} ${t.type || 'task'}${t.lane ? ` lane:${t.lane}` : ''} ${clip(t.title || '', 60)}`);
-    for (const x of t.notes) print(`  ${noteLine(t.id, x)}`);
+    for (const x of t.notes) {
+      print(`  ${noteLine(t.id, x)}`);
+      for (const img of x.images || []) {
+        let shown = img;
+        try { shown = attachmentAbsPath(dataRoot(), img); } catch { /* keep the stored value */ }
+        print(`    image: ${shown}`);
+      }
+    }
   }
 }
 

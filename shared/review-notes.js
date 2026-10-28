@@ -2,7 +2,8 @@
  * shared/review-notes.js — notes written while reviewing a shipped ticket.
  *
  * A ticket in `review` can carry `reviewNotes`, beside its `checks`:
- *   { n, at, text, kind: 'fix'|'idea'|'design', check?, area?, state: 'new'|'filed'|'dismissed', filed? }
+ *   { n, at, text, kind: 'fix'|'idea'|'design', check?, area?, images?, state: 'new'|'filed'|'dismissed', filed? }
+ * `images` (optional) are attachment paths `<ticketId>/<file>` (shared/note-images.js); text may be empty then.
  * `n` is a per-ticket counter that is never reused; a note's handle is `<ticketId>#<n>`.
  * `area` (optional) is a lane slug that overrides the noted ticket's own lane when filing.
  * `check` is the text of the check the note was written against (absent = general note).
@@ -19,13 +20,14 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T/;
 const HANDLE_RE = /^([A-Za-z][A-Za-z0-9]*-?\d+)#(\d+)$/;
 
 /** Add a note to a ticket. Returns the note. */
-export function addReviewNote(task, { text, kind = 'fix', check, area, now = new Date().toISOString() } = {}) {
+export function addReviewNote(task, { text, kind = 'fix', check, area, images, now = new Date().toISOString() } = {}) {
   const clean = String(text ?? '').trim();
-  if (!clean) throw new Error('note text is empty');
+  const imgs = Array.isArray(images) ? images.filter(i => typeof i === 'string' && i) : [];
+  if (!clean && !imgs.length) throw new Error('note text is empty');
   if (!NOTE_KINDS.includes(kind)) throw new Error(`unknown note kind "${kind}". Valid: ${NOTE_KINDS.join(', ')}`);
   if (!Array.isArray(task.reviewNotes)) task.reviewNotes = [];
   const n = task.reviewNotes.reduce((m, x) => Math.max(m, Number(x?.n) || 0), 0) + 1;
-  const note = { n, at: now, text: clean, kind, state: 'new', ...(check ? { check } : {}), ...(area ? { area } : {}) };
+  const note = { n, at: now, text: clean, kind, state: 'new', ...(check ? { check } : {}), ...(area ? { area } : {}), ...(imgs.length ? { images: imgs } : {}) };
   task.reviewNotes.push(note);
   return note;
 }
@@ -63,7 +65,8 @@ export function noteLine(taskId, note) {
     const c = note.check.length > 50 ? `${note.check.slice(0, 50)}…` : note.check;
     on = ` on "${c}"`;
   }
-  return `${taskId}#${note.n} [${note.kind}]${on}: ${note.text}`;
+  const pics = note.images?.length ? ` (${note.images.length} image${note.images.length > 1 ? 's' : ''})` : '';
+  return `${taskId}#${note.n} [${note.kind}]${on}: ${note.text || '(image only)'}${pics}`;
 }
 
 /** Schema errors for a stored reviewNotes value (empty when valid). */
@@ -78,7 +81,9 @@ export function reviewNoteErrors(notes, ref) {
     else if (seen.has(x.n)) errors.push(`${at}.n ${x.n} is not unique`);
     else seen.add(x.n);
     if (typeof x.at !== 'string' || !ISO_RE.test(x.at)) errors.push(`${at}.at must be an ISO string`);
-    if (typeof x.text !== 'string' || !x.text.trim()) errors.push(`${at}.text must be a non-empty string`);
+    const hasImages = Array.isArray(x.images) && x.images.length > 0;
+    if (typeof x.text !== 'string' || (!x.text.trim() && !hasImages)) errors.push(`${at}.text must be a non-empty string (empty only when the note has images)`);
+    if (x.images !== undefined && (!Array.isArray(x.images) || x.images.some(i => typeof i !== 'string' || !i))) errors.push(`${at}.images must be an array of attachment paths`);
     if (!NOTE_KINDS.includes(x.kind)) errors.push(`${at}.kind must be one of ${NOTE_KINDS.join(', ')}`);
     if (!NOTE_STATES.includes(x.state)) errors.push(`${at}.state must be one of ${NOTE_STATES.join(', ')}`);
     if (x.check !== undefined && typeof x.check !== 'string') errors.push(`${at}.check must be a string`);

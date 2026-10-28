@@ -154,9 +154,11 @@ export function normalizeReviewNotes(raw) {
   const out = [];
   for (const x of raw) {
     if (!x || typeof x !== 'object' || !Number.isInteger(x.n) || x.n < 1) continue;
-    if (typeof x.text !== 'string' || !x.text.trim() || typeof x.at !== 'string') continue;
+    const images = Array.isArray(x.images) ? x.images.filter(i => typeof i === 'string' && i) : [];
+    if (typeof x.text !== 'string' || (!x.text.trim() && !images.length) || typeof x.at !== 'string') continue;
     if (!NOTE_KINDS.includes(x.kind) || !NOTE_STATES.includes(x.state)) continue;
     const e = { n: x.n, at: x.at, text: x.text, kind: x.kind, state: x.state };
+    if (images.length) e.images = images;
     if (typeof x.check === 'string' && x.check) e.check = x.check;
     if (typeof x.filed === 'string' && x.filed) e.filed = x.filed;
     if (typeof x.area === 'string' && x.area) e.area = x.area;
