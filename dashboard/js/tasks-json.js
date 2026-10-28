@@ -270,6 +270,7 @@ export function loadTasksJson(text) {
       reviewNotes: normalizeReviewNotes(t.reviewNotes),
       reviewOf: (typeof t.reviewOf === 'string' && t.reviewOf.trim()) ? t.reviewOf.trim() : null,
       result: isPlainObject(t.result) ? t.result : null,
+      noChecksReason: (typeof t.noChecksReason === 'string' && t.noChecksReason.trim()) ? t.noChecksReason.trim() : null,
       section: sec.id,
     }));
   }
@@ -309,6 +310,7 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (reviewNotes.length) row.reviewNotes = reviewNotes;
         if (typeof t.reviewOf === 'string' && t.reviewOf.trim()) row.reviewOf = t.reviewOf.trim();
         if (isPlainObject(t.result)) row.result = t.result;
+        if (typeof t.noChecksReason === 'string' && t.noChecksReason.trim()) row.noChecksReason = t.noChecksReason.trim();
         const desc = (t.description || '').trim();
         if (desc) row.description = desc;
         if (t.parentId) row.parentId = t.parentId;

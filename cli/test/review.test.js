@@ -22,6 +22,11 @@ const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 function makeTmpDir() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-review-test-'));
   fs.copyFileSync(FIXTURE_SAMPLE, path.join(tmpDir, 'tasks.json'));
+  // The fixture's tickets carry open subtasks; these tests are about review, not T191.
+  const file = path.join(tmpDir, 'tasks.json');
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  for (const s of doc.sections) for (const t of s.tasks) for (const st of t.subtasks || []) st.checked = true;
+  fs.writeFileSync(file, JSON.stringify(doc));
   return tmpDir;
 }
 
@@ -209,7 +214,7 @@ test('--check-all-checks ticks everything and moves to done', () => {
 
 test('an unrelated edit on a review ticket does not move it to done', () => {
   const dir = makeTmpDir();
-  runCli(['tasks', 'review', 'T3', '--shipped', 'x'], dir);
+  runCli(['tasks', 'review', 'T3', '--check', 'c', '--shipped', 'x'], dir);
   runCli(['tasks', 'update', 'T3', '--priority', 'high'], dir);
   assert.equal(find(dir, 'T3').section, 'review');
 });
@@ -247,7 +252,7 @@ test('add --review-of records the link; get shows both directions', () => {
 
 test('update --review-of / --clear-review-of / --clear-result', () => {
   const dir = makeTmpDir();
-  runCli(['tasks', 'review', 'T3', '--shipped', 'x'], dir);
+  runCli(['tasks', 'review', 'T3', '--check', 'c', '--shipped', 'x'], dir);
   assert.equal(runCli(['tasks', 'update', 'T1', '--review-of', 'T3'], dir).status, 0);
   assert.equal(find(dir, 'T1').task.reviewOf, 'T3');
   assert.notEqual(runCli(['tasks', 'update', 'T1', '--review-of', 'T999'], dir).status, 0);
@@ -281,7 +286,7 @@ test('normalizeResult: keeps unverified, risks, fixed and opened only when given
 
 test('ch tasks review: --risk, --unverified, --fixed and --opened land on the result', () => {
   const dir = makeTmpDir();
-  const r = runCli(['tasks', 'review', 'T1', '--shipped', 'a', '--risk', 'r1', '--unverified', 'u1', '--fixed', 'f1', '--opened', 'o1', '--json'], dir);
+  const r = runCli(['tasks', 'review', 'T1', '--check', 'c', '--shipped', 'a', '--risk', 'r1', '--unverified', 'u1', '--fixed', 'f1', '--opened', 'o1', '--json'], dir);
   assert.equal(r.status, 0, r.stderr);
   const res = JSON.parse(r.stdout).result;
   assert.deepEqual([res.risks, res.unverified, res.fixed, res.opened], [['r1'], ['u1'], ['f1'], ['o1']]);
@@ -354,7 +359,7 @@ test('review on a standalone ticket still gets its own review card', () => {
   const tmpDir = makeTmpDir();
   const id = JSON.parse(runCli(['tasks', 'add', '--no-project', 'Solo', '--parent', JSON.parse(runCli(['tasks', 'add', '--no-project', 'Ep', '--type', 'epic', '--lane', 'canvas', '--label', 'model:opus', '--json'], tmpDir).stdout).id, '--json'], tmpDir).stdout).id;
   runCli(['tasks', 'update', id, '--clear-parent'], tmpDir);
-  const r = runCli(['tasks', 'review', id, '--shipped', 'x'], tmpDir);
+  const r = runCli(['tasks', 'review', id, '--check', 'c', '--shipped', 'x'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(find(tmpDir, id).section, 'review');
 });
@@ -373,7 +378,7 @@ test('closing the last child of a pinned epic unpins the epic', () => {
   const { epicId, ids: [a, b] } = addEpicWithChildren(tmpDir);
   assert.equal(runCli(['tasks', 'plan', '--pin', epicId], tmpDir).status, 0);
 
-  runCli(['tasks', 'review', a, '--shipped', 'did A'], tmpDir);
+  runCli(['tasks', 'review', a, '--check', 'c', '--shipped', 'did A'], tmpDir);
   assert.ok(pins(tmpDir).includes(epicId), 'still pinned while B is open');
 
   const r = runCli(['tasks', 'done', b], tmpDir);
@@ -494,7 +499,7 @@ test('lint warns about open epics with no lane, not closed ones', () => {
 test('review --file-left: left and unverified lines become follow-ups under the epic', () => {
   const tmpDir = makeTmpDir();
   const { epicId, ids: [a] } = addEpicWithChildren(tmpDir);
-  const args = ['tasks', 'review', a, '--shipped', 'did A', '--left', 'Wire the button', '--unverified', 'Dark mode look', '--file-left', '--json'];
+  const args = ['tasks', 'review', a, '--check', 'c', '--shipped', 'did A', '--left', 'Wire the button', '--unverified', 'Dark mode look', '--file-left', '--json'];
   const r = runCli(args, tmpDir);
   assert.equal(r.status, 0, r.stderr);
   const { filed } = JSON.parse(r.stdout);
@@ -517,7 +522,7 @@ test('review --file-left: left and unverified lines become follow-ups under the 
 test('review without --file-left files nothing', () => {
   const tmpDir = makeTmpDir();
   const before = readTasks(tmpDir).sections.flatMap(s => s.tasks).length;
-  const r = runCli(['tasks', 'review', 'T1', '--shipped', 'x', '--left', 'y'], tmpDir);
+  const r = runCli(['tasks', 'review', 'T1', '--check', 'c', '--shipped', 'x', '--left', 'y'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(readTasks(tmpDir).sections.flatMap(s => s.tasks).length, before);
 });
@@ -526,7 +531,7 @@ test('an archived sibling counts as closed: the last review moves the epic to re
   const tmpDir = makeTmpDir();
   const { epicId, ids: [a, b] } = addEpicWithChildren(tmpDir);
   runCli(['tasks', 'move', a, 'archive'], tmpDir);
-  const r = runCli(['tasks', 'review', b, '--shipped', 'did B'], tmpDir);
+  const r = runCli(['tasks', 'review', b, '--check', 'c', '--shipped', 'did B'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(find(tmpDir, epicId).section, 'review');
 });
@@ -537,13 +542,13 @@ test('review: a design ticket needs a design-board link', () => {
   const t3 = doc.sections.flatMap(s => s.tasks).find(t => t.id === 'T3');
   t3.labels = ['design'];
   fs.writeFileSync(path.join(dir, 'tasks.json'), JSON.stringify(doc));
-  const no = runCli(['tasks', 'review', 'T3', '--shipped', 'x'], dir);
+  const no = runCli(['tasks', 'review', 'T3', '--check', 'c', '--shipped', 'x'], dir);
   assert.notEqual(no.status, 0);
   assert.match(no.stderr, /--design-link/);
   assert.equal(find(dir, 'T3').section, 'in-progress');
-  const bad = runCli(['tasks', 'review', 'T3', '--shipped', 'x', '--design-link', 'http://x'], dir);
+  const bad = runCli(['tasks', 'review', 'T3', '--check', 'c', '--shipped', 'x', '--design-link', 'http://x'], dir);
   assert.notEqual(bad.status, 0);
-  const ok = runCli(['tasks', 'review', 'T3', '--shipped', 'x', '--design-link', 'https://claude.ai/artifact/abc'], dir);
+  const ok = runCli(['tasks', 'review', 'T3', '--check', 'c', '--shipped', 'x', '--design-link', 'https://claude.ai/artifact/abc'], dir);
   assert.equal(ok.status, 0, ok.stderr);
   const { task, section } = find(dir, 'T3');
   assert.equal(section, 'review');

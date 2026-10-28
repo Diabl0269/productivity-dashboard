@@ -617,7 +617,11 @@
 }
 
 .td-subtask:hover .td-subtask-remove { opacity: 1; }
+.td-subtask-remove:focus-visible { opacity: 1; }
 .td-subtask-remove:hover { color: var(--status-blocked); background: var(--surface-4); }
+/* "Make task" sits beside the remove button; it is not destructive, so no red hover. */
+.td-subtask-promote { width: auto; padding: 0 var(--space-1); font-size: var(--text-xs, 12px); }
+.td-subtask-promote:hover { color: var(--text-primary); }
 
 .td-add-subtask {
   display: inline-flex;

@@ -82,6 +82,7 @@ import {
   toggleFieldPin,
   bindFieldLayoutDnD,
 } from './task-field-layout.js';
+import { promoteSubtaskInState } from '../../shared/subtasks.js';
 import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines } from '../../shared/review.js';
 import { unsentNotes } from '../../shared/review-notes.js';
 import { reviewNoteAddRow, reviewNoteRow } from './review-notes-ui.js';
@@ -2386,8 +2387,30 @@ function buildSubtasksPanel(task, body, { showPin = false } = {}) {
       openTaskDetail(task, { focusTitle: false });
     });
 
+    // T192: split the subtask off into its own task (same epic, project and labels).
+    const promote = document.createElement('button');
+    promote.type = 'button';
+    promote.className = 'td-subtask-remove td-subtask-promote';
+    promote.setAttribute('aria-label', 'Make subtask ' + (idx + 1) + ' its own task');
+    promote.title = 'Make task: turn this subtask into its own task';
+    promote.textContent = 'Make task';
+    promote.addEventListener('click', () => {
+      let created;
+      try {
+        created = promoteSubtaskInState(getState(), task, idx + 1);
+      } catch (e) {
+        showStatus(e.message);
+        return;
+      }
+      markChanged(created);
+      commit();
+      showStatus('Created ' + created.taskId + ' from subtask');
+      openTaskDetail(task, { focusTitle: false });
+    });
+
     row.appendChild(cb);
     row.appendChild(input);
+    row.appendChild(promote);
     row.appendChild(remove);
     list.appendChild(row);
   });

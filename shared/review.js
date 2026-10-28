@@ -264,3 +264,65 @@ export function epicsToUnpin(doc, task) {
   }
   return out;
 }
+
+/** Does anything that is not an epic and still open sit under `epicId` (any depth)? */
+function hasOpenWork(doc, epicId) {
+  return descendantsOf(doc, epicId).some(
+    ({ task: t, section }) => t.type !== 'epic' && !CLOSED_SECTIONS.has(section),
+  );
+}
+
+function moveBetween(doc, task, from, to, now) {
+  const src = (doc.sections || []).find(s => s.id === from);
+  const dst = (doc.sections || []).find(s => s.id === to);
+  if (!src || !dst) return false;
+  src.tasks = src.tasks.filter(t => t.id !== task.id);
+  dst.tasks.push(task);
+  task.checked = true;
+  task.updated = now.slice(0, 10);
+  if (!Array.isArray(task.history)) task.history = [];
+  task.history.push({ at: now, event: 'moved', from, to });
+  return true;
+}
+
+/**
+ * An epic closes whichever way its last child closes (done, moved out to another epic, ticked
+ * off in review). Starting at `epicId`, move each epic that no longer has open work under it:
+ * to review when it has a result or checks to look at, else straight to done; then do the same
+ * for the epic above it. An epic already in review/done/archive, one with open work left, and
+ * one that never had any children, result or checks stay put.
+ * Mutates `doc`; returns [{ id, from, to }] for the epics moved, innermost first.
+ */
+export function rollUpAfterClose(doc, epicId, { now = new Date().toISOString() } = {}) {
+  const moved = [];
+  let row = epicId ? findRow(doc, epicId) : null;
+  while (row && row.task.type === 'epic') {
+    const { task: epic, section } = row;
+    if (CLOSED_SECTIONS.has(section) || hasOpenWork(doc, epic.id)) break;
+    const toReview = !!epic.result || (epic.checks || []).length > 0;
+    if (!toReview && !descendantsOf(doc, epic.id).length) break;
+    const to = toReview ? REVIEW_SECTION : 'done';
+    if (!moveBetween(doc, epic, section, to, now)) break;
+    moved.push({ id: epic.id, from: section, to });
+    row = epicOf(doc, epic);
+  }
+  return moved;
+}
+
+/** Drop the Nth (1-based) Unverified line of a ticket's result. Returns the removed text; throws on a bad N. */
+export function resolveUnverified(task, n) {
+  const list = task?.result?.unverified || [];
+  if (!Number.isInteger(n) || n < 1 || n > list.length) {
+    throw new Error(`--resolve-unverified N must be between 1 and ${list.length}`);
+  }
+  const [gone] = list.splice(n - 1, 1);
+  if (!list.length) delete task.result.unverified;
+  return gone;
+}
+
+/** Drop every Unverified line of a ticket's result. Returns how many were removed. */
+export function clearUnverified(task) {
+  const had = (task?.result?.unverified || []).length;
+  if (had) delete task.result.unverified;
+  return had;
+}

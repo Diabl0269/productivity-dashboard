@@ -17,6 +17,7 @@ import {
 import { makeFacetPredicate, hasActiveFacets } from './task-filters.js';
 import { isSelected, toggleSelect } from './task-selection.js';
 import { softDeleteTask } from './task-undo.js';
+import { openSubtasks, openSubtasksMessage } from '../../shared/subtasks.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -663,10 +664,30 @@ export function moveSection(fromId, toId, insertBefore) {
   getRenderTasks()();
 }
 
+const CLOSING_SECTIONS = new Set(['done', 'review', 'archive']);
+
+/** T191: finishing a ticket (done / review / archive) with unchecked subtasks asks first. */
+function confirmFinishWithOpenSubtasks(task, fromSectionId, toSectionId) {
+  if (!CLOSING_SECTIONS.has(toSectionId) || CLOSING_SECTIONS.has(fromSectionId)) return true;
+  if (!openSubtasks(task).length) return true;
+  return confirm(openSubtasksMessage(task.taskId, task));
+}
+
 export function moveTask(taskId, toSectionId, dropIndex = -1, opts = {}) {
   const { skipRender = false } = opts;
   const state = getState();
   const { sections, tasks } = state;
+  for (const section of sections) {
+    const existing = (tasks[section.id] || []).find(t => t.id === taskId);
+    if (!existing) continue;
+    if (!confirmFinishWithOpenSubtasks(existing, section.id, toSectionId)) {
+      // The checkbox ticked the ticket before asking; an open ticket goes back to unticked.
+      if (!CLOSING_SECTIONS.has(section.id)) existing.checked = false;
+      if (!skipRender) getRenderTasks()();
+      return false;
+    }
+    break;
+  }
   let task = null;
   let fromSectionId = null;
   for (const section of sections) {

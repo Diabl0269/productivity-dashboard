@@ -59,7 +59,8 @@ Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ..
 | Dump active tasks (JSON) | `ch tasks dump --active` |
 | Add a task | `ch tasks add "<title>" [--section todo] [--priority medium] [--due YYYY-MM-DD] [--estimate 2h] [--assignee name] [--label L] [--blocked]` |
 | Move task to section | `ch tasks move <id> <section>` |
-| Mark done | `ch tasks done <id>` |
+| Mark done | `ch tasks done <id>` (refuses open subtasks: `--force`, or `update <id> --promote-subtask N`; closes the epic when it was its last open child) |
+| Ship to review | `ch tasks review <id> --shipped "..." --check "..."` (needs a `--check`, or `--no-checks "<reason>"`; `--resolve-unverified N` / `--clear-unverified` drop Unverified lines) |
 | Update fields | `ch tasks update <id> --title "..." --description "..." --priority high --due ... --estimate 30m --assignee ...` |
 | Next available id | `ch tasks next-id` |
 | Validate tasks.json | `ch tasks lint [--fix]` |
