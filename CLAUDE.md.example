@@ -62,6 +62,7 @@ Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ..
 | Mark done | `ch tasks done <id>` (refuses open subtasks: `--force`, or `update <id> --promote-subtask N`; closes the epic when it was its last open child) |
 | Ship to review | `ch tasks review <id> --shipped "..." --check "..."` (needs a `--check`, or `--no-checks "<reason>"`; `--resolve-unverified N` / `--clear-unverified` drop Unverified lines) |
 | Update fields | `ch tasks update <id> --title "..." --description "..." --priority high --due ... --estimate 30m --assignee ...` |
+| Add a note (with screenshots) / edit one | `ch tasks update <id> --add-note "..." [--note-image file.png]...` / `--edit-note N --note-text "..."`; `ch tasks get <id>` prints `image: <path>` per image: open it with the Read tool |
 | Next available id | `ch tasks next-id` |
 | Validate tasks.json | `ch tasks lint [--fix]` |
 | Markdown snapshot | `ch tasks export --md` |
