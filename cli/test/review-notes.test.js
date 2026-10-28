@@ -24,6 +24,11 @@ const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 function makeTmpDir() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-review-notes-test-'));
   fs.copyFileSync(FIXTURE_SAMPLE, path.join(tmpDir, 'tasks.json'));
+  // The fixture's tickets carry open subtasks; these tests are about review, not T191.
+  const file = path.join(tmpDir, 'tasks.json');
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  for (const s of doc.sections) for (const t of s.tasks) for (const st of t.subtasks || []) st.checked = true;
+  fs.writeFileSync(file, JSON.stringify(doc));
   return tmpDir;
 }
 

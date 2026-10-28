@@ -24,7 +24,14 @@
   notes dismiss <id>#<n>
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
+ *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
+ *       needs at least one --check (or checks in --result-json, or checks already on the ticket) unless --no-checks "<reason>" says why
+ *       there is nothing to check (stored as noChecksReason). Refuses a ticket with unchecked subtasks unless --force.
+ *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint) unless --force
+ *   move <id> <section> [--force]  same refusal when moving to done
+ *   (done / move done / update --parent|--clear-parent / ticking the last check also close the parent epic when nothing
+ *    under it is open: to review if it has a result or checks, else to done)
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
  *              [--color "#RRGGBB"] [--clear-color]
  *              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
@@ -43,6 +50,10 @@
  *              [--add-check "text"] [--check-check N] [--uncheck-check N]
  *              [--remove-check N] [--clear-checks] [--check-all-checks]
  *              [--review-of T1] [--clear-review-of] [--clear-result]
+ *              [--clear-unverified] [--resolve-unverified N]   (edit result.unverified; an epic's lines are numbered as listed)
+ *              [--promote-subtask N [--parent EPIC | --promote-parent EPIC]]   (subtask N becomes its own task in todo; with
+ *                  --promote-subtask, --parent/--promote-parent name the NEW task's parent, the ticket's own parent is not changed)
+ *              [--force]   (finish a review ticket by ticking its last check even with open subtasks)
  *   set-priority <id> <low|medium|high>
  *   next-id
  *   dump [--active] [--json]
@@ -77,7 +88,9 @@ import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
+  rollUpAfterClose, resolveUnverified, clearUnverified,
 } from '../../shared/review.js';
+import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
 import {
   NOTE_KINDS, addReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
 } from '../../shared/review-notes.js';
@@ -119,6 +132,24 @@ function autoPinLaneEpic(doc, task, sectionId) {
 }
 
 const unpinNote = (ids) => (ids.length ? ` (unpinned ${ids.join(', ')})` : '');
+
+/** T191: done / move done / review / auto-finish refuse a ticket with unchecked subtasks unless --force. */
+function assertNoOpenSubtasks(task, force) {
+  if (!force && openSubtasks(task).length) die(openSubtasksMessage(task.id, task, { cli: true }));
+}
+
+/**
+ * PRO32: after a child closed (or left) epic `epicId`, close the epics that have nothing open
+ * left (review when there is something to look at, else done) and unpin them.
+ * Returns { epics: [{ id, from, to }], unpinned: [ids] }.
+ */
+function rollUpEpics(doc, epicId) {
+  const epics = rollUpAfterClose(doc, epicId);
+  const unpinned = epics.flatMap(m => autoUnpin(doc, findTask(doc, m.id).task));
+  return { epics, unpinned: [...new Set(unpinned)] };
+}
+
+const epicNote = (epics) => epics.map(m => ` (epic ${m.id} now ${m.to === 'done' ? 'done' : 'in review'})`).join('');
 
 /** Prefer description; fall back to legacy note. */
 function taskDescription(task) {
@@ -741,10 +772,11 @@ function cmdMove(argv) {
   const { values, positionals } = parse(argv, {
     section: { type: 'string',  short: 's' },
     json:    { type: 'boolean', short: 'j' },
+    force:   { type: 'boolean' },
   });
 
   const [id, targetSectionId] = positionals;
-  if (!id || !targetSectionId) die('usage: ch tasks move <id> <section>');
+  if (!id || !targetSectionId) die('usage: ch tasks move <id> <section> [--force]');
 
   if (!isSectionId(targetSectionId)) {
     die(`unknown section "${targetSectionId}". Valid: ${SECTION_IDS.join(', ')}`);
@@ -757,6 +789,8 @@ function cmdMove(argv) {
     ok(`${id} is already in ${targetSectionId}`);
     return;
   }
+  if (targetSectionId === 'done') assertNoOpenSubtasks(task, values.force);
+  const epicBefore = targetSectionId === 'done' ? epicOf(doc, task)?.task.id : null;
 
   if (targetSectionId === REVIEW_SECTION) ensureSections(doc);
   const toSection = sectionById(doc, targetSectionId);
@@ -780,14 +814,15 @@ function cmdMove(argv) {
   if (targetSectionId === 'done') {
     spawned = maybeSpawnRecurrence(doc, task, today);
   }
-  const unpinned = autoUnpin(doc, task);
+  const rolled = epicBefore ? rollUpEpics(doc, epicBefore) : { epics: [], unpinned: [] };
+  const unpinned = [...new Set([...autoUnpin(doc, task), ...rolled.unpinned])];
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, from: fromSection.id, to: targetSectionId, spawned: spawned?.id || null, unpinned });
+    jsonOut({ id, from: fromSection.id, to: targetSectionId, spawned: spawned?.id || null, unpinned, epicMoved: rolled.epics });
     return;
   }
-  ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}`);
+  ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${epicNote(rolled.epics)}`);
 }
 
 /**
@@ -812,6 +847,10 @@ function cmdReview(argv) {
     rollup:        { type: 'boolean' },
     'file-left':   { type: 'boolean' },
     'design-link': { type: 'string' },
+    'no-checks':   { type: 'string' },
+    force:         { type: 'boolean' },
+    'clear-unverified':   { type: 'boolean' },
+    'resolve-unverified': { type: 'string' },
   });
 
   if (values.rollup) {
@@ -847,7 +886,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... [--check "..."]... [--result-json \'<json>\']');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -885,6 +924,14 @@ function cmdReview(argv) {
   const toSection = sectionById(doc, REVIEW_SECTION);
   if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
 
+  assertNoOpenSubtasks(task, values.force);
+  // PRO34: a review needs something to check (children of an epic too, their checks roll up).
+  const noChecksReason = values['no-checks'] === undefined ? null : values['no-checks'].trim();
+  if (values['no-checks'] !== undefined && !noChecksReason) die('--no-checks needs a reason: --no-checks "<why there is nothing to check>"');
+  if (!checkTexts.length && !(task.checks || []).length && !noChecksReason) {
+    die(`${id} has nothing to check: pass --check "<what Tal should look at>" (repeatable), or --no-checks "<reason>" when there is genuinely nothing to look at`);
+  }
+
   if (isDesignTicket(task)) {
     if (values['design-link']) {
       if (!/^https:\/\//.test(values['design-link'])) die('--design-link must be an https URL');
@@ -896,6 +943,8 @@ function cmdReview(argv) {
   }
 
   if (result) task.result = result;
+  if (noChecksReason && !checkTexts.length && !(task.checks || []).length) task.noChecksReason = noChecksReason;
+  applyUnverifiedEdits(task, values);
   const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
   const today = todayStr();
 
@@ -908,7 +957,7 @@ function cmdReview(argv) {
     task.updated = today;
     if (fromSection.id !== 'done') {
       fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
-      appendHistory(task, { event: 'moved', from: fromSection.id, to: 'done' });
+      appendHistory(task, { event: 'moved', from: fromSection.id, to: 'done', note: task.noChecksReason ? `no checks: ${task.noChecksReason}` : undefined });
       doneSection.tasks.push(task);
     }
     const { epic, epicSection } = rolled;
@@ -937,17 +986,31 @@ function cmdReview(argv) {
   const moved = fromSection.id !== REVIEW_SECTION;
   if (moved) {
     fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
-    appendHistory(task, { event: 'moved', from: fromSection.id, to: REVIEW_SECTION });
+    appendHistory(task, { event: 'moved', from: fromSection.id, to: REVIEW_SECTION, note: task.noChecksReason ? `no checks: ${task.noChecksReason}` : undefined });
     toSection.tasks.push(task);
   }
   const unpinned = autoUnpin(doc, task);
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, result: task.result || null, unpinned, filed });
+    jsonOut({ id, section: REVIEW_SECTION, from: fromSection.id, moved, checks: (task.checks || []).length, added, noChecksReason: task.noChecksReason || null, result: task.result || null, unpinned, filed });
     return;
   }
-  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added${unpinNote(unpinned)}${filedNote(filed)}`);
+  ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added${task.noChecksReason ? ` (no checks: ${task.noChecksReason})` : ''}${unpinNote(unpinned)}${filedNote(filed)}`);
+}
+
+/** --clear-unverified / --resolve-unverified N on a ticket's result (review and update). Returns true when it changed anything. */
+function applyUnverifiedEdits(task, values) {
+  let changed = false;
+  if (values['clear-unverified']) {
+    clearUnverified(task);
+    changed = true;
+  } else if (values['resolve-unverified'] !== undefined) {
+    const n = Number(values['resolve-unverified']);
+    try { resolveUnverified(task, n); } catch (e) { die(e.message); }
+    changed = true;
+  }
+  return changed;
 }
 
 /** A ticket that is a design pick or design review (label `design`, or a Co-task pick / Design: title). */
@@ -1012,13 +1075,16 @@ function cmdDone(argv) {
   const { values, positionals } = parse(argv, {
     section: { type: 'string',  short: 's' },
     json:    { type: 'boolean', short: 'j' },
+    force:   { type: 'boolean' },
   });
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks done <id>');
+  if (!id) die('usage: ch tasks done <id> [--force]');
 
   const doc = load();
   const { task, section: fromSection } = resolveTask(doc, id, values.section);
+  if (fromSection.id !== 'done') assertNoOpenSubtasks(task, values.force);
+  const epicBefore = epicOf(doc, task)?.task.id;
 
   const doneSection = sectionById(doc, 'done');
   if (!doneSection) die('section "done" not found in document. Try \'ch tasks lint --fix\'');
@@ -1037,14 +1103,15 @@ function cmdDone(argv) {
   }
 
   const spawned = !alreadyDone ? maybeSpawnRecurrence(doc, task, today) : null;
-  const unpinned = autoUnpin(doc, task);
+  const rolled = epicBefore ? rollUpEpics(doc, epicBefore) : { epics: [], unpinned: [] };
+  const unpinned = [...new Set([...autoUnpin(doc, task), ...rolled.unpinned])];
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, section: 'done', checked: true, spawned: spawned?.id || null, unpinned });
+    jsonOut({ id, section: 'done', checked: true, spawned: spawned?.id || null, unpinned, epicMoved: rolled.epics });
     return;
   }
-  ok(`done ${id}${alreadyDone ? ' (already in done)' : ` moved from ${fromSection.id}`}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}`);
+  ok(`done ${id}${alreadyDone ? ' (already in done)' : ` moved from ${fromSection.id}`}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${epicNote(rolled.epics)}`);
 }
 
 function cmdUpdate(argv) {
@@ -1125,6 +1192,11 @@ function cmdUpdate(argv) {
     'review-of':     { type: 'string' },
     'clear-review-of': { type: 'boolean' },
     'clear-result':  { type: 'boolean' },
+    'clear-unverified':   { type: 'boolean' },
+    'resolve-unverified': { type: 'string' },  // N (1-based) into result.unverified
+    'promote-subtask':    { type: 'string' },  // N (1-based): turn the subtask into its own task
+    'promote-parent':     { type: 'string' },  // parent of that new task (same as --parent with --promote-subtask)
+    force:           { type: 'boolean' },      // finish a ticket in review even with open subtasks
     section:         { type: 'string',  short: 's' },
     uncheck:         { type: 'boolean' }, // reopen a task that was marked done
     check:           { type: 'boolean' }, // mark task checked (triggers recurrence spawn)
@@ -1161,6 +1233,15 @@ function cmdUpdate(argv) {
 
   const wasChecked = task.checked;
   let changed = false;
+  const promoting = values['promote-subtask'] !== undefined;
+  if (!promoting && values['promote-parent'] !== undefined) die('--promote-parent requires --promote-subtask N');
+  if (promoting && values['clear-parent']) die('--clear-parent changes this ticket\'s parent; it cannot be combined with --promote-subtask');
+  if (promoting && values['promote-parent'] !== undefined && values.parent !== undefined && values.parent !== values['promote-parent']) {
+    die('--parent and --promote-parent disagree: with --promote-subtask both name the NEW task\'s parent');
+  }
+  const promoteParent = promoting ? (values['promote-parent'] ?? values.parent) : undefined;
+  // PRO32: the epic this ticket leaves when its parent changes.
+  const epicBefore = (values['clear-parent'] || (values.parent !== undefined && !promoting)) ? epicOf(doc, task)?.task.id : null;
 
   if (values.title !== undefined) {
     task.title = values.title;
@@ -1198,7 +1279,7 @@ function cmdUpdate(argv) {
   if (values['clear-parent']) {
     delete task.parentId;
     changed = true;
-  } else if (values.parent !== undefined) {
+  } else if (values.parent !== undefined && !promoting) { // with --promote-subtask, --parent names the new task's parent
     if (values.parent === id) die('parent cannot be the task itself');
     if (!findTask(doc, values.parent)) {
       die(`parent task ${values.parent} not found. Try: ch tasks list`);
@@ -1611,6 +1692,13 @@ function cmdUpdate(argv) {
     delete task.result;
     changed = true;
   }
+  if (applyUnverifiedEdits(task, values)) changed = true;
+  let promoted = null;
+  if (promoting) {
+    const n = Number(values['promote-subtask']);
+    try { promoted = promoteSubtask(doc, task, n, { parent: promoteParent }); } catch (e) { die(e.message.replace(/^subtask N/, '--promote-subtask N')); }
+    changed = true;
+  }
 
   if (!changed) {
     die('no update flags provided. See: ch tasks update --help');
@@ -1626,6 +1714,7 @@ function cmdUpdate(argv) {
   // Ticking the last check of a ticket in review finishes it.
   let movedToDone = false;
   if (reviewComplete(task, taskSection.id, { ticked })) {
+    assertNoOpenSubtasks(task, values.force);
     const doneSection = sectionById(doc, 'done');
     if (!doneSection) die('section "done" not found in document. Try \'ch tasks lint --fix\'');
     taskSection.tasks = taskSection.tasks.filter(t => t.id !== task.id);
@@ -1636,13 +1725,24 @@ function cmdUpdate(argv) {
   }
   const heldByNotes = !movedToDone && ticked && taskSection.id === REVIEW_SECTION && allChecksTicked(task) && hasUnsentNotes(task)
     ? unsentNotes(task).length : 0;
-  const unpinned = movedToDone ? autoUnpin(doc, task) : [];
+  // PRO32: the last open child closing (finished here, or leaving the epic) closes the epic too.
+  const epicToCheck = movedToDone ? epicOf(doc, task)?.task.id : null;
+  const rolledEpics = [];
+  const rolledUnpinned = [];
+  for (const eid of new Set([epicBefore, epicToCheck].filter(Boolean))) {
+    const r = rollUpEpics(doc, eid);
+    rolledEpics.push(...r.epics);
+    rolledUnpinned.push(...r.unpinned);
+  }
+  const unpinned = [...new Set([...(movedToDone ? autoUnpin(doc, task) : []), ...rolledUnpinned])];
   const pinned = autoPinLaneEpic(doc, task, movedToDone ? 'done' : taskSection.id);
   save(doc);
 
   if (values.json) {
     const out = spawned ? { ...task, spawned: spawned.id } : { ...task };
     if (movedToDone) out.movedToDone = true;
+    if (promoted) out.promoted = promoted.id;
+    if (rolledEpics.length) out.epicMoved = rolledEpics;
     if (unpinned.length) out.unpinned = unpinned;
     if (pinned) out.pinned = true;
     if (heldByNotes) out.unsentNotes = heldByNotes;
@@ -1650,7 +1750,7 @@ function cmdUpdate(argv) {
     return;
   }
   if (heldByNotes) print(`${heldByNotes} review note(s) unsent: ch tasks notes --ticket ${id}`);
-  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}${unpinNote(unpinned)}${pinned ? ' (pinned to the plan)' : ''}`);
+  ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}${promoted ? ` (created ${promoted.id} from subtask ${values['promote-subtask']})` : ''}${epicNote(rolledEpics)}${unpinNote(unpinned)}${pinned ? ' (pinned to the plan)' : ''}`);
 }
 
 /** ch tasks notes — list, add and dismiss review notes. */
@@ -2374,7 +2474,10 @@ Subcommands:
   runplan [--json]
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
-         [--check "..."]... [--result-json '<json>'] [--file-left] [--design-link URL] [--json]
+         [--check "..."]... [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
+         [--result-json '<json>'] [--file-left] [--design-link URL] [--json]
+         needs at least one --check (or checks in --result-json / already on the ticket) unless --no-checks "<reason>" says why
+         there is nothing to check; refuses unchecked subtasks unless --force
          ship a ticket to "Ready for review": records the result and the checks to tick;
          --file-left files each left/unverified line as a follow-up ticket (same epic, review-of)
          a design ticket (label design) needs a design-board link: --design-link URL or an existing artifact link
@@ -2387,8 +2490,10 @@ Subcommands:
       [--estimate 2h|30m|1d] [--assignee name] [--blocked] [--waiting-on "..."]
       [--label L] [--link URL] [--blocked-by T1] [--review-of T1]
       (--type epic also needs --lane and --label model:opus|sonnet|haiku|local: the model that orchestrates it)
-  move <id> <section>
-  done <id>
+  move <id> <section> [--force]   moving to done refuses unchecked subtasks unless --force
+  done <id> [--force]             refuses unchecked subtasks (lists them) unless --force
+                                  (done / move done / update --parent|--clear-parent / ticking the last check also close the
+                                  parent epic when nothing under it is open: to review if it has a result or checks, else done)
   update <id> [--title "..."] [--description "..."] [--add-description "..."] [--priority P]
              [--color "#RRGGBB"] [--clear-color]
              [--due YYYY-MM-DD] [--clear-due] [--start YYYY-MM-DD] [--clear-start]
@@ -2413,6 +2518,11 @@ Subcommands:
              [--add-check "text"] [--check-check N] [--uncheck-check N]
              [--remove-check N] [--clear-checks] [--check-all-checks]
              [--review-of T1] [--clear-review-of] [--clear-result]
+             [--clear-unverified] [--resolve-unverified N]   edit result.unverified (an epic's lines: use the epic's own numbering)
+             [--promote-subtask N [--parent EPIC | --promote-parent EPIC]]   subtask N becomes its own task in todo, linked
+                 "Split from <id>"; with --promote-subtask, --parent / --promote-parent name the NEW task's parent
+                 (default: the ticket's epic) and the ticket's own parent is left alone
+             [--force]   finish a review ticket by ticking its last check even with open subtasks
   set-priority <id> <low|medium|high>
   next-id
   dump [--active]

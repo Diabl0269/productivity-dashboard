@@ -230,7 +230,7 @@ test('tasks move: preserves description, subtasks, priority and sets updated', (
 test('tasks done: sets checked=true and moves to done section', () => {
   const tmpDir = makeTmpDir(FIXTURE_SAMPLE);
   try {
-    const result = runCli(['tasks', 'done', 'T1', '--json'], tmpDir);
+    const result = runCli(['tasks', 'done', 'T1', '--force', '--json'], tmpDir);
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
 
     const out = JSON.parse(result.stdout.trim());
