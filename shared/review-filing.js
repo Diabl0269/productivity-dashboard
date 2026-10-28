@@ -18,6 +18,7 @@ import { laneDisplayName } from './run-plan.js';
 export const OPEN_SECTIONS = ['inbox', 'backlog', 'todo', 'in-progress'];
 const NEXT_SECTIONS = ['todo']; // an in-progress epic has a session running: don't grow it under its feet
 const TITLE_MAX = 120;
+const IMAGE_ONLY_TEXT = 'see the attached screenshot';
 
 const isLater = (epic) => /\(later\)\s*$/i.test(epic.title || '');
 const sameProject = (a, b) => (a || null) === (b || null);
@@ -34,7 +35,7 @@ function rows(doc) {
 
 /** Ticket title from a note: trimmed, first letter capitalised, at most 120 chars. */
 function titleOf(text) {
-  const t = capFirst(String(text).trim());
+  const t = capFirst(String(text).trim() || IMAGE_ONLY_TEXT);
   return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1).trimEnd()}…` : t;
 }
 
@@ -176,22 +177,34 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
       if (!src || !note || note.state !== 'new') continue;
       const ui = (src.labels || []).includes('ui') ? ['ui'] : [];
       const base = { parentId: epicId, project: src.project || null, reviewOf: src.id, now };
+      const text = note.text.trim() || IMAGE_ONLY_TEXT;
+      const created = [];
       let filedId;
       if (note.kind === 'idea') {
         filedId = newId(src.project || null);
-        add('backlog', makeTask(filedId, item.title, { ...base, section: 'backlog', labels: ['model:sonnet', ...ui], description: describe(src, note, note.text.trim()) }));
+        created.push(filedId);
+        add('backlog', makeTask(filedId, item.title, { ...base, section: 'backlog', labels: ['model:sonnet', ...ui], description: describe(src, note, text) }));
       } else if (note.kind === 'design') {
         const pickId = newId(src.project || null);
-        add('todo', makeTask(pickId, `Co-task: pick ${lowerFirst(note.text.trim())}`.slice(0, TITLE_MAX), {
-          ...base, section: 'todo', labels: ['design', 'model:opus', ...ui], description: describe(src, note, note.text.trim()),
+        created.push(pickId);
+        add('todo', makeTask(pickId, `Co-task: pick ${lowerFirst(text)}`.slice(0, TITLE_MAX), {
+          ...base, section: 'todo', labels: ['design', 'model:opus', ...ui], description: describe(src, note, text),
         }));
         filedId = newId(src.project || null);
-        add('todo', makeTask(filedId, titleOf(`${note.text.trim()}, per the pick`), {
-          ...base, section: 'todo', labels: ['model:sonnet', ...ui], blockedBy: [pickId], description: describe(src, note, note.text.trim()),
+        created.push(filedId);
+        add('todo', makeTask(filedId, titleOf(`${text}, per the pick`), {
+          ...base, section: 'todo', labels: ['model:sonnet', ...ui], blockedBy: [pickId], description: describe(src, note, text),
         }));
       } else {
         filedId = newId(src.project || null);
-        add('todo', makeTask(filedId, item.title, { ...base, section: 'todo', labels: ['model:sonnet', ...ui], description: describe(src, note, note.text.trim()) }));
+        created.push(filedId);
+        add('todo', makeTask(filedId, item.title, { ...base, section: 'todo', labels: ['model:sonnet', ...ui], description: describe(src, note, text) }));
+      }
+      // The reviewer's screenshots travel with the ticket as a note, so whoever fixes it sees them.
+      if (note.images?.length) {
+        for (const id of created) {
+          byId(id).notes = [{ at: now, text: `Screenshot from the review of ${src.id}`, images: [...note.images] }];
+        }
       }
       note.state = 'filed';
       note.filed = filedId;
