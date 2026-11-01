@@ -2,7 +2,8 @@
 
 import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
-import { epicsToUnpin } from '../../shared/review.js';
+import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
+import { projectGroupHeader, playVideoButton } from './check-evidence.js';
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
@@ -180,7 +181,7 @@ function renderCheckGrid(task) {
   grid.appendChild(head);
   const checks = task.checks || [];
   const unsent = unsentNotes(task);
-  checks.forEach((c, i) => {
+  const addRow = (c, i) => {
     const row = el('div', 'rp-check-row');
     const pass = el('div', 'rp-check-pass');
     const cb = el('input');
@@ -202,12 +203,21 @@ function renderCheckGrid(task) {
       what.appendChild(document.createTextNode(' → '));
       what.appendChild(idButton(c.handedTo, 'rp-link rp-review-id'));
     }
+    if (c.video) {
+      what.appendChild(document.createTextNode(' '));
+      what.appendChild(playVideoButton(c, i + 1, what));
+    }
     row.appendChild(what);
     row.appendChild(noteCell(task, unsent.filter(n => n.check === c.text), {
       check: c.text, key: i, placeholder: 'What did you see? Enter saves', label: `Note on check ${i + 1}`,
     }));
     grid.appendChild(row);
-  });
+  };
+  // Checks sharing a saved project sit together under one header; the rest keep their order after.
+  for (const group of groupChecksByProject(checks)) {
+    if (group.project) grid.appendChild(projectGroupHeader(group.project, 'rp-check-row ce-group-head'));
+    group.items.forEach(({ check, index }) => addRow(check, index));
+  }
   const texts = new Set(checks.map(c => c.text));
   const general = el('div', 'rp-check-row rp-check-general');
   general.appendChild(el('div', 'rp-check-pass'));

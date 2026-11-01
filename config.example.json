@@ -10,6 +10,7 @@
   ],
   "sprints": [],
   "claudeSessionFolder": "/path/to/your/workspace   (optional: Plan > Start opens a new Claude Code session in this folder, with the /ship-task command typed in)",
+  "reviewProjectApps": [],
   "wipLimit": 3,
   "wipLimits": {
     "in-progress": 3

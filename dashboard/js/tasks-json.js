@@ -134,7 +134,7 @@ export function defaultTasksMeta() {
   };
 }
 
-/** Normalise a task's `checks` tick-list: drop malformed entries, keep addedAt. */
+/** Normalise a task's `checks` tick-list: drop malformed entries, keep addedAt, handedTo, project and video. */
 export function normalizeChecks(raw) {
   if (!Array.isArray(raw)) return [];
   const out = [];
@@ -143,6 +143,9 @@ export function normalizeChecks(raw) {
     const e = { text: c.text, checked: !!c.checked };
     if (typeof c.addedAt === 'string' && c.addedAt) e.addedAt = c.addedAt;
     if (typeof c.handedTo === 'string' && c.handedTo) e.handedTo = c.handedTo;
+    // Review evidence (shared/review.js): a saved project and a short video under CH_HOME/evidence.
+    if (typeof c.project === 'string' && c.project) e.project = c.project;
+    if (typeof c.video === 'string' && c.video) e.video = c.video;
     out.push(e);
   }
   return out;

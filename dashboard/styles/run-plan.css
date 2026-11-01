@@ -152,6 +152,14 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
 .rn-area-chip:hover, .rn-area-select:hover { border-color: var(--text-secondary); }
 .rn-area-chip:focus-visible, .rn-area-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* Review evidence: Open project / Play video (dashboard/js/check-evidence.js) */
+.ce-btn { padding: 2px 8px; font-size: 12px; margin-left: 4px; }
+.ce-group-head { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--border); padding-bottom: 3px; }
+.rp-check-row.ce-group-head { grid-column: 1 / -1; display: flex; }
+.ce-group-name { font-family: ui-monospace, Menlo, monospace; }
+.ce-video { display: block; width: 100%; max-width: 520px; margin-top: 6px; border-radius: 6px; background: var(--surface-0); }
+.td-review-checks .ce-video { margin: 4px 0 6px 26px; }
+
 @media (max-width: 699px) {
   .rp-check-row { grid-template-columns: 32px minmax(0, 1fr); }
   .rp-check-row > :nth-child(3) { grid-column: 2; }

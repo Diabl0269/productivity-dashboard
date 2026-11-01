@@ -19,7 +19,7 @@ import {
   normalizeProjectRow,
 } from '../../shared/projects.js';
 import { normalizeModel } from '../../shared/model.js';
-import { resultErrors } from '../../shared/review.js';
+import { resultErrors, checkEvidenceErrors } from '../../shared/review.js';
 import { reviewNoteErrors } from '../../shared/review-notes.js';
 
 /** Canonical section definitions (order = board column order). */
@@ -557,7 +557,7 @@ export { TASK_ID_RE };
  *       created is 'YYYY-MM-DD' or null/undefined/empty (should be set — warned, not errored)
  *       updated is 'YYYY-MM-DD' or null/undefined/empty
  *       subtasks is array of {text:string, checked:boolean}
- *       checks (optional) is array of {text:string, checked:boolean, addedAt:ISO string}
+ *       checks (optional) is array of {text:string, checked:boolean, addedAt:ISO string, project?:.agsproj path, video?:.mp4 path}
  *       type (optional) is a known ticket-type id (defaults to "task")
  *       parentId (optional) is a task id that exists and is not self
  *       description (optional) free-text; legacy `note` is also accepted
@@ -773,6 +773,7 @@ export function validateTasksDoc(doc) {
             if (c.handedTo !== undefined && typeof c.handedTo !== 'string') {
               errors.push(`${ref}.checks[${ci}].handedTo must be a ticket id string`);
             }
+            errors.push(...checkEvidenceErrors(c, `${ref}.checks[${ci}]`));
           }
         }
       }

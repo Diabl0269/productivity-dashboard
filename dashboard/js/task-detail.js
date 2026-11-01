@@ -84,7 +84,8 @@ import {
   bindFieldLayoutDnD,
 } from './task-field-layout.js';
 import { promoteSubtaskInState } from '../../shared/subtasks.js';
-import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines } from '../../shared/review.js';
+import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines, groupChecksByProject } from '../../shared/review.js';
+import { projectGroupHeader, playVideoButton } from './check-evidence.js';
 import { unsentNotes } from '../../shared/review-notes.js';
 import { reviewNoteAddRow, reviewNoteRow } from './review-notes-ui.js';
 import { NOTE_IMAGE_MAX_BYTES, uploadNoteImage, buildThumb, noteImageUrl } from './note-images-ui.js';
@@ -2874,7 +2875,7 @@ function buildReviewPanel(task, body) {
   if (inReview && (task.checks || []).length) {
     const list = document.createElement('div');
     list.className = 'td-review-checks';
-    task.checks.forEach((c, idx) => {
+    const addCheck = (c, idx) => {
       const row = document.createElement('div');
       row.className = 'td-subtask' + (c.checked ? ' done' : '');
       const cb = document.createElement('span');
@@ -2894,12 +2895,20 @@ function buildReviewPanel(task, body) {
       text.textContent = c.text || '';
       row.appendChild(cb);
       row.appendChild(text);
+      const videoHost = c.video ? document.createElement('div') : null;
+      if (videoHost) row.appendChild(playVideoButton(c, idx + 1, videoHost));
       list.appendChild(row);
+      if (videoHost) list.appendChild(videoHost);
       unsentNotes(task).filter(x => x.check === c.text).forEach(x => list.appendChild(reviewNoteRow(task, x, { onChange: reviewNotesChanged })));
       list.appendChild(reviewNoteAddRow(task, {
         check: c.text, key: idx, placeholder: 'Note on this check… Enter saves', label: 'Note on check ' + (idx + 1), onChange: reviewNotesChanged,
       }));
-    });
+    };
+    // Checks sharing a saved project sit together under one header; the rest keep their order after.
+    for (const group of groupChecksByProject(task.checks)) {
+      if (group.project) list.appendChild(projectGroupHeader(group.project));
+      group.items.forEach(({ check, index }) => addCheck(check, index));
+    }
     box.appendChild(list);
   }
 

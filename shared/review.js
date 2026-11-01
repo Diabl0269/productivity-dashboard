@@ -165,16 +165,108 @@ export function reviewClosedTooFast(task) {
   return false;
 }
 
-/** Add checks, skipping texts already on the ticket. Returns how many were added. */
+/**
+ * Evidence paths: a check can carry a saved `project` (.agsproj) and a short `video` (.mp4),
+ * each a path relative to $CH_HOME/evidence. Returns an error message, or null when valid.
+ */
+export function evidencePathError(value, ext, label = 'path') {
+  if (typeof value !== 'string' || !value.trim()) return `${label} must be a non-empty string`;
+  const p = value.trim();
+  if (p.includes('\0')) return `${label} must not contain a NUL byte`;
+  if (p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\')) return `${label} must be relative to the evidence folder: ${p}`;
+  if (p.split(/[\\/]/).some(seg => seg === '..')) return `${label} must not contain "..": ${p}`;
+  if (!p.toLowerCase().endsWith(ext)) return `${label} must end with ${ext}: ${p}`;
+  return null;
+}
+
+export const projectPathError = (v, label = 'project') => evidencePathError(v, '.agsproj', label);
+export const videoPathError = (v, label = 'video') => evidencePathError(v, '.mp4', label);
+
+/** Forward-slash, trimmed, no "./" or doubled slashes. */
+export function tidyEvidencePath(value) {
+  return String(value).trim().replace(/\\/g, '/').split('/').filter(seg => seg && seg !== '.').join('/');
+}
+
+/**
+ * A check as given on the CLI or in --result-json: a string or { text, project?, video? }.
+ * Returns { text, project?, video? } with tidied paths; throws on a bad shape or path.
+ */
+export function normalizeCheckInput(item) {
+  const obj = typeof item === 'string' ? { text: item } : item;
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj) || typeof obj.text !== 'string') {
+    throw new Error('each check must be a string or an object with a text string');
+  }
+  const out = { text: obj.text.trim() };
+  for (const [key, check] of [['project', projectPathError], ['video', videoPathError]]) {
+    if (obj[key] === undefined || obj[key] === null || obj[key] === '') continue;
+    const err = check(obj[key], `check ${key}`);
+    if (err) throw new Error(err);
+    out[key] = tidyEvidencePath(obj[key]);
+  }
+  return out;
+}
+
+/** Schema errors for a stored check's project/video (empty when valid). */
+export function checkEvidenceErrors(check, ref) {
+  const errors = [];
+  if (check?.project !== undefined) {
+    const e = projectPathError(check.project, `${ref}.project`);
+    if (e) errors.push(e);
+  }
+  if (check?.video !== undefined) {
+    const e = videoPathError(check.video, `${ref}.video`);
+    if (e) errors.push(e);
+  }
+  return errors;
+}
+
+/** The project bundle name of a check ("end.agsproj"), or ''. */
+export function projectName(project) {
+  return String(project || '').split('/').filter(Boolean).pop() || '';
+}
+
+/**
+ * Order checks for display: checks that share a `project` sit together under one group, groups in
+ * order of first appearance, then the checks without a project in their own order. Each entry keeps
+ * its original check object and index, so ticking and notes still address the right check.
+ * @returns {Array<{ project: string|null, items: Array<{ check, index }> }>}
+ */
+export function groupChecksByProject(checks) {
+  const groups = [];
+  const byProject = new Map();
+  const loose = [];
+  (checks || []).forEach((check, index) => {
+    const project = check && typeof check.project === 'string' && check.project ? check.project : null;
+    if (!project) { loose.push({ check, index }); return; }
+    let group = byProject.get(project);
+    if (!group) { group = { project, items: [] }; byProject.set(project, group); groups.push(group); }
+    group.items.push({ check, index });
+  });
+  if (loose.length) groups.push({ project: null, items: loose });
+  return groups;
+}
+
+/**
+ * Add checks (strings or { text, project?, video? }), skipping texts already on the ticket.
+ * A text already present keeps its tick but gains a project/video it lacked. Returns how many were added.
+ */
 export function addChecks(task, texts, { now = new Date().toISOString() } = {}) {
   if (!Array.isArray(task.checks)) task.checks = [];
-  const have = new Set(task.checks.map(c => String(c.text).trim()));
+  const byText = new Map(task.checks.map(c => [String(c.text).trim(), c]));
   let added = 0;
   for (const raw of texts) {
-    const text = String(raw || '').trim();
-    if (!text || have.has(text)) continue;
-    task.checks.push({ text, checked: false, addedAt: now });
-    have.add(text);
+    const input = typeof raw === 'object' && raw ? raw : { text: raw };
+    const text = String(input.text || '').trim();
+    if (!text) continue;
+    const have = byText.get(text);
+    if (have) {
+      for (const key of ['project', 'video']) if (input[key] && !have[key]) have[key] = input[key];
+      continue;
+    }
+    const check = { text, checked: false, addedAt: now };
+    for (const key of ['project', 'video']) if (input[key]) check[key] = input[key];
+    task.checks.push(check);
+    byText.set(text, check);
     added++;
   }
   return added;
@@ -299,6 +391,7 @@ function descendantsOf(doc, epicId) {
  * review only when the child added checks.
  */
 export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOString() } = {}) {
+  // checkTexts items are strings or { text, project?, video? }; the prefix goes on the text only.
   const found = epicOf(doc, task);
   if (!found) return null;
   const { task: epic, section: epicSection } = found;
@@ -318,7 +411,9 @@ export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOSt
     epic.result = mine;
   }
   removeStalePickChecks(epic, task.blockedBy);
-  const added = addChecks(epic, checkTexts.map(prefix), { now });
+  const added = addChecks(epic, checkTexts.map((c) => (
+    typeof c === 'object' && c ? { ...c, text: prefix(c.text) } : prefix(c)
+  )), { now });
 
   const siblingsOpen = descendantsOf(doc, epic.id).some(
     ({ task: t, section }) => t.id !== task.id && t.type !== 'epic' && !CLOSED_SECTIONS.has(section),
