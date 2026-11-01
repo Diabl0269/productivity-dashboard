@@ -6,6 +6,9 @@ TASKS.md
 memory/
 config.json
 
+# ch write lock (removed when the command finishes)
+.tasks.lock
+
 # Local Claude config
 .claude/skills
 .claude/settings.json

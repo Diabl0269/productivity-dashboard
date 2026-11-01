@@ -21,6 +21,47 @@ export function noteInputKey(task, key) {
   return `${task.taskId || task.id}|${key}`;
 }
 
+// ---- drafts ---------------------------------------------------------------------------
+// A note being typed survives re-renders (a Pass tick, the watcher applying a background write)
+// and a page refresh: text and kind live in localStorage until the note is saved.
+
+const DRAFT_PREFIX = 'td-draft:note-input:';
+const lsDo = (fn) => { try { return fn(localStorage); } catch { return null; } };
+
+function readDraft(storeKey) {
+  const raw = lsDo(ls => ls.getItem(storeKey));
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw);
+    return d && typeof d.text === 'string' ? { text: d.text, kind: NOTE_KINDS.includes(d.kind) ? d.kind : null } : null;
+  } catch { return null; }
+}
+
+function writeDraft(storeKey, text, kind) {
+  lsDo(ls => (text.trim() ? ls.setItem(storeKey, JSON.stringify({ text, kind })) : ls.removeItem(storeKey)));
+}
+
+// Which note input has focus (and its caret), so a re-render can hand focus to the rebuilt input.
+let focusState = null;
+let mouseDown = false;
+let docListeners = false;
+function ensureDocListeners() {
+  if (docListeners || typeof document === 'undefined') return;
+  docListeners = true;
+  document.addEventListener('focusin', (e) => {
+    if (!e.target?.classList?.contains('td-review-note-input')) focusState = null;
+  });
+  document.addEventListener('mousedown', () => { mouseDown = true; }, true);
+  document.addEventListener('mouseup', () => { mouseDown = false; }, true);
+}
+
+/** True while a note input has focus and text in it: a watcher update should wait. */
+export function isNoteInputBusy() {
+  if (typeof document === 'undefined') return false;
+  const a = document.activeElement;
+  return !!a && a.classList?.contains('td-review-note-input') && !!String(a.value || '').trim();
+}
+
 /** Focus the note input with this key, once the caller has re-rendered. */
 export function focusNoteInput(task, key) {
   requestAnimationFrame(() => {
@@ -90,27 +131,74 @@ export function reviewNoteAddRow(task, { check, key, placeholder, label, onChang
     e.preventDefault();
     stage(files);
   });
-  let saving = false;
-  input.addEventListener('keydown', async (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
+  // Draft: restore what was typed before a re-render or refresh.
+  ensureDocListeners();
+  const draftKey = DRAFT_PREFIX + stagedKey;
+  const hint = make('span', 'td-review-note-draft-hint', 'unsaved');
+  hint.title = 'Typed but not saved yet. Press Enter, or click away, to save it as a note';
+  const syncHint = () => { hint.hidden = !input.value.trim(); };
+  const stored = readDraft(draftKey);
+  if (stored) {
+    input.value = stored.text;
+    if (stored.kind) kind.value = stored.kind;
+  }
+  syncHint();
+  input.addEventListener('input', () => { writeDraft(draftKey, input.value, kind.value); syncHint(); });
+  kind.addEventListener('change', () => writeDraft(draftKey, input.value, kind.value));
+  const remember = () => { focusState = { key: stagedKey, start: input.selectionStart, end: input.selectionEnd }; };
+  input.addEventListener('focus', remember);
+  for (const ev of ['keyup', 'click', 'input']) input.addEventListener(ev, remember);
+  if (focusState && focusState.key === stagedKey) {
+    const want = focusState;
+    requestAnimationFrame(() => {
+      if (!input.isConnected || (document.activeElement && document.activeElement !== document.body && document.activeElement !== input)) return;
+      input.focus();
+      try { input.setSelectionRange(want.start ?? input.value.length, want.end ?? input.value.length); } catch { /* not text */ }
+    });
+  }
+
+  const save = async ({ refocus }) => {
     const text = input.value.trim();
-    if (saving || (!text && !staged.length)) return;
-    saving = true;
+    if (savingKeys.has(stagedKey) || (!text && !staged.length)) return;
+    savingKeys.add(stagedKey);
     try {
       const images = [];
       for (const item of staged) images.push(await uploadNoteImage(task, item.file));
       addReviewNote(task, { text, kind: kind.value, check, images });
       staged.forEach(item => URL.revokeObjectURL(item.url));
       stagedImages.delete(stagedKey);
+      lsDo(ls => ls.removeItem(draftKey));
+      input.value = '';
+      syncHint();
       onChange?.(task);
-      focusNoteInput(task, key);
+      if (refocus) focusNoteInput(task, key);
     } catch (err) {
       showStatus(`Could not add note: ${err.message}`);
-      saving = false;
+    } finally {
+      savingKeys.delete(stagedKey);
     }
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    save({ refocus: true });
+  });
+  // Clicking or tabbing away saves what was typed. Not when focus only moves within this row
+  // (the kind select, the Image button), and not while the mouse is down, so the click that
+  // caused the blur (a Pass tick) lands before the re-render.
+  input.addEventListener('blur', (e) => {
+    if (!input.isConnected) return; // removed by a re-render: the draft is already stored
+    if (e.relatedTarget && row.contains(e.relatedTarget)) return;
+    if (focusState && focusState.key === stagedKey) focusState = null;
+    const attempt = () => setTimeout(() => {
+      if (mouseDown) { document.addEventListener('mouseup', attempt, { once: true, capture: true }); return; }
+      if (document.activeElement === input || !input.value.trim()) return;
+      save({ refocus: false });
+    }, 0);
+    attempt();
   });
   row.appendChild(input);
+  row.appendChild(hint);
   row.appendChild(kind);
   row.appendChild(imageBtn);
   row.appendChild(picker);
@@ -119,6 +207,7 @@ export function reviewNoteAddRow(task, { check, key, placeholder, label, onChang
 }
 
 const stagedImages = new Map();
+const savingKeys = new Set();
 
 /**
  * The note's area as a small chip that turns into a select on click.

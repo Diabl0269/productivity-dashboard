@@ -104,6 +104,66 @@ export function resultErrors(result, ref) {
   }
 }
 
+const CHECK_OWNER_RULES = [
+  ['CI or a PR being green is yours to watch and verify', /\bCI\b[^.]{0,40}\b(green|passed|passes|pass|red|build|checks?|shards?)\b|\bPR\b[^.]{0,40}\bgreen\b|\bCI (build|run)\b/i],
+  ['running a command or test suite is yours to do', /(^|[\s:])Run:\s|\brun (the |all |a |your )?(full )?(test suite|tests?|gate|lint)\b|\bTools\/|\bgit (status|diff|log)\b|\b(npm|pnpm|node) (run |test|--test)|\bci-local\b/i],
+  ['opening older or saved projects is a compatibility check you can run yourself', /\bproject saved (before|with|in)\b|\bopen (a|an|the) (saved|older|previous|old) (project|patch|file)\b|\b(older|previous|old) (project|build|version|release)s?\b/i],
+  ['regressions are yours to check with tests', /\bregress(ion|ions)?\b|\bstill works?\b/i],
+  ['VoiceOver checks are yours to run (see the accessibility notes)', /voice ?over/i],
+];
+
+/**
+ * Checks are for what only Tal can judge (look, feel, taste). Returns a reason when `text`
+ * is something the shipping session should verify itself and report under --tests, else null.
+ * Tuned so ordinary product steps ("Press Run", "drag Cutoff") pass.
+ */
+export function checkOwnerProblem(text) {
+  const t = String(text ?? '');
+  for (const [reason, re] of CHECK_OWNER_RULES) if (re.test(t)) return reason;
+  return null;
+}
+
+/** Does this check text (without the "<id>: " prefix) ask Tal to pick a design option? */
+export function isPickCheckText(text) {
+  return /^\s*(Pick\b|Answer Pick\b|Open the [^.]{0,80}\bboard\b|Board shows\b)/i.test(String(text ?? ''));
+}
+
+/**
+ * Drop from `epic` the unticked pick checks that were rolled up from tickets in `blockerIds`
+ * (a pick that is answered no longer needs to be checked). Returns how many were removed.
+ */
+export function removeStalePickChecks(epic, blockerIds) {
+  if (!Array.isArray(epic?.checks) || !blockerIds?.length) return 0;
+  const before = epic.checks.length;
+  epic.checks = epic.checks.filter((c) => {
+    if (!c || c.checked) return true;
+    const text = String(c.text ?? '');
+    return !blockerIds.some(id => text.startsWith(`${id}: `) && isPickCheckText(text.slice(id.length + 2)));
+  });
+  return before - epic.checks.length;
+}
+
+export const REVIEW_DONE_FAST_MS = 5 * 60 * 1000;
+
+/** True when the ticket's history shows a move review -> done less than 5 minutes after it entered review. */
+export function reviewClosedTooFast(task) {
+  const history = Array.isArray(task?.history) ? task.history : [];
+  for (let i = 0; i < history.length; i++) {
+    const h = history[i];
+    if (!h || h.to !== 'done' || h.from !== REVIEW_SECTION) continue;
+    const doneAt = Date.parse(h.at);
+    for (let j = i - 1; j >= 0; j--) {
+      const e = history[j];
+      if (e && e.to === REVIEW_SECTION) {
+        const inAt = Date.parse(e.at);
+        if (Number.isFinite(doneAt) && Number.isFinite(inAt) && doneAt - inAt <= REVIEW_DONE_FAST_MS) return true;
+        break;
+      }
+    }
+  }
+  return false;
+}
+
 /** Add checks, skipping texts already on the ticket. Returns how many were added. */
 export function addChecks(task, texts, { now = new Date().toISOString() } = {}) {
   if (!Array.isArray(task.checks)) task.checks = [];
@@ -232,6 +292,7 @@ export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOSt
     if (mine.ci === 'all passed' && result.ci && result.ci !== 'all passed') mine.ci = prefix(result.ci);
     epic.result = mine;
   }
+  removeStalePickChecks(epic, task.blockedBy);
   const added = addChecks(epic, checkTexts.map(prefix), { now });
 
   const siblingsOpen = descendantsOf(doc, epic.id).some(

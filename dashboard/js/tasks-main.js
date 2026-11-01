@@ -1,7 +1,7 @@
 // tasks-main.js - Main orchestrator for tasks functionality
 
 import { taskSectionId, autoArchive, todayStr } from './tasks-parser.js';
-import { loadTasksJson, serializeTasksJson, defaultTasksMeta, normalizeTasksMeta } from './tasks-json.js';
+import { loadTasksJson, defaultTasksMeta, normalizeTasksMeta } from './tasks-json.js';
 import { markChanged, startWatching, setIOCallbacks, setLastModified, autoSave } from './tasks-io.js';
 import { renderBoard, setBoardCallbacks } from './tasks-board.js';
 import { renderList, setListCallbacks } from './tasks-list.js';
@@ -9,8 +9,9 @@ import { setTaskDetailCallbacks, syncTaskDetailAfterReload } from './task-detail
 import { setTaskCreateCallbacks } from './task-create.js';
 import { showStatus, filePathEl, setTaskInfoGetter, activeMainTab } from './state.js';
 import { saveHandle } from './persistence.js';
-import { httpSave, startHttpTaskWatching, setLastTaskContent, getLastTaskContent } from './http-loader.js';
+import { startHttpTaskWatching, setLastTaskContent } from './http-loader.js';
 import { isSaving } from './tasks-io.js';
+import { isNoteInputBusy } from './review-notes-ui.js';
 import { reapplySearch } from './search.js';
 import { normalizeTicketTypes, DEFAULT_TICKET_TYPE_ID } from './ticket-types.js';
 import { setSettingsCallbacks, renderSettingsTicketTypes } from './settings.js';
@@ -64,7 +65,8 @@ export function renderTasks() {
 setIOCallbacks({
   stateFn: () => taskState,
   renderFn: () => renderTasks,
-  parseFn: () => loadTasksJson
+  parseFn: () => loadTasksJson,
+  applyFn: (parsed) => applyLoadedTasks(parsed),
 });
 
 setBoardCallbacks({
@@ -243,7 +245,7 @@ export function startTasksHttpWatching() {
     applyLoadedTasks(parsed);
     renderTasks();
   }, {
-    shouldSkip: () => taskState.hasChanges || isSaving
+    shouldSkip: () => taskState.hasChanges || isSaving || isNoteInputBusy()
   });
 }
 
@@ -351,22 +353,8 @@ export function initTasks() {
   openTaskBtn.addEventListener('click', openTaskFile);
   document.getElementById('openBtnLarge')?.addEventListener('click', openTaskFile);
 
-  saveBtn.addEventListener('click', async () => {
-    try {
-      const content = serializeTasksJson(taskState.sections, taskState.tasks, taskState.ticketTypes, taskState.meta);
-      if (taskState.taskFileHandle) {
-        const writable = await taskState.taskFileHandle.createWritable();
-        await writable.write(content);
-        await writable.close();
-      } else {
-        await httpSave('tasks.json', content, { baseContent: getLastTaskContent() });
-        setLastTaskContent(content);
-      }
-      taskState.hasChanges = false;
-      saveBtn.disabled = true;
-      showStatus('Saved');
-    } catch (e) { showStatus('Error: ' + e.message); }
-  });
+  // Same path as the automatic save, so a conflict with a background write is merged, not lost.
+  saveBtn.addEventListener('click', () => { autoSave(); });
 
   window.addEventListener('beforeunload', (e) => {
     if (taskState.hasChanges) { e.preventDefault(); e.returnValue = ''; }

@@ -748,6 +748,8 @@
   font-size: var(--text-sm);
 }
 .td-review-note-dismiss:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.td-review-note-draft-hint { font-size: 11px; color: var(--warning, #b45309); white-space: nowrap; }
+.td-review-note-draft-hint[hidden] { display: none; }
 .td-review-note-input {
   flex: 1;
   font-family: var(--font-sans);

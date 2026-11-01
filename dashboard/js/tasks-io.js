@@ -1,19 +1,57 @@
 // tasks-io.js - Auto-save, file watching, markChanged
 
 import { todayStr } from './tasks-parser.js';
-import { serializeTasksJson } from './tasks-json.js';
+import { serializeTasksJson, loadTasksJson } from './tasks-json.js';
 import { showStatus, showStatusAction } from './state.js';
 import { httpSave, getLastTaskContent, setLastTaskContent } from './http-loader.js';
+import { mergeTasksDocs } from '../../shared/tasks-merge.js';
 
 // Late-bind imports to avoid circular deps at module evaluation time
 let getState = null;
 let getRenderTasks = null;
 let getParseTaskMarkdown = null;
+let getApplyLoaded = null;
 
-export function setIOCallbacks({ stateFn, renderFn, parseFn }) {
+/** `applyFn(parsed)` puts a loadTasksJson result into the state (optional; a plain replace otherwise). */
+export function setIOCallbacks({ stateFn, renderFn, parseFn, applyFn }) {
   getState = stateFn;
   getRenderTasks = renderFn;
   getParseTaskMarkdown = parseFn;
+  getApplyLoaded = applyFn || null;
+}
+
+/** How many times a save that hit a conflict merges and retries before it warns. */
+export const MAX_CONFLICT_RETRIES = 4;
+
+function applyParsed(state, parsed) {
+  if (getApplyLoaded) { getApplyLoaded(parsed); return; }
+  state.sections.length = 0;
+  state.sections.push(...parsed.sections);
+  for (const key of Object.keys(state.tasks)) delete state.tasks[key];
+  Object.assign(state.tasks, parsed.tasks);
+  if (parsed.ticketTypes) state.ticketTypes = parsed.ticketTypes;
+  if (parsed.meta) state.meta = parsed.meta;
+}
+
+/** A document in the dashboard's own canonical shape, so base/local/current compare field for field. */
+function canonicalDoc(text) {
+  const r = loadTasksJson(text);
+  return JSON.parse(serializeTasksJson(r.sections, r.tasks, r.ticketTypes, r.meta));
+}
+
+/**
+ * The file changed under us (a `ch` write from another session). Merge our edits with the
+ * file as it is now, put the result into the state and return the text to save next.
+ */
+function mergeConflict(state, currentText) {
+  const local = JSON.parse(serializeTasksJson(state.sections, state.tasks, state.ticketTypes, state.meta));
+  const baseText = getLastTaskContent();
+  const base = baseText ? canonicalDoc(baseText) : { sections: [] };
+  const merged = mergeTasksDocs(base, local, canonicalDoc(currentText));
+  applyParsed(state, loadTasksJson(JSON.stringify(merged)));
+  setLastTaskContent(currentText);
+  getRenderTasks()();
+  return serializeTasksJson(state.sections, state.tasks, state.ticketTypes, state.meta);
 }
 
 let saveTimeout = null;
@@ -57,9 +95,10 @@ export async function autoSave() {
     return;
   }
   isSaving = true;
-  const seqAtStart = changeSeq;
+  let seqAtStart = changeSeq;
+  let merged = false;
   try {
-    const content = serializeTasksJson(state.sections, state.tasks, state.ticketTypes, state.meta);
+    let content = serializeTasksJson(state.sections, state.tasks, state.ticketTypes, state.meta);
     if (state.taskFileHandle) {
       const writable = await state.taskFileHandle.createWritable();
       await writable.write(content);
@@ -67,45 +106,49 @@ export async function autoSave() {
       const file = await state.taskFileHandle.getFile();
       lastModified = file.lastModified;
     } else {
-      await httpSave('tasks.json', content, { baseContent: getLastTaskContent() });
-      setLastTaskContent(content);
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await httpSave('tasks.json', content, { baseContent: getLastTaskContent() });
+          setLastTaskContent(content);
+          break;
+        } catch (e) {
+          if (e.code !== 'conflict') throw e;
+          if (attempt >= MAX_CONFLICT_RETRIES) { warnUnsaved(state, 'the file keeps changing underneath'); return; }
+          try {
+            content = mergeConflict(state, e.current);
+          } catch (mergeErr) {
+            warnUnsaved(state, `could not merge: ${mergeErr.message}`);
+            return;
+          }
+          seqAtStart = changeSeq; // the merge started from the latest edits
+          merged = true;
+        }
+      }
     }
     if (changeSeq === seqAtStart) {
       state.hasChanges = false;
       document.getElementById('saveBtn').disabled = true;
-      showStatus('Saved');
+      showStatus(merged ? 'Saved (merged)' : 'Saved');
     } else {
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(autoSave, 0);
     }
   } catch (e) {
-    if (e.code === 'conflict') {
-      showStatusAction('Save conflict — file changed externally', {
-        actionLabel: 'Reload',
-        onAction: () => {
-          const result = getParseTaskMarkdown()(e.current);
-          state.sections.length = 0;
-          state.sections.push(...result.sections);
-          for (const key of Object.keys(state.tasks)) delete state.tasks[key];
-          Object.assign(state.tasks, result.tasks);
-          if (result.ticketTypes) state.ticketTypes = result.ticketTypes;
-          if (result.meta) state.meta = result.meta;
-          getRenderTasks()();
-          setLastTaskContent(e.current);
-          state.hasChanges = false;
-          document.getElementById('saveBtn').disabled = true;
-          showStatus('Reloaded');
-        },
-        durationMs: 10000
-      });
-      state.hasChanges = true;
-      document.getElementById('saveBtn').disabled = false;
-      return;
-    }
     showStatus('Save failed: ' + e.message);
   } finally {
     isSaving = false;
   }
+}
+
+/** Edits are only in memory: say so, stay on screen until dealt with, and never offer a discarding Reload. */
+function warnUnsaved(state, why) {
+  state.hasChanges = true;
+  document.getElementById('saveBtn').disabled = false;
+  showStatusAction(`NOT SAVED: ${why}. Your edits are kept in this tab; keep it open.`, {
+    actionLabel: 'Retry save',
+    onAction: () => { autoSave(); },
+    durationMs: 0, // 0 = stays until dismissed or the save works
+  });
 }
 
 let watchInterval = null;

@@ -215,15 +215,21 @@ const server = http.createServer(async (req, res) => {
       if (relPath === 'tasks.json') {
         const tf = await loadTasksFilesLib();
         const doc = JSON.parse(body.content);
-        if (body.baseContent !== undefined && tf.tasksLayout(DATA_ROOT) !== 'none') {
-          const current = tf.readTasksText(DATA_ROOT);
-          if (!sameTasksDoc(current, body.baseContent)) {
-            res.writeHead(409, { ...corsHeaders, 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'conflict', current }));
-            return;
+        // The conflict check and the write happen under the same lock `ch` takes, so a `ch`
+        // save cannot slip in between them.
+        const conflict = tf.withTasksLock(DATA_ROOT, () => {
+          if (body.baseContent !== undefined && tf.tasksLayout(DATA_ROOT) !== 'none') {
+            const current = tf.readTasksText(DATA_ROOT);
+            if (!sameTasksDoc(current, body.baseContent)) return current;
           }
+          tf.writeTasksDoc(DATA_ROOT, doc, { text: body.content });
+          return null;
+        });
+        if (conflict !== null) {
+          res.writeHead(409, { ...corsHeaders, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'conflict', current: conflict }));
+          return;
         }
-        tf.writeTasksDoc(DATA_ROOT, doc, { text: body.content });
         res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
         return;

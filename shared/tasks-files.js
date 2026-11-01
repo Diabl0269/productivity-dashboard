@@ -168,6 +168,61 @@ export function writeTasksDoc(root, doc, { text } = {}) {
   return { written: 1, removed: 0, tickets: null };
 }
 
+// ---- write lock (PRO38) ----------------------------------------------------------------
+// Two `ch` processes that load, change and save at the same time used to overwrite each other
+// (the later save wrote its older copy back). A writer takes <root>/.tasks.lock (created with
+// O_EXCL, so only one process can) before it loads and drops it after it saves. A lock older
+// than LOCK_STALE_MS belongs to a dead process and is taken over.
+
+export const LOCK_FILE = '.tasks.lock';
+export const LOCK_STALE_MS = 10_000;
+export const LOCK_WAIT_MS = 15_000;
+const held = new Set();
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Take the lock (re-entrant within this process); waits up to LOCK_WAIT_MS, then throws. */
+export function acquireTasksLock(root, { staleMs = LOCK_STALE_MS, waitMs = LOCK_WAIT_MS } = {}) {
+  const lock = path.join(root, LOCK_FILE);
+  if (held.has(lock)) return;
+  fs.mkdirSync(root, { recursive: true });
+  const deadline = Date.now() + waitMs;
+  for (let delay = 2; ; delay = Math.min(delay * 2, 50)) {
+    try {
+      const fd = fs.openSync(lock, 'wx');
+      fs.writeSync(fd, String(process.pid));
+      fs.closeSync(fd);
+      held.add(lock);
+      return;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
+    try {
+      if (Date.now() - fs.statSync(lock).mtimeMs > staleMs) { fs.rmSync(lock, { force: true }); continue; }
+    } catch { continue; /* released between the two calls */ }
+    if (Date.now() > deadline) throw new Error(`tasks are locked by another ch process (${lock}); try again`);
+    sleepSync(delay);
+  }
+}
+
+/** Drop the lock if this process holds it. */
+export function releaseTasksLock(root) {
+  const lock = path.join(root, LOCK_FILE);
+  if (!held.delete(lock)) return;
+  fs.rmSync(lock, { force: true });
+}
+
+/** Run fn with the lock held (for read-check-write sequences such as the dashboard server's save). */
+export function withTasksLock(root, fn) {
+  const had = held.has(path.join(root, LOCK_FILE));
+  acquireTasksLock(root);
+  try { return fn(); } finally { if (!had) releaseTasksLock(root); }
+}
+
+process.on('exit', () => { for (const lock of held) fs.rmSync(lock, { force: true }); });
+
 /** Problems with the files on disk that don't stop reading (shown by `ch tasks lint`). */
 export function layoutWarnings(root) {
   const warnings = [];

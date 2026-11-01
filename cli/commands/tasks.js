@@ -28,7 +28,7 @@
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *       needs at least one --check (or checks in --result-json, or checks already on the ticket) unless --no-checks "<reason>" says why
  *       there is nothing to check (stored as noChecksReason). Refuses a ticket with unchecked subtasks unless --force.
- *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint) unless --force
+ *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint), a review ticket with unticked checks/unsent notes, and an epic with unticked checks, unless --force
  *   move <id> <section> [--force]  same refusal when moving to done
  *   (done / move done / update --parent|--clear-parent / ticking the last check also close the parent epic when nothing
  *    under it is open: to review if it has a result or checks, else to done)
@@ -91,7 +91,7 @@ import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
-  rollUpAfterClose, resolveUnverified, clearUnverified,
+  rollUpAfterClose, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
 import {
@@ -137,6 +137,24 @@ function autoPinLaneEpic(doc, task, sectionId) {
 const unpinNote = (ids) => (ids.length ? ` (unpinned ${ids.join(', ')})` : '');
 
 /** T191: done / move done / review / auto-finish refuse a ticket with unchecked subtasks unless --force. */
+/**
+ * Tal reviews tickets in the review section and ticks their checks; a session that closes one
+ * (or an epic with unticked checks) takes that review away from him. Refuse unless --force.
+ */
+function assertReviewNotClosedBySession(task, fromSectionId, force) {
+  if (force) return;
+  const open = (task.checks || []).filter(c => c && !c.checked).length;
+  if (fromSectionId === REVIEW_SECTION) {
+    const notes = unsentNotes(task).length;
+    if (open || notes) {
+      die(`${task.id} is in review with ${open} unticked check(s) and ${notes} unsent note(s). Tal reviews it and ticks the checks himself; sessions must stop at \`ch tasks review\`. (--force only if Tal asked you to close it.)`);
+    }
+  }
+  if (task.type === 'epic' && open) {
+    die(`${task.id} is an epic with ${open} unticked check(s). Tal ticks those in review; sessions must not close it. (--force only if Tal asked you to.)`);
+  }
+}
+
 function assertNoOpenSubtasks(task, force) {
   if (!force && openSubtasks(task).length) die(openSubtasksMessage(task.id, task, { cli: true }));
 }
@@ -797,7 +815,10 @@ function cmdMove(argv) {
     ok(`${id} is already in ${targetSectionId}`);
     return;
   }
-  if (targetSectionId === 'done') assertNoOpenSubtasks(task, values.force);
+  if (targetSectionId === 'done') {
+    assertReviewNotClosedBySession(task, fromSection.id, values.force);
+    assertNoOpenSubtasks(task, values.force);
+  }
   const epicBefore = targetSectionId === 'done' ? epicOf(doc, task)?.task.id : null;
 
   if (targetSectionId === REVIEW_SECTION) ensureSections(doc);
@@ -833,6 +854,14 @@ function cmdMove(argv) {
   ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${epicNote(rolled.epics)}`);
 }
 
+/** Checks are for what only Tal can judge; refuse the ones the session should verify itself. */
+function assertChecksAreTals(texts, allow) {
+  if (allow) return;
+  const bad = texts.map(t => ({ t, why: checkOwnerProblem(t) })).filter(x => x.why);
+  if (!bad.length) return;
+  die(`these checks are yours, not Tal's (${bad.length}):\n${bad.map(x => `  - "${x.t}" (${x.why})`).join('\n')}\nVerify them yourself and put the result in --tests, then pass only checks Tal must judge. (--allow-check-owner overrides.)`);
+}
+
 /**
  * Ship a ticket into "Ready for review": record what shipped (result), add the
  * "worth checking yourself" list (checks) and move it to the review section.
@@ -857,6 +886,7 @@ function cmdReview(argv) {
     'design-link': { type: 'string' },
     'no-checks':   { type: 'string' },
     force:         { type: 'boolean' },
+    'allow-check-owner': { type: 'boolean' },
     'clear-unverified':   { type: 'boolean' },
     'resolve-unverified': { type: 'string' },
   });
@@ -872,6 +902,7 @@ function cmdReview(argv) {
     const moved = [];
     for (const child of children) {
       const checkTexts = (child.checks || []).filter(c => !c.checked).map(c => c.text);
+      assertChecksAreTals(checkTexts, values['allow-check-owner']);
       const rolled = rollUpIntoEpic(doc, child, checkTexts);
       reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
       appendHistory(child, { event: 'moved', from: REVIEW_SECTION, to: 'done' });
@@ -908,6 +939,7 @@ function cmdReview(argv) {
   const asList = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
   const checkTexts = [...asList(base.checks), ...(values.check || [])];
   if (checkTexts.some(t => typeof t !== 'string')) die('invalid --result-json: checks must be a list of strings');
+  assertChecksAreTals(checkTexts, values['allow-check-owner']);
 
   const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
   let result = null;
@@ -1091,7 +1123,10 @@ function cmdDone(argv) {
 
   const doc = load();
   const { task, section: fromSection } = resolveTask(doc, id, values.section);
-  if (fromSection.id !== 'done') assertNoOpenSubtasks(task, values.force);
+  if (fromSection.id !== 'done') {
+    assertReviewNotClosedBySession(task, fromSection.id, values.force);
+    assertNoOpenSubtasks(task, values.force);
+  }
   const epicBefore = epicOf(doc, task)?.task.id;
 
   const doneSection = sectionById(doc, 'done');
@@ -2058,6 +2093,11 @@ function cmdLint(argv) {
   // Every open epic stays pinned (2026-10-14); a hand unpin or a write that skipped the CLI drops it off the Plan page.
   for (const t of openEpicsNotPinned(doc)) printErr(`lint: warning: epic ${t.id} is not pinned to the plan (ch tasks plan --pin ${t.id})`);
 
+  // Reviews are Tal's: a ticket that went review -> done within minutes was probably closed by a session.
+  for (const t of doc.sections.filter(s => s.id === 'done').flatMap(s => s.tasks)) {
+    if (reviewClosedTooFast(t)) printErr(`lint: warning: ${t.id} went review -> done within ${REVIEW_DONE_FAST_MS / 60000} minutes; Tal may not have reviewed it`);
+  }
+
   if (result.valid) {
     // Persist note→description, missing sections, meta when --fix is set
     if (values.fix) {
@@ -2528,7 +2568,8 @@ Subcommands:
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
          [--check "..."]... [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
-         [--result-json '<json>'] [--file-left] [--design-link URL] [--json]
+         [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--json]
+         refuses checks a session should verify itself (CI green, running commands, older projects, regressions, VoiceOver): put those in --tests
          needs at least one --check (or checks in --result-json / already on the ticket) unless --no-checks "<reason>" says why
          there is nothing to check; refuses unchecked subtasks unless --force
          ship a ticket to "Ready for review": records the result and the checks to tick;
@@ -2544,7 +2585,7 @@ Subcommands:
       [--label L] [--link URL] [--blocked-by T1] [--review-of T1]
       (--type epic also needs --lane and --label model:opus|sonnet|haiku|local: the model that orchestrates it)
   move <id> <section> [--force]   moving to done refuses unchecked subtasks unless --force
-  done <id> [--force]             refuses unchecked subtasks (lists them) unless --force
+  done <id> [--force]             refuses unchecked subtasks (lists them), a ticket in review with open checks/notes, and an epic with open checks, unless --force
                                   (done / move done / update --parent|--clear-parent / ticking the last check also close the
                                   parent epic when nothing under it is open: to review if it has a result or checks, else done)
   update <id> [--title "..."] [--description "..."] [--add-description "..."] [--priority P]
