@@ -64,6 +64,18 @@ test('computeRunPlan counts unsent review notes', () => {
   assert.equal(plan.review.find(r => r.id === 'T1').notes, 0);
 });
 
+test('computeRunPlan lists unticked checks on open tickets, not closed or fully ticked ones', () => {
+  const check = (text, checked = false) => ({ text, checked, addedAt: '2026-10-02T10:00:00.000Z' });
+  const row = (id, checks) => ({ id, title: id, checks });
+  const plan = computeRunPlan({ sections: [
+    { id: 'in-progress', tasks: [row('E1', [check('look', true), check('listen')]), row('E2', [check('look', true)])] },
+    { id: 'done', tasks: [row('E3', [check('look')])] },
+    { id: 'archive', tasks: [row('E4', [check('look')])] },
+  ] });
+  assert.deepEqual(plan.openChecks.map(r => r.id), ['E1']);
+  assert.deepEqual(plan.openChecks[0].checks, { done: 1, total: 2 });
+});
+
 test('computeRunPlan review queue is oldest first with follow-ups', () => {
   const plan = computeRunPlan(JSON.parse(docText()));
   assert.deepEqual(plan.review.map(r => r.id), ['T1', 'T2']);

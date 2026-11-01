@@ -232,6 +232,30 @@ export function reviewQueue(doc) {
     .sort((a, b) => (a.enteredAt < b.enteredAt ? -1 : a.enteredAt > b.enteredAt ? 1 : 0));
 }
 
+/**
+ * Checks waiting on tickets that are still open, oldest first. A child's checks roll up onto its
+ * epic the day it ships, but the epic only reaches Ready for review with its last child, so the
+ * queue above never shows these until then.
+ */
+export function checksOnOpenWork(doc) {
+  const untickedOf = (task) => (task.checks || []).filter(c => c && !c.checked && !c.handedTo);
+  return flat(doc)
+    .filter(({ task, section }) => !CLOSED_SECTIONS.has(section) && untickedOf(task).length)
+    .map(({ task }) => ({
+      id: task.id,
+      title: task.title,
+      project: task.project || null,
+      parentId: task.parentId || null,
+      reviewOf: task.reviewOf || null,
+      enteredAt: untickedOf(task).map(c => c.addedAt || '').sort()[0] || '',
+      checks: checkProgress(task),
+      notes: unsentNotes(task).length,
+      result: task.result || null,
+      followUps: followUpsOf(doc, task.id),
+    }))
+    .sort((a, b) => (a.enteredAt < b.enteredAt ? -1 : a.enteredAt > b.enteredAt ? 1 : 0));
+}
+
 function findRow(doc, id) {
   return flat(doc).find(({ task }) => task.id === id) || null;
 }

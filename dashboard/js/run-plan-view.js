@@ -415,18 +415,26 @@ function renderFileBar() {
 }
 
 /** "Ready for review" block above the lanes: shipped tickets waiting for Tal's look, oldest first. */
-function renderReview(review) {
+function renderReview(review, openChecks) {
   const block = el('section', 'rp-review');
   block.setAttribute('aria-label', 'Ready for review');
   block.appendChild(el('h2', 'rp-review-title', 'Ready for review'));
   const fileBar = renderFileBar();
   if (fileBar) block.appendChild(fileBar);
-  if (!review.length) {
-    block.appendChild(el('p', 'rp-review-empty', 'Nothing waiting for review.'));
-    return block;
+  if (review.length) block.appendChild(renderReviewList(review));
+  else block.appendChild(el('p', 'rp-review-empty', 'Nothing waiting for review.'));
+  if (openChecks.length) {
+    const total = openChecks.reduce((sum, item) => sum + item.checks.total - item.checks.done, 0);
+    block.appendChild(el('h3', 'rp-review-subtitle', `Checks on epics still in progress (${total})`));
+    block.appendChild(el('p', 'rp-review-empty', 'These parts already shipped. The epic stays open for its other tickets.'));
+    block.appendChild(renderReviewList(openChecks));
   }
+  return block;
+}
+
+function renderReviewList(items) {
   const list = el('ol', 'rp-review-list');
-  for (const item of review) {
+  for (const item of items) {
     const task = findTicket(item.id);
     const open = openReview.has(item.id);
     const li = el('li', 'rp-review-item' + (open ? ' rp-open' : ''));
@@ -461,8 +469,7 @@ function renderReview(review) {
     if (open && task) li.appendChild(renderCheckGrid(task));
     list.appendChild(li);
   }
-  block.appendChild(list);
-  return block;
+  return list;
 }
 
 // ----- Hover preview + same-ticket highlight (delegated, installed once per render root) -----
@@ -835,7 +842,7 @@ export function renderRunPlanView() {
   currentDoc = toDoc(state);
   const plan = computeRunPlan(currentDoc);
 
-  root.appendChild(renderReview(plan.review || []));
+  root.appendChild(renderReview(plan.review || [], plan.openChecks || []));
   if (plan.lanes.length === 0) {
     root.appendChild(el('p', 'rp-empty', 'No pinned epics. Pin one with ch tasks plan --pin <id>'));
     return;
