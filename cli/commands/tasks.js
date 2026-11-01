@@ -21,6 +21,7 @@
  *   notes route [--ticket ID] [--json] show which epic each unsent note would be filed under
  *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note, under its area's epic
   notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
+  notes edit <id>#<n> ["<text>"] [--kind fix|idea|design]
   notes dismiss <id>#<n>
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
@@ -95,7 +96,7 @@ import {
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
 import {
-  NOTE_KINDS, addReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
+  NOTE_KINDS, addReviewNote, editReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
 } from '../../shared/review-notes.js';
 import { planFiling, applyFiling } from '../../shared/review-filing.js';
 
@@ -1835,7 +1836,7 @@ function cmdUpdate(argv) {
 /** ch tasks notes — list, add and dismiss review notes. */
 function cmdNotes(argv) {
   const sub = argv[0];
-  if (sub === 'add' || sub === 'dismiss') {
+  if (sub === 'add' || sub === 'dismiss' || sub === 'edit') {
     const { values, positionals } = parse(argv.slice(1), {
       kind:    { type: 'string' },
       check:   { type: 'string' },
@@ -1868,6 +1869,17 @@ function cmdNotes(argv) {
       return;
     }
     const handle = parseNoteHandle(positionals[0]);
+    if (sub === 'edit') {
+      if (!handle || (positionals[1] === undefined && !values.kind)) die('usage: ch tasks notes edit <id>#<n> ["<text>"] [--kind fix|idea|design]');
+      const { task } = resolveTask(doc, handle.id, values.section);
+      let note;
+      try { note = editReviewNote(task, handle.n, { text: positionals[1], kind: values.kind }); } catch (e) { die(e.message); }
+      task.updated = todayStr();
+      save(doc);
+      if (values.json) { jsonOut({ id: handle.id, ...note }); return; }
+      ok(`edited ${handle.id}#${handle.n}`);
+      return;
+    }
     if (!handle) die('usage: ch tasks notes dismiss <id>#<n>');
     const { task } = resolveTask(doc, handle.id, values.section);
     try { setNoteState(task, handle.n, 'dismissed'); } catch (e) { die(e.message); }

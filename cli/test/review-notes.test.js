@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import {
-  addReviewNote, unsentNotes, setNoteState, parseNoteHandle, noteLine, reviewNoteErrors,
+  addReviewNote, editReviewNote, unsentNotes, setNoteState, parseNoteHandle, noteLine, reviewNoteErrors,
   pendingReviewNotes, countUnsentNotes,
 } from '../../shared/review-notes.js';
 import { reviewComplete } from '../../shared/review.js';
@@ -178,4 +178,17 @@ test('CLI: ticking all checks with an unsent note keeps the ticket in review', (
   runCli(['tasks', 'notes', 'dismiss', 'T3#1'], dir);
   runCli(['tasks', 'update', 'T3', '--check-all-checks'], dir);
   assert.equal(find(dir, 'T3').section, 'done');
+});
+
+test('editReviewNote changes text and kind of an unsent note only', () => {
+  const task = { id: 'T1' };
+  addReviewNote(task, { text: 'first' });
+  editReviewNote(task, 1, { text: ' better ', kind: 'idea' });
+  assert.equal(task.reviewNotes[0].text, 'better');
+  assert.equal(task.reviewNotes[0].kind, 'idea');
+  assert.throws(() => editReviewNote(task, 1, { text: '  ' }), /empty/);
+  assert.throws(() => editReviewNote(task, 1, { kind: 'bogus' }), /unknown note kind/);
+  assert.throws(() => editReviewNote(task, 9, { kind: 'fix' }), /no review note/);
+  setNoteState(task, 1, 'dismissed');
+  assert.throws(() => editReviewNote(task, 1, { kind: 'fix' }), /already dismissed/);
 });

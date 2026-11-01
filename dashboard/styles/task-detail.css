@@ -740,6 +740,11 @@
 .td-note-kind.kind-fix { color: var(--status-blocked); }
 .td-note-kind.kind-idea { color: var(--status-todo); }
 .td-note-kind.kind-design { color: var(--badge-reference-fg); }
+.td-note-kind-select { background: transparent; border: none; cursor: pointer; font: inherit; }
+.td-note-kind-select:focus-visible, .td-review-note-edit:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.td-review-note-edit { background: none; border: none; padding: 0; font-family: inherit; text-align: left; cursor: text; }
+.td-review-note-edit:hover { color: var(--text-primary); }
+.td-review-note-edit-input { flex: 1; min-width: 0; }
 .td-review-note-dismiss {
   background: transparent;
   border: none;
