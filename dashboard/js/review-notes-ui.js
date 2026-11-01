@@ -2,7 +2,7 @@
 // Plan's review cards (run-plan-view.js). Tasks are dashboard-shaped (taskId, reviewNotes).
 // Builders mutate the task's notes, then call `onChange(task)` so the caller can save and re-render.
 
-import { NOTE_KINDS, addReviewNote, setNoteState } from '../../shared/review-notes.js';
+import { NOTE_KINDS, addReviewNote, editReviewNote, setNoteState } from '../../shared/review-notes.js';
 import { laneDisplayName } from '../../shared/run-plan.js';
 import { showStatus } from './state.js';
 import { uploadNoteImage, buildThumb, noteImageUrl, acceptImageFiles, pastedImageFiles } from './note-images-ui.js';
@@ -250,11 +250,67 @@ function areaControl(task, note, area, onChange) {
 }
 
 /** One unsent note: kind chip, optional area chip, text, and a dismiss button. */
+function noteKindSelect(task, note, onChange) {
+  const sel = make('select', `td-note-kind td-note-kind-select kind-${note.kind}`);
+  sel.setAttribute('aria-label', 'Change note kind');
+  sel.title = 'Change note kind';
+  for (const k of NOTE_KINDS) {
+    const opt = make('option', null, cap(k));
+    opt.value = k;
+    sel.appendChild(opt);
+  }
+  sel.value = note.kind;
+  sel.addEventListener('change', () => {
+    editReviewNote(task, note.n, { kind: sel.value });
+    onChange?.(task);
+  });
+  return sel;
+}
+
+/** The note's text as a button; clicking swaps in an input. Enter or leaving saves, Esc cancels. */
+function noteTextButton(task, note, onChange) {
+  const btn = make('button', 'td-review-note-text td-review-note-edit', note.text || '(image only)');
+  btn.type = 'button';
+  btn.title = 'Click to edit';
+  btn.setAttribute('aria-label', `Edit note: ${note.text || 'image only'}`);
+  btn.addEventListener('click', () => {
+    const input = make('input', 'td-review-note-input td-review-note-edit-input');
+    input.type = 'text';
+    input.value = note.text;
+    input.setAttribute('aria-label', 'Edit note text');
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      if (save && input.value.trim() !== note.text) {
+        try {
+          editReviewNote(task, note.n, { text: input.value });
+          onChange?.(task);
+          return;
+        } catch (err) {
+          showStatus(`Could not edit note: ${err.message}`);
+        }
+      }
+      input.replaceWith(btn);
+      if (!save) btn.focus();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    btn.replaceWith(input);
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+  return btn;
+}
+
 export function reviewNoteRow(task, note, { onChange, area } = {}) {
   const row = make('div', 'td-review-note');
-  row.appendChild(make('span', `td-note-kind kind-${note.kind}`, cap(note.kind)));
+  row.appendChild(noteKindSelect(task, note, onChange));
   if (area) row.appendChild(areaControl(task, note, area, onChange));
-  row.appendChild(make('span', 'td-review-note-text', note.text));
+  row.appendChild(noteTextButton(task, note, onChange));
   const x = make('button', 'td-review-note-dismiss', '×');
   x.type = 'button';
   x.setAttribute('aria-label', 'Dismiss note');

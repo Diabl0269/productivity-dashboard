@@ -52,6 +52,21 @@ export function setNoteState(task, n, state, { filed } = {}) {
   return note;
 }
 
+/** Change an unsent note's text and/or kind. Returns the note. */
+export function editReviewNote(task, n, { text, kind } = {}) {
+  const note = (task?.reviewNotes || []).find(x => x && x.n === n);
+  if (!note) throw new Error(`no review note #${n} on ${task?.id ?? 'ticket'}`);
+  if (note.state !== 'new') throw new Error(`review note #${n} is already ${note.state}`);
+  if (kind !== undefined && !NOTE_KINDS.includes(kind)) throw new Error(`unknown note kind "${kind}". Valid: ${NOTE_KINDS.join(', ')}`);
+  if (text !== undefined) {
+    const clean = String(text).trim();
+    if (!clean && !note.images?.length) throw new Error('note text is empty');
+    note.text = clean;
+  }
+  if (kind !== undefined) note.kind = kind;
+  return note;
+}
+
 /** Parse `PRO19#3` into { id, n }, else null. */
 export function parseNoteHandle(str) {
   const m = HANDLE_RE.exec(String(str ?? '').trim());
