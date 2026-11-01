@@ -110,6 +110,7 @@ const CHECK_OWNER_RULES = [
   ['opening older or saved projects is a compatibility check you can run yourself', /\bproject saved (before|with|in)\b|\bopen (a|an|the) (saved|older|previous|old) (project|patch|file)\b|\b(older|previous|old) (project|build|version|release)s?\b/i],
   ['regressions are yours to check with tests', /\bregress(ion|ions)?\b|\bstill works?\b/i],
   ['VoiceOver checks are yours to run (see the accessibility notes)', /voice ?over/i],
+  ['a design pick is a Co-task: pick ticket, so it shows in the Design round lane, not a check', /\b(pick|answer|choose)\b[^.]{0,60}\bboard\b|\bboard\b[^.]{0,30}\b(pick|answer|choose)\b/i],
 ];
 
 /**

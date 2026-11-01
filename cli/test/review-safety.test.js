@@ -110,6 +110,10 @@ test('checkOwnerProblem refuses real session-owned checks', () => {
   for (const t of REFUSED) assert.ok(checkOwnerProblem(t), t);
   assert.ok(checkOwnerProblem('Run: node --test'));
   assert.ok(checkOwnerProblem('Check for regression in the mixer'));
+  assert.ok(checkOwnerProblem('Pick one option per question on the board'));
+  assert.ok(checkOwnerProblem('FRO429: Open the Custom module board and answer Q1-Q9.'));
+  assert.equal(checkOwnerProblem('The board looks right'), null);
+  assert.equal(checkOwnerProblem('Pick the Sampler and hear it play'), null);
 });
 
 test('checkOwnerProblem lets product checks through', () => {
