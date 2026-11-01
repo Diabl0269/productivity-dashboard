@@ -140,6 +140,12 @@ function loadNoteImagesLib() {
   if (!noteImagesLibPromise) noteImagesLibPromise = import('./shared/note-images.js');
   return noteImagesLibPromise;
 }
+// Review evidence (videos and saved projects under CH_HOME/evidence): cli/lib/evidence.js owns the rules.
+let evidenceLibPromise = null;
+function loadEvidenceLib() {
+  if (!evidenceLibPromise) evidenceLibPromise = import('./cli/lib/evidence.js');
+  return evidenceLibPromise;
+}
 const NOTE_IMAGE_BODY_MAX = 12 * 1024 * 1024; // ~8 MB image as base64 plus JSON wrapper
 
 function decodeProjectPath(encoded) {
@@ -707,6 +713,44 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'HEAD') res.end(); else fs.createReadStream(abs).pipe(res);
     } catch (e) {
       res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Review videos: GET/HEAD /evidence/<rel>.mp4 (Range supported so the player can seek)
+  if (url.pathname.startsWith('/evidence/') && (req.method === 'GET' || req.method === 'HEAD')) {
+    try {
+      const lib = await loadEvidenceLib();
+      let rel;
+      try { rel = decodeURIComponent(url.pathname.slice('/evidence/'.length)); } catch { rel = ''; }
+      const out = lib.evidenceVideoResponse({ dataRoot: DATA_ROOT, relPath: rel, method: req.method, range: req.headers.range });
+      if (!out.file) {
+        const json = out.error ? { 'Content-Type': 'application/json' } : {};
+        res.writeHead(out.status, { ...corsHeaders, ...out.headers, ...json });
+        res.end(out.error ? JSON.stringify({ error: out.error }) : undefined);
+        return;
+      }
+      res.writeHead(out.status, { ...corsHeaders, ...out.headers });
+      fs.createReadStream(out.file.abs, { start: out.file.start, end: out.file.end }).pipe(res);
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Review projects: POST /api/open-project {path} launches the newest configured build on a saved project
+  if (url.pathname === '/api/open-project' && req.method === 'POST') {
+    try {
+      const lib = await loadEvidenceLib();
+      const out = await lib.handleOpenProject({
+        origin: req.headers.origin, host: req.headers.host, bodyText: await readBody(req, 64 * 1024), dataRoot: DATA_ROOT,
+      });
+      res.writeHead(out.status, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(out.json));
+    } catch (e) {
+      res.writeHead(e.status || 500, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
     return;
