@@ -15,7 +15,7 @@
  */
 
 import { dataRoot } from './io.js';
-import { readTasksDoc, writeTasksDoc } from '../../shared/tasks-files.js';
+import { readTasksDoc, writeTasksDoc, acquireTasksLock, releaseTasksLock } from '../../shared/tasks-files.js';
 import { validateTasksDoc, normalizeTasksDoc } from './schema.js';
 import { nextTaskId } from '../../shared/task-ids.js';
 
@@ -24,6 +24,8 @@ import { nextTaskId } from '../../shared/task-ids.js';
  * Throws if file is missing, invalid JSON, or fails schema validation.
  */
 export function load() {
+  // Held until save() (or exit) so a concurrent `ch` cannot save between our read and write.
+  acquireTasksLock(dataRoot());
   const doc = normalizeTasksDoc(readTasksDoc(dataRoot()));
   const result = validateTasksDoc(doc);
   if (!result.valid) {
@@ -43,7 +45,11 @@ export function save(doc) {
   if (!result.valid) {
     throw new Error(`tasks.json validation failed:\n${result.errors.join('\n')}`);
   }
-  writeTasksDoc(dataRoot(), doc);
+  try {
+    writeTasksDoc(dataRoot(), doc);
+  } finally {
+    releaseTasksLock(dataRoot());
+  }
 }
 
 /**

@@ -97,7 +97,7 @@ export function showStatusAction(msg, opts = {}) {
   }
 
   statusEl.classList.add('visible');
-  statusTimer = setTimeout(() => statusEl.classList.remove('visible'), durationMs);
+  statusTimer = durationMs > 0 ? setTimeout(() => statusEl.classList.remove('visible'), durationMs) : null; // 0 = stays until replaced or its action is used
 }
 
 // These will be set by tasks-main.js and memory-renderer.js
