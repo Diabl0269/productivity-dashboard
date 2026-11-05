@@ -231,6 +231,17 @@ export function applyRoute(route) {
   }
 }
 
+/**
+ * Open a ticket's modal in place (no page navigation). Used by embedded pages (external-tab
+ * iframes) that postMessage {type:'dashboard:open-ticket', id}. False when the id is unknown.
+ */
+export function openTicketById(id) {
+  const task = deps.findTaskById?.(id);
+  if (!task) return false;
+  deps.openTaskDetail?.(task, { focusTitle: false });
+  return true;
+}
+
 /** Called after tasks load — opens a task that was in the URL on first paint. */
 export function flushPendingRoute() {
   const taskId = deps.pendingTaskId;

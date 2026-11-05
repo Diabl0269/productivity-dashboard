@@ -4,7 +4,7 @@
 // supplies label/url/mode only, nothing here assumes what the URL serves.
 
 import { registerExternalTab, switchMainTab } from './state.js';
-import { registerRoutableTab } from './routing.js';
+import { registerRoutableTab, openTicketById } from './routing.js';
 import { isValidEntry, slugify } from './external-tabs-validate.js';
 
 /**
@@ -12,6 +12,15 @@ import { isValidEntry, slugify } from './external-tabs-validate.js';
  * button per entry (plus an iframe panel for "iframe"-mode entries). Malformed entries
  * are skipped. No-op when the config key is absent or empty.
  */
+const embeds = new Set(); // iframe elements of iframe-mode tabs
+
+// An embedded page asks to open a ticket modal without reloading the whole dashboard.
+function onEmbedMessage(ev) {
+  const d = ev.data;
+  if (!d || d.type !== 'dashboard:open-ticket' || typeof d.id !== 'string') return;
+  for (const f of embeds) if (f.contentWindow === ev.source) { openTicketById(d.id); return; }
+}
+
 export function initExternalTabs() {
   const raw = (window.dashboardConfig && window.dashboardConfig.externalTabs) || [];
   if (!Array.isArray(raw) || raw.length === 0) return;
@@ -57,8 +66,13 @@ export function initExternalTabs() {
 
     const iframe = document.createElement('iframe');
     iframe.className = 'external-tab-iframe';
-    iframe.src = entry.url;
     iframe.title = entry.label;
+    // Load on first visit, not at dashboard start: the embedded page can be slow to build and
+    // must not delay every other tab. Kept alive afterwards, so closing a modal never reloads it.
+    const load = () => { if (!iframe.src) iframe.src = entry.url; };
+    new MutationObserver(() => { if (panel.classList.contains('active')) load(); })
+      .observe(panel, { attributes: true, attributeFilter: ['class'] });
+    embeds.add(iframe);
     panel.appendChild(iframe);
 
     document.body.appendChild(panel);
@@ -68,4 +82,5 @@ export function initExternalTabs() {
 
     btn.addEventListener('click', () => switchMainTab(id));
   });
+  window.addEventListener('message', onEmbedMessage);
 }
