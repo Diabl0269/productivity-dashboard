@@ -1,0 +1,7 @@
+{"type":"custom-title","customTitle":"PRO40 - synthetic","sessionId":"s1"}
+{"type":"user","sessionId":"s1","timestamp":"2026-01-01T10:00:00.000Z","gitBranch":"main","origin":{"kind":"human"},"message":{"role":"user","content":"hello"}}
+{"type":"api-request-blob","timestamp":"2026-01-01T10:00:01.000Z","blob":"xxxxxxxxxx"}
+this line is not json
+{"type":"assistant","sessionId":"s1","timestamp":"2026-01-01T10:05:00.000Z","message":{"content":[{"type":"text","text":"ok"}]}}
+{"type":"system","subtype":"stop_hook_summary","sessionId":"s1","timestamp":"2026-01-01T10:10:00.000Z","preventedContinuation":false}
+{"type":"cost-state","sessionId":"s1","totalCostUSD":1.234}
