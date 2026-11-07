@@ -557,7 +557,7 @@ export { TASK_ID_RE };
  *       created is 'YYYY-MM-DD' or null/undefined/empty (should be set — warned, not errored)
  *       updated is 'YYYY-MM-DD' or null/undefined/empty
  *       subtasks is array of {text:string, checked:boolean}
- *       checks (optional) is array of {text:string, checked:boolean, addedAt:ISO string, project?:.agsproj path, video?:.mp4 path}
+ *       checks (optional) is array of {text:string, checked:boolean, addedAt:ISO string, project?:.agsproj path, video?:.mp4 path, audio?:.wav/.mp3/.m4a/.ogg/.flac path}
  *       type (optional) is a known ticket-type id (defaults to "task")
  *       parentId (optional) is a task id that exists and is not self
  *       description (optional) free-text; legacy `note` is also accepted

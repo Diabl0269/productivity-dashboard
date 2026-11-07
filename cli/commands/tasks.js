@@ -25,7 +25,7 @@
   notes dismiss <id>#<n>
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
- *              [--check-project N=<path>]... [--check-video N=<path>]...   (N = the Nth --check; path under $CH_HOME/evidence)
+ *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]...   (N = the Nth --check; path under $CH_HOME/evidence)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *       needs at least one --check (or checks in --result-json, or checks already on the ticket) unless --no-checks "<reason>" says why
@@ -858,11 +858,11 @@ function cmdMove(argv) {
 }
 
 /** Checks are for what only Tal can judge; refuse the ones the session should verify itself. */
-function assertChecksAreTals(texts, allow) {
+function assertChecksAreTals(items, allow) {
   if (allow) return;
-  const bad = texts.map(t => ({ t, why: checkOwnerProblem(t) })).filter(x => x.why);
+  const bad = items.map(c => ({ t: c.text, why: checkOwnerProblem(c.text, c) })).filter(x => x.why);
   if (!bad.length) return;
-  die(`these checks are yours, not Tal's (${bad.length}):\n${bad.map(x => `  - "${x.t}" (${x.why})`).join('\n')}\nVerify them yourself and put the result in --tests, then pass only checks Tal must judge. (--allow-check-owner overrides.)`);
+  die(`these checks are yours, not Tal's (${bad.length}):\n${bad.map(x => `  - "${x.t}" (${x.why})`).join('\n')}\nDo what each reason says (verify it yourself and put the result in --tests, attach evidence, or use --no-checks), then pass only checks Tal must judge. (--allow-check-owner overrides.)`);
 }
 
 /** The path part of a check's project/video, as the relative path stored on the check; dies naming a bad one. */
@@ -871,7 +871,7 @@ function evidenceRelOrDie(value, kind, flag) {
   let rel;
   try { rel = toEvidenceRel(home, value, kind); } catch (e) { die(`${flag}: ${e.message}`); }
   try { resolveEvidence(home, rel, kind); } catch (e) {
-    die(`${flag}: ${kind === 'project' ? 'project' : 'video'} not found or outside the evidence folder: ${value} (looked in ${path.join(home, 'evidence', rel)})`);
+    die(`${flag}: ${kind} not found or outside the evidence folder: ${value} (looked in ${path.join(home, 'evidence', rel)})`);
   }
   return rel;
 }
@@ -899,11 +899,11 @@ function reviewCheckItems(base, values) {
   for (const raw of asList(base.checks)) {
     let item;
     try { item = normalizeCheckInput(raw); } catch (e) { die(`invalid --result-json: checks ${e.message}`); }
-    for (const kind of ['project', 'video']) if (item[kind]) item[kind] = evidenceRelOrDie(item[kind], kind, `--result-json check ${kind}`);
+    for (const kind of ['project', 'video', 'audio']) if (item[kind]) item[kind] = evidenceRelOrDie(item[kind], kind, `--result-json check ${kind}`);
     items.push(item);
   }
   const flagItems = flagTexts.map(text => ({ text }));
-  for (const kind of ['project', 'video']) {
+  for (const kind of ['project', 'video', 'audio']) {
     const flag = `--check-${kind}`;
     for (const { n, value } of parseCheckEvidenceFlags(values[`check-${kind}`], flag, flagTexts.length)) {
       flagItems[n - 1][kind] = evidenceRelOrDie(value, kind, flag);
@@ -930,6 +930,7 @@ function cmdReview(argv) {
     check:         { type: 'string', multiple: true },
     'check-project': { type: 'string', multiple: true },
     'check-video': { type: 'string', multiple: true },
+    'check-audio': { type: 'string', multiple: true },
     'result-json': { type: 'string' },
     section:       { type: 'string',  short: 's' },
     json:          { type: 'boolean', short: 'j' },
@@ -953,8 +954,8 @@ function cmdReview(argv) {
     const today = todayStr();
     const moved = [];
     for (const child of children) {
-      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video }));
-      assertChecksAreTals(checkItems.map(c => c.text), values['allow-check-owner']);
+      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio }));
+      assertChecksAreTals(checkItems, values['allow-check-owner']);
       const rolled = rollUpIntoEpic(doc, child, checkItems);
       reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
       appendHistory(child, { event: 'moved', from: REVIEW_SECTION, to: 'done' });
@@ -977,7 +978,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force]');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -991,7 +992,7 @@ function cmdReview(argv) {
   const asList = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
   const checkItems = reviewCheckItems(base, values);
   const checkTexts = checkItems.map(c => c.text);
-  assertChecksAreTals(checkTexts, values['allow-check-owner']);
+  assertChecksAreTals(checkItems, values['allow-check-owner']);
 
   const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
   let result = null;
@@ -2634,13 +2635,15 @@ Subcommands:
   runplan [--json]
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
-         [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]...
+         [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]...
          [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
          [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--json]
-         --check-project / --check-video attach a saved .agsproj / short .mp4 to the Nth --check of this call (Open project / Play video
+         --check-project / --check-video / --check-audio attach a saved .agsproj / short .mp4 / .wav (or .mp3 .m4a .ogg .flac) to the Nth --check of this call (Open project / Play video / audio player
          on the Plan page); the path is absolute or relative to $CH_HOME/evidence, must lie inside it and exist; --result-json checks may be
-         {"text","project","video"} objects
-         refuses checks a session should verify itself (CI green, running commands, older projects, regressions, VoiceOver): put those in --tests
+         {"text","project","video","audio"} objects
+         refuses checks a session should verify itself (CI green, running commands/evals/scripts, older projects, regressions, VoiceOver, measured results): put those in --tests;
+         also refuses "nothing to check" texts (use --no-checks), file paths in a check without an attached project/video/audio (attach it),
+         and AI-generated-content checks without --check-project (create the project with the AI yourself)
          needs at least one --check (or checks in --result-json / already on the ticket) unless --no-checks "<reason>" says why
          there is nothing to check; refuses unchecked subtasks unless --force
          ship a ticket to "Ready for review": records the result and the checks to tick;

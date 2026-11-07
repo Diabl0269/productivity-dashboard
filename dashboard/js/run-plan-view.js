@@ -3,7 +3,7 @@
 import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
-import { projectGroupHeader, playVideoButton } from './check-evidence.js';
+import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
@@ -207,6 +207,7 @@ function renderCheckGrid(task) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(playVideoButton(c, i + 1, what));
     }
+    if (c.audio) what.appendChild(audioPlayer(c, i + 1));
     row.appendChild(what);
     row.appendChild(noteCell(task, unsent.filter(n => n.check === c.text), {
       check: c.text, key: i, placeholder: 'What did you see? Enter saves', label: `Note on check ${i + 1}`,

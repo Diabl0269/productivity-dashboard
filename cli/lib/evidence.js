@@ -10,9 +10,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { projectPathError, videoPathError, tidyEvidencePath } from '../../shared/review.js';
+import { projectPathError, videoPathError, audioPathError, tidyEvidencePath } from '../../shared/review.js';
 
 export const EVIDENCE_DIR = 'evidence';
+
+const pathErrorFor = (kind) => (kind === 'project' ? projectPathError : kind === 'audio' ? audioPathError : videoPathError);
+const AUDIO_TYPES = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac' };
 
 function fail(status, message) {
   return Object.assign(new Error(message), { status });
@@ -25,7 +28,6 @@ const inside = (root, abs) => abs === root || abs.startsWith(root + path.sep);
  * must lie inside <dataRoot>/evidence. Throws Error naming the path otherwise.
  */
 export function toEvidenceRel(dataRoot, input, kind) {
-  const ext = kind === 'project' ? '.agsproj' : '.mp4';
   const value = String(input ?? '').trim();
   if (path.isAbsolute(value)) {
     const lexical = path.resolve(dataRoot, EVIDENCE_DIR);
@@ -35,11 +37,11 @@ export function toEvidenceRel(dataRoot, input, kind) {
     const root = roots.find(r => inside(r, abs));
     if (!root) throw new Error(`${value} is outside the evidence folder (${lexical})`);
     const rel = path.relative(root, abs).split(path.sep).join('/');
-    const err = (kind === 'project' ? projectPathError : videoPathError)(rel, kind);
+    const err = pathErrorFor(kind)(rel, kind);
     if (err) throw new Error(`${value}: ${err}`);
     return tidyEvidencePath(rel);
   }
-  const err = (kind === 'project' ? projectPathError : videoPathError)(value, kind);
+  const err = pathErrorFor(kind)(value, kind);
   if (err) throw new Error(err);
   return tidyEvidencePath(value);
 }
@@ -49,7 +51,7 @@ export function toEvidenceRel(dataRoot, input, kind) {
  * that escapes the evidence folder (symlinks included), { status: 404 } when missing.
  */
 export function resolveEvidence(dataRoot, relPath, kind) {
-  const err = (kind === 'project' ? projectPathError : videoPathError)(relPath, kind);
+  const err = pathErrorFor(kind)(relPath, kind);
   if (err) throw fail(400, err);
   let root;
   try { root = fs.realpathSync(path.join(dataRoot, EVIDENCE_DIR)); } catch { throw fail(404, 'not found'); }
@@ -87,12 +89,13 @@ export function parseRange(header, size) {
  */
 export function evidenceVideoResponse({ dataRoot, relPath, method = 'GET', range }) {
   let abs;
-  try { abs = resolveEvidence(dataRoot, relPath, 'video'); } catch (e) {
+  const audioType = AUDIO_TYPES[path.extname(String(relPath || '')).toLowerCase()];
+  try { abs = resolveEvidence(dataRoot, relPath, audioType ? 'audio' : 'video'); } catch (e) {
     return { status: e.status || 400, headers: {}, error: e.message };
   }
   const st = fs.statSync(abs);
   if (!st.isFile()) return { status: 404, headers: {}, error: 'not found' };
-  const base = { 'Content-Type': 'video/mp4', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
+  const base = { 'Content-Type': audioType || 'video/mp4', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
   const r = parseRange(range, st.size);
   if (r === 'invalid') return { status: 416, headers: { ...base, 'Content-Range': `bytes */${st.size}` }, error: 'range not satisfiable' };
   const start = r ? r.start : 0;

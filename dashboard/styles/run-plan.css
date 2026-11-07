@@ -159,6 +159,8 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
 .ce-group-name { font-family: ui-monospace, Menlo, monospace; }
 .ce-video { display: block; width: 100%; max-width: 520px; margin-top: 6px; border-radius: 6px; background: var(--surface-0); }
 .td-review-checks .ce-video { margin: 4px 0 6px 26px; }
+.ce-audio { display: block; width: 100%; max-width: 420px; height: 36px; margin-top: 6px; }
+.td-review-checks .ce-audio { margin: 4px 0 6px 26px; }
 
 @media (max-width: 699px) {
   .rp-check-row { grid-template-columns: 32px minmax(0, 1fr); }
