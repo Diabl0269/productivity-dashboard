@@ -81,7 +81,8 @@ export function findMergeCommit(repo, number, run = defaultRun) {
 
 /** The installed build's commit in `repo`: a sha, or (with source.tag "v{value}") the commit of that tag. */
 export function resolveBuildCommit(repo, source, run = defaultRun) {
-  const value = readBuildValue(source, run);
+  // A build made with uncommitted edits records "<sha>-dirty": compare its base commit.
+  const value = readBuildValue(source, run).replace(/-dirty$/, '');
   if (!value) return null;
   const ref = typeof source.tag === 'string' && source.tag.includes('{value}') ? source.tag.replace('{value}', value) : value;
   if (!/^[\w./+-]+$/.test(ref) || ref.startsWith('-')) return null;

@@ -79,6 +79,14 @@ test('checkFreshness: build at c2 has both; plist + tag and command sources work
   assert.equal(checkFreshness(viaTag, PR(2)).state, 'stale');
 });
 
+test('checkFreshness: a build commit with a -dirty suffix (local edits) still resolves', () => {
+  const { dir, c1 } = makeRepo();
+  fs.writeFileSync(path.join(dir, 'build.txt'), `${c1}-dirty\n`);
+  const rules = [rule(dir, { file: path.join(dir, 'build.txt') })];
+  assert.equal(checkFreshness(rules, PR(1)).state, 'current');
+  assert.equal(checkFreshness(rules, PR(2)).state, 'stale');
+});
+
 test('checkFreshness: unreadable or unknown inputs give unknown, a non-matching link gives null', () => {
   const { dir, c1 } = makeRepo();
   assert.equal(checkFreshness([rule(dir, { file: path.join(dir, 'nope.txt') })], PR(1)).state, 'unknown');
