@@ -11,6 +11,14 @@
   "sprints": [],
   "claudeSessionFolder": "/path/to/your/workspace   (optional: Plan > Start opens a new Claude Code session in this folder, with the /ship-task command typed in)",
   "reviewProjectApps": [],
+  "buildFreshness": [
+    {
+      "repo": "/path/to/your/git/checkout",
+      "prPattern": "github.com/<owner>/<repo>/pull/",
+      "buildCommit": { "plist": "/Applications/<Your App>.app/Contents/Info.plist", "key": "CFBundleShortVersionString", "tag": "v{value}" },
+      "updateCommand": "the command or steps that install a newer build of your app   (optional: Ready-for-review cards say whether the installed app has the change. buildCommit is {plist,key[,tag]} or {file} or {command}; the value is a commit sha, or with tag a version mapped to its release tag)"
+    }
+  ],
   "wipLimit": 3,
   "wipLimits": {
     "in-progress": 3
