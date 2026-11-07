@@ -21,6 +21,7 @@ re-running it rewrites the same records, so it can run by hand or on a schedule.
 ch metrics collect [--sessions] [--ci] [--gates] [--since 30d] [--json]   (no flag = all three)
 ch metrics flow    [--project P] [--lane L] [--since 30d] [--json]
 ch metrics report  [--project P] [--since 30d] [--json]                    insights + headline numbers
+ch metrics cost    [<ticket-id>] [--project P] [--since 30d] [--json]      $ at API prices per ticket; an id gives that ticket (an epic: per child)
 ch metrics time <name> [--repo R] -- <command...>                          run, time, record, pass the exit code through
 ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind gate|build|test|ci|other]
 ch tasks next [--n 5] [--project P] [--json]                                ready tickets, best first, with reasons
@@ -36,9 +37,13 @@ ch tasks next [--n 5] [--project P] [--json]                                read
   "buildTimeLogs": [{ "repo": "name", "path": "/path/to/checkout/.git/ci-local-build-times.log" }],
   "areas": { "lane-or-project-slug": "Area name" },
   "stallMinutes": 20,
-  "forgottenEpicDays": 3
+  "forgottenEpicDays": 3,
+  "planUSDPerMonth": 200
 }
 ```
+
+`planUSDPerMonth` (optional) is what you pay a month for a plan; with it the Cost section and the report
+show the window's API-priced cost scaled to 30 days and its multiple of the plan.
 
 A `claudeProjects` entry ending in `*` matches every directory in that folder whose name starts with the
 text before it (one entry for a workspace and all its worktrees). `areas` groups lanes/projects into the areas the bottleneck view reports; without it, each project
@@ -56,8 +61,19 @@ One JSON object per line. Every record has a stable `key`; collectors replace re
  "missedWakes":1,"missedWakeMin":45.0,"missedWakeOrigins":{"task-notification":1},"helperWaits":2,"helperWaitMin":61.0,
  "toolWaits":2,"toolWaitMin":55.0,"toolWaitTools":{"Bash":2},"questionWaits":1,"questionWaitMin":40.0,
  "replyWaits":[4.2,31.0],"stopBlocked":0,"compactions":1,
- "helpers":4,"prs":["owner/repo#12"],"branch":"pro40-dev-metrics","costUSD":12.3}
+ "helpers":4,"prs":["owner/repo#12"],"branch":"pro40-dev-metrics",
+ "costUSD":12.3,"mainCostUSD":9.1,"helperCostUSD":3.2,"costStateUSD":null,
+ "tokens":{"input":1200,"output":80000,"cacheRead":9000000,"cacheWrite":400000},
+ "byModel":{"claude-opus-5":{"input":1200,"output":80000,"cacheRead":9000000,"cacheWrite":400000,"costUSD":9.1}},
+ "helperTokens":{"input":300,"output":20000,"cacheRead":2000000,"cacheWrite":90000},
+ "helperByModel":{"claude-sonnet-5":{"input":300,"output":20000,"cacheRead":2000000,"cacheWrite":90000,"costUSD":3.2}},
+ "helperToolCalls":140,"toolCalls":{"Bash":210,"Read":90},"toolCallsTotal":300,
+ "agentCalls":4,"agentModels":{"sonnet":3,"inherit":1},
+ "byTicket":{"PRO40":{"costUSD":12.3,"tokens":11000000,"toolCalls":440}},
+ "ticketTimeline":[["ISO","PRO41"]]}
 ```
+`costUSD` is computed from usage (see Cost below); `costStateUSD` is Claude Code's own `cost-state`
+total when it wrote one (rare). Records from before these fields only have `costUSD`.
 
 **`timings.jsonl`** (gate runs, CI runs, anything timed)
 ```json
@@ -102,7 +118,7 @@ cancelled or skipped run has `"ok": null`.
 - Epics are otherwise excluded from cycle/dwell numbers (they roll up); bookkeeping moves straight
   `todo → done` count as "closed without work" and are excluded from cycle time.
 
-**Sessions** (main transcripts; helper transcripts under `<id>/subagents/` are only counted)
+**Sessions** (main transcripts; helper transcripts under `<id>/subagents/` are only counted, except for cost, see Cost)
 - **Wall**: first to last timestamped line. **Turn**: from a user prompt to the next
   `stop_hook_summary`. **Active**: sum of turn lengths. **Waiting on you**: from a turn's end to the
   next prompt that came from you (not a task notification or scheduled wake-up).
@@ -127,6 +143,28 @@ cancelled or skipped run has `"ok": null`.
 - **Ticket**: the id at the start of the session title (`PRO40 - …`), else in the branch name,
   else the first `/ship-task <id>`.
 - **Autonomous session**: a session with no mid-run question, no tool wait, no stall and no missed wake.
+
+**Cost** (`costs` in the payload; Cost section of the tab; `ch metrics cost`)
+- **Unit**: US dollars at API list prices, computed from token usage, with tokens as secondary detail.
+  It is the size of the work, comparable across tickets and models, not what a plan bills. Claude
+  Code's own `cost-state` line is rare, so every session is computed from usage (`costStateUSD` is kept
+  only to cross-check: on 2026-11-07, where the token counts agree the computed cost matches it per model to about 1.0; across 218 sessions the computed total was a median 0.88 of it, because some calls Claude Code counts are not in the transcript files, and a session resumed after its last `cost-state` line costs more than that line).
+- **Prices**: `shared/model-prices.js` (list prices per million tokens: input, output, cache read; a
+  5-minute cache write is 1.25x input, a 1-hour write 2x). Model ids drop a `[1m]` suffix and a
+  `-YYYYMMDD` date. A model not in the table is not priced (never guessed); add it there.
+- **Dedupe**: one API message is written as several transcript lines with the same `message.id`
+  and usage, so each id is counted once.
+- **Helpers included**: `costUSD` = main session + every helper transcript under
+  `<id>/subagents/agent-*.jsonl` (`helperCostUSD`, `helperTokens`, `helperByModel`, `helperToolCalls`).
+  Adding a helper file re-reads the session (the cache key covers the helper files).
+- **Per-ticket attribution**: usage counts for the session's ticket, except in an epic run: a Bash
+  call `ch tasks move <ID> in-progress` makes `<ID>` the current ticket, so usage after it (and each
+  helper that starts after it) goes to that child (`byTicket`: cost, tokens, tool calls). Without such
+  a call, the whole session is its ticket's. Older records without `byTicket` go whole to their ticket.
+- **Epic cost**: the epic's own sessions plus every ticket under it (rolled up the `parentId` chain).
+- **Per shipped ticket**: tickets now in review or done with any cost, by their `model:` label
+  (`none` without one): median, p75 and total dollars per ticket.
+- **Plan comparison**: with `planUSDPerMonth`, the window's cost scaled to 30 days and divided by it.
 
 **CI**: run seconds = `updatedAt − startedAt`, queue = `startedAt − createdAt`. **Red time** for a
 PR branch: from the first failed run to the next successful run on that branch.

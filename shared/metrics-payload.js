@@ -6,6 +6,7 @@ import { flowMetrics, median, percentile } from './flow-metrics.js';
 import { rankReadyTickets } from './next-ticket.js';
 import { redTime, trend, isUncounted, isFlakyRerun } from './ci-metrics.js';
 import { buildInsights } from './insights.js';
+import { costsBlock } from './cost-metrics.js';
 
 const DAY = 24 * 3600 * 1000;
 const toMs = v => {
@@ -147,7 +148,7 @@ function timingsBlock(all, inWindow, now) {
  * @param {{doc:object, sessions?:object[], timings?:object[], cfg?:object, now?:Date|string|number,
  *   since?:Date|string|number, project?:string}} args
  */
-export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}, now = new Date(), since, project } = {}) {
+export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}, now = new Date(), since, project, costLimit } = {}) {
   const nowMs = toMs(now) ?? Date.now();
   const sinceMs = toMs(since) ?? nowMs - 30 * DAY;
   const inRange = ms => ms !== null && ms >= sinceMs && ms <= nowMs;
@@ -158,6 +159,8 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     for (let cur = t, i = 0; cur && i < 10; cur = byId.get(cur.parentId), i++) if (cur.lane) return cur.lane;
     return 'unassigned';
   };
+  const sectionOf = new Map();
+  for (const sec of doc?.sections || []) for (const t of sec.tasks || []) if (t?.id && !sectionOf.has(t.id)) sectionOf.set(t.id, sec.id);
   const projects = [...new Set([...byId.values()].map(t => t.project).filter(Boolean))].sort();
   const lanes = [...new Set([...byId.values()].map(laneOf))].sort();
 
@@ -178,6 +181,7 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     filters: { project: project || null, projects, lanes },
     flow,
     sessions: sessionsBlock(sess, sinceMs, nowMs),
+    costs: costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit }),
     timings: timingsBlock(timingsAll, timingsWin, nowMs),
     next: rankReadyTickets(doc, { n: 8, project, now: nowMs }),
     sources: {

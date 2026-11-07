@@ -140,7 +140,8 @@ test('stopBlocked, compactions, prs, cost from last cost-state', () => {
   assert.equal(r.stopBlocked, 1);
   assert.equal(r.compactions, 1);
   assert.deepEqual(r.prs, ['o/r#12']);
-  assert.equal(r.costUSD, 12.35);
+  assert.equal(r.costStateUSD, 12.35);
+  assert.equal(r.costUSD, null); // costUSD is computed from usage; none here
   assert.equal(r.project, 'p');
   assert.equal(r.activeMin, 3);
 });
@@ -186,7 +187,7 @@ test('files: list, summarize skipping junk lines, collect with cache', async () 
     const rec = await summarizeTranscriptFile(list[0].path, {});
     assert.equal(rec.ticket, 'PRO40');
     assert.equal(rec.wallMin, 10);
-    assert.equal(rec.costUSD, 1.23);
+    assert.equal(rec.costStateUSD, 1.23);
     const first = await collectSessions({ dirs: [dir] });
     assert.equal(first.records.length, 1);
     assert.equal(first.records[0].helpers, 2);

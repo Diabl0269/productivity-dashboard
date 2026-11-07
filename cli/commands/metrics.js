@@ -5,6 +5,7 @@
  *   ch metrics collect [--sessions] [--ci] [--gates] [--since 30d] [--json]
  *   ch metrics flow [--project P] [--lane L] [--since 30d] [--json]
  *   ch metrics report [--project P] [--since 30d] [--json]
+ *   ch metrics cost [<ticket-id>] [--project P] [--since 30d] [--json]   cost at API prices per ticket / epic
  *   ch metrics time <name> [--repo R] [--kind K] -- <command...>
  *   ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind K] [--at ISO]
  */
@@ -255,7 +256,7 @@ function readDoc() {
 }
 
 /** Everything the report and the dashboard need, from the tracker and $CH_HOME/metrics/. */
-export function loadMetricsPayload({ since, project, now } = {}) {
+export function loadMetricsPayload({ since, project, now, costLimit } = {}) {
   const nowMs = typeof now === 'number' ? now : now instanceof Date ? now.getTime() : now ? Date.parse(now) : Date.now();
   return buildMetricsPayload({
     doc: readDoc(),
@@ -265,6 +266,7 @@ export function loadMetricsPayload({ since, project, now } = {}) {
     now: nowMs,
     since: resolveSince(since, nowMs) ?? undefined,
     project: project || undefined,
+    costLimit,
   });
 }
 
@@ -334,8 +336,45 @@ function reportCmd(argv) {
   const s = p.sessions.summary;
   print(`  Sessions ${s.n} (${s.withTicket} with a ticket): median ${s.medianActiveMin ?? '-'} min active, ${s.autonomousShare === null ? '-' : Math.round(s.autonomousShare * 100) + '%'} autonomous, ${s.waitUserHours} h waiting on you${s.helperWaits ? `, ${s.helperWaits} waits on a running helper, not counted as stuck` : ''}, $${s.costUSD}`);
   const ci = p.timings.ci.byRepo;
+  const c = p.costs;
+  if (c && c.total.costUSD > 0) {
+    print(`  Cost ${money(c.total.costUSD)} at API prices (helpers ${money(c.total.helperCostUSD)}${c.plan ? `; a month is about ${money(c.plan.apiEquivalentPer30d)}, ${c.plan.multiple}x the ${money(c.plan.usdPerMonth)} plan` : ''})`);
+    for (const t of c.byTicket.slice(0, 5)) print(`    ${pad(t.ticket, 10)}${pad(money(t.costUSD), 10)}${t.title ?? ''}`);
+    for (const e of c.byEpic.slice(0, 3)) print(`    epic ${pad(e.epic, 9)}${pad(money(e.costUSD), 10)}${e.title ?? ''}`);
+  }
   print(`  CI ${ci.reduce((a, r) => a + r.runs, 0)} runs; ${p.timings.series.length} timing series; red branches ${p.timings.redTime.summary.branches}`);
   print(`  Next up: ${p.next.length ? p.next.slice(0, 3).map(t => t.id).join(', ') : 'nothing ready'}`);
+}
+
+const money = n => `$${(Number(n) || 0).toFixed(2)}`;
+const tok = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+const tokSum = t => (t ? (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0) : 0);
+
+/** `ch metrics cost [<ticket-id>]`: the byTicket table, or one ticket's (an epic's: per child) cost. */
+function costCmd(argv) {
+  const { values, positionals } = parse(argv, { project: { type: 'string' }, since: { type: 'string' }, json: { type: 'boolean' } });
+  const now = Date.now();
+  const sinceMs = cliSince(values.since, now);
+  const p = loadMetricsPayload({ since: sinceMs ?? undefined, project: values.project, now, costLimit: Infinity });
+  const c = p.costs;
+  const id = positionals[0] ? String(positionals[0]).toUpperCase() : null;
+  if (!id) {
+    if (values.json) { jsonOut(c); return; }
+    print(`Cost ${day(p.window.since)} to ${day(p.window.until)}: ${money(c.total.costUSD)} at API prices (helpers ${money(c.total.helperCostUSD)}, ${tok(tokSum(c.total.tokens))} tokens)`);
+    if (!c.byTicket.length) { print('  no cost recorded in this range'); return; }
+    print(`${pad('Ticket', 10)}${pad('Cost', 10)}${pad('Share', 7)}${pad('Tokens', 9)}${pad('Tools', 7)}${pad('Sess', 6)}Title`);
+    for (const t of c.byTicket) print(`${pad(t.ticket, 10)}${pad(money(t.costUSD), 10)}${pad(Math.round(t.share * 100) + '%', 7)}${pad(tok(t.tokens), 9)}${pad(t.toolCalls, 7)}${pad(t.sessions, 6)}${t.title ?? ''}`);
+    return;
+  }
+  const epic = c.byEpic.find(e => e.epic === id);
+  const one = c.byTicket.find(t => t.ticket === id);
+  if (!epic && !one) die(`no cost recorded for ${id} in this range`);
+  if (values.json) { jsonOut({ ticket: one ?? null, epic: epic ?? null }); return; }
+  if (one) print(`${id}  ${money(one.costUSD)}  ${tok(one.tokens)} tokens, ${one.toolCalls} tool calls, ${one.sessions} session${one.sessions === 1 ? '' : 's'}, ${one.activeMin} min active${one.title ? `  ${one.title}` : ''}`);
+  if (epic) {
+    print(`Epic ${id}  ${money(epic.costUSD)} in all, ${Math.round(epic.share * 100)}% of the total${epic.title ? `  ${epic.title}` : ''}`);
+    for (const k of epic.children) print(`  ${pad(k.ticket, 10)}${pad(money(k.costUSD), 10)}${k.own ? '(its own sessions) ' : ''}${k.title ?? ''}`);
+  }
 }
 
 function gitOut(args) {
@@ -400,6 +439,7 @@ const USAGE = `ch metrics <subcommand>
   collect [--sessions] [--ci] [--gates] [--since 30d] [--json]   (no flag = all)
   flow    [--project P] [--lane L] [--since 30d] [--json]
   report  [--project P] [--since 30d] [--json]
+  cost [<ticket-id>] [--project P] [--since 30d] [--json]
   time <name> [--repo R] [--kind K] -- <command...>
   record --name N --seconds S [--ok|--failed] [--repo R] [--kind K] [--at ISO]`;
 
@@ -411,6 +451,7 @@ export default async function metrics(argv) {
     case 'record': return recordCmd(rest);
     case 'flow': return flowCmd(rest);
     case 'report': return reportCmd(rest);
+    case 'cost': return costCmd(rest);
     case undefined: case '--help': case 'help': print(USAGE); return;
     default: die(`unknown metrics subcommand: ${sub}\n${USAGE}`);
   }

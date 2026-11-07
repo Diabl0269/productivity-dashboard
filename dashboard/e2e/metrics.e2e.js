@@ -15,7 +15,14 @@ async (page) => {
   await page.waitForSelector('.mc-insight');
   ok(await page.getAttribute('#metricsTabBtn', 'aria-selected') === 'true', 'tab button selected');
   ok(page.url().endsWith('/dashboard/metrics'), `url is /metrics, got ${page.url()}`);
-  ok((await page.locator('.mc-tile').count()) === 9, '9 headline tiles');
+  ok((await page.locator('.mc-tile').count()) === 13, '9 headline tiles + 4 cost tiles');
+  // Cost section: tiles with $ at API prices, per-ticket / per-epic / per-shipped tables.
+  ok((await page.locator('#mcH-cost').count()) === 1, 'Cost section heading');
+  ok((await page.locator('.mc-tile:has-text("Total at API prices") .mc-tile-value').innerText()) === '$412.50', 'total cost tile');
+  ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').count()) === 3, 'cost per ticket rows');
+  ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').first().innerText()).includes('$88.40'), 'top ticket cost shown');
+  ok((await page.locator('[aria-label="Cost per epic"] tbody tr').count()) === 1, 'epic row');
+  ok((await page.locator('[aria-label="Cost per shipped ticket by model label"] tbody tr').count()) === 3, 'per-shipped rows by label');
   ok((await page.locator('.mc-stage.is-bottleneck').count()) === 1, 'one bottleneck stage highlighted');
   await page.waitForSelector('.mc-svg');
   ok((await page.locator('.mc-chart .mc-svg').count()) >= 8, 'charts drawn');

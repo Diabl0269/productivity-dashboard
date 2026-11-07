@@ -155,6 +155,27 @@ function sessionRules(sessions, out) {
   }
 }
 
+const usd = n => `$${n >= 100 ? Math.round(n) : n.toFixed(2)}`;
+
+/** One cost finding: what cost most in the window (an epic when there is one, else a ticket). */
+function costRules(costs, out) {
+  const total = costs?.total;
+  if (!total || !(total.costUSD > 0)) return;
+  const epic = costs.byEpic?.[0];
+  const top = costs.byTicket?.[0];
+  const lead = epic
+    ? `${epic.epic} cost the most: ${usd(epic.costUSD)}, ${pct(epic.share)}% of the window's ${usd(total.costUSD)}`
+    : top ? `${top.ticket} cost the most: ${usd(top.costUSD)}, ${pct(top.share)}% of the window's ${usd(total.costUSD)}` : `Claude work cost ${usd(total.costUSD)} at API prices`;
+  const plan = costs.plan
+    ? ` At this pace a month is about ${usd(costs.plan.apiEquivalentPer30d)} at API prices, ${costs.plan.multiple}x your ${usd(costs.plan.usdPerMonth)} plan.`
+    : '';
+  out.push({
+    weight: 60, kind: 'info', value: total.costUSD,
+    title: lead,
+    detail: `Dollars at API list prices, from token usage across ${plural(total.sessions, 'session')}; helpers made up ${usd(total.helperCostUSD)} of it.${plan}`,
+  });
+}
+
 function timingRules(timings, out) {
   for (const t of timings?.trends || []) {
     if (t.changePct == null || Math.abs(t.changePct) < 15 || t.recentCount < 3 || t.priorCount < 3) continue;
@@ -207,6 +228,7 @@ export function buildInsights(p) {
   const out = [];
   flowRules(p?.flow, out);
   sessionRules(p?.sessions, out);
+  costRules(p?.costs, out);
   timingRules(p?.timings, out);
   for (const [src, title, detail] of MISSING) {
     if (p?.sources?.[src] && !p.sources[src].records) out.push({ weight: 20, kind: 'missing', title, detail });

@@ -228,3 +228,6 @@
   .mc-k-bottleneck { padding: var(--space-3) var(--space-4); }
   .mc-k-bottleneck .mc-insight-value { font-size: var(--text-lg); }
 }
+
+.mc-cost-kids { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-1); }
+.mc-cost-amt, .mc-cost-own { font-size: var(--text-xs); color: var(--text-secondary, inherit); }

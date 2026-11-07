@@ -1,0 +1,82 @@
+// metrics-cost-view.js — the "Cost" section of the Metrics tab: dollars at API list prices per
+// ticket and epic, and what a shipped ticket costs by model label. Data: payload.costs
+// (shared/cost-metrics.js). Definitions: docs/metrics.md "Cost".
+// The DOM helpers come from metrics-view.js (passed in, so there is no import cycle).
+
+/** $12.30, or $0.04 for small amounts. */
+export function fmtUSD(n) {
+  const v = Number(n) || 0;
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** 1.2M, 340k, 812. */
+export function fmtTokens(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${Math.round(v / 1e3)}k`;
+  return String(Math.round(v));
+}
+
+const pct = (x) => `${Math.round((x || 0) * 100)}%`;
+const tokenSum = (t) => (t ? (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0) : 0);
+
+/**
+ * @param {object} d the metrics payload
+ * @param {{el:Function, append:Function, section:Function, tile:Function, table:Function, ticketLink:Function, empty:Function, card:Function}} h
+ */
+export function renderCost(d, h) {
+  const { el, append, section, tile, table, ticketLink, empty, card } = h;
+  const s = section('cost', 'Cost', 'What the Claude work cost, in dollars at API list prices computed from token usage (a plan is billed differently; this is the comparable size of the work). Helpers are included.');
+  const c = d.costs;
+  if (!c || !(c.total.costUSD > 0)) {
+    s.appendChild(empty('No cost recorded in this range. Press Refresh data to read your Claude Code transcripts.'));
+    return s;
+  }
+  const t = c.total;
+  const top = t.byModel[0];
+  const grid = el('div', 'mc-tiles');
+  append(
+    grid,
+    tile('Total at API prices', fmtUSD(t.costUSD), `${t.sessions} sessions · ${fmtTokens(tokenSum(t.tokens))} tokens`, null, 'List-price dollars from token usage, main sessions plus helpers'),
+    tile('Helpers', t.costUSD > 0 ? pct(t.helperCostUSD / t.costUSD) : '–', `${fmtUSD(t.helperCostUSD)} spent by subagents`, null, 'Share of the total spent by helper (subagent) transcripts'),
+    tile('Top model', top ? top.model.replace(/^claude-/, '') : '–', top ? `${fmtUSD(top.costUSD)} · ${pct(top.share)} of the total` : ' ', null, 'The model with the most spend in this range'),
+  );
+  if (c.plan) {
+    grid.appendChild(tile('Month at API prices', fmtUSD(c.plan.apiEquivalentPer30d), `${c.plan.multiple}x your ${fmtUSD(c.plan.usdPerMonth)} plan`, null, 'This range scaled to 30 days, against planUSDPerMonth in config.json'));
+  }
+  s.appendChild(grid);
+
+  const tickets = c.byTicket.map((r) => [
+    ticketLink(r.ticket), r.title || '', fmtUSD(r.costUSD), fmtTokens(r.tokens), String(r.toolCalls), String(r.sessions), pct(r.share),
+  ]);
+  s.appendChild(card('Cost per ticket', 'Usage while the ticket was current in a session (a session on an epic switches ticket when it moves a child to in-progress), plus its helpers. Top 30.',
+    table('Cost per ticket', [
+      { label: 'Ticket' }, { label: 'Title' }, { label: 'Cost', num: true }, { label: 'Tokens', num: true },
+      { label: 'Tool calls', num: true }, { label: 'Sessions', num: true }, { label: 'Share', num: true },
+    ], tickets)));
+
+  if (c.byEpic.length) {
+    const epics = c.byEpic.map((e) => {
+      const kids = el('span', 'mc-cost-kids');
+      for (const k of e.children.slice(0, 8)) {
+        append(kids, k.own ? el('span', 'mc-cost-own', `own ${fmtUSD(k.costUSD)}`) : ticketLink(k.ticket), k.own ? null : el('span', 'mc-cost-amt', ` ${fmtUSD(k.costUSD)} `));
+      }
+      if (e.children.length > 8) kids.appendChild(el('span', 'mc-cost-amt', `+${e.children.length - 8} more`));
+      return [ticketLink(e.epic), e.title || '', fmtUSD(e.costUSD), pct(e.share), kids];
+    });
+    s.appendChild(card('Epics', 'An epic\'s cost is its own sessions plus every ticket under it.',
+      table('Cost per epic', [
+        { label: 'Epic' }, { label: 'Title' }, { label: 'Cost', num: true }, { label: 'Share', num: true }, { label: 'Children' },
+      ], epics)));
+  }
+
+  if (c.perShipped.length) {
+    const shipped = c.perShipped.map((g) => [g.label, String(g.n), fmtUSD(g.medianUSD), fmtUSD(g.p75USD), fmtUSD(g.totalUSD)]);
+    s.appendChild(card('Per shipped ticket by model label', 'Tickets now in review or done that cost something, grouped by their model label.',
+      table('Cost per shipped ticket by model label', [
+        { label: 'Model label' }, { label: 'Tickets', num: true }, { label: 'Median', num: true }, { label: 'p75', num: true }, { label: 'Total', num: true },
+      ], shipped)));
+  }
+  return s;
+}

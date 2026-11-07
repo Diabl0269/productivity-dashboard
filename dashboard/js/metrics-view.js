@@ -5,6 +5,7 @@
 import {
   lineChart, barChart, SECOND_STEPS, HOUR_STEPS, fmtHours, fmtMinutes, fmtSeconds, fmtPct, fmtNum, fmtDay,
 } from './metrics-charts.js';
+import { renderCost } from './metrics-cost-view.js';
 import { openTicketById } from './routing.js';
 import { showStatus } from './state.js';
 
@@ -898,7 +899,7 @@ function render() {
     body.appendChild(e);
   }
   const d = view.data;
-  append(body, renderInsights(d), renderHeadline(d), renderFlow(d), renderSessions(d), renderBuild(d), renderNext(d), renderSources(d));
+  append(body, renderInsights(d), renderHeadline(d), renderFlow(d), renderSessions(d), renderCost(d, { el, append, section, tile, table, ticketLink, empty, card }), renderBuild(d), renderNext(d), renderSources(d));
 }
 
 // ---------- entry points ----------
