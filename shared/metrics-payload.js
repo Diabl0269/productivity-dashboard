@@ -8,6 +8,7 @@ import { redTime, trend, isUncounted, isFlakyRerun } from './ci-metrics.js';
 import { buildInsights } from './insights.js';
 import { costsBlock } from './cost-metrics.js';
 import { estimatorFor, estimatesSummary } from './cost-estimate.js';
+import { splitInProgress } from './time-split.js';
 
 const DAY = 24 * 3600 * 1000;
 const toMs = v => {
@@ -166,6 +167,8 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
   const lanes = [...new Set([...byId.values()].map(laneOf))].sort();
 
   const flow = flowMetrics(doc, { now: nowMs, since: sinceMs, project, areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays });
+  // Where in-progress time goes (sessions are not window-filtered: a session that began earlier still counts inside a stay).
+  flow.inProgressSplit = splitInProgress({ doc, sessions, timings, now: nowMs, since: sinceMs, project, areas: cfg.areas });
 
   const sess = (sessions || []).filter(s => {
     if (!inRange(toMs(s.start))) return false;

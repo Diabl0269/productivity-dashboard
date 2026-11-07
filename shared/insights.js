@@ -26,6 +26,44 @@ function fmtSecondsPair(a, b) {
 }
 const fmtMinutes = m => (m < 90 ? `${Math.round(m)} min` : fmtHours(m / 60));
 
+/** Where in-progress time went: skipped without session or CI data (everything would read as "nothing running"). */
+function splitRule(sp, out) {
+  const t = sp?.total;
+  if (!t || !(t.hours >= 1) || !(t.workingH + t.ciH + t.youH > 0)) return;
+  const ty = sp.typical;
+  if (ty && ty.n > 0) {
+    const s = ty.shares;
+    const bits = [['working', s.working], ['CI', s.ci], ['waiting on you', s.you], ['nothing running', s.idle]]
+      .map(([k, v]) => `${k} ${pct(v || 0)}%`).join(', ');
+    const top = sp.byTicket?.[0];
+    out.push({
+      weight: 75, kind: (s.idle || 0) >= 0.5 ? 'warn' : 'info', value: s.idle,
+      title: `A typical ticket: nothing running ${pct(s.idle || 0)}% of its time in progress`,
+      detail: `A typical ticket (median of ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
+        + `All in-progress time together: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nothing running ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
+        + `tickets forgotten in progress inflate that, see stale tickets.`
+        + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
+    });
+    return;
+  }
+  const sh = t.shares || {};
+  const idle = pct(sh.idle || 0);
+  const parts = [
+    ['working', t.workingH, sh.working], ['waiting on CI', t.ciH, sh.ci], ['waiting on you', t.youH, sh.you],
+  ];
+  const big = parts.slice().sort((a, b) => b[1] - a[1])[0];
+  const notes = [];
+  if (big[1] > 0) notes.push(`The biggest part besides that is ${big[0]}: ${fmtHours(big[1])} (${pct(big[2] || 0)}%).`);
+  if (t.workingH < t.ciH) notes.push('Waiting on CI is longer than the sessions spent working.');
+  const top = sp.byTicket?.[0];
+  out.push({
+    weight: 75, kind: sh.idle >= 0.5 ? 'warn' : 'info', value: sh.idle,
+    title: `Nothing was running for ${idle}% of in-progress time`,
+    detail: `Of ${fmtHours(t.hours)} tickets spent in progress: working ${fmtHours(t.workingH)}, waiting on CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nothing running ${fmtHours(t.idleH)} (${idle}%). ${notes.join(' ')}`
+      + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
+  });
+}
+
 function flowRules(flow, out) {
   if (!flow) return;
   const b = flow.bottleneck;
@@ -62,6 +100,7 @@ function flowRules(flow, out) {
       detail: 'Median time in To do versus in progress, for tickets that finished in the window.',
     });
   }
+  splitRule(flow.inProgressSplit, out);
   const growth = flow.backlog?.growthPerWeek;
   if (typeof growth === 'number' && Math.abs(growth) >= 1) {
     const grows = growth > 0;

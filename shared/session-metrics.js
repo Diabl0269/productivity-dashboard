@@ -172,17 +172,26 @@ class UsageTracker {
  * first timestamp (ms), used to attribute the helper's cost to the ticket current at that time.
  * Helper lines are all sidechain lines, so no sidechain filter applies here.
  */
-export function summarizeHelperUsage(lines) {
+export function summarizeHelperUsage(lines, { stallMinutes = 20 } = {}) {
   const tr = new UsageTracker();
   let firstMs = null;
+  const stamps = [];
   for (const line of lines) {
     if (!line || typeof line !== 'object') continue;
     const ms = Date.parse(line.timestamp);
-    if (!Number.isNaN(ms) && (firstMs === null || ms < firstMs)) firstMs = ms;
+    if (!Number.isNaN(ms)) { stamps.push(ms); if (firstMs === null || ms < firstMs) firstMs = ms; }
     if (line.type === 'assistant') tr.addAssistant(line, null);
   }
+  // Active spans: first to last timestamp, cut at silences of stallMinutes or more (a dead helper is not working).
+  stamps.sort((a, b) => a - b);
+  const spans = [];
+  for (const ms of stamps) {
+    const last = spans[spans.length - 1];
+    if (last && ms - last[1] < stallMinutes * 60000) last[1] = ms;
+    else spans.push([ms, ms]);
+  }
   const t = tr.totals();
-  return { firstMs, tokens: t.tokens, byModel: t.byModel, costUSD: t.costUSD, toolCallsTotal: tr.toolCallsTotal };
+  return { firstMs, spans: spans.filter(([a, b]) => b > a), tokens: t.tokens, byModel: t.byModel, costUSD: t.costUSD, toolCallsTotal: tr.toolCallsTotal };
 }
 
 /** The ticket current at `ms`: the last switch in `rec.ticketTimeline` ([[iso, id], ...]) at or before it, else the session's. */
@@ -216,6 +225,10 @@ export function applyHelpers(rec, helpers) {
     }
     if (h.costUSD !== null && h.costUSD !== undefined) { cost += h.costUSD; priced = true; }
     const ticket = h.firstMs === null || h.firstMs === undefined ? rec.ticket ?? null : ticketAt(rec, h.firstMs);
+    // Helper running time is working time for the ticket current when the helper started.
+    if (ticket && h.spans && h.spans.length && rec.intervals) {
+      rec.intervals.work = mergeIntervals([...rec.intervals.work, ...h.spans.map(([a, b]) => [a, b, ticket])]);
+    }
     if (ticket) {
       const t = byTicket[ticket] || (byTicket[ticket] = { costUSD: 0, tokens: 0, toolCalls: 0 });
       t.costUSD = rUSD(t.costUSD + (h.costUSD || 0), RAW);
@@ -235,6 +248,51 @@ export function applyHelpers(rec, helpers) {
 
 const r1 = (n) => Math.round(n * 10) / 10;
 
+const MERGE_GAP_MS = 60000; // same-ticket intervals closer than this are one
+const MAX_PAIRS = 300; // per kind and session: widen the merge gap until the list fits
+
+/**
+ * Tag raw [startMs, endMs] pieces with the ticket current at each moment (`switches` = [[ms, ticket]]
+ * in order; before the first one the session's own ticket, SESSION), split a piece where a switch falls
+ * inside it, drop pieces with no ticket and merge adjacent same-ticket intervals. Result: [[s, e, ticket]].
+ */
+function tagIntervals(pieces, switches, ticket) {
+  const tagged = [];
+  for (const [s, e] of pieces) {
+    if (!(e > s)) continue;
+    let cur = SESSION;
+    for (const [sw, id] of switches) { if (sw <= s) cur = id; else break; }
+    let from = s;
+    for (const [sw, id] of switches) {
+      if (sw <= s) continue;
+      if (sw >= e) break;
+      tagged.push([from, sw, cur === SESSION ? ticket : cur]);
+      from = sw;
+      cur = id;
+    }
+    tagged.push([from, e, cur === SESSION ? ticket : cur]);
+  }
+  return mergeIntervals(tagged);
+}
+
+/** Drop untagged [s, e, ticket] intervals, sort, merge same-ticket neighbours (gap < 60 s, widened to cap the list). */
+export function mergeIntervals(list) {
+  const live = list.filter((x) => x[2]).sort((a, b) => a[0] - b[0]);
+  const mergeAt = (gap) => {
+    const out = [];
+    for (const x of live) {
+      const last = out[out.length - 1];
+      if (last && last[2] === x[2] && x[0] - last[1] < gap) last[1] = Math.max(last[1], x[1]);
+      else out.push([...x]);
+    }
+    return out;
+  };
+  let gap = MERGE_GAP_MS;
+  let out = mergeAt(gap);
+  while (out.length > MAX_PAIRS && gap < 86400000) { gap *= 2; out = mergeAt(gap); }
+  return out;
+}
+
 export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15, project } = {}) {
   const stallMs = stallMinutes * 60000;
   const midMs = midRunMinutes * 60000;
@@ -246,6 +304,9 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   let lastMs = null;
   let prevMs = null;
   let turnStart = null; // ms when the open turn began
+  let workFrom = null; // ms when the current stretch of running work began (a turn minus question waits)
+  const workPieces = []; // [startMs, endMs]: a turn is running
+  const waitPieces = []; // [startMs, endMs]: waiting on the user (reply wait or a pending question)
   let waitFrom = null; // ms when the current wait began (last turn end)
   let activeMs = 0;
   let waitMs = 0;
@@ -281,6 +342,8 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   const endTurn = (ms) => {
     if (turnStart === null) return;
     activeMs += Math.max(0, ms - turnStart);
+    if (workFrom !== null) workPieces.push([workFrom, ms]);
+    workFrom = null;
     turnStart = null;
     waitFrom = ms;
   };
@@ -309,6 +372,13 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     const ms = Date.parse(line.timestamp);
     if (Number.isNaN(ms)) continue;
     if (line.gitBranch && line.gitBranch !== 'HEAD') branch = line.gitBranch;
+
+    // An AskUserQuestion pending over the gap (any length) is waiting on the user, not running work.
+    if (turnStart !== null && prevMs !== null && ms > prevMs && workFrom !== null && [...pending.values()].includes('AskUserQuestion')) {
+      if (prevMs > workFrom) workPieces.push([workFrom, prevMs]);
+      waitPieces.push([prevMs, ms]);
+      workFrom = ms;
+    }
 
     // A silence of stallMinutes between two lines of an open turn, by what was pending when it began:
     // an AskUserQuestion (waiting on you), another tool call (long command or permission prompt),
@@ -360,9 +430,11 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
           if (cls === 'human' && waitFrom !== null) {
             waitMs += Math.max(0, ms - waitFrom);
             replyWaits.push(r1(Math.max(0, ms - waitFrom) / 60000));
+            waitPieces.push([waitFrom, ms]);
           }
           waitFrom = null;
           turnStart = ms;
+          workFrom = ms;
           turns += 1;
           assistantStarted = false;
           openOrigin = cls === 'human' ? 'human' : (line.origin && line.origin.kind) || (line.isMeta ? 'meta' : 'other');
@@ -468,5 +540,8 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     byTicket,
     // Ticket switches (`ch tasks move <id> in-progress`): [[iso, id], ...] in order.
     ticketTimeline: switches.map(([t, id]) => [new Date(t).toISOString(), id]),
+    // Epoch-ms intervals tagged with the ticket current then, for the in-progress time split:
+    // work = a turn is running (question waits taken out), waitUser = waiting on the user.
+    intervals: { work: tagIntervals(workPieces, switches, ticket), waitUser: tagIntervals(waitPieces, switches, ticket) },
   };
 }

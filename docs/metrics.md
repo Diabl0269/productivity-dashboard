@@ -70,7 +70,8 @@ One JSON object per line. Every record has a stable `key`; collectors replace re
  "helperToolCalls":140,"toolCalls":{"Bash":210,"Read":90},"toolCallsTotal":300,
  "agentCalls":4,"agentModels":{"sonnet":3,"inherit":1},
  "byTicket":{"PRO40":{"costUSD":12.3,"tokens":11000000,"toolCalls":440}},
- "ticketTimeline":[["ISO","PRO41"]]}
+ "ticketTimeline":[["ISO","PRO41"]],
+ "intervals":{"work":[[1767262800000,1767266400000,"PRO40"]],"waitUser":[[1767266400000,1767270000000,"PRO40"]]}}
 ```
 `costUSD` is computed from usage (see Cost below); `costStateUSD` is Claude Code's own `cost-state`
 total when it wrote one (rare). Records from before these fields only have `costUSD`.
@@ -182,6 +183,33 @@ cancelled or skipped run has `"ok": null`.
   label), Plan tab (estimated cost left per epic), ticket panel (likely cost for a ticket not started, cost so far
   after), Metrics tab Cost > Estimates. The panel and plan read `GET /api/metrics/ticket-cost?id=X` and
   `/api/metrics/estimates?ids=A,B`, lazily; no data shows nothing.
+
+**Where in-progress time goes** (`flow.inProgressSplit` in the payload; "Where in-progress time went" in the Ticket flow section; the end of `ch metrics flow`; one line in `ch metrics cost <id>`; `shared/time-split.js`)
+- **Stays**: every stay of a non-epic ticket in `in-progress` (open stays run to now), clipped to the window.
+  Each is split into four categories, each a union of intervals clipped to the stay. A moment counts once,
+  by precedence: **working** (a session turn is running for the ticket) > **waiting on CI** (a CI run for the
+  ticket's branch is running) > **waiting on you** (a session for the ticket waits on your reply or on an
+  `AskUserQuestion`) > **nothing running** (the rest). The four add up to the stay.
+- **Session intervals** (`intervals` in `sessions.jsonl`, epoch-ms `[start, end, ticket]`): `work` is every open
+  turn (prompt to turn end) minus the time an `AskUserQuestion` was pending; `waitUser` is a turn's end to your next
+  prompt (the reply wait) plus those question waits. Each interval carries the ticket current then (same rule as
+  per-ticket cost: a `ch tasks move <ID> in-progress` call switches it), same-ticket neighbours less than 60 s
+  apart are merged and a session keeps at most about 300 per kind. The last turn's wait counts only once you reply.
+  **Helpers**: while a helper (subagent) transcript is active the ticket is being worked on even when the main session
+  sits between turns. Each helper's active spans (first to last line, cut at silences of `stallMinutes` or more, so a dead
+  helper does not count) are added to `work`, tagged with the ticket current when the helper started.
+- **CI intervals**: a CI record (`kind: ci`) belongs to the ticket named in its branch (`fix/fro1610-menus` is
+  FRO1610, same rule as the session ticket from a branch) and covers `[at, at + seconds]`. Cancelled runs count:
+  CI was running. Runs on `main` or on a branch with no ticket id belong to no ticket.
+- **Typical ticket** (`typical`: `n`, `medianHours`, `shares`): the median of each ticket's share per category over
+  tickets whose in-progress stay closed in the window (open stays excluded, like the bottleneck's median closed stay),
+  so tickets forgotten in progress do not decide it. The insight and the dashboard lead with it; `total` is secondary
+  and is inflated by forgotten tickets (they also show as stale tickets). Medians per category need not add up to 100%.
+- **Output**: `typical`, `total` (hours, `workingH`, `ciH`, `youH`, `idleH`, `shares`), `byTicket` (the 20 with the most
+  nothing-running hours), `byProject`, `byArea`, `sessionsWithIntervals`. Without sessions or CI collected everything
+  reads as nothing running, so the insight is skipped then and the tab says so.
+- **Limits**: a ticket worked in a session that is not titled, branched or `/ship-task`ed with its id has no
+  working time; records collected before this field need `ch metrics collect --sessions` again.
 
 **CI**: run seconds = `updatedAt − startedAt`, queue = `startedAt − createdAt`. **Red time** for a
 PR branch: from the first failed run to the next successful run on that branch.

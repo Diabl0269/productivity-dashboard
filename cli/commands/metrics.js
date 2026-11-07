@@ -26,6 +26,7 @@ import { buildMetricsPayload } from '../../shared/metrics-payload.js';
 import { fmtHours } from '../../shared/insights.js';
 import { formatRange, usd, MIN_SAMPLES, estimatesSummary } from '../../shared/cost-estimate.js';
 import { estimatorForDoc } from '../lib/estimator.js';
+import { splitInProgress } from '../../shared/time-split.js';
 
 const KINDS = ['gate', 'build', 'test', 'ci', 'other'];
 const TIMINGS = 'timings.jsonl';
@@ -311,6 +312,21 @@ const hrs = v => (v === null || v === undefined ? '-' : fmtHours(v));
 const pad = (v, n) => String(v).padEnd(n);
 const day = iso => String(iso).slice(0, 10);
 
+/** The in-progress time split: one total line, then the 5 tickets with the most idle time. */
+function printSplit(sp) {
+  const t = sp.total;
+  print('');
+  if (!(t.hours > 0)) { print('In-progress time: none in the window'); return; }
+  const p = x => `${Math.round((x || 0) * 100)}%`;
+  const ty = sp.typical;
+  if (ty && ty.n) print(`Typical ticket (${ty.n} that left in progress, median ${hrs(ty.medianHours)}): working ${p(ty.shares.working)}, CI ${p(ty.shares.ci)}, waiting on you ${p(ty.shares.you)}, nothing running ${p(ty.shares.idle)}`);
+  print(`All in-progress time ${hrs(t.hours)} (forgotten tickets inflate it): working ${hrs(t.workingH)} (${p(t.shares.working)}), CI ${hrs(t.ciH)} (${p(t.shares.ci)}), waiting on you ${hrs(t.youH)} (${p(t.shares.you)}), nothing running ${hrs(t.idleH)} (${p(t.shares.idle)})`);
+  if (!sp.sessionsWithIntervals) print('  (no session intervals yet: run ch metrics collect --sessions)');
+  const rows = sp.byTicket.slice(0, 5);
+  if (rows.length) print(`  ${pad('Ticket', 10)}${pad('total', 10)}${pad('working', 10)}${pad('CI', 10)}${pad('you', 10)}nothing`);
+  for (const r of rows) print(`  ${pad(r.ticket, 10)}${pad(hrs(r.hours), 10)}${pad(hrs(r.workingH), 10)}${pad(hrs(r.ciH), 10)}${pad(hrs(r.youH), 10)}${hrs(r.idleH)}`);
+}
+
 function flowCmd(argv) {
   const { values } = parse(argv, {
     project: { type: 'string' }, lane: { type: 'string' }, since: { type: 'string' }, json: { type: 'boolean' },
@@ -318,9 +334,14 @@ function flowCmd(argv) {
   const now = Date.now();
   const sinceMs = cliSince(values.since, now);
   const cfg = metricsConfig();
-  const m = flowMetrics(readDoc(), {
+  const doc = readDoc();
+  const m = flowMetrics(doc, {
     now, since: sinceMs ?? undefined, project: values.project, lane: values.lane,
     areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays,
+  });
+  m.inProgressSplit = splitInProgress({
+    doc, sessions: readRecords(SESSIONS), timings: readRecords(TIMINGS), now, since: sinceMs ?? undefined,
+    project: values.project, areas: cfg.areas,
   });
   if (values.json) { jsonOut(m); return; }
   const filt = [values.project && `project ${values.project}`, values.lane && `lane ${values.lane}`].filter(Boolean).join(', ');
@@ -339,6 +360,7 @@ function flowCmd(argv) {
   print('');
   const b = m.bottleneck;
   print(b ? `Bottleneck: ${STAGE_NAMES[b.stage] || b.stage}, ${Math.round(b.share * 100)}% of build and review time (${hrs(b.totalHours)})` : 'Bottleneck: none (no build or review time in the window)');
+  printSplit(m.inProgressSplit);
   if (m.forgottenEpics.length) {
     print(`Forgotten epics (${m.forgottenEpics.length}):`);
     for (const e of m.forgottenEpics) print(`  ${e.id}  idle ${e.idleDays} days  ${e.title}`);
@@ -403,6 +425,10 @@ function costCmd(argv) {
   if (!epic && !one) die(`no cost recorded for ${id} in this range`);
   if (values.json) { jsonOut({ ticket: one ?? null, epic: epic ?? null }); return; }
   if (one) print(`${id}  ${money(one.costUSD)}  ${tok(one.tokens)} tokens, ${one.toolCalls} tool calls, ${one.sessions} session${one.sessions === 1 ? '' : 's'}, ${one.activeMin} min active${one.title ? `  ${one.title}` : ''}`);
+  if (one) {
+    const sp = splitInProgress({ doc: readDoc(), sessions: readRecords(SESSIONS), timings: readRecords(TIMINGS), now, since: sinceMs ?? undefined, only: id }).total;
+    if (sp.hours > 0) print(`  In progress ${hrs(sp.hours)}: working ${hrs(sp.workingH)}, CI ${hrs(sp.ciH)}, you ${hrs(sp.youH)}, nothing ${hrs(sp.idleH)}`);
+  }
   if (epic) {
     print(`Epic ${id}  ${money(epic.costUSD)} in all, ${Math.round(epic.share * 100)}% of the total${epic.title ? `  ${epic.title}` : ''}`);
     for (const k of epic.children) print(`  ${pad(k.ticket, 10)}${pad(money(k.costUSD), 10)}${k.own ? '(its own sessions) ' : ''}${k.title ?? ''}`);

@@ -9,7 +9,7 @@ import readline from 'node:readline';
 import { summarizeSession, summarizeHelperUsage, applyHelpers } from '../../shared/session-metrics.js';
 
 // Bump when the summary logic changes so cached records are recomputed.
-const CACHE_VERSION = 8;
+const CACHE_VERSION = 10;
 const WANTED = new Set(['user', 'assistant', 'system', 'custom-title', 'pr-link', 'cost-state']);
 const LEAD_TYPE_RE = /^\{"type":"([\w-]+)"/; // pr-link, cost-state, api-request-*, file-history-*... lead with type
 
@@ -73,7 +73,7 @@ export function helperSignature(files) {
 }
 
 /** Stream one helper transcript and summarize its usage; only the first line and assistant lines are parsed. */
-export async function summarizeHelperFile(file) {
+export async function summarizeHelperFile(file, opts = {}) {
   const parsed = [];
   let first = true;
   const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
@@ -87,7 +87,7 @@ export async function summarizeHelperFile(file) {
       /* partial or corrupt line */
     }
   }
-  return summarizeHelperUsage(parsed);
+  return summarizeHelperUsage(parsed, opts);
 }
 
 export async function summarizeTranscriptFile(file, opts = {}) {
@@ -109,7 +109,7 @@ export async function summarizeTranscriptFile(file, opts = {}) {
   if (rec && !rec.sessionId) rec.sessionId = rec.key = path.basename(file, '.jsonl');
   if (rec) {
     const helpers = [];
-    for (const h of helperFiles(path.dirname(file), path.basename(file, '.jsonl'))) helpers.push(await summarizeHelperFile(h));
+    for (const h of helperFiles(path.dirname(file), path.basename(file, '.jsonl'))) helpers.push(await summarizeHelperFile(h, { stallMinutes: opts.stallMinutes }));
     applyHelpers(rec, helpers);
   }
   return rec;

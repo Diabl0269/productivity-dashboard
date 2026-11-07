@@ -6,6 +6,7 @@ import {
   lineChart, barChart, SECOND_STEPS, HOUR_STEPS, fmtHours, fmtMinutes, fmtSeconds, fmtPct, fmtNum, fmtDay,
 } from './metrics-charts.js';
 import { renderCost } from './metrics-cost-view.js';
+import { renderTimeSplit } from './metrics-time-view.js';
 import { openTicketById } from './routing.js';
 import { showStatus } from './state.js';
 
@@ -542,6 +543,8 @@ function renderFlow(d) {
     (f.backlog ? ` · ${f.backlog.openTodo} open in to do (${f.backlog.growthPerWeek >= 0 ? '+' : '−'}${Math.abs(f.backlog.growthPerWeek)} per week)` : '');
   s.appendChild(counts);
   s.appendChild(card('Time in each column', 'Segment width roughly follows total time spent; to do is a queue, so it is never the bottleneck.', renderStageBar(f)));
+
+  s.appendChild(renderTimeSplit(f, { el, append, table, ticketLink, empty, card }));
 
   const grid = el('div', 'mc-grid2');
   const tw = f.throughputByWeek || [];
