@@ -209,6 +209,11 @@ test('payload costs: byTicket attribution and share, byEpic rollup through paren
   const none = c.perShipped.find(g => g.label === 'none');
   assert.deepEqual([none.n, none.medianUSD, none.totalUSD], [2, 6, 12]); // S1 (2) and K4 (10)
   assert.equal(c.plan, undefined);
+  // a shipped epic's own cost is not a ticket sample (an epic run's cost belongs to its children)
+  const d = doc();
+  d.sections[2].tasks.push(d.sections[0].tasks.shift());
+  const withEpic = buildMetricsPayload({ doc: d, sessions, cfg: {}, now: NOW }).costs;
+  assert.deepEqual(withEpic.perShipped.find(g => g.label === 'none').n, 2);
   const pa = buildMetricsPayload({ doc: doc(), sessions, cfg: {}, now: NOW, project: 'pa' }).costs;
   assert.equal(pa.total.sessions, 6);
   assert.equal(buildMetricsPayload({ doc: doc(), sessions, cfg: {}, now: NOW, project: 'nope' }).costs.total.sessions, 0);

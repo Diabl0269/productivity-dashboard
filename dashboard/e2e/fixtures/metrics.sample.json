@@ -1209,6 +1209,15 @@
    "multiple": 2.1
   }
  },
+ "estimates": {
+  "sampleWindowDays": 90,
+  "samples": 23,
+  "byLabel": [
+   { "label": "model:sonnet", "n": 14, "medianUSD": 3.9, "p75USD": 8.6 },
+   { "label": "model:opus", "n": 6, "medianUSD": 21.4, "p75USD": 33.1 },
+   { "label": "none", "n": 3, "medianUSD": 2.2, "p75USD": 4.0 }
+  ]
+ },
  "timings": {
   "series": [
    {

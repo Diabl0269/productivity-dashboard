@@ -8,6 +8,7 @@ import { projectGroupHeader, playVideoButton, audioPlayer } from './check-eviden
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
+import { fillEpicEstimates } from './ticket-cost-ui.js';
 import { openTaskDetail, toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { moveTask } from './tasks-board.js';
@@ -673,6 +674,12 @@ function renderCard(card, phase) {
     article.appendChild(ids);
   } else {
     article.appendChild(el('div', 'rp-items', countText));
+    if (card.state !== 'pick' && !card.isPrompt) {
+      const cost = el('div', 'rp-items rp-cost');
+      cost.dataset.estEpic = card.id;
+      cost.hidden = true;
+      article.appendChild(cost);
+    }
   }
   const fromReview = reviewOfNote(findTicket(card.id)?.reviewOf);
   if (fromReview) article.appendChild(fromReview);
@@ -898,6 +905,7 @@ export function renderRunPlanView() {
   plan.lanes.forEach((lane, i) => tracks.appendChild(renderLane(lane, i, plan.picks || [])));
   root.appendChild(tracks);
   if (plan.doneEpics.length) root.appendChild(renderDoneNote(plan.doneEpics));
+  fillEpicEstimates(root);
 }
 
 /** Re-render when tasks change (called from renderTasks); only if the tab is showing. */

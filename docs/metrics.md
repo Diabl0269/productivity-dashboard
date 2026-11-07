@@ -166,6 +166,23 @@ cancelled or skipped run has `"ok": null`.
   (`none` without one): median, p75 and total dollars per ticket.
 - **Plan comparison**: with `planUSDPerMonth`, the window's cost scaled to 30 days and divided by it.
 
+**Cost estimate** (`estimates` and `next[].estimate` in the payload; `ch metrics estimate`, `ch tasks next`, the Plan tab, the ticket panel; `shared/cost-estimate.js`). Pure statistics, no model calls, same unit as Cost.
+- **Samples**: non-epic tickets now in review or done with cost above zero, costed over the last 90 days of
+  sessions (not the report window), limited to `--project` when given. A ticket's own cost is left out of its estimate.
+- **Groups and fallback**: a ticket is compared with samples sharing its model label (`none` without one),
+  type, project and lane (own lane, else its epic's). The first group with at least 5 samples wins:
+  label+type+project+lane, label+type+project, label+type, label, all shipped tickets. The estimate names the
+  group (`basis`, e.g. `model:sonnet · task · agentsynth`) and its size (`n`).
+- **Range**: `typicalUSD` is the median, `highUSD` the p75 ("~$4 (up to $9)"). With fewer than 5 samples overall
+  there is no estimate (null, nothing printed).
+- **Epic**: the sum of the estimates of its open tickets (not in review, done or archive), `n` = tickets estimated,
+  plus `spentUSD` so far. The p75s are summed, so the upper end is generous.
+- **Where**: `ch tasks next` (a "likely" range per ticket, nothing without session data),
+  `ch metrics estimate [<id>] [--project P] [--json]` (group and n; an epic per open child and total; no id: the samples by
+  label), Plan tab (estimated cost left per epic), ticket panel (likely cost for a ticket not started, cost so far
+  after), Metrics tab Cost > Estimates. The panel and plan read `GET /api/metrics/ticket-cost?id=X` and
+  `/api/metrics/estimates?ids=A,B`, lazily; no data shows nothing.
+
 **CI**: run seconds = `updatedAt − startedAt`, queue = `startedAt − createdAt`. **Red time** for a
 PR branch: from the first failed run to the next successful run on that branch.
 - **Cancelled run**: conclusion `cancelled` or `skipped` (usually a newer push replaced it). Neither a

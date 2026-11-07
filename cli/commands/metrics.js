@@ -6,6 +6,7 @@
  *   ch metrics flow [--project P] [--lane L] [--since 30d] [--json]
  *   ch metrics report [--project P] [--since 30d] [--json]
  *   ch metrics cost [<ticket-id>] [--project P] [--since 30d] [--json]   cost at API prices per ticket / epic
+ *   ch metrics estimate [<ticket-id>] [--project P] [--json]   likely cost from similar shipped tickets (no AI)
  *   ch metrics time <name> [--repo R] [--kind K] -- <command...>
  *   ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind K] [--at ISO]
  */
@@ -23,6 +24,8 @@ import { normalizeTasksDoc } from '../lib/schema.js';
 import { flowMetrics } from '../../shared/flow-metrics.js';
 import { buildMetricsPayload } from '../../shared/metrics-payload.js';
 import { fmtHours } from '../../shared/insights.js';
+import { formatRange, usd, MIN_SAMPLES, estimatesSummary } from '../../shared/cost-estimate.js';
+import { estimatorForDoc } from '../lib/estimator.js';
 
 const KINDS = ['gate', 'build', 'test', 'ci', 'other'];
 const TIMINGS = 'timings.jsonl';
@@ -270,6 +273,35 @@ export function loadMetricsPayload({ since, project, now, costLimit } = {}) {
   });
 }
 
+/** Estimator over the sessions store and the current tracker; null without sessions data. */
+function loadEstimator(project) {
+  return estimatorForDoc(readDoc(), { project: project || undefined });
+}
+
+/** For GET /api/metrics/ticket-cost: state, cost so far (last 90 days) and the estimate of one ticket. */
+export function ticketCostInfo(id) {
+  const est = loadEstimator();
+  if (!est) return { state: null, cost: null, estimate: null };
+  const row = est.costs.byTicket.find(t => t.ticket === id) || null;
+  const epic = est.costs.byEpic.find(e => e.epic === id) || null;
+  return {
+    state: est.stateOf(id),
+    cost: row || epic ? { costUSD: (epic ?? row).costUSD, sessions: row ? row.sessions : null } : null,
+    estimate: est.estimate(id),
+  };
+}
+
+/** For GET /api/metrics/estimates: {id: estimate|null}; epics carry the sum of their open tickets. */
+export function estimatesFor(ids) {
+  const est = loadEstimator();
+  const out = {};
+  for (const id of ids) {
+    const e = est ? est.estimate(id) : null;
+    out[id] = e ? { typicalUSD: e.typicalUSD, highUSD: e.highUSD, n: e.n, basis: e.basis, ...(e.spentUSD !== undefined ? { spentUSD: e.spentUSD } : {}) } : null;
+  }
+  return out;
+}
+
 function cliSince(v, nowMs) {
   try { return resolveSince(v, nowMs); } catch (e) { return die(e.message); }
 }
@@ -377,6 +409,38 @@ function costCmd(argv) {
   }
 }
 
+/** `ch metrics estimate [<ticket-id>]`: likely cost of a ticket (an epic: per open child and the sum), or the sample summary. */
+function estimateCmd(argv) {
+  const { values, positionals } = parse(argv, { project: { type: 'string' }, json: { type: 'boolean' } });
+  const est = loadEstimator(values.project);
+  const id = positionals[0] ? String(positionals[0]).toUpperCase() : null;
+  const none = `no estimate: needs ${MIN_SAMPLES} shipped tickets with cost in the last 90 days (run ch metrics collect --sessions)`;
+  if (!id) {
+    const sum = est ? estimatesSummary(est) : { sampleWindowDays: 90, samples: 0, byLabel: [] };
+    if (values.json) { jsonOut(sum); return; }
+    print(`Estimate samples: ${sum.samples} shipped tickets with cost in the last ${sum.sampleWindowDays} days`);
+    if (!sum.byLabel.length) { print(`  ${none}`); return; }
+    print(`${pad('Model label', 14)}${pad('Tickets', 9)}${pad('Median', 10)}p75`);
+    for (const g of sum.byLabel) print(`${pad(g.label, 14)}${pad(g.n, 9)}${pad(money(g.medianUSD), 10)}${money(g.p75USD)}`);
+    return;
+  }
+  if (est && !est.stateOf(id)) die(`no such ticket ${id}`);
+  const e = est ? est.estimate(id) : null;
+  if (values.json) { jsonOut({ ticket: id, state: est ? est.stateOf(id) : null, estimate: e }); return; }
+  if (!est) { print(none); return; }
+  if (!e) { print(`${id}: ${est.samples < MIN_SAMPLES ? none : 'no estimate for this ticket'}`); return; }
+  if (e.perChild) {
+    print(`Epic ${id}: ${formatRange(e)} still to do (${e.basis}); ${money(e.spentUSD)} spent so far`);
+    for (const k of e.perChild) print(`  ${pad(k.ticket, 10)}${pad(formatRange(k), 20)}${k.title ?? ''}`);
+    if (!e.perChild.length) print('  no open tickets with an estimate');
+    return;
+  }
+  print(`${id}: ${formatRange(e)}  typical ${usd(e.typicalUSD)}, up to ${usd(e.highUSD)} (p75)`);
+  print(`  from ${e.n} similar shipped tickets: ${e.basis}`);
+  const spent = est.spentUSD(id);
+  if (spent > 0) print(`  spent so far: ${money(spent)}`);
+}
+
 function gitOut(args) {
   try {
     return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || undefined;
@@ -440,6 +504,7 @@ const USAGE = `ch metrics <subcommand>
   flow    [--project P] [--lane L] [--since 30d] [--json]
   report  [--project P] [--since 30d] [--json]
   cost [<ticket-id>] [--project P] [--since 30d] [--json]
+  estimate [<ticket-id>] [--project P] [--json]
   time <name> [--repo R] [--kind K] -- <command...>
   record --name N --seconds S [--ok|--failed] [--repo R] [--kind K] [--at ISO]`;
 
@@ -452,6 +517,7 @@ export default async function metrics(argv) {
     case 'flow': return flowCmd(rest);
     case 'report': return reportCmd(rest);
     case 'cost': return costCmd(rest);
+    case 'estimate': return estimateCmd(rest);
     case undefined: case '--help': case 'help': print(USAGE); return;
     default: die(`unknown metrics subcommand: ${sub}\n${USAGE}`);
   }

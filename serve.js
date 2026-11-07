@@ -784,6 +784,26 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/metrics/ticket-cost?id=X -> { state, cost, estimate }; GET /api/metrics/estimates?ids=A,B -> { A: estimate|null }
+  // (shared/cost-estimate.js; read-only, no data -> nulls).
+  if (url.pathname === '/api/metrics/ticket-cost' || url.pathname === '/api/metrics/estimates') {
+    if (req.method !== 'GET') {
+      res.writeHead(405, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'method not allowed' }));
+      return;
+    }
+    try {
+      const lib = await import('./cli/lib/metrics-api.js');
+      const out = url.pathname.endsWith('/estimates') ? lib.ticketEstimates(url.searchParams) : lib.ticketCost(url.searchParams);
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(out));
+    } catch (e) {
+      res.writeHead(e.status || 500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Review projects: POST /api/open-project {path} launches the newest configured build on a saved project
   if (url.pathname === '/api/open-project' && req.method === 'POST') {
     try {

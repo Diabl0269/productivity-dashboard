@@ -180,7 +180,7 @@ test('buildMetricsPayload: shape, window, project filter on sessions, sources', 
     { at: '2026-11-06T01:00:00.000Z', kind: 'ci', host: 'ci', name: 'CI', workflow: 'CI', repo: 'r', branch: 'x', seconds: 120, queuedSeconds: 20, ok: true },
   ];
   const p = buildMetricsPayload({ doc, sessions, timings, cfg: {}, now: NOW });
-  assert.deepEqual(Object.keys(p), ['generatedAt', 'window', 'filters', 'flow', 'sessions', 'costs', 'timings', 'next', 'insights', 'sources']);
+  assert.deepEqual(Object.keys(p), ['generatedAt', 'window', 'filters', 'flow', 'sessions', 'costs', 'estimates', 'timings', 'next', 'insights', 'sources']);
   assert.deepEqual(p.filters.projects, ['pa', 'pb']);
   assert.equal(p.sessions.summary.n, 3); // 'old' is outside the window
   assert.equal(p.sessions.summary.autonomousShare, 0.667);

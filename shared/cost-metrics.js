@@ -95,9 +95,10 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
     })),
   }));
 
-  // Cost of tickets now in review or done, grouped by their model label.
+  // Cost of tickets (not epics: an epic run's cost is its children's) now in review or done, by model label.
   const groups = new Map();
   for (const e of tickets.values()) {
+    if (byId.get(e.ticket)?.type === 'epic') continue;
     const state = sectionOf.get(e.ticket);
     if (state !== 'review' && state !== 'done') continue;
     if (!(e.costUSD > 0)) continue;

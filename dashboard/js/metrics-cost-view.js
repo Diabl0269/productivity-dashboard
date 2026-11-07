@@ -78,5 +78,13 @@ export function renderCost(d, h) {
         { label: 'Model label' }, { label: 'Tickets', num: true }, { label: 'Median', num: true }, { label: 'p75', num: true }, { label: 'Total', num: true },
       ], shipped)));
   }
+  const est = d.estimates;
+  if (est && est.byLabel?.length) {
+    const rows = est.byLabel.map((g) => [g.label, String(g.n), fmtUSD(g.medianUSD), fmtUSD(g.p75USD)]);
+    s.appendChild(card('Estimates', `What a ticket is expected to cost, from tickets now in review or done with cost in the last ${est.sampleWindowDays} days (${est.samples} samples). A ticket's range comes from the narrowest group of at least 5 similar tickets (model label, type, project, lane); the run plan, the ticket panel and ch tasks next show it.`,
+      table('Cost estimate samples by model label', [
+        { label: 'Model label' }, { label: 'Samples', num: true }, { label: 'Typical (median)', num: true }, { label: 'Up to (p75)', num: true },
+      ], rows)));
+  }
   return s;
 }

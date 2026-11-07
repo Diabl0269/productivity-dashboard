@@ -7,6 +7,7 @@ import { rankReadyTickets } from './next-ticket.js';
 import { redTime, trend, isUncounted, isFlakyRerun } from './ci-metrics.js';
 import { buildInsights } from './insights.js';
 import { costsBlock } from './cost-metrics.js';
+import { estimatorFor, estimatesSummary } from './cost-estimate.js';
 
 const DAY = 24 * 3600 * 1000;
 const toMs = v => {
@@ -172,6 +173,8 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     const t = s.ticket ? byId.get(s.ticket) : null;
     return !!t && t.project === project;
   });
+  const estimator = estimatorFor({ doc, sessions, cfg, nowMs, project });
+  const next = rankReadyTickets(doc, { n: 8, project, now: nowMs }).map(t => ({ ...t, estimate: estimator.estimate(t.id) }));
   const timingsAll = timings || [];
   const timingsWin = timingsAll.filter(r => inRange(toMs(r.at)));
 
@@ -182,8 +185,9 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     flow,
     sessions: sessionsBlock(sess, sinceMs, nowMs),
     costs: costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit }),
+    estimates: estimatesSummary(estimator),
     timings: timingsBlock(timingsAll, timingsWin, nowMs),
-    next: rankReadyTickets(doc, { n: 8, project, now: nowMs }),
+    next,
     sources: {
       sessions: { records: (sessions || []).length, newest: newest(sessions || [], s => s.start) },
       ci: { records: timingsAll.filter(r => r.kind === 'ci').length, newest: newest(timingsAll.filter(r => r.kind === 'ci'), r => r.at) },
