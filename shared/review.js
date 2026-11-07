@@ -106,21 +106,89 @@ export function resultErrors(result, ref) {
 
 const CHECK_OWNER_RULES = [
   ['CI or a PR being green is yours to watch and verify', /\bCI\b[^.]{0,40}\b(green|passed|passes|pass|red|build|checks?|shards?)\b|\bPR\b[^.]{0,40}\bgreen\b|\bCI (build|run)\b/i],
-  ['running a command or test suite is yours to do', /(^|[\s:])Run:\s|\brun (the |all |a |your )?(full )?(test suite|tests?|gate|lint)\b|\bTools\/|\bgit (status|diff|log)\b|\b(npm|pnpm|node) (run |test|--test)|\bci-local\b/i],
+  ['running a command or test suite is yours to do: run it yourself and put the result in --tests', /(^|[\s:])Run:\s|\brun (the |all |a |your )?(full )?(test suite|tests?|gate|lint)\b|\bTools\/|\bgit (status|diff|log)\b|\b(npm|pnpm|node) (run |test|--test)|\bci-local\b/i],
   ['opening older or saved projects is a compatibility check you can run yourself', /\bproject saved (before|with|in)\b|\bopen (a|an|the) (saved|older|previous|old) (project|patch|file)\b|\b(older|previous|old) (project|build|version|release)s?\b/i],
   ['regressions are yours to check with tests', /\bregress(ion|ions)?\b|\bstill works?\b/i],
   ['VoiceOver checks are yours to run (see the accessibility notes)', /voice ?over/i],
   ['a design pick is a Co-task: pick ticket, so it shows in the Design round lane, not a check', /\b(pick|answer|choose)\b[^.]{0,60}\bboard\b|\bboard\b[^.]{0,30}\b(pick|answer|choose)\b/i],
 ];
 
+// Rules that depend on what is attached to the check (see checkOwnerProblem's `evidence`).
+// Each reason names the fix. Kept narrow: ordinary UI wording ("Press Run", "Run your finger
+// along the strip", "the node snaps to the grid") must pass. `needs`: true = refused unless
+// something is attached; 'project' = refused unless a project is attached; false = always.
+const ID = String.raw`(?:[A-Za-z]{2,6}\d+:\s*)?`;
+const FILE_EXTS = String.raw`(?:wav|mp3|flac|ogg|m4a|mp4|mov|png|jpe?g|agsproj)`;
+const CHECK_EVIDENCE_RULES = [
+  {
+    reason: 'this is a measured result, not a check: put it in --tests',
+    needs: false,
+    re: new RegExp([
+      String.raw`^\s*${ID}(?:Eval|Evals|Result|Results|Measured|Benchmark|Tests?|CI):`,
+      String.raw`\bcosts?\b[^.]{0,20}\$\s?\d`,
+      String.raw`\$\s?\d+(?:\.\d+)?\s*(?:per|each|total)\b`,
+      String.raw`\b\d+\s*(?:/|of)\s*\d+\s+(?:tests?|checks?|songs?|cases?)?\s*pass(?:ed)?\b`,
+      String.raw`\b\d+\s+(?:tests?|checks?|songs?|cases?)\s+(?:pass(?:ed)?|green)\b`,
+      String.raw`\bops per song\b`,
+    ].join('|'), 'i'),
+  },
+  {
+    reason: 'there is nothing to check: use --no-checks "<reason>" instead of a placeholder check',
+    needs: false,
+    re: new RegExp([
+      String.raw`^\s*${ID}(?:there is |there's |there are )?(?:nothing|no manual|n/a|none)\b[^.]{0,40}$`,
+      String.raw`\bnothing (?:left )?to (?:check|test|verify|review)\b`,
+      String.raw`\bno manual (?:check|test|step|verification)s?\b`,
+      String.raw`\bno need to (?:check|test|verify)\b`,
+    ].join('|'), 'i'),
+  },
+  {
+    reason: 'it tells the reviewer to run something: run it yourself and put the result in --tests',
+    needs: false,
+    re: new RegExp([
+      String.raw`\b(?:run|rerun|re-run|execute|launch|kick off|invoke)\s+(?:the |this |that |an? |your |our |each )?(?:[\w-]+\s+){0,2}(?:evals?|evaluations?|scripts?|commands?|benchmarks?|harness|pipeline|cli)\b`,
+      String.raw`^\s*${ID}eval\b`,
+      String.raw`\b(?:node|python3?|bash|sh|zsh)\s+(?:-\S+|\S*\.(?:m?js|cjs|py|sh|ts)\b|[\w.-]+/\S+)`,
+      String.raw`\b(?:npm|pnpm|yarn|npx)\s+(?:run|test|install|ci|exec|start|build|-\S+|[\w@/.-]+)`,
+      '`\\s*(?:bash|sh|zsh|node|npm|pnpm|npx|python3?|git|ch|curl|make|cmake|ctest|cd|\\./|/|~/)[^`]*`',
+      String.raw`\b[\w-]+\.(?:sh|py|mjs)\b`,
+      String.raw`\bscripts?/`,
+    ].join('|'), 'i'),
+  },
+  {
+    reason: 'it points at a file on disk: attach it (--check-video / --check-audio / --check-project) instead of a path',
+    needs: true,
+    re: new RegExp([
+      String.raw`(?:^|[\s("'\x60])(?:~/|/Users/|/home/|/tmp/|/private/|/var/)\S*`,
+      String.raw`\b[\w.-]+/[\w./-]*\.${FILE_EXTS}\b`,
+      String.raw`\b[\w-]+\.${FILE_EXTS}\b`,
+    ].join('|'), 'i'),
+  },
+  {
+    reason: 'it is about AI-generated content: create the project with the AI yourself and attach it with --check-project',
+    needs: 'project',
+    re: /\bask (?:the |an? )?(?:ai|assistant|chatbot|claude)\b|\bmake (?:me )?an? ai[- ](?:song|project|patch|track|preset)\b|\bgenerate\b[^.]{0,50}\bwith (?:the )?(?:ai|assistant)\b|\b(?:ai|assistant)[- ]generated\b|\bprompt (?:the )?(?:ai|assistant)\b/i,
+  },
+];
+
 /**
  * Checks are for what only Tal can judge (look, feel, taste). Returns a reason when `text`
- * is something the shipping session should verify itself and report under --tests, else null.
- * Tuned so ordinary product steps ("Press Run", "drag Cutoff") pass.
+ * is something the shipping session should do itself, else null. `evidence` is what the check
+ * carries ({ project?, video?, audio? }): a file path in the text is fine when something is
+ * attached, and an AI-content check needs an attached project. Tuned so ordinary product
+ * steps ("Press Run", "drag Cutoff") pass.
  */
-export function checkOwnerProblem(text) {
+export function checkOwnerProblem(text, evidence = {}) {
   const t = String(text ?? '');
   for (const [reason, re] of CHECK_OWNER_RULES) if (re.test(t)) return reason;
+  const ev = evidence || {};
+  const attached = !!(ev.project || ev.video || ev.audio);
+  for (const { reason, re, needs } of CHECK_EVIDENCE_RULES) {
+    if (!re.test(t)) continue;
+    if (needs === true && attached) continue;
+    if (needs === 'project' && ev.project) continue;
+    return reason;
+  }
   return null;
 }
 
@@ -181,6 +249,14 @@ export function evidencePathError(value, ext, label = 'path') {
 
 export const projectPathError = (v, label = 'project') => evidencePathError(v, '.agsproj', label);
 export const videoPathError = (v, label = 'video') => evidencePathError(v, '.mp4', label);
+export const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.ogg', '.flac'];
+/** Audio evidence: any of AUDIO_EXTS, otherwise the same rules as video. */
+export function audioPathError(v, label = 'audio') {
+  const ext = AUDIO_EXTS.find(e => String(v ?? '').trim().toLowerCase().endsWith(e));
+  if (ext) return evidencePathError(v, ext, label);
+  const base = evidencePathError(v, '.wav', label);
+  return base && base.includes('must end with') ? `${label} must end with one of ${AUDIO_EXTS.join(', ')}: ${String(v).trim()}` : base || `${label} must end with one of ${AUDIO_EXTS.join(', ')}: ${String(v).trim()}`;
+}
 
 /** Forward-slash, trimmed, no "./" or doubled slashes. */
 export function tidyEvidencePath(value) {
@@ -188,8 +264,8 @@ export function tidyEvidencePath(value) {
 }
 
 /**
- * A check as given on the CLI or in --result-json: a string or { text, project?, video? }.
- * Returns { text, project?, video? } with tidied paths; throws on a bad shape or path.
+ * A check as given on the CLI or in --result-json: a string or { text, project?, video?, audio? }.
+ * Returns { text, project?, video?, audio? } with tidied paths; throws on a bad shape or path.
  */
 export function normalizeCheckInput(item) {
   const obj = typeof item === 'string' ? { text: item } : item;
@@ -197,7 +273,7 @@ export function normalizeCheckInput(item) {
     throw new Error('each check must be a string or an object with a text string');
   }
   const out = { text: obj.text.trim() };
-  for (const [key, check] of [['project', projectPathError], ['video', videoPathError]]) {
+  for (const [key, check] of [['project', projectPathError], ['video', videoPathError], ['audio', audioPathError]]) {
     if (obj[key] === undefined || obj[key] === null || obj[key] === '') continue;
     const err = check(obj[key], `check ${key}`);
     if (err) throw new Error(err);
@@ -215,6 +291,10 @@ export function checkEvidenceErrors(check, ref) {
   }
   if (check?.video !== undefined) {
     const e = videoPathError(check.video, `${ref}.video`);
+    if (e) errors.push(e);
+  }
+  if (check?.audio !== undefined) {
+    const e = audioPathError(check.audio, `${ref}.audio`);
     if (e) errors.push(e);
   }
   return errors;
@@ -247,7 +327,7 @@ export function groupChecksByProject(checks) {
 }
 
 /**
- * Add checks (strings or { text, project?, video? }), skipping texts already on the ticket.
+ * Add checks (strings or { text, project?, video?, audio? }), skipping texts already on the ticket.
  * A text already present keeps its tick but gains a project/video it lacked. Returns how many were added.
  */
 export function addChecks(task, texts, { now = new Date().toISOString() } = {}) {
@@ -260,11 +340,11 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
     if (!text) continue;
     const have = byText.get(text);
     if (have) {
-      for (const key of ['project', 'video']) if (input[key] && !have[key]) have[key] = input[key];
+      for (const key of ['project', 'video', 'audio']) if (input[key] && !have[key]) have[key] = input[key];
       continue;
     }
     const check = { text, checked: false, addedAt: now };
-    for (const key of ['project', 'video']) if (input[key]) check[key] = input[key];
+    for (const key of ['project', 'video', 'audio']) if (input[key]) check[key] = input[key];
     task.checks.push(check);
     byText.set(text, check);
     added++;
@@ -391,7 +471,7 @@ function descendantsOf(doc, epicId) {
  * review only when the child added checks.
  */
 export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOString() } = {}) {
-  // checkTexts items are strings or { text, project?, video? }; the prefix goes on the text only.
+  // checkTexts items are strings or { text, project?, video?, audio? }; the prefix goes on the text only.
   const found = epicOf(doc, task);
   if (!found) return null;
   const { task: epic, section: epicSection } = found;

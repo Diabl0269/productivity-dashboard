@@ -3,7 +3,8 @@
 import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
-import { projectGroupHeader, playVideoButton } from './check-evidence.js';
+import { freshnessLine } from '../../shared/build-freshness.js';
+import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
@@ -134,6 +135,37 @@ function reviewOfNote(reviewOf, className = 'rp-review-of') {
   return note;
 }
 
+// Build freshness per PR link (api/build-freshness): url -> result, or null when nothing applies.
+const freshnessByUrl = new Map();
+const freshnessPending = new Set();
+
+/** The "in your build" / "needs a newer build" line of a review card, or null. Fetches lazily, then re-renders. */
+export function buildFreshnessNote(task) {
+  const links = (Array.isArray(task?.links) ? task.links : []).map(l => l?.url).filter(u => typeof u === 'string' && /\/pull\/\d+/.test(u));
+  for (const url of links) {
+    if (!freshnessByUrl.has(url)) {
+      if (!freshnessPending.has(url) && typeof fetch === 'function') {
+        freshnessPending.add(url);
+        fetch(`/api/build-freshness?url=${encodeURIComponent(url)}`).then(r => (r.ok ? r.json() : null)).catch(() => null).then((res) => {
+          freshnessPending.delete(url);
+          freshnessByUrl.set(url, res && res.state ? res : null);
+          if (res && res.state) renderRunPlanView();
+        });
+      }
+      continue;
+    }
+    const line = freshnessLine(freshnessByUrl.get(url));
+    if (!line) continue;
+    const note = el('div', `rp-build rp-build-${line.command ? 'stale' : 'current'}`, `Your app: ${line.text}`);
+    if (line.command) {
+      note.appendChild(document.createTextNode('. Update: '));
+      note.appendChild(el('code', null, line.command));
+    }
+    return note;
+  }
+  return null;
+}
+
 const SHIPPED_MAX = 120;
 function truncate(text, max) {
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
@@ -207,6 +239,7 @@ function renderCheckGrid(task) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(playVideoButton(c, i + 1, what));
     }
+    if (c.audio) what.appendChild(audioPlayer(c, i + 1));
     row.appendChild(what);
     row.appendChild(noteCell(task, unsent.filter(n => n.check === c.text), {
       check: c.text, key: i, placeholder: 'What did you see? Enter saves', label: `Note on check ${i + 1}`,
@@ -468,6 +501,8 @@ function renderReviewList(items) {
     li.appendChild(el('div', 'rp-title', item.title));
     const shipped = item.result?.shipped?.[0];
     if (shipped) li.appendChild(el('div', 'rp-why', truncate(shipped, SHIPPED_MAX)));
+    const build = buildFreshnessNote(task);
+    if (build) li.appendChild(build);
     const from = reviewOfNote(item.reviewOf);
     if (from) li.appendChild(from);
     for (const fu of item.followUps) {

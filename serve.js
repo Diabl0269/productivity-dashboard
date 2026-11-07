@@ -141,6 +141,13 @@ function loadNoteImagesLib() {
   return noteImagesLibPromise;
 }
 // Review evidence (videos and saved projects under CH_HOME/evidence): cli/lib/evidence.js owns the rules.
+let freshnessLibPromise = null;
+function loadFreshnessLib() {
+  if (!freshnessLibPromise) {
+    freshnessLibPromise = import('./cli/lib/build-freshness.js').then((lib) => ({ lib, check: lib.createFreshnessChecker() }));
+  }
+  return freshnessLibPromise;
+}
 let evidenceLibPromise = null;
 function loadEvidenceLib() {
   if (!evidenceLibPromise) evidenceLibPromise = import('./cli/lib/evidence.js');
@@ -733,6 +740,22 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(out.status, { ...corsHeaders, ...out.headers });
       fs.createReadStream(out.file.abs, { start: out.file.start, end: out.file.end }).pipe(res);
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Review cards: GET /api/build-freshness?url=<PR link> -> { state, mergedAt?, buildAt?, updateCommand? }, or
+  // { state: null } when no config.json buildFreshness rule matches the link (local git only, no network).
+  if (url.pathname === '/api/build-freshness' && req.method === 'GET') {
+    try {
+      const { lib, check } = await loadFreshnessLib();
+      const rules = lib.readFreshnessRules(DATA_ROOT);
+      const result = rules.length ? check(rules, url.searchParams.get('url') || '') : null;
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(result || { state: null }));
     } catch (e) {
       res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));

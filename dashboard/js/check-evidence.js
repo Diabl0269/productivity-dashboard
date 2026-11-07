@@ -115,6 +115,18 @@ export function playVideoButton(check, number, host) {
   return btn;
 }
 
+/** An inline <audio controls> player for a check's audio (always shown, no button; the same place Play video sits). */
+export function audioPlayer(check, number) {
+  const audio = document.createElement('audio');
+  audio.className = 'ce-audio';
+  audio.controls = true;
+  audio.preload = 'metadata';
+  audio.setAttribute('aria-label', `Audio for check ${number}`);
+  audio.title = check.audio;
+  audio.src = evidenceUrl(check.audio);
+  return audio;
+}
+
 /** Small header row for a group of checks sharing a project: "Project: end.agsproj" and one Open project button. */
 export function projectGroupHeader(project, className = 'ce-group-head') {
   const row = document.createElement('div');
