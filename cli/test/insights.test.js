@@ -105,12 +105,12 @@ test('your replies: median reply and sessions that waited over an hour', () => {
 });
 
 test('timing trends: threshold, run counts on both sides, slower and faster wording', () => {
-  const t = (over) => ({ repo: 'agentsynth', kind: 'gate', name: 'ci-local', recentMedian: 510, priorMedian: 420, changePct: 21.4, recentCount: 5, priorCount: 4, ...over });
+  const t = (over) => ({ repo: 'my-app', kind: 'gate', name: 'ci-local', recentMedian: 510, priorMedian: 420, changePct: 21.4, recentCount: 5, priorCount: 4, ...over });
   const timings = { trends: [t(), t({ name: 'few', recentCount: 2 }), t({ name: 'flat', changePct: 14 }), t({ name: 'fast', recentMedian: 300, priorMedian: 420, changePct: -28.6 })] };
   const list = buildInsights({ ...full, timings });
   assert.equal(list.length, 2);
-  assert.equal(find(list, 'slower')[0].title, 'agentsynth ci-local 21% slower: 7.0 → 8.5 min');
-  assert.equal(find(list, 'faster')[0].title, 'agentsynth fast 29% faster: 7.0 → 5.0 min');
+  assert.equal(find(list, 'slower')[0].title, 'my-app ci-local 21% slower: 7.0 → 8.5 min');
+  assert.equal(find(list, 'faster')[0].title, 'my-app fast 29% faster: 7.0 → 5.0 min');
 });
 
 test('CI fail rate at 20% and above', () => {
