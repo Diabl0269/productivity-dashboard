@@ -232,6 +232,19 @@ To unload: `launchctl unload ~/Library/LaunchAgents/com.claude.daily-update.plis
 4. Sends a Slack DM with findings (new tickets, missed action items, stale tasks)
 5. Includes a resume command so you can follow up interactively
 
+## Metrics
+
+Where does work wait? `ch metrics` measures it locally from ticket history, Claude Code transcripts,
+GitHub Actions runs and local gate logs. Details, config and definitions: [docs/metrics.md](docs/metrics.md).
+
+```
+ch metrics collect [--sessions] [--ci] [--gates] [--since 30d] [--json]
+ch metrics flow    [--project P] [--lane L] [--since 30d] [--json]
+ch metrics report  [--project P] [--since 30d] [--json]
+ch metrics time <name> [--repo R] -- <command...>
+ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind gate|build|test|ci|other]
+```
+
 ## Claude Desktop / Claude Code Integration
 
 ### Basic Setup
