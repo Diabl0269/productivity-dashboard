@@ -26,12 +26,15 @@ test('fmtHours picks minutes, hours or days', () => {
 
 test('bottleneck stage, share and projects that differ', () => {
   const f = flow({
-    bottleneck: { stage: 'review', totalHours: 84, share: 0.62 },
+    bottleneck: { stage: 'review', medianHours: 27.5, totalHours: 84, share: 0.62 },
+    stages: { todo: stage(null, undefined, 0), 'in-progress': stage(3.4), review: stage(27.5) },
     groups: { project: { a: { bottleneck: { stage: 'in-progress' } }, b: { bottleneck: { stage: 'review' } } } },
   });
   const [i] = buildInsights({ ...full, flow: f });
   assert.equal(i.kind, 'bottleneck');
-  assert.equal(i.title, 'Review holds 62% of the work time');
+  assert.equal(i.title, 'Review is the slowest step: typically 27.5 h vs 3.4 h building');
+  assert.match(i.detail, /a typical ticket waits 27\.5 h there vs 3\.4 h building/);
+  assert.match(i.detail, /holds 62% of the work time/);
   assert.match(i.detail, /Different in: a: Building\./);
 });
 
@@ -65,6 +68,20 @@ test('forgotten epics', () => {
   const [i] = buildInsights({ ...full, flow: f });
   assert.equal(i.title, '2 epics in progress with no activity');
   assert.equal(i.detail, 'E1 idle 5.5 days, E2 idle 4 days.');
+});
+
+test('stale tickets in progress', () => {
+  const f = flow({ staleTickets: ['A', 'B', 'C', 'D', 'E'].map((id, n) => ({ id, idleDays: 9 - n })) });
+  const [i] = buildInsights({ ...full, flow: f });
+  assert.equal(i.title, '5 tickets in progress with no activity for 3+ days');
+  assert.equal(i.detail, 'A idle 9 days, B idle 8 days, C idle 7 days, D idle 6 days and 1 more.');
+});
+
+test('helper waits are counted on their own, not as stuck', () => {
+  const sessions = { summary: { n: 10, autonomousShare: 0.9, questionsMidRun: 0, helperWaits: 4, waitUserHours: 0, medianActiveMin: 30 }, byWeek: [] };
+  const list = buildInsights({ ...full, sessions });
+  assert.equal(list.length, 1);
+  assert.match(list[0].detail, /4 waits on a running helper, not counted as stuck\./);
 });
 
 test('autonomy share with week-over-week change, mid-run questions and stalls per session', () => {
@@ -114,9 +131,13 @@ test('timing trends: threshold, run counts on both sides, slower and faster word
 });
 
 test('CI fail rate at 20% and above', () => {
-  const timings = { ci: { byRepo: [{ repo: 'r', workflow: 'CI', runs: 10, failRate: 0.3 }, { repo: 'q', workflow: 'CI', runs: 10, failRate: 0.1 }] } };
+  const timings = { ci: { byRepo: [
+    { repo: 'r', workflow: 'CI', runs: 10, failed: 3, failRate: 0.3, cancelled: 5, flakyReruns: 2, topFailedJobs: [{ name: 'lint', count: 2 }, { name: 'unit', count: 1 }] },
+    { repo: 'q', workflow: 'CI', runs: 10, failRate: 0.1 },
+  ] } };
   const list = buildInsights({ ...full, timings });
-  assert.deepEqual(list.map(i => i.title), ['r CI fails 30% of runs']);
+  assert.deepEqual(list.map(i => i.title), ['r CI fails 30% of finished runs']);
+  assert.equal(list[0].detail, '3 of 10 finished CI runs failed (5 cancelled by newer pushes not counted); 2 passed on a rerun. Most failing jobs: lint (2), unit (1).');
 });
 
 test('red time, open now or not', () => {
@@ -177,9 +198,23 @@ test('buildMetricsPayload: shape, window, project filter on sessions, sources', 
   assert.equal(p.timings.series[0].points.length, 2);
   assert.equal(p.timings.redTime.summary.branches, 1);
   assert.equal(p.timings.redTime.summary.medianMinutes, 60);
-  assert.deepEqual(p.timings.ci.byRepo[0], { repo: 'r', workflow: 'CI', runs: 2, medianSeconds: 110, p90Seconds: 118, failRate: 0.5, medianQueueSeconds: 15 });
+  assert.deepEqual(p.timings.ci.byRepo[0], { repo: 'r', workflow: 'CI', runs: 2, failed: 1, cancelled: 0, flakyReruns: 0, medianSeconds: 110, p90Seconds: 118, failRate: 0.5, medianQueueSeconds: 15, topFailedJobs: [] });
   assert.deepEqual(p.sources.sessions, { records: 4, newest: '2026-11-05T10:00:00.000Z' });
   assert.equal(p.sources.gates.records, 0);
   assert.ok(p.insights.some(i => i.kind === 'missing' && /gate/.test(i.title)));
   assert.ok(Array.isArray(p.next));
+});
+
+test('payload CI block: cancelled runs excluded, flaky reruns and top failed jobs counted', () => {
+  const ci = (n, over) => ({ key: `k${n}`, kind: 'ci', repo: 'r', workflow: 'CI', branch: 'b', at: `2026-11-05T0${n}:00:00.000Z`, seconds: 100, queuedSeconds: 10, ok: true, conclusion: 'success', attempt: 1, ...over });
+  const timings = [
+    ci(1, {}), ci(2, { attempt: 2 }),
+    ci(3, { ok: false, conclusion: 'failure', failedJobs: ['lint', 'unit'] }), ci(4, { ok: false, conclusion: 'failure', failedJobs: ['lint'] }),
+    ci(5, { ok: null, conclusion: 'cancelled', seconds: 5 }), ci(6, { ok: null, conclusion: 'cancelled', seconds: 5 }),
+  ];
+  const p = buildMetricsPayload({ doc: { sections: [], meta: {} }, timings, now: '2026-11-06T00:00:00.000Z', since: '2026-11-01T00:00:00.000Z' });
+  const r = p.timings.ci.byRepo[0];
+  assert.deepEqual([r.runs, r.failed, r.cancelled, r.flakyReruns, r.failRate, r.medianSeconds], [4, 2, 2, 1, 0.5, 100]);
+  assert.deepEqual(r.topFailedJobs, [{ name: 'lint', count: 2 }, { name: 'unit', count: 1 }]);
+  assert.equal(p.timings.series[0].points.length, 4);
 });

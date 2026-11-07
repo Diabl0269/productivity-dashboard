@@ -224,3 +224,13 @@ test('claudeProjects entries ending in * match directories by prefix', async () 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('a gap between two notifications is a helper wait; a gap ended by a human prompt is a missed wake', () => {
+  const helper = summarizeSession([human(0), stop(5), notif(10), notif(40), asst(41), stop(42)]);
+  assert.deepEqual([helper.helperWaits, helper.helperWaitMin, helper.missedWakes], [1, 30, 0]);
+  const missed = summarizeSession([human(0), stop(5), notif(10), human(40), asst(41), stop(42)]);
+  assert.deepEqual([missed.helperWaits, missed.missedWakes, missed.missedWakeMin], [0, 1, 30]);
+  assert.deepEqual(missed.missedWakeOrigins, { 'task-notification': 1 });
+  const answered = summarizeSession([human(0), stop(5), notif(10), asst(40), stop(42)]);
+  assert.deepEqual([answered.helperWaits, answered.missedWakes], [0, 1]);
+});

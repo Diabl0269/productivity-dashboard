@@ -1,6 +1,7 @@
 /**
  * Flow metrics — cycle/lead time, stage dwell, bottleneck, WIP and forgotten epics, from the
  * `moved` events in ticket history (docs/metrics.md, "Ticket flow"). Pure module: no I/O.
+ * The bottleneck is the stage with the largest MEDIAN closed stay (a typical ticket), totalHours is secondary.
  *
  * Input is the tasks.json document shape: { sections: [{ id, tasks: [...] }], meta }.
  * History may be missing on old tickets; those tickets simply have no stays and are skipped
@@ -191,7 +192,8 @@ export function flowMetrics(doc, {
     const stages = {};
     let grand = 0;
     for (const s of BOTTLENECK_STAGES) grand += stageVals[s].total;
-    let best = null;
+    let best = null; // slowest by median closed stay
+    let bestTotal = null; // fallback when no stage has a closed stay yet: largest total
     for (const s of STAGES) {
       const v = stageVals[s];
       const sum = summary(v.closed);
@@ -199,11 +201,15 @@ export function flowMetrics(doc, {
         n: sum.n, median: sum.median, p75: sum.p75, totalHours: r1(v.total),
         open: { n: v.openN, oldestHours: r1(v.oldest) },
       };
-      if (BOTTLENECK_STAGES.includes(s) && v.total > 0 && (!best || v.total > best.raw)) best = { stage: s, raw: v.total };
+      if (BOTTLENECK_STAGES.includes(s) && v.total > 0) {
+        if (sum.median !== null && (!best || sum.median > best.med)) best = { stage: s, med: sum.median, raw: v.total };
+        if (!bestTotal || v.total > bestTotal.raw) bestTotal = { stage: s, med: sum.median, raw: v.total };
+      }
     }
+    best = best || bestTotal;
     return {
       counts, cycle: summary(cycle), lead: summary(lead), stages,
-      bottleneck: best ? { stage: best.stage, totalHours: r1(best.raw), share: Math.round((best.raw / grand) * 1000) / 1000 } : null,
+      bottleneck: best ? { stage: best.stage, medianHours: best.med, totalHours: r1(best.raw), share: Math.round((best.raw / grand) * 1000) / 1000 } : null,
     };
   }
 
@@ -280,6 +286,19 @@ export function flowMetrics(doc, {
   }
   forgottenEpics.sort((a, b) => b.idleDays - a.idleDays);
 
+  // Stale tickets: non-epic tickets in progress with no history event on the ticket itself for N days.
+  const staleTickets = [];
+  for (const t of work) {
+    if (sectionOf.get(t.id) !== 'in-progress') continue;
+    const last = lastEvent(t);
+    if (last === null) continue;
+    const idleDays = (nowMs - last) / DAY;
+    if (idleDays >= forgottenEpicDays) {
+      staleTickets.push({ id: t.id, title: t.title || '', lane: laneOf(t), project: projectOf(t), idleDays: r1(idleDays) });
+    }
+  }
+  staleTickets.sort((a, b) => b.idleDays - a.idleDays);
+
   // Throughput per week (tickets only): created, first start, first finish (not bookkeeping).
   const tp = new Map();
   for (let w = mondayMs(sinceMs); w <= untilMs; w += 7 * DAY) tp.set(w, { created: 0, started: 0, shipped: 0, closed: 0 });
@@ -312,5 +331,7 @@ export function flowMetrics(doc, {
     throughputByWeek,
     backlog: { openTodo, growthPerWeek: r1(growth) },
     forgottenEpics,
+    staleTickets,
+    staleDays: forgottenEpicDays,
   };
 }

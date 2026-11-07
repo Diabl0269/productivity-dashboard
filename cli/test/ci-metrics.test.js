@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { redTime, trend } from '../../shared/ci-metrics.js';
-import { ciRecordsFromRuns, collectCi } from '../commands/metrics.js';
+import { ciRecordsFromRuns, collectCi, attachFailedJobs } from '../commands/metrics.js';
 
 const run = (branch, at, ok, repo = 'o/r') => ({ repo, branch, at, ok });
 
@@ -75,8 +75,43 @@ test('collectCi uses the injected runner and survives a failing repo', () => {
     if (repo === 'o/bad') throw new Error('gh: not found');
     return GH;
   };
-  const { records, repos } = collectCi({ cfg, runner });
+  const { records, repos } = collectCi({ cfg, runner, jobFetcher: () => ['build'] });
   assert.equal(records.length, 2);
   assert.equal(repos, 1);
   assert.deepEqual(calls, [['o/r', 'CI'], ['o/bad', null]]);
+});
+
+const ghRun = (id, conclusion, extra = {}) => ({ databaseId: id, workflowName: 'CI', headBranch: 'b', headSha: 's', event: 'push', status: 'completed', conclusion,
+  createdAt: `2026-01-01T1${id % 10}:00:00Z`, startedAt: `2026-01-01T1${id % 10}:00:10Z`, updatedAt: `2026-01-01T1${id % 10}:01:10Z`, ...extra });
+
+test('ciRecordsFromRuns: cancelled and skipped are neither pass nor failure; attempt is kept', () => {
+  const recs = ciRecordsFromRuns('o/r', [ghRun(1, 'cancelled'), ghRun(2, 'skipped'), ghRun(3, 'success', { attempt: 2 }), ghRun(4, 'failure'), ghRun(5, 'success')]);
+  assert.deepEqual(recs.map(r => r.ok), [null, null, true, false, true]);
+  assert.deepEqual(recs.map(r => r.attempt), [1, 1, 2, 1, 1]);
+});
+
+test('redTime and trend ignore cancelled runs (also old records stored with ok:false)', () => {
+  const runs = [
+    { repo: 'r', branch: 'b', at: '2026-01-01T10:00:00Z', ok: false, conclusion: 'failure' },
+    { repo: 'r', branch: 'b', at: '2026-01-01T10:10:00Z', ok: false, conclusion: 'cancelled' },
+    { repo: 'r', branch: 'b', at: '2026-01-01T10:30:00Z', ok: true, conclusion: 'success' },
+  ];
+  assert.equal(redTime(runs)[0].redMinutes, 30);
+  const now = Date.parse('2026-01-02T00:00:00Z');
+  const t = trend([{ repo: 'r', kind: 'ci', name: 'x', at: '2026-01-01T10:00:00Z', seconds: 5, conclusion: 'cancelled' }], { now });
+  assert.deepEqual(t, []);
+});
+
+test('attachFailedJobs reuses stored failedJobs, fetches only new failed runs, caps fetches', () => {
+  const recs = ciRecordsFromRuns('o/r', [ghRun(1, 'failure'), ghRun(2, 'failure'), ghRun(3, 'success'), ghRun(4, 'failure'), ghRun(5, 'cancelled')]);
+  const calls = [];
+  const fetcher = (repo, id) => { calls.push(id); if (id === 4) throw new Error('boom'); return [`job${id}`]; };
+  attachFailedJobs(recs, { existing: [{ key: 'gh:o/r:1', failedJobs: ['kept'] }], fetcher });
+  assert.deepEqual(recs.map(r => r.failedJobs), [['kept'], ['job2'], undefined, undefined, undefined]);
+  assert.deepEqual(calls.sort(), [2, 4]); // run 1 reused, success and cancelled never fetched
+  const capped = ciRecordsFromRuns('o/r', [ghRun(1, 'failure'), ghRun(2, 'failure'), ghRun(3, 'failure')]);
+  const c2 = [];
+  attachFailedJobs(capped, { fetcher: (r, id) => { c2.push(id); return []; }, max: 2 });
+  assert.equal(c2.length, 2);
+  assert.deepEqual(capped.filter(r => r.failedJobs).length, 2);
 });

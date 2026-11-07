@@ -571,19 +571,21 @@ function renderFlow(d) {
       yFormat: fmtHours, area: true, tickSteps: HOUR_STEPS,
     }) : empty('No finished tickets in the range, so no cycle time yet.')));
 
-  const fe = f.forgottenEpics || [];
-  let body;
-  if (!fe.length) body = empty('No forgotten epics. Every epic in progress had activity recently.');
-  else {
-    body = el('ul', 'mc-forgot');
-    for (const e of fe) {
+  const idleList = (items, emptyText) => {
+    if (!items.length) return empty(emptyText);
+    const ul = el('ul', 'mc-forgot');
+    for (const e of items) {
       const li = el('li', 'mc-forgot-item');
       append(li, ticketLink(e.id), el('span', 'mc-forgot-title', e.title), el('span', 'mc-pill mc-pill-warn', `idle ${e.idleDays} d`),
         el('span', 'mc-forgot-meta', [e.project, e.lane].filter(Boolean).join(' · ')));
-      body.appendChild(li);
+      ul.appendChild(li);
     }
-  }
-  grid.appendChild(card('Forgotten epics', 'In progress, but nothing has moved in the epic or its children for a while.', body));
+    return ul;
+  };
+  grid.appendChild(card('Forgotten epics', 'In progress, but nothing has moved in the epic or its children for a while.',
+    idleList(f.forgottenEpics || [], 'No forgotten epics. Every epic in progress had activity recently.')));
+  grid.appendChild(card('Stale tickets', 'Tickets in progress with no activity on the ticket itself for a few days.',
+    idleList(f.staleTickets || [], 'No stale tickets. Every ticket in progress had activity recently.')));
   s.appendChild(grid);
   s.appendChild(card('Flow by group', 'Where each project, lane or area spends its time.', renderGroupTable(f)));
   return s;
@@ -668,6 +670,7 @@ function renderSessions(d) {
   p.textContent = `${m.n} sessions (${m.withTicket} on a ticket) · median ${fmtMinutes(m.medianWallMin)} wall, ${fmtMinutes(m.medianActiveMin)} active · ` +
     (m.medianReplyMin != null ? `median reply ${fmtMinutes(m.medianReplyMin)} · ` : '') +
     `${m.questions} questions (${m.questionsMidRun} mid-run) · ${m.missedWakes ?? 0} missed wake-ups · ${m.stalls} stalls · ${m.toolWaits ?? 0} tool waits` +
+    (m.helperWaits ? ` · ${m.helperWaits} waits on a running helper, not counted as stuck` : '') +
     (m.sessionsWaitedOver1h != null ? ` · ${m.sessionsWaitedOver1h} sessions waited over 1 h` : '') + ' · ' +
     `${m.sessionsPerTicket?.median ?? '–'} per ticket (max ${m.sessionsPerTicket?.max ?? '–'}) · $${fmtNum(m.costUSD, 2)}`;
   s.appendChild(p);

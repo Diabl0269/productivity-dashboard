@@ -26,7 +26,8 @@ import { fmtHours } from '../../shared/insights.js';
 const KINDS = ['gate', 'build', 'test', 'ci', 'other'];
 const TIMINGS = 'timings.jsonl';
 const SESSIONS = 'sessions.jsonl';
-const GH_FIELDS = 'databaseId,workflowName,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt';
+const MAX_JOB_FETCHES = 100; // failed-run job lookups per collect, so collect stays fast
+const GH_FIELDS = 'databaseId,workflowName,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt,attempt';
 
 /** "30d" / "12h" / "2w" -> ms (null when absent/invalid). */
 export function parseSince(s) {
@@ -63,8 +64,10 @@ export function ciRecordsFromRuns(repo, runs) {
       sha: r.headSha,
       seconds: sec(started, r.updatedAt),
       queuedSeconds: sec(r.createdAt, started),
-      ok: r.conclusion === 'success',
+      // cancelled/skipped: neither pass nor failure (ok null), see docs/metrics.md
+      ok: r.conclusion === 'cancelled' || r.conclusion === 'skipped' ? null : r.conclusion === 'success',
       conclusion: r.conclusion,
+      attempt: Number(r.attempt) || 1,
       event: r.event,
       runId: r.databaseId,
       source: 'gh',
@@ -81,8 +84,35 @@ export function ghRunList(repo, workflow) {
   return JSON.parse(out);
 }
 
-/** Collect CI runs. `runner(repo, workflow)` is injectable for tests. */
-export function collectCi({ cfg, sinceMs = null, runner = ghRunList } = {}) {
+/** Names of the jobs that failed in one run. Throws when gh is missing/fails. */
+export function ghFailedJobs(repo, runId) {
+  const out = execFileSync('gh', ['run', 'view', String(runId), '--repo', repo, '--json', 'jobs'], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024,
+  });
+  return (JSON.parse(out).jobs || []).filter(j => j.conclusion === 'failure').map(j => j.name);
+}
+
+/**
+ * Give each failed run a `failedJobs` list: reuse the one already stored (`existing` records, same key),
+ * else fetch it with `fetcher(repo, runId)`, newest runs first, at most `max` fetches. A failed fetch
+ * leaves the field unset so the next collect retries. Mutates and returns `records`.
+ */
+export function attachFailedJobs(records, { existing = [], fetcher = ghFailedJobs, max = MAX_JOB_FETCHES } = {}) {
+  const stored = new Map();
+  for (const e of existing) if (e.key != null && Array.isArray(e.failedJobs)) stored.set(e.key, e.failedJobs);
+  let fetched = 0;
+  const failed = records.filter(r => r.ok === false).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  for (const r of failed) {
+    if (stored.has(r.key)) { r.failedJobs = stored.get(r.key); continue; }
+    if (fetched >= max) continue;
+    fetched++;
+    try { r.failedJobs = fetcher(r.repo, r.runId); } catch { /* retry next collect */ }
+  }
+  return records;
+}
+
+/** Collect CI runs. `runner(repo, workflow)` and `jobFetcher(repo, runId)` are injectable for tests. */
+export function collectCi({ cfg, sinceMs = null, runner = ghRunList, existing = [], jobFetcher = ghFailedJobs, maxJobFetches = MAX_JOB_FETCHES } = {}) {
   const cutoff = sinceCutoff(sinceMs);
   const records = [];
   const repos = new Set();
@@ -98,7 +128,9 @@ export function collectCi({ cfg, sinceMs = null, runner = ghRunList } = {}) {
       }
     }
   }
-  return { records: records.filter(r => !cutoff || Date.parse(r.at) >= cutoff), repos: repos.size };
+  const kept = records.filter(r => !cutoff || Date.parse(r.at) >= cutoff);
+  attachFailedJobs(kept, { existing, fetcher: jobFetcher, max: maxJobFetches });
+  return { records: kept, repos: repos.size };
 }
 
 function readJsonl(file) {
@@ -171,7 +203,7 @@ export async function runCollect({ ci, gates, sessions, sinceMs = null } = {}) {
     if (!cfg.repos.length) {
       lines.push('ci: no repos configured (metrics.repos), skipped');
     } else {
-      const { records, repos } = collectCi({ cfg, sinceMs });
+      const { records, repos } = collectCi({ cfg, sinceMs, existing: readRecords(TIMINGS) });
       upsertRecords(TIMINGS, records);
       summary.ci = { runs: records.length, repos };
       lines.push(`ci: ${records.length} runs from ${repos} repos`);
@@ -300,7 +332,7 @@ function reportCmd(argv) {
   print('Headline numbers');
   print(`  Shipped ${f.counts.shipped} tickets, started ${f.counts.started}; cycle median ${hrs(f.cycle.median)}, lead median ${hrs(f.lead.median)}, review wait median ${hrs(f.stages.review.median)}`);
   const s = p.sessions.summary;
-  print(`  Sessions ${s.n} (${s.withTicket} with a ticket): median ${s.medianActiveMin ?? '-'} min active, ${s.autonomousShare === null ? '-' : Math.round(s.autonomousShare * 100) + '%'} autonomous, ${s.waitUserHours} h waiting on you, $${s.costUSD}`);
+  print(`  Sessions ${s.n} (${s.withTicket} with a ticket): median ${s.medianActiveMin ?? '-'} min active, ${s.autonomousShare === null ? '-' : Math.round(s.autonomousShare * 100) + '%'} autonomous, ${s.waitUserHours} h waiting on you${s.helperWaits ? `, ${s.helperWaits} waits on a running helper, not counted as stuck` : ''}, $${s.costUSD}`);
   const ci = p.timings.ci.byRepo;
   print(`  CI ${ci.reduce((a, r) => a + r.runs, 0)} runs; ${p.timings.series.length} timing series; red branches ${p.timings.redTime.summary.branches}`);
   print(`  Next up: ${p.next.length ? p.next.slice(0, 3).map(t => t.id).join(', ') : 'nothing ready'}`);
