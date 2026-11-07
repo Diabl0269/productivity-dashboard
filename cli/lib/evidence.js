@@ -10,11 +10,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { projectPathError, videoPathError, audioPathError, tidyEvidencePath } from '../../shared/review.js';
+import { projectPathError, videoPathError, audioPathError, evidencePathError, tidyEvidencePath } from '../../shared/review.js';
 
 export const EVIDENCE_DIR = 'evidence';
 
-const pathErrorFor = (kind) => (kind === 'project' ? projectPathError : kind === 'audio' ? audioPathError : videoPathError);
+// 'file' (PRO37 `review --evidence`): any saved proof file (screenshot, AX dump, render, run log).
+const anyFilePathError = (v, label = 'evidence') => evidencePathError(v, '', label);
+const pathErrorFor = (kind) => (kind === 'project' ? projectPathError : kind === 'audio' ? audioPathError : kind === 'file' ? anyFilePathError : videoPathError);
 const AUDIO_TYPES = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac' };
 
 function fail(status, message) {
