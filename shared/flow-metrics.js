@@ -10,13 +10,16 @@
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 const STAGES = ['todo', 'in-progress', 'review'];
+const MIN_REVIEW_MS = 60 * 1000; // shorter review stays are automatic roll-through
+const BOTTLENECK_STAGES = ['in-progress', 'review'];
+const CLOSE = new Set(['review', 'done', 'archive']);
 const FINISH = new Set(['review', 'done']);
 const REOPEN_FROM = new Set(['review', 'done']);
 const REOPEN_TO = new Set(['in-progress', 'todo']);
 
 const toMs = v => {
   if (v === undefined || v === null || v === '') return null;
-  const ms = v instanceof Date ? v.getTime() : Date.parse(v);
+  const ms = typeof v === 'number' ? v : v instanceof Date ? v.getTime() : Date.parse(v);
   return Number.isFinite(ms) ? ms : null;
 };
 const iso = ms => new Date(ms).toISOString();
@@ -132,11 +135,13 @@ export function flowMetrics(doc, {
     const firstStart = mv.find(m => m.to === 'in-progress');
     const firstFinish = mv.find(m => FINISH.has(m.to));
     const noWork = !!firstFinish && !(firstStart && firstStart.at <= firstFinish.at);
+    const firstClose = mv.find(m => CLOSE.has(m.to));
     const finishAfterStart = firstStart ? mv.find(m => FINISH.has(m.to) && m.at >= firstStart.at) : null;
     return {
       t,
       started: firstStart?.at,
       finish: firstFinish?.at,
+      closedAt: firstClose?.at,
       noWork,
       cycleEnd: finishAfterStart?.at,
       created: toMs(t.created) ?? toMs((t.history || []).find(e => e && e.event === 'created')?.at),
@@ -145,6 +150,9 @@ export function flowMetrics(doc, {
     };
   }
   const facts0 = work.map(facts);
+  // Epics only contribute review stays: an epic's card is where its children's checks wait.
+  const epicFacts = epics.map(t => ({ t, epic: true, stays: ticketStays(t, { now: nowMs }) }));
+  const factsAll = [...facts0, ...epicFacts];
 
   /** counts, cycle, lead, stages and bottleneck for a set of ticket facts. */
   function compute(list) {
@@ -153,6 +161,7 @@ export function flowMetrics(doc, {
     const lead = [];
     const stageVals = Object.fromEntries(STAGES.map(s => [s, { closed: [], total: 0, openN: 0, oldest: 0 }]));
     for (const f of list) {
+      if (!f.epic) {
       if (inWindow(f.started)) counts.started++;
       if (inWindow(f.finish)) {
         if (f.noWork) counts.closedWithoutWork++;
@@ -165,11 +174,14 @@ export function flowMetrics(doc, {
       if (f.started !== undefined && f.cycleEnd !== undefined && inWindow(f.cycleEnd)) {
         cycle.push(hours(f.cycleEnd - f.started));
       }
+      }
       for (const s of f.stays) {
         const v = stageVals[s.stage];
         if (!v) continue;
+        if (f.epic && s.stage !== 'review') continue;
         const a = Date.parse(s.from);
         const b = Date.parse(s.to);
+        if (s.stage === 'review' && !s.open && b - a < MIN_REVIEW_MS) continue;
         if (!(a < untilMs && b > sinceMs)) continue;
         const dwell = hours(Math.min(b, untilMs) - Math.max(a, sinceMs));
         v.total += dwell;
@@ -178,7 +190,7 @@ export function flowMetrics(doc, {
     }
     const stages = {};
     let grand = 0;
-    for (const s of STAGES) grand += stageVals[s].total;
+    for (const s of BOTTLENECK_STAGES) grand += stageVals[s].total;
     let best = null;
     for (const s of STAGES) {
       const v = stageVals[s];
@@ -187,7 +199,7 @@ export function flowMetrics(doc, {
         n: sum.n, median: sum.median, p75: sum.p75, totalHours: r1(v.total),
         open: { n: v.openN, oldestHours: r1(v.oldest) },
       };
-      if (v.total > 0 && (!best || v.total > best.raw)) best = { stage: s, raw: v.total };
+      if (BOTTLENECK_STAGES.includes(s) && v.total > 0 && (!best || v.total > best.raw)) best = { stage: s, raw: v.total };
     }
     return {
       counts, cycle: summary(cycle), lead: summary(lead), stages,
@@ -195,11 +207,11 @@ export function flowMetrics(doc, {
     };
   }
 
-  const top = compute(facts0);
+  const top = compute(factsAll);
 
   const groupBy = keyOf => {
     const buckets = new Map();
-    for (const f of facts0) {
+    for (const f of factsAll) {
       const k = keyOf(f.t);
       if (!buckets.has(k)) buckets.set(k, []);
       buckets.get(k).push(f);
@@ -268,6 +280,21 @@ export function flowMetrics(doc, {
   }
   forgottenEpics.sort((a, b) => b.idleDays - a.idleDays);
 
+  // Throughput per week (tickets only): created, first start, first finish (not bookkeeping).
+  const tp = new Map();
+  for (let w = mondayMs(sinceMs); w <= untilMs; w += 7 * DAY) tp.set(w, { created: 0, started: 0, shipped: 0, closed: 0 });
+  const bump = (ms, k) => { if (inWindow(ms)) tp.get(mondayMs(ms))[k]++; };
+  for (const f of facts0) {
+    bump(f.created ?? undefined, 'created');
+    bump(f.started, 'started');
+    if (!f.noWork) bump(f.finish, 'shipped');
+    bump(f.closedAt, 'closed');
+  }
+  const throughputByWeek = [...tp].map(([w, v]) => ({ week: isoDay(w), ...v }));
+  const openTodo = work.filter(t => sectionOf.get(t.id) === 'todo').length;
+  const growth = throughputByWeek.length
+    ? throughputByWeek.reduce((a, w) => a + w.created - w.closed, 0) / throughputByWeek.length : 0;
+
   return {
     window: { since: iso(sinceMs), until: iso(untilMs) },
     counts: top.counts,
@@ -282,6 +309,8 @@ export function flowMetrics(doc, {
     },
     wip,
     cycleByWeek,
+    throughputByWeek,
+    backlog: { openTodo, growthPerWeek: r1(growth) },
     forgottenEpics,
   };
 }

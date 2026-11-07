@@ -8,14 +8,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { summarizeSession, ticketFrom } from '../../shared/session-metrics.js';
-import { listTranscripts, summarizeTranscriptFile, collectSessions } from '../lib/session-files.js';
+import { listTranscripts, summarizeTranscriptFile, collectSessions, expandProjectDirs } from '../lib/session-files.js';
 
 const T0 = Date.parse('2026-01-01T10:00:00.000Z');
 const at = (min) => new Date(T0 + min * 60000).toISOString();
 const base = (min, extra) => ({ sessionId: 's1', timestamp: at(min), gitBranch: 'main', ...extra });
 const human = (min, text = 'x') => base(min, { type: 'user', origin: { kind: 'human' }, message: { content: text } });
 const notif = (min) => base(min, { type: 'user', origin: { kind: 'task-notification' }, message: { content: '<task-notification>done</task-notification>' } });
-const toolResult = (min) => base(min, { type: 'user', message: { content: [{ type: 'tool_result', content: 'r' }] } });
+const toolResult = (min, id) => base(min, { type: 'user', message: { content: [{ type: 'tool_result', content: 'r', ...(id ? { tool_use_id: id } : {}) }] } });
+const use = (min, name, id) => asst(min, [{ type: 'tool_use', id, name, input: {} }]);
 const asst = (min, blocks = [{ type: 'text', text: 'a' }]) => base(min, { type: 'assistant', message: { content: blocks } });
 const ask = (min) => asst(min, [{ type: 'tool_use', name: 'AskUserQuestion', input: { questions: [] } }]);
 const stop = (min, prevented = false) => base(min, { type: 'system', subtype: 'stop_hook_summary', preventedContinuation: prevented });
@@ -63,6 +64,66 @@ test('stall inside a turn counts; long idle between turns does not', () => {
   assert.equal(idle.waitUserMin, 198);
   const custom = summarizeSession([human(0), asst(1), toolResult(11), stop(12)], { stallMinutes: 5 });
   assert.equal(custom.stalls, 1);
+});
+
+test('silences are classified by what was pending: question wait, tool wait, model stall', () => {
+  // (a) AskUserQuestion pending for 40 min: a question wait, not a stall, and not a tool wait
+  const q = summarizeSession([human(0), use(1, 'AskUserQuestion', 'q1'), toolResult(41, 'q1'), stop(42)]);
+  assert.deepEqual([q.questionWaits, q.questionWaitMin, q.toolWaits, q.stalls], [1, 40, 0, 0]);
+  // (b) a Bash call pending for 30 min (long command or permission prompt)
+  const b = summarizeSession([human(0), use(1, 'Bash', 'b1'), toolResult(31, 'b1'), use(32, 'Bash', 'b2'), toolResult(60, 'b2'), stop(61)]);
+  assert.deepEqual([b.toolWaits, b.toolWaitMin, b.toolWaitTools, b.stalls, b.questionWaits], [2, 58, { Bash: 2 }, 0, 0]);
+  // (c) nothing pending: the model went silent
+  const m = summarizeSession([human(0), use(1, 'Bash', 'c1'), toolResult(2, 'c1'), asst(40), stop(41)]);
+  assert.deepEqual([m.stalls, m.stallMin, m.toolWaits, m.questionWaits], [1, 38, 0, 0]);
+  // a question pending next to another tool counts as a question wait
+  const both = summarizeSession([human(0), asst(1, [{ type: 'tool_use', id: 'x', name: 'Read', input: {} }, { type: 'tool_use', id: 'y', name: 'AskUserQuestion', input: {} }]), toolResult(50, 'y'), stop(51)]);
+  assert.deepEqual([both.questionWaits, both.toolWaits], [1, 0]);
+});
+
+test('a silence before the assistant answered the opening prompt is a missed wake, by origin', () => {
+  const peer = base(60, { type: 'user', origin: { kind: 'peer' }, message: { content: 'ping' } });
+  const r = summarizeSession([
+    human(0), asst(1), stop(2),
+    notif(10), asst(40), stop(41), // notification at 10 answered only at 40: missed wake
+    peer, asst(61), stop(62), // answered promptly
+    human(100), stop(130), // a human prompt never answered
+    human(200), asst(201), use(202, 'Read', 'r1'), toolResult(203, 'r1'), asst(240), stop(241), // real stall
+  ]);
+  assert.equal(r.missedWakes, 2);
+  assert.equal(r.missedWakeMin, 60);
+  assert.deepEqual(r.missedWakeOrigins, { 'task-notification': 1, human: 1 });
+  assert.equal(r.stalls, 1);
+  assert.equal(r.toolWaits, 0);
+});
+
+test('a final assistant message closes the turn: no stall, the reply wait starts there', () => {
+  const final = (min) => base(min, { type: 'assistant', message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] } });
+  const r = summarizeSession([human(0), final(1), human(50), final(51), stop(52)]);
+  assert.equal(r.stalls, 0);
+  assert.equal(r.missedWakes, 0);
+  assert.equal(r.activeMin, 2);
+  assert.deepEqual(r.replyWaits, [49]);
+  // a late stop_hook_summary for the same turn does not reopen or double-close it
+  const late = summarizeSession([human(0), final(1), stop(2), human(10), final(11), stop(12)]);
+  assert.equal(late.turns, 2);
+  assert.equal(late.activeMin, 2);
+  assert.deepEqual(late.replyWaits, [9]);
+  // a message that ends with a tool call does not close the turn
+  const tool = base(1, { type: 'assistant', message: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'z', name: 'Bash', input: {} }] } });
+  assert.equal(summarizeSession([human(0), tool, toolResult(40, 'z'), stop(41)]).toolWaits, 1);
+});
+
+test('a tool result nobody answered before the next prompt is a missed wake; a late answer is a stall', () => {
+  const unanswered = summarizeSession([human(0), use(1, 'Bash', 'u1'), toolResult(2, 'u1'), notif(40), asst(41), stop(42)]);
+  assert.deepEqual([unanswered.missedWakes, unanswered.missedWakeOrigins, unanswered.stalls], [1, { 'tool-result': 1 }, 0]);
+  const late = summarizeSession([human(0), use(1, 'Bash', 'u2'), toolResult(2, 'u2'), asst(40), stop(41)]);
+  assert.deepEqual([late.missedWakes, late.stalls], [0, 1]);
+});
+
+test('reply waits: each wait from turn end to the next human prompt (a notification turn restarts the wait)', () => {
+  const r = summarizeSession([human(0), asst(1), stop(2), human(12), asst(13), stop(14), notif(20), stop(21), human(74), stop(75)]);
+  assert.deepEqual(r.replyWaits, [10, 53]);
 });
 
 test('stopBlocked, compactions, prs, cost from last cost-state', () => {
@@ -143,5 +204,23 @@ test('files: list, summarize skipping junk lines, collect with cache', async () 
     assert.equal(none.records.length, 0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('claudeProjects entries ending in * match directories by prefix', async () => {
+  const fx = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'transcript-basic.jsonl');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-sessions-glob-'));
+  try {
+    for (const n of ['-Users-me-work', '-Users-me-work-app', '-Users-me-other']) fs.mkdirSync(path.join(root, n));
+    fs.writeFileSync(path.join(root, '-Users-me-work-file'), 'not a dir');
+    fs.copyFileSync(fx, path.join(root, '-Users-me-work', 's1.jsonl'));
+    fs.copyFileSync(fx, path.join(root, '-Users-me-work-app', 's2.jsonl'));
+    fs.copyFileSync(fx, path.join(root, '-Users-me-other', 's3.jsonl'));
+    const dirs = expandProjectDirs([path.join(root, '-Users-me-work*'), path.join(root, '-Users-me-other'), path.join(root, 'missing*')]);
+    assert.deepEqual(dirs.map(d => path.basename(d)), ['-Users-me-work', '-Users-me-work-app', '-Users-me-other']);
+    const res = await collectSessions({ dirs: [path.join(root, '-Users-me-work*')] });
+    assert.deepEqual(res.records.map(r => r.project).sort(), ['-Users-me-work', '-Users-me-work-app']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

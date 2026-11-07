@@ -83,6 +83,19 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   let questionsMidRun = 0;
   let stalls = 0;
   let stallTotal = 0;
+  let missedWakes = 0;
+  let missedWakeMs = 0;
+  const missedWakeOrigins = {};
+  let lastWasUser = false; // the last conversation line was a user line (prompt or tool result)
+  let assistantStarted = false; // an assistant line was written since the open turn's prompt
+  let openOrigin = 'human'; // origin of the prompt that opened the turn
+  let questionWaits = 0;
+  let questionWaitMs = 0;
+  let toolWaits = 0;
+  let toolWaitMs = 0;
+  const toolWaitTools = {};
+  const replyWaits = [];
+  const pending = new Map(); // tool_use id -> tool name, until its tool_result arrives
   let stopBlocked = 0;
   let compactions = 0;
   let costUSD = null;
@@ -120,15 +133,39 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     if (Number.isNaN(ms)) continue;
     if (line.gitBranch && line.gitBranch !== 'HEAD') branch = line.gitBranch;
 
-    // A silence of stallMinutes between two lines of an open turn is a stall.
+    // A silence of stallMinutes between two lines of an open turn, by what was pending when it began:
+    // an AskUserQuestion (waiting on you), another tool call (long command or permission prompt),
+    // or nothing (the model or API went silent: a stall).
     if (turnStart !== null && prevMs !== null && ms - prevMs >= stallMs) {
-      stalls += 1;
-      stallTotal += ms - prevMs;
+      const gap = ms - prevMs;
+      const names = [...pending.values()];
+      if (names.includes('AskUserQuestion')) {
+        questionWaits += 1;
+        questionWaitMs += gap;
+      } else if (names.length) {
+        toolWaits += 1;
+        toolWaitMs += gap;
+        for (const n of new Set(names)) toolWaitTools[n] = (toolWaitTools[n] || 0) + 1;
+      } else if (!assistantStarted || (lastWasUser && type !== 'assistant')) {
+        // The prompt that opened the turn, or the last tool result, was never answered (idle-stopped,
+        // queued or blocked). When the model does answer after the gap, it is a stall instead.
+        const origin = assistantStarted ? 'tool-result' : openOrigin;
+        missedWakes += 1;
+        missedWakeMs += gap;
+        missedWakeOrigins[origin] = (missedWakeOrigins[origin] || 0) + 1;
+      } else {
+        stalls += 1;
+        stallTotal += gap;
+      }
     }
     if (firstMs === null || ms < firstMs) firstMs = ms;
     if (lastMs === null || ms > lastMs) lastMs = ms;
 
     if (type === 'user') {
+      const content = line.message && line.message.content;
+      if (Array.isArray(content)) {
+        for (const b of content) if (b && b.type === 'tool_result' && b.tool_use_id) pending.delete(b.tool_use_id);
+      }
       const cls = classifyUser(line);
       if (cls) {
         if (cls === 'human') {
@@ -137,22 +174,32 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
         }
         if (turnStart === null) {
           // The wait on the user ends only when the prompt came from the user.
-          if (cls === 'human' && waitFrom !== null) waitMs += Math.max(0, ms - waitFrom);
+          if (cls === 'human' && waitFrom !== null) {
+            waitMs += Math.max(0, ms - waitFrom);
+            replyWaits.push(r1(Math.max(0, ms - waitFrom) / 60000));
+          }
           waitFrom = null;
           turnStart = ms;
           turns += 1;
+          assistantStarted = false;
+          openOrigin = cls === 'human' ? 'human' : (line.origin && line.origin.kind) || (line.isMeta ? 'meta' : 'other');
         }
       }
     } else if (type === 'assistant') {
+      assistantStarted = true;
       const blocks = line.message && line.message.content;
       if (Array.isArray(blocks)) {
         for (const b of blocks) {
+          if (b && b.type === 'tool_use' && b.id) pending.set(b.id, b.name || 'tool');
           if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') {
             questions += 1;
             const activeSoFar = activeMs + (turnStart !== null ? ms - turnStart : 0);
             if (activeSoFar > midMs) questionsMidRun += 1;
           }
         }
+        // A final message (no tool call) closes the turn even when no stop_hook_summary follows.
+        const sr = line.message && line.message.stop_reason;
+        if ((sr === 'end_turn' || sr === 'stop_sequence') && !blocks.some(b => b && b.type === 'tool_use')) endTurn(ms);
       }
     } else if (type === 'system') {
       if (line.subtype === 'stop_hook_summary') {
@@ -162,6 +209,8 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
         compactions += 1;
       }
     }
+    if (type === 'user') lastWasUser = true;
+    else if (type === 'assistant') lastWasUser = false;
     prevMs = ms;
   }
   if (turnStart !== null && lastMs !== null) endTurn(lastMs);
@@ -184,6 +233,15 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     questionsMidRun,
     stalls,
     stallMin: r1(stallTotal / 60000),
+    missedWakes,
+    missedWakeMin: r1(missedWakeMs / 60000),
+    missedWakeOrigins,
+    toolWaits,
+    toolWaitMin: r1(toolWaitMs / 60000),
+    toolWaitTools,
+    questionWaits,
+    questionWaitMin: r1(questionWaitMs / 60000),
+    replyWaits,
     stopBlocked,
     compactions,
     helpers: 0,

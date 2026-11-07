@@ -3,7 +3,8 @@
  * Development metrics. Spec: docs/metrics.md.
  *
  *   ch metrics collect [--sessions] [--ci] [--gates] [--since 30d] [--json]
- *   ch metrics flow | report            (need shared/flow-metrics.js / shared/insights.js)
+ *   ch metrics flow [--project P] [--lane L] [--since 30d] [--json]
+ *   ch metrics report [--project P] [--since 30d] [--json]
  *   ch metrics time <name> [--repo R] [--kind K] -- <command...>
  *   ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind K] [--at ISO]
  */
@@ -14,6 +15,13 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { parse } from '../lib/args.js';
 import { print, printErr, die, jsonOut } from '../lib/output.js';
 import { metricsDir, readRecords, upsertRecords, appendRecord, metricsConfig } from '../lib/metrics-store.js';
+import { dataRoot } from '../lib/io.js';
+import { collectSessions } from '../lib/session-files.js';
+import { readTasksDoc } from '../../shared/tasks-files.js';
+import { normalizeTasksDoc } from '../lib/schema.js';
+import { flowMetrics } from '../../shared/flow-metrics.js';
+import { buildMetricsPayload } from '../../shared/metrics-payload.js';
+import { fmtHours } from '../../shared/insights.js';
 
 const KINDS = ['gate', 'build', 'test', 'ci', 'other'];
 const TIMINGS = 'timings.jsonl';
@@ -105,6 +113,7 @@ export function collectGates({ cfg, sinceMs = null } = {}) {
     if (!fs.existsSync(g.path)) { printErr(`gates: ${g.path} not found, skipped`); continue; }
     for (const r of readJsonl(g.path)) {
       if (!r.at) continue;
+      if (!r.steps || !Object.keys(r.steps).length) continue; // --help or bad-flag run
       records.push({
         key: `gate:${g.repo}:${r.at}:${r.worktree ?? ''}`,
         at: r.at, kind: 'gate', host: 'local',
@@ -138,17 +147,10 @@ export function collectGates({ cfg, sinceMs = null } = {}) {
 }
 
 async function collectSessionsStep(cfg, sinceMs) {
-  let mod;
-  try {
-    mod = await import('../lib/session-files.js');
-  } catch (e) {
-    if (e.code === 'ERR_MODULE_NOT_FOUND') return null;
-    throw e;
-  }
   const cachePath = path.join(metricsDir(), '.sessions-cache.json');
   let cache = {};
   try { cache = JSON.parse(fs.readFileSync(cachePath, 'utf8')); } catch { /* none yet */ }
-  const res = await mod.collectSessions({
+  const res = await collectSessions({
     dirs: cfg.claudeProjects, cache, since: sinceMs ? sinceCutoff(sinceMs) : null, stallMinutes: cfg.stallMinutes,
   });
   const st = upsertRecords(SESSIONS, res.records);
@@ -156,18 +158,16 @@ async function collectSessionsStep(cfg, sinceMs) {
   return { changed: res.records.length, ...st };
 }
 
-async function collect(argv) {
-  const { values } = parse(argv, {
-    ci: { type: 'boolean' }, gates: { type: 'boolean' }, sessions: { type: 'boolean' },
-    since: { type: 'string' }, json: { type: 'boolean' },
-  });
-  const all = !values.ci && !values.gates && !values.sessions;
+/**
+ * Run the collectors (all three when none is selected). Shared by `ch metrics collect` and
+ * serve.js. Returns {summary, lines}; never prints and never exits.
+ */
+export async function runCollect({ ci, gates, sessions, sinceMs = null } = {}) {
+  const all = !ci && !gates && !sessions;
   const cfg = metricsConfig();
-  const sinceMs = parseSince(values.since);
   const summary = {};
   const lines = [];
-
-  if (all || values.ci) {
+  if (all || ci) {
     if (!cfg.repos.length) {
       lines.push('ci: no repos configured (metrics.repos), skipped');
     } else {
@@ -177,22 +177,133 @@ async function collect(argv) {
       lines.push(`ci: ${records.length} runs from ${repos} repos`);
     }
   }
-  if (all || values.gates) {
+  if (all || gates) {
     const { records } = collectGates({ cfg, sinceMs });
     upsertRecords(TIMINGS, records);
     summary.gates = { runs: records.length };
     lines.push(`gates: ${records.length} runs`);
   }
-  if (all || values.sessions) {
-    const res = await collectSessionsStep(cfg, sinceMs);
-    if (!res) {
-      lines.push('sessions: skipped (cli/lib/session-files.js not available yet)');
+  if (all || sessions) {
+    if (!cfg.claudeProjects.length) {
+      lines.push('sessions: no transcript dirs configured (metrics.claudeProjects), skipped');
     } else {
+      const res = await collectSessionsStep(cfg, sinceMs);
       summary.sessions = res;
-      lines.push(`sessions: ${res.changed} new/changed`);
+      lines.push(`sessions: ${res.changed} read, ${res.added} new, ${res.replaced} updated`);
     }
   }
+  return { summary, lines };
+}
+
+async function collect(argv) {
+  const { values } = parse(argv, {
+    ci: { type: 'boolean' }, gates: { type: 'boolean' }, sessions: { type: 'boolean' },
+    since: { type: 'string' }, json: { type: 'boolean' },
+  });
+  const { summary, lines } = await runCollect({
+    ci: values.ci, gates: values.gates, sessions: values.sessions, sinceMs: parseSince(values.since),
+  });
   if (values.json) jsonOut(summary); else lines.forEach(print);
+}
+
+/** "30d" / "12h" / "2w" or an ISO date -> ms since epoch; null when absent. Throws on bad input. */
+export function resolveSince(since, nowMs = Date.now()) {
+  if (since === undefined || since === null || since === '') return null;
+  if (typeof since === 'number') return since;
+  const m = /^(\d+(?:\.\d+)?)([hdw])$/.exec(String(since));
+  if (m) return nowMs - Number(m[1]) * { h: 3600e3, d: 86400e3, w: 7 * 86400e3 }[m[2]];
+  const t = Date.parse(since);
+  if (Number.isNaN(t)) throw new Error(`bad since "${since}" (use e.g. 30d, 12h, 2w or an ISO date)`);
+  return t;
+}
+
+/** Tasks document without taking the tasks lock (read-only, safe in a long-running server). */
+function readDoc() {
+  return normalizeTasksDoc(readTasksDoc(dataRoot()));
+}
+
+/** Everything the report and the dashboard need, from the tracker and $CH_HOME/metrics/. */
+export function loadMetricsPayload({ since, project, now } = {}) {
+  const nowMs = typeof now === 'number' ? now : now instanceof Date ? now.getTime() : now ? Date.parse(now) : Date.now();
+  return buildMetricsPayload({
+    doc: readDoc(),
+    sessions: readRecords(SESSIONS),
+    timings: readRecords(TIMINGS),
+    cfg: metricsConfig(),
+    now: nowMs,
+    since: resolveSince(since, nowMs) ?? undefined,
+    project: project || undefined,
+  });
+}
+
+function cliSince(v, nowMs) {
+  try { return resolveSince(v, nowMs); } catch (e) { return die(e.message); }
+}
+
+const STAGE_NAMES = { todo: 'To do', 'in-progress': 'In progress', review: 'Review' };
+const hrs = v => (v === null || v === undefined ? '-' : fmtHours(v));
+const pad = (v, n) => String(v).padEnd(n);
+const day = iso => String(iso).slice(0, 10);
+
+function flowCmd(argv) {
+  const { values } = parse(argv, {
+    project: { type: 'string' }, lane: { type: 'string' }, since: { type: 'string' }, json: { type: 'boolean' },
+  });
+  const now = Date.now();
+  const sinceMs = cliSince(values.since, now);
+  const cfg = metricsConfig();
+  const m = flowMetrics(readDoc(), {
+    now, since: sinceMs ?? undefined, project: values.project, lane: values.lane,
+    areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays,
+  });
+  if (values.json) { jsonOut(m); return; }
+  const filt = [values.project && `project ${values.project}`, values.lane && `lane ${values.lane}`].filter(Boolean).join(', ');
+  print(`Flow ${day(m.window.since)} to ${day(m.window.until)}${filt ? ` (${filt})` : ''}`);
+  const c = m.counts;
+  print(`Tickets: ${c.started} started, ${c.shipped} shipped, ${c.reopened} reopened, ${c.closedWithoutWork} closed without work`);
+  print(`Cycle time: median ${hrs(m.cycle.median)}, p90 ${hrs(m.cycle.p90)} (${m.cycle.n} tickets)`);
+  print(`Lead time:  median ${hrs(m.lead.median)}, p90 ${hrs(m.lead.p90)} (${m.lead.n} tickets)`);
+  print(`Backlog: ${m.backlog.openTodo} open in To do, ${m.backlog.growthPerWeek >= 0 ? '+' : ''}${m.backlog.growthPerWeek} a week`);
+  print('');
+  print(`${pad('Stage', 13)}${pad('stays', 7)}${pad('median', 10)}${pad('p75', 10)}${pad('total', 10)}now waiting`);
+  for (const [k, v] of Object.entries(m.stages)) {
+    const open = v.open.n ? `${v.open.n}, oldest ${hrs(v.open.oldestHours)}` : '-';
+    print(`${pad(STAGE_NAMES[k] || k, 13)}${pad(v.n, 7)}${pad(hrs(v.median), 10)}${pad(hrs(v.p75), 10)}${pad(hrs(v.totalHours), 10)}${open}`);
+  }
+  print('');
+  const b = m.bottleneck;
+  print(b ? `Bottleneck: ${STAGE_NAMES[b.stage] || b.stage}, ${Math.round(b.share * 100)}% of build and review time (${hrs(b.totalHours)})` : 'Bottleneck: none (no build or review time in the window)');
+  if (m.forgottenEpics.length) {
+    print(`Forgotten epics (${m.forgottenEpics.length}):`);
+    for (const e of m.forgottenEpics) print(`  ${e.id}  idle ${e.idleDays} days  ${e.title}`);
+  } else {
+    print('Forgotten epics: none');
+  }
+}
+
+function reportCmd(argv) {
+  const { values } = parse(argv, { project: { type: 'string' }, since: { type: 'string' }, json: { type: 'boolean' } });
+  const now = Date.now();
+  const sinceMs = cliSince(values.since, now);
+  const p = loadMetricsPayload({ since: sinceMs ?? undefined, project: values.project, now });
+  if (values.json) { jsonOut(p); return; }
+  const f = p.flow;
+  print(`Metrics ${day(p.window.since)} to ${day(p.window.until)}${p.filters.project ? ` (project ${p.filters.project})` : ''}`);
+  print('');
+  print('Insights');
+  if (!p.insights.length) print('  nothing to report yet');
+  for (const i of p.insights) {
+    print(`  [${i.kind}] ${i.title}`);
+    if (i.detail) print(`      ${i.detail}`);
+  }
+  print('');
+  print('Headline numbers');
+  print(`  Shipped ${f.counts.shipped} tickets, started ${f.counts.started}; cycle median ${hrs(f.cycle.median)}, lead median ${hrs(f.lead.median)}, review wait median ${hrs(f.stages.review.median)}`);
+  const s = p.sessions.summary;
+  print(`  Sessions ${s.n} (${s.withTicket} with a ticket): median ${s.medianActiveMin ?? '-'} min active, ${s.autonomousShare === null ? '-' : Math.round(s.autonomousShare * 100) + '%'} autonomous, ${s.waitUserHours} h waiting on you, $${s.costUSD}`);
+  const ci = p.timings.ci.byRepo;
+  print(`  CI ${ci.reduce((a, r) => a + r.runs, 0)} runs; ${p.timings.series.length} timing series; red branches ${p.timings.redTime.summary.branches}`);
+  print(`  Next up: ${p.next.length ? p.next.slice(0, 3).map(t => t.id).join(', ') : 'nothing ready'}`);
 }
 
 function gitOut(args) {
@@ -252,15 +363,6 @@ async function recordCmd(argv) {
   print(`recorded ${rec.name} ${seconds}s ${rec.ok ? 'ok' : 'failed'}`);
 }
 
-async function lazy(path, what) {
-  try {
-    return await import(path);
-  } catch (e) {
-    if (e.code === 'ERR_MODULE_NOT_FOUND') die(`ch metrics ${what}: not built yet`, 2);
-    throw e;
-  }
-}
-
 const USAGE = `ch metrics <subcommand>
 
   collect [--sessions] [--ci] [--gates] [--since 30d] [--json]   (no flag = all)
@@ -275,16 +377,8 @@ export default async function metrics(argv) {
     case 'collect': return collect(rest);
     case 'time': return timeCmd(rest);
     case 'record': return recordCmd(rest);
-    case 'flow': {
-      const mod = await lazy('../../shared/flow-metrics.js', 'flow');
-      if (typeof mod.runFlowCli !== 'function') die('ch metrics flow: not built yet', 2);
-      return mod.runFlowCli(rest);
-    }
-    case 'report': {
-      const mod = await lazy('../../shared/insights.js', 'report');
-      if (typeof mod.runReportCli !== 'function') die('ch metrics report: not built yet', 2);
-      return mod.runReportCli(rest);
-    }
+    case 'flow': return flowCmd(rest);
+    case 'report': return reportCmd(rest);
     case undefined: case '--help': case 'help': print(USAGE); return;
     default: die(`unknown metrics subcommand: ${sub}\n${USAGE}`);
   }

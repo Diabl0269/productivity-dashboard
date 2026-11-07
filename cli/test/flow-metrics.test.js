@@ -57,7 +57,7 @@ test('cycle and lead time, counts, stage dwell with an open stay', () => {
   assert.equal(m.stages.review.totalHours, 84);
   assert.equal(m.bottleneck.stage, 'review');
   assert.equal(m.bottleneck.totalHours, 84);
-  assert.ok(Math.abs(m.bottleneck.share - 84 / 192) < 0.001);
+  assert.ok(Math.abs(m.bottleneck.share - 84 / 156) < 0.001);
   assert.deepEqual(m.window, { since: '2026-10-08T12:00:00.000Z', until: NOW.toISOString() });
   const week = m.cycleByWeek.find(w => w.week === '2026-11-02');
   assert.deepEqual(week, { week: '2026-11-02', n: 2, median: 36 });
@@ -87,14 +87,50 @@ test('reopened and closedWithoutWork', () => {
   assert.deepEqual(late.counts, { started: 0, shipped: 0, reopened: 1, closedWithoutWork: 1 });
 });
 
-test('bottleneck is the stage with the largest total dwell, not the largest median', () => {
-  // todo: three 4h stays (total 12, median 4); in-progress: one 10h stay (total 10).
-  const todos = [1, 2, 3].map(i => task(`B${i}`, { history: [mv(at(1, 4), 'todo', 'in-progress'), mv(at(1, 4), 'in-progress', 'done')] }));
+test('bottleneck is the stage with the largest total dwell, not the largest median; todo never is', () => {
+  // todo: three 4h stays (total 12); in-progress: three 2h stays plus one 10h stay (total 16, median 2).
+  const quick = [1, 2, 3].map(i => task(`B${i}`, { history: [mv(at(1, 4), 'todo', 'in-progress'), mv(at(1, 6), 'in-progress', 'done')] }));
   const slow = task('B4', { history: [mv(at(1, 0), 'todo', 'in-progress'), mv(at(1, 10), 'in-progress', 'done')] });
-  const m = flowMetrics(docOf({ done: [...todos, slow] }), { now: NOW });
+  const m = flowMetrics(docOf({ done: [...quick, slow] }), { now: NOW });
   assert.equal(m.stages.todo.totalHours, 12);
-  assert.equal(m.stages['in-progress'].totalHours, 10);
-  assert.equal(m.bottleneck.stage, 'todo');
+  assert.equal(m.stages['in-progress'].totalHours, 16);
+  assert.equal(m.bottleneck.stage, 'in-progress');
+  assert.equal(m.bottleneck.share, 1);
+  // only a long todo wait: no bottleneck at all
+  const waiting = task('B5', { history: [mv(at(5), 'todo', 'done')] });
+  assert.equal(flowMetrics(docOf({ done: [waiting] }), { now: NOW }).bottleneck, null);
+});
+
+test('review includes epic cards and ignores stays under a minute; epics stay out of cycle and counts', () => {
+  const e = task('E9', { type: 'epic', history: [
+    mv(at(2), 'todo', 'in-progress'), mv(at(3), 'in-progress', 'review'), mv(at(4), 'review', 'in-progress'),
+    mv('2026-11-04T00:00:30.000Z', 'in-progress', 'review'), mv('2026-11-04T00:00:50.000Z', 'review', 'in-progress'),
+  ] });
+  const m = flowMetrics(docOf({ 'in-progress': [e] }), { now: NOW });
+  assert.equal(m.stages.review.n, 1); // the 24h stay; the 20s roll-through is ignored
+  assert.equal(m.stages.review.totalHours, 24);
+  assert.equal(m.stages['in-progress'].totalHours, 0); // epics are not in-progress dwell
+  assert.equal(m.stages.todo.totalHours, 0);
+  assert.equal(m.cycle.n, 0);
+  assert.deepEqual(m.counts, { started: 0, shipped: 0, reopened: 0, closedWithoutWork: 0 });
+  assert.equal(m.bottleneck.stage, 'review');
+});
+
+test('throughputByWeek and backlog growth (tickets only)', () => {
+  // Window starts Mon Nov 2. K1 created Nov 2, started Nov 3, shipped Nov 4; K2 created Nov 3, still todo;
+  // K3 created Nov 3, still todo; an epic is not counted.
+  const k1 = task('K1', { created: at(2), history: [mv(at(3), 'todo', 'in-progress'), mv(at(4), 'in-progress', 'done')] });
+  const k2 = task('K2', { created: at(3) });
+  const k3 = task('K3', { created: at(3) });
+  const ep = task('K4', { type: 'epic', created: at(3) });
+  const m = flowMetrics(docOf({ done: [k1], todo: [k2, k3, ep] }), { now: NOW, since: at(2) });
+  assert.deepEqual(m.throughputByWeek, [{ week: '2026-11-02', created: 3, started: 1, shipped: 1, closed: 1 }]);
+  assert.deepEqual(m.backlog, { openTodo: 2, growthPerWeek: 2 });
+  // archived and bookkeeping closes leave the backlog too: created 1, closed 1 (archived, never started)
+  const ar = task('K5', { created: at(3), history: [mv(at(5), 'todo', 'archive')] });
+  const m2 = flowMetrics(docOf({ archive: [ar] }), { now: NOW, since: at(2) });
+  assert.deepEqual(m2.throughputByWeek, [{ week: '2026-11-02', created: 1, started: 0, shipped: 0, closed: 1 }]);
+  assert.equal(m2.backlog.growthPerWeek, 0);
 });
 
 test('forgotten epics: idle epic and children, most idle first; epics skip cycle numbers', () => {

@@ -30,7 +30,7 @@ ch tasks next [--n 5] [--project P] [--json]                                read
 
 ```json
 "metrics": {
-  "claudeProjects": ["~/.claude/projects/-Users-you-work"],
+  "claudeProjects": ["~/.claude/projects/-Users-you-work*"],
   "repos": [{ "repo": "owner/name", "workflows": ["CI"] }],
   "gateLogs": [{ "repo": "name", "path": "/path/to/checkout/.git/gate-runs.jsonl" }],
   "buildTimeLogs": [{ "repo": "name", "path": "/path/to/checkout/.git/ci-local-build-times.log" }],
@@ -40,7 +40,8 @@ ch tasks next [--n 5] [--project P] [--json]                                read
 }
 ```
 
-`areas` groups lanes/projects into the areas the bottleneck view reports; without it, each project
+A `claudeProjects` entry ending in `*` matches every directory in that folder whose name starts with the
+text before it (one entry for a workspace and all its worktrees). `areas` groups lanes/projects into the areas the bottleneck view reports; without it, each project
 and each lane is its own group.
 
 ## Files in `$CH_HOME/metrics/`
@@ -51,7 +52,10 @@ One JSON object per line. Every record has a stable `key`; collectors replace re
 ```json
 {"key":"<sessionId>","sessionId":"…","project":"<transcript dir name>","title":"PRO40 - …","ticket":"PRO40",
  "start":"ISO","end":"ISO","wallMin":95.2,"activeMin":61.0,"waitUserMin":30.1,"turns":12,"userPrompts":3,
- "questions":2,"questionsMidRun":1,"stalls":1,"stallMin":34.0,"stopBlocked":0,"compactions":1,
+ "questions":2,"questionsMidRun":1,"stalls":1,"stallMin":34.0,
+ "missedWakes":1,"missedWakeMin":45.0,"missedWakeOrigins":{"task-notification":1},
+ "toolWaits":2,"toolWaitMin":55.0,"toolWaitTools":{"Bash":2},"questionWaits":1,"questionWaitMin":40.0,
+ "replyWaits":[4.2,31.0],"stopBlocked":0,"compactions":1,
  "helpers":4,"prs":["owner/repo#12"],"branch":"pro40-dev-metrics","costUSD":12.3}
 ```
 
@@ -85,7 +89,7 @@ CI records also carry `"runId"`, `"workflow"`, `"event"`, `"conclusion"`, `"queu
   largest total dwell over the window, per project, per lane and per area. Total dwell, not
   median, because a stage many tickets pass through briefly can still hold the most work. `todo`
   is a queue, not a stage: it is reported as the wait before work starts and as backlog growth
-  (tickets created vs shipped per week), never as the bottleneck.
+  (tickets created vs closed per week; closed = first move into review, done or archive), never as the bottleneck.
 - **Review** counts every card that waits in `review`, epics included: an epic's card is where its
   children's checks wait for you. Stays under a minute (automatic roll-through) are ignored.
 - Epics are otherwise excluded from cycle/dwell numbers (they roll up); bookkeeping moves straight
@@ -97,11 +101,19 @@ CI records also carry `"runId"`, `"workflow"`, `"event"`, `"conclusion"`, `"queu
   next prompt that came from you (not a task notification or scheduled wake-up).
 - **Question**: an `AskUserQuestion` tool call. **Mid-run question**: one asked after the first
   15 minutes of active time (the up-front approvals question is expected; mid-run ones stall).
-- **Stall**: a silence of at least `stallMinutes` inside a turn (no line written while the turn
-  is open). **Stop blocked**: a Stop hook prevented the turn from ending.
+- **Silence**: no line written for at least `stallMinutes` while a turn is open, classified by what
+  was pending when it began: an `AskUserQuestion` with no result yet is a **question wait**
+  (`questionWaits`, `questionWaitMin`; waiting on you, not a stall); any other tool call with no
+  result yet is a **tool wait** (`toolWaits`, `toolWaitMin`, `toolWaitTools` counts per tool name: a
+  long command or a permission prompt left open); nothing pending is either a **missed wake** (no assistant line since the prompt that opened the
+  turn, or since the last tool result when a user line follows the gap: the session never answered it, so it was idle-stopped, queued or blocked; `missedWakes`,
+  `missedWakeMin`, `missedWakeOrigins` by prompt origin `task-notification`, `peer`, `human`; also `tool-result` when a tool result was never answered before the next line) or, once the
+  assistant has started the turn, a **stall** (`stalls`, `stallMin`: the model or API went silent).
+- **Reply wait**: one wait from a turn's end to your next prompt (`replyWaits`, minutes);
+  `medianReplyMin` is their median. **Stop blocked**: a Stop hook prevented the turn from ending.
 - **Ticket**: the id at the start of the session title (`PRO40 - …`), else in the branch name,
   else the first `/ship-task <id>`.
-- **Autonomous session**: a session with no mid-run question and no stall.
+- **Autonomous session**: a session with no mid-run question, no tool wait, no stall and no missed wake.
 
 **CI**: run seconds = `updatedAt − startedAt`, queue = `startedAt − createdAt`. **Red time** for a
 PR branch: from the first failed run to the next successful run on that branch.

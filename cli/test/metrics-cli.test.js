@@ -58,7 +58,8 @@ test('collect --gates maps gate JSONL and build TSV, and is idempotent', () => {
   fs.writeFileSync(gate,
     JSON.stringify({ at: '2026-01-01T10:00:00Z', name: 'ci-local', worktree: 'wt1', branch: 'b', sha: 's', ok: true, seconds: 412, steps: { build: 300, tests: 100 } }) + '\n' +
     'not json\n' +
-    JSON.stringify({ at: '2026-01-01T11:00:00Z', name: 'ci-local', worktree: 'wt2', ok: false, seconds: 50 }) + '\n');
+    JSON.stringify({ at: '2026-01-01T11:00:00Z', name: 'ci-local', worktree: 'wt2', ok: false, seconds: 50, steps: { build: 40 } }) + '\n' +
+    JSON.stringify({ at: '2026-01-01T13:00:00Z', name: 'ci-local', worktree: 'wt3', ok: false, seconds: 1, steps: {} }) + '\n'); // --help run: skipped
   fs.writeFileSync(tsv, '2026-01-01T10:00:00Z\twt1\t5\t7\t300\t2\n2026-01-01T12:00:00Z\twt1\t5\t0\t0\t0\n');
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({
     metrics: { gateLogs: [{ repo: 'demo', path: gate }], buildTimeLogs: [{ repo: 'demo', path: tsv }] },
@@ -68,7 +69,7 @@ test('collect --gates maps gate JSONL and build TSV, and is idempotent', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /gates: 3 runs/);
   const recs = timings(dir);
-  assert.equal(recs.length, 3);
+  assert.equal(recs.length, 3); // wt3 (empty steps) is skipped
   const g = recs.find(x => x.key === 'gate:demo:2026-01-01T10:00:00Z:wt1');
   assert.equal(g.kind, 'gate');
   assert.equal(g.seconds, 412);
@@ -94,4 +95,39 @@ test('collect --sessions and --ci skip cleanly without config', () => {
 test('unknown subcommand fails', () => {
   const dir = home();
   assert.equal(ch(dir, ['bogus']).status, 1);
+});
+
+const FX = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+
+test('collect --sessions reads transcripts (prefix entries too); flow and report work on the result', () => {
+  const projects = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-cproj-'));
+  for (const n of ['-Users-x-work', '-Users-x-work-app']) fs.mkdirSync(path.join(projects, n));
+  fs.copyFileSync(path.join(FX, 'transcript-basic.jsonl'), path.join(projects, '-Users-x-work', 'a.jsonl'));
+  fs.copyFileSync(path.join(FX, 'transcript-basic.jsonl'), path.join(projects, '-Users-x-work-app', 'b.jsonl'));
+  const dir = home({ metrics: { claudeProjects: [path.join(projects, '-Users-x-work*')] } });
+  fs.copyFileSync(path.join(FX, 'tasks.sample.json'), path.join(dir, 'tasks.json'));
+  const c = ch(dir, ['collect', '--sessions', '--json', '--since', '3650d']);
+  assert.equal(c.status, 0, c.stderr);
+  assert.equal(JSON.parse(c.stdout).sessions.changed, 2);
+  const recs = fs.readFileSync(path.join(dir, 'metrics', 'sessions.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  assert.ok(recs.length >= 1);
+
+  const flow = ch(dir, ['flow', '--json']);
+  assert.equal(flow.status, 0, flow.stderr);
+  assert.ok(JSON.parse(flow.stdout).throughputByWeek);
+  const human = ch(dir, ['flow']);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /Bottleneck:/);
+  assert.match(human.stdout, /Stage\s+stays/);
+
+  const rep = ch(dir, ['report', '--json', '--since', '3650d']);
+  assert.equal(rep.status, 0, rep.stderr);
+  const p = JSON.parse(rep.stdout);
+  assert.ok(p.sessions.summary.n >= 1);
+  assert.ok(p.insights.some(i => i.kind === 'missing'));
+  const text = ch(dir, ['report']);
+  assert.equal(text.status, 0, text.stderr);
+  assert.match(text.stdout, /Insights/);
+  assert.match(text.stdout, /Headline numbers/);
+  assert.equal(ch(dir, ['report', '--since', 'soon']).status, 1);
 });

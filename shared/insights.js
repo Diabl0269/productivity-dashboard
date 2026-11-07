@@ -1,0 +1,193 @@
+/**
+ * shared/insights.js (pure): plain-English findings from a metrics payload (without `insights`).
+ * Each rule yields {kind, title, detail, value?}; the list is sorted by importance and capped.
+ * Kinds: bottleneck | slower | faster | warn | good | info | missing.
+ */
+
+const MAX_INSIGHTS = 10;
+const STAGE_LABEL = { 'in-progress': 'Building', review: 'Review', todo: 'Waiting to start' };
+
+const round1 = n => Math.round(n * 10) / 10;
+const pct = x => Math.round(x * 100);
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** Hours as "40 min", "3.4 h" or "3.0 days". */
+export function fmtHours(h) {
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h < 48) return `${round1(h).toFixed(1)} h`;
+  return `${round1(h / 24).toFixed(1)} days`;
+}
+
+/** Two second values in one shared unit: "7.0 → 8.5 min". */
+function fmtSecondsPair(a, b) {
+  const big = Math.max(a, b);
+  const [div, unit] = big < 90 ? [1, 's'] : big < 5400 ? [60, 'min'] : [3600, 'h'];
+  return `${round1(a / div).toFixed(1)} → ${round1(b / div).toFixed(1)} ${unit}`;
+}
+const fmtMinutes = m => (m < 90 ? `${Math.round(m)} min` : fmtHours(m / 60));
+
+function flowRules(flow, out) {
+  if (!flow) return;
+  const b = flow.bottleneck;
+  if (b) {
+    const label = STAGE_LABEL[b.stage] || b.stage;
+    const others = Object.entries(flow.groups?.project || {})
+      .filter(([, g]) => g.bottleneck && g.bottleneck.stage !== b.stage)
+      .map(([slug, g]) => `${slug}: ${STAGE_LABEL[g.bottleneck.stage] || g.bottleneck.stage}`);
+    out.push({
+      weight: 100, kind: 'bottleneck', value: b.share,
+      title: `${label} holds ${pct(b.share)}% of the work time`,
+      detail: `${fmtHours(b.totalHours)} of the time tickets spend building or in review is ${label.toLowerCase()}.`
+        + (others.length ? ` Different in: ${others.join(', ')}.` : ''),
+    });
+  }
+  const wait = flow.stages?.todo?.median;
+  const build = flow.stages?.['in-progress']?.median;
+  if (wait != null && build != null) {
+    out.push({
+      weight: 80, kind: wait >= 24 && wait > build * 2 ? 'warn' : 'info', value: wait,
+      title: `Tickets wait ${fmtHours(wait)} before work starts; building takes ${fmtHours(build)}`,
+      detail: 'Median time in To do versus in progress, for tickets that finished in the window.',
+    });
+  }
+  const growth = flow.backlog?.growthPerWeek;
+  if (typeof growth === 'number' && Math.abs(growth) >= 1) {
+    const grows = growth > 0;
+    const weeks = flow.throughputByWeek || [];
+    const avg = k => (weeks.length ? round1(weeks.reduce((a, w) => a + (w[k] || 0), 0) / weeks.length) : null);
+    const cz = weeks.length ? ` (created ${avg('created')}, closed ${avg('closed')})` : '';
+    out.push({
+      weight: 60, kind: grows ? 'warn' : 'good', value: growth,
+      title: `The backlog ${grows ? 'grows' : 'shrinks'} by ${plural(round1(Math.abs(growth)), 'ticket')} a week${cz}`,
+      detail: `${flow.backlog.openTodo} open in To do; tickets created minus tickets closed (shipped, closed without work or archived), averaged per week.`,
+    });
+  }
+  const rv = flow.stages?.review;
+  if (rv && (rv.n > 0 || rv.open?.n > 0)) {
+    const med = rv.median;
+    const oldest = rv.open?.oldestHours || 0;
+    const parts = [];
+    if (med != null) parts.push(`Review waits a median of ${fmtHours(med)}`);
+    if (rv.open?.n > 0) parts.push(`${plural(rv.open.n, 'card')} open now, oldest ${fmtHours(oldest)}`);
+    out.push({
+      weight: 90, kind: (med ?? 0) >= 24 || oldest >= 72 ? 'warn' : 'info', value: med ?? oldest,
+      title: parts.join('; '),
+      detail: 'Time cards sit in Review waiting for you, epics included.',
+    });
+  }
+  const fe = flow.forgottenEpics || [];
+  if (fe.length) {
+    out.push({
+      weight: 70, kind: 'warn', value: fe.length,
+      title: `${plural(fe.length, 'epic')} in progress with no activity`,
+      detail: fe.slice(0, 3).map(e => `${e.id} idle ${round1(e.idleDays)} days`).join(', ') + (fe.length > 3 ? ` and ${fe.length - 3} more` : '') + '.',
+    });
+  }
+}
+
+function sessionRules(sessions, out) {
+  const s = sessions?.summary;
+  if (!s || !s.n) return;
+  const silences = (s.stalls || 0) + (s.toolWaits || 0) + (s.missedWakes || 0);
+  if (s.autonomousShare != null) {
+    const weeks = (sessions.byWeek || []).filter(w => w.n > 0 && w.autonomousShare != null);
+    let change = '';
+    let dropped = false;
+    if (weeks.length >= 2) {
+      const [prev, last] = weeks.slice(-2);
+      const d = pct(last.autonomousShare) - pct(prev.autonomousShare);
+      if (d !== 0) change = ` ${d > 0 ? 'Up' : 'Down'} ${Math.abs(d)} points from the week before.`;
+      dropped = d <= -10;
+    }
+    const share = pct(s.autonomousShare);
+    out.push({
+      weight: 75, kind: dropped || share < 50 ? 'warn' : share >= 70 ? 'good' : 'info', value: s.autonomousShare,
+      title: `${share}% of sessions ran without asking or going silent`,
+      detail: `${plural(s.questionsMidRun, 'mid-run question')} (${round1(s.questionsMidRun / s.n)} per session) and ${plural(silences, 'silence')} (${round1(silences / s.n)} per session) across ${plural(s.n, 'session')}.${change}`,
+    });
+  }
+  if (s.missedWakeSessions > 0) {
+    const o = s.missedWakeOrigins || {};
+    const n = k => o[k] || 0;
+    out.push({
+      weight: 95, kind: 'warn', value: s.missedWakeSessions,
+      title: `${plural(s.missedWakeSessions, 'session')} got stuck 20+ min (${n('tool-result')} stopped mid-turn, ${n('task-notification') + n('peer') + n('human')} unanswered)`,
+      detail: `${plural(n('tool-result'), 'time')} a session stopped right after a tool finished (interrupted, an API error or a usage limit), and ${plural(n('task-notification'), 'notification')}, ${plural(n('peer'), 'peer message')} and ${plural(n('human'), 'prompt')} of yours went unanswered: each sat 20 minutes or more until something else woke the session. This is the stuck-session signal.`,
+    });
+  }
+  if (s.silentSessions > 0) {
+    const tools = Object.entries(s.toolWaitTools || {}).sort((a, b) => b[1] - a[1]);
+    const mostly = tools.length ? `, mostly ${tools[0][0]}` : '';
+    out.push({
+      weight: 72, kind: 'warn', value: s.silentSessions,
+      title: `${plural(s.silentSessions, 'session')} went silent mid-turn (${s.stalls || 0} model, ${plural(s.toolWaits || 0, 'tool wait')}${mostly})`,
+      detail: `${plural(s.stalls || 0, 'model silence')} and ${plural(s.toolWaits || 0, 'long tool or permission wait')}${mostly}. A model silence is a quiet stretch with no tool call pending; a tool wait is a command or permission prompt left open for 20 minutes or more.`,
+    });
+  }
+  if (s.medianReplyMin != null) {
+    const over = s.sessionsWaitedOver1h || 0;
+    out.push({
+      weight: 65, kind: s.medianReplyMin > 30 || over > 0 ? 'warn' : 'info', value: s.medianReplyMin,
+      title: `Your replies took a median of ${fmtMinutes(s.medianReplyMin)}; ${plural(over, 'session')} waited over 1 h`,
+      detail: `Time from a finished turn to your next prompt. Total waiting on you: ${fmtHours(s.waitUserHours || 0)}, a median of ${fmtMinutes(s.medianActiveMin ?? 0)} of active work per session.`,
+    });
+  }
+}
+
+function timingRules(timings, out) {
+  for (const t of timings?.trends || []) {
+    if (t.changePct == null || Math.abs(t.changePct) < 15 || t.recentCount < 3 || t.priorCount < 3) continue;
+    const slower = t.changePct > 0;
+    const who = [t.repo, t.name].filter(Boolean).join(' ') || 'timing';
+    out.push({
+      weight: (slower ? 60 : 50) + Math.min(Math.abs(t.changePct), 40) / 10, kind: slower ? 'slower' : 'faster', value: t.changePct,
+      title: `${who} ${Math.round(Math.abs(t.changePct))}% ${slower ? 'slower' : 'faster'}: ${fmtSecondsPair(t.priorMedian, t.recentMedian)}`,
+      detail: `Median of the last 7 days (${plural(t.recentCount, 'run')}) against the 7 before (${plural(t.priorCount, 'run')}).`,
+    });
+  }
+  for (const r of timings?.ci?.byRepo || []) {
+    if (r.runs >= 3 && r.failRate >= 0.2) {
+      const failed = Math.round(r.failRate * r.runs);
+      out.push({
+        weight: 65, kind: 'warn', value: r.failRate,
+        title: `${[r.repo, r.workflow].filter(Boolean).join(' ')} fails ${pct(r.failRate)}% of runs`,
+        detail: `About ${failed} of ${r.runs} CI runs in the window failed.`,
+      });
+    }
+  }
+  const red = timings?.redTime?.summary;
+  if (red && red.branches > 0) {
+    out.push({
+      weight: red.openNow > 0 ? 66 : 55, kind: red.openNow > 0 ? 'warn' : 'info', value: red.medianMinutes,
+      title: red.openNow > 0
+        ? `${plural(red.openNow, 'branch', 'branches')} red right now; typical red time ${fmtMinutes(red.medianMinutes)}`
+        : `Branches stay red a median of ${fmtMinutes(red.medianMinutes)}`,
+      detail: `${plural(red.branches, 'red stretch', 'red stretches')} in the window, slowest tenth ${fmtMinutes(red.p90Minutes)} or more.`,
+    });
+  }
+}
+
+const MISSING = [
+  ['sessions', 'No Claude sessions collected yet', 'Run `ch metrics collect --sessions` (set metrics.claudeProjects in config.json).'],
+  ['ci', 'No CI runs collected yet', 'Add repos under metrics.repos in config.json, then run `ch metrics collect --ci`.'],
+  ['gates', 'No local gate runs yet: they are recorded from the next gate run', 'Point metrics.gateLogs at the gate log, or record runs with `ch metrics time`.'],
+  ['builds', 'No local build times yet', 'Point metrics.buildTimeLogs at a build-time log, then run `ch metrics collect --gates`.'],
+];
+
+/**
+ * @param {object} p the payload without `insights`
+ * @returns {{kind:string,title:string,detail:string,value?:number}[]}
+ */
+export function buildInsights(p) {
+  const out = [];
+  flowRules(p?.flow, out);
+  sessionRules(p?.sessions, out);
+  timingRules(p?.timings, out);
+  for (const [src, title, detail] of MISSING) {
+    if (p?.sources?.[src] && !p.sources[src].records) out.push({ weight: 20, kind: 'missing', title, detail });
+  }
+  return out
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, MAX_INSIGHTS)
+    .map(({ weight, title, ...rest }) => ({ kind: rest.kind, title: title.length > 70 ? `${title.slice(0, 69)}…` : title, detail: rest.detail, ...(rest.value !== undefined ? { value: rest.value } : {}) }));
+}

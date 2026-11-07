@@ -8,6 +8,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { summarizeSession } from '../../shared/session-metrics.js';
 
+// Bump when the summary logic changes so cached records are recomputed.
+const CACHE_VERSION = 5;
 const WANTED = new Set(['user', 'assistant', 'system', 'custom-title', 'pr-link', 'cost-state']);
 const LEAD_TYPE_RE = /^\{"type":"([\w-]+)"/; // pr-link, cost-state, api-request-*, file-history-*... lead with type
 
@@ -62,6 +64,28 @@ export async function summarizeTranscriptFile(file, opts = {}) {
   return rec;
 }
 
+/**
+ * Expand `claudeProjects` entries: an entry ending in `*` matches every directory in its parent
+ * whose name starts with the text before the `*` (e.g. ".../projects/-Users-me-work*").
+ * Plain entries pass through unchanged; the result has no duplicates.
+ */
+export function expandProjectDirs(dirs) {
+  const out = [];
+  for (const d of dirs || []) {
+    if (typeof d !== 'string') continue;
+    if (!d.endsWith('*')) { out.push(d); continue; }
+    const stem = d.slice(0, -1);
+    const parent = path.dirname(stem);
+    const prefix = path.basename(stem);
+    let names = [];
+    try { names = fs.readdirSync(parent, { withFileTypes: true }); } catch { /* parent missing */ }
+    for (const n of names.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (n.isDirectory() && n.name.startsWith(prefix)) out.push(path.join(parent, n.name));
+    }
+  }
+  return [...new Set(out)];
+}
+
 const sinceMs = (since) => {
   if (since == null) return null;
   if (typeof since === 'number') return since;
@@ -81,19 +105,19 @@ export async function collectSessions({ dirs = [], cache = {}, since, stallMinut
   const cutoff = sinceMs(since);
   const next = {};
   const records = [];
-  for (const dir of dirs) {
+  for (const dir of expandProjectDirs(dirs)) {
     const project = path.basename(dir);
     for (const t of listTranscripts(dir)) {
       if (cutoff !== null && t.mtimeMs < cutoff) continue;
       const hit = cache[t.path];
       let record;
-      if (hit && hit.mtimeMs === t.mtimeMs && hit.size === t.size && hit.record !== undefined) {
+      if (hit && hit.v === CACHE_VERSION && hit.mtimeMs === t.mtimeMs && hit.size === t.size && hit.record !== undefined) {
         record = hit.record;
       } else {
         record = await summarizeTranscriptFile(t.path, { stallMinutes, midRunMinutes, project });
       }
       if (record) record.helpers = t.helperCount;
-      next[t.path] = { mtimeMs: t.mtimeMs, size: t.size, record };
+      next[t.path] = { v: CACHE_VERSION, mtimeMs: t.mtimeMs, size: t.size, record };
       if (record) records.push(record);
     }
   }

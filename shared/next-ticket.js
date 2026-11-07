@@ -30,7 +30,7 @@ function isGate(t) {
  *   epicTitle:string|null,score:number,reasons:string[]}[]}
  */
 export function rankReadyTickets(doc, { n = 5, project, now = new Date(), spread = true } = {}) {
-  const nowMs = now instanceof Date ? now.getTime() : Date.parse(now);
+  const nowMs = typeof now === 'number' ? now : now instanceof Date ? now.getTime() : Date.parse(now);
   const byId = new Map();
   const sectionOf = new Map();
   for (const sec of doc?.sections || []) {
