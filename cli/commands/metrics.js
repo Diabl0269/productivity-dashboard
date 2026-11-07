@@ -75,7 +75,7 @@ export function ciRecordsFromRuns(repo, runs) {
 
 /** Default gh runner: returns parsed JSON array. Throws when gh is missing/fails. */
 export function ghRunList(repo, workflow) {
-  const args = ['run', 'list', '--repo', repo, '--limit', '300', '--json', GH_FIELDS];
+  const args = ['run', 'list', '--repo', repo, '--limit', '1000', '--json', GH_FIELDS];
   if (workflow) args.push('--workflow', workflow);
   const out = execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out);

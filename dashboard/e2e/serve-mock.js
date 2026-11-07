@@ -129,6 +129,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Metrics: synthetic payload (fixtures/metrics.sample.json), generatedAt = now so "updated" reads fresh.
+  if (url.pathname === '/api/metrics' && req.method === 'GET') {
+    const data = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'metrics.sample.json'), 'utf8'));
+    data.generatedAt = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+    const project = url.searchParams.get('project');
+    if (project) data.filters.project = project;
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(data));
+    return;
+  }
+  if (url.pathname === '/api/metrics/collect' && req.method === 'POST') {
+    await new Promise(r => setTimeout(r, Number(process.env.METRICS_COLLECT_MS || 1500)));
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, summary: ['sessions: 64 records', 'ci: 114 records', 'gates: 66 records'] }));
+    return;
+  }
+
   // Health / proof this is the mock server
   if (url.pathname === '/api/e2e-info') {
     res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });

@@ -1,0 +1,1729 @@
+{
+ "generatedAt": "2026-11-07T10:00:00.000Z",
+ "window": {
+  "since": "2026-10-08",
+  "until": "2026-11-07"
+ },
+ "filters": {
+  "project": null,
+  "projects": [
+   "agentsynth",
+   "synth-platform",
+   "marketing",
+   "dashboard"
+  ],
+  "lanes": [
+   "app",
+   "web",
+   "content"
+  ]
+ },
+ "flow": {
+  "window": {
+   "since": "2026-10-08",
+   "until": "2026-11-07"
+  },
+  "counts": {
+   "started": 46,
+   "shipped": 38,
+   "reopened": 3,
+   "closedWithoutWork": 5
+  },
+  "cycle": {
+   "n": 38,
+   "median": 6.5,
+   "p75": 14,
+   "p90": 31
+  },
+  "lead": {
+   "n": 38,
+   "median": 81,
+   "p75": 190,
+   "p90": 420
+  },
+  "stages": {
+   "todo": {
+    "n": 41,
+    "median": 52,
+    "p75": 140,
+    "totalHours": 3100,
+    "open": {
+     "n": 18,
+     "oldestHours": 610
+    }
+   },
+   "in-progress": {
+    "n": 38,
+    "median": 6.5,
+    "p75": 14,
+    "totalHours": 372,
+    "open": {
+     "n": 4,
+     "oldestHours": 52
+    }
+   },
+   "review": {
+    "n": 34,
+    "median": 19,
+    "p75": 41,
+    "totalHours": 740,
+    "open": {
+     "n": 6,
+     "oldestHours": 96
+    }
+   }
+  },
+  "bottleneck": {
+   "stage": "review",
+   "totalHours": 740,
+   "share": 0.67
+  },
+  "groups": {
+   "project": {
+    "agentsynth": {
+     "counts": {
+      "started": 24,
+      "shipped": 20,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 20,
+      "median": 7.5,
+      "p75": 15,
+      "p90": 25.5
+     },
+     "stages": {
+      "todo": {
+       "n": 24,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 1440,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 20,
+       "median": 7.5,
+       "p75": 15,
+       "totalHours": 180,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 20,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 440,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "review",
+      "totalHours": 420,
+      "share": 0.58
+     }
+    },
+    "synth-platform": {
+     "counts": {
+      "started": 14,
+      "shipped": 12,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 12,
+      "median": 5.2,
+      "p75": 10.4,
+      "p90": 17.68
+     },
+     "stages": {
+      "todo": {
+       "n": 14,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 840,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 12,
+       "median": 5.2,
+       "p75": 10.4,
+       "totalHours": 74.88000000000001,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 12,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 264,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "in-progress",
+      "totalHours": 150,
+      "share": 0.58
+     }
+    },
+    "marketing": {
+     "counts": {
+      "started": 5,
+      "shipped": 4,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 4,
+      "median": 9,
+      "p75": 18,
+      "p90": 30.599999999999998
+     },
+     "stages": {
+      "todo": {
+       "n": 5,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 300,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 4,
+       "median": 9,
+       "p75": 18,
+       "totalHours": 43.199999999999996,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 4,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 88,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "review",
+      "totalHours": 90,
+      "share": 0.58
+     }
+    },
+    "dashboard": {
+     "counts": {
+      "started": 3,
+      "shipped": 2,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 2,
+      "median": 3.1,
+      "p75": 6.2,
+      "p90": 10.54
+     },
+     "stages": {
+      "todo": {
+       "n": 3,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 180,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 2,
+       "median": 3.1,
+       "p75": 6.2,
+       "totalHours": 7.4399999999999995,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 2,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 44,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": null
+    }
+   },
+   "lane": {
+    "app": {
+     "counts": {
+      "started": 22,
+      "shipped": 18,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 18,
+      "median": 7,
+      "p75": 14,
+      "p90": 23.8
+     },
+     "stages": {
+      "todo": {
+       "n": 22,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 1320,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 18,
+       "median": 7,
+       "p75": 14,
+       "totalHours": 151.2,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 18,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 396,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "review",
+      "totalHours": 400,
+      "share": 0.58
+     }
+    },
+    "web": {
+     "counts": {
+      "started": 14,
+      "shipped": 12,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 12,
+      "median": 5,
+      "p75": 10,
+      "p90": 17
+     },
+     "stages": {
+      "todo": {
+       "n": 14,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 840,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 12,
+       "median": 5,
+       "p75": 10,
+       "totalHours": 72,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 12,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 264,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "in-progress",
+      "totalHours": 140,
+      "share": 0.58
+     }
+    },
+    "content": {
+     "counts": {
+      "started": 10,
+      "shipped": 8,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 8,
+      "median": 8,
+      "p75": 16,
+      "p90": 27.2
+     },
+     "stages": {
+      "todo": {
+       "n": 10,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 600,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 8,
+       "median": 8,
+       "p75": 16,
+       "totalHours": 76.8,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 8,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 176,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "review",
+      "totalHours": 120,
+      "share": 0.58
+     }
+    }
+   },
+   "area": {
+    "engine": {
+     "counts": {
+      "started": 15,
+      "shipped": 12,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 12,
+      "median": 8,
+      "p75": 16,
+      "p90": 27.2
+     },
+     "stages": {
+      "todo": {
+       "n": 15,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 900,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 12,
+       "median": 8,
+       "p75": 16,
+       "totalHours": 115.19999999999999,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 12,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 264,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "review",
+      "totalHours": 250,
+      "share": 0.58
+     }
+    },
+    "site": {
+     "counts": {
+      "started": 12,
+      "shipped": 10,
+      "reopened": 1,
+      "closedWithoutWork": 0
+     },
+     "cycle": {
+      "n": 10,
+      "median": 4,
+      "p75": 8,
+      "p90": 13.6
+     },
+     "stages": {
+      "todo": {
+       "n": 12,
+       "median": 40,
+       "p75": 100,
+       "totalHours": 720,
+       "open": {
+        "n": 3,
+        "oldestHours": 200
+       }
+      },
+      "in-progress": {
+       "n": 10,
+       "median": 4,
+       "p75": 8,
+       "totalHours": 48,
+       "open": {
+        "n": 1,
+        "oldestHours": 20
+       }
+      },
+      "review": {
+       "n": 10,
+       "median": 15,
+       "p75": 35,
+       "totalHours": 220,
+       "open": {
+        "n": 2,
+        "oldestHours": 70
+       }
+      }
+     },
+     "bottleneck": {
+      "stage": "in-progress",
+      "totalHours": 90,
+      "share": 0.58
+     }
+    }
+   }
+  },
+  "wip": [
+   {
+    "date": "2026-10-09",
+    "tickets": 3,
+    "epics": 4
+   },
+   {
+    "date": "2026-10-10",
+    "tickets": 4,
+    "epics": 2
+   },
+   {
+    "date": "2026-10-11",
+    "tickets": 5,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-12",
+    "tickets": 5,
+    "epics": 4
+   },
+   {
+    "date": "2026-10-13",
+    "tickets": 6,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-14",
+    "tickets": 6,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-15",
+    "tickets": 7,
+    "epics": 2
+   },
+   {
+    "date": "2026-10-16",
+    "tickets": 6,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-17",
+    "tickets": 6,
+    "epics": 2
+   },
+   {
+    "date": "2026-10-18",
+    "tickets": 6,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-19",
+    "tickets": 6,
+    "epics": 4
+   },
+   {
+    "date": "2026-10-20",
+    "tickets": 4,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-21",
+    "tickets": 5,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-22",
+    "tickets": 4,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-23",
+    "tickets": 4,
+    "epics": 4
+   },
+   {
+    "date": "2026-10-24",
+    "tickets": 3,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-25",
+    "tickets": 3,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-26",
+    "tickets": 2,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-27",
+    "tickets": 2,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-28",
+    "tickets": 3,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-29",
+    "tickets": 3,
+    "epics": 4
+   },
+   {
+    "date": "2026-10-30",
+    "tickets": 1,
+    "epics": 3
+   },
+   {
+    "date": "2026-10-31",
+    "tickets": 3,
+    "epics": 3
+   },
+   {
+    "date": "2026-11-01",
+    "tickets": 3,
+    "epics": 2
+   },
+   {
+    "date": "2026-11-02",
+    "tickets": 4,
+    "epics": 2
+   },
+   {
+    "date": "2026-11-03",
+    "tickets": 4,
+    "epics": 3
+   },
+   {
+    "date": "2026-11-04",
+    "tickets": 5,
+    "epics": 4
+   },
+   {
+    "date": "2026-11-05",
+    "tickets": 5,
+    "epics": 2
+   },
+   {
+    "date": "2026-11-06",
+    "tickets": 5,
+    "epics": 3
+   },
+   {
+    "date": "2026-11-07",
+    "tickets": 5,
+    "epics": 3
+   }
+  ],
+  "cycleByWeek": [
+   {
+    "week": "2026-09-29",
+    "n": 6,
+    "median": 7.7
+   },
+   {
+    "week": "2026-10-06",
+    "n": 8,
+    "median": 5.6
+   },
+   {
+    "week": "2026-10-13",
+    "n": 9,
+    "median": 7.2
+   },
+   {
+    "week": "2026-10-20",
+    "n": 9,
+    "median": 8.4
+   },
+   {
+    "week": "2026-10-27",
+    "n": 8,
+    "median": 7.6
+   },
+   {
+    "week": "2026-11-03",
+    "n": 7,
+    "median": 8.8
+   }
+  ],
+  "throughputByWeek": [
+   {
+    "week": "2026-09-29",
+    "created": 14,
+    "started": 7,
+    "shipped": 8,
+    "closed": 7
+   },
+   {
+    "week": "2026-10-06",
+    "created": 11,
+    "started": 7,
+    "shipped": 6,
+    "closed": 8
+   },
+   {
+    "week": "2026-10-13",
+    "created": 12,
+    "started": 10,
+    "shipped": 5,
+    "closed": 11
+   },
+   {
+    "week": "2026-10-20",
+    "created": 7,
+    "started": 7,
+    "shipped": 5,
+    "closed": 6
+   },
+   {
+    "week": "2026-10-27",
+    "created": 14,
+    "started": 6,
+    "shipped": 8,
+    "closed": 6
+   },
+   {
+    "week": "2026-11-03",
+    "created": 10,
+    "started": 9,
+    "shipped": 5,
+    "closed": 11
+   }
+  ],
+  "backlog": {
+   "openTodo": 63,
+   "growthPerWeek": 2.4
+  },
+  "forgottenEpics": [
+   {
+    "id": "AGE12",
+    "title": "Nightly eval dashboard refresh",
+    "lane": "content",
+    "project": "agentsynth",
+    "idleDays": 19
+   },
+   {
+    "id": "PRO31",
+    "title": "Pricing page experiments with a very long title that must wrap nicely on narrow screens",
+    "lane": "web",
+    "project": "synth-platform",
+    "idleDays": 11
+   }
+  ]
+ },
+ "sessions": {
+  "summary": {
+   "n": 64,
+   "withTicket": 58,
+   "medianWallMin": 112,
+   "medianActiveMin": 44,
+   "waitUserHours": 31.5,
+   "questions": 79,
+   "questionsMidRun": 17,
+   "stalls": 12,
+   "missedWakes": 9,
+   "missedWakeOrigins": {
+    "task-notification": 6,
+    "human": 2,
+    "peer": 1
+   },
+   "missedWakeSessions": 5,
+   "toolWaits": 4,
+   "toolWaitTools": {
+    "Bash": 3,
+    "Edit": 1
+   },
+   "questionWaits": 6,
+   "silentSessions": 11,
+   "medianReplyMin": 2.6,
+   "sessionsWaitedOver1h": 14,
+   "autonomousShare": 0.58,
+   "sessionsPerTicket": {
+    "median": 2,
+    "max": 9
+   },
+   "costUSD": 412.8
+  },
+  "byWeek": [
+   {
+    "week": "2026-09-29",
+    "n": 13,
+    "medianWallMin": 125,
+    "medianActiveMin": 34,
+    "questionsMidRun": 3,
+    "stalls": 3,
+    "missedWakes": 3,
+    "toolWaits": 1,
+    "questionWaits": 2,
+    "autonomousShare": 0.67,
+    "waitUserHours": 7.2
+   },
+   {
+    "week": "2026-10-06",
+    "n": 14,
+    "medianWallMin": 116,
+    "medianActiveMin": 33,
+    "questionsMidRun": 1,
+    "stalls": 2,
+    "missedWakes": 1,
+    "toolWaits": 1,
+    "questionWaits": 1,
+    "autonomousShare": 0.48,
+    "waitUserHours": 6.7
+   },
+   {
+    "week": "2026-10-13",
+    "n": 13,
+    "medianWallMin": 129,
+    "medianActiveMin": 37,
+    "questionsMidRun": 6,
+    "stalls": 0,
+    "missedWakes": 2,
+    "toolWaits": 1,
+    "questionWaits": 2,
+    "autonomousShare": 0.63,
+    "waitUserHours": 7.8
+   },
+   {
+    "week": "2026-10-20",
+    "n": 9,
+    "medianWallMin": 135,
+    "medianActiveMin": 45,
+    "questionsMidRun": 5,
+    "stalls": 2,
+    "missedWakes": 3,
+    "toolWaits": 2,
+    "questionWaits": 2,
+    "autonomousShare": 0.72,
+    "waitUserHours": 8.1
+   },
+   {
+    "week": "2026-10-27",
+    "n": 10,
+    "medianWallMin": 123,
+    "medianActiveMin": 35,
+    "questionsMidRun": 2,
+    "stalls": 4,
+    "missedWakes": 3,
+    "toolWaits": 0,
+    "questionWaits": 0,
+    "autonomousShare": 0.49,
+    "waitUserHours": 8.6
+   },
+   {
+    "week": "2026-11-03",
+    "n": 15,
+    "medianWallMin": 137,
+    "medianActiveMin": 38,
+    "questionsMidRun": 2,
+    "stalls": 0,
+    "missedWakes": 1,
+    "toolWaits": 1,
+    "questionWaits": 0,
+    "autonomousShare": 0.51,
+    "waitUserHours": 5.9
+   }
+  ],
+  "recent": [
+   {
+    "sessionId": "s0-8966",
+    "title": "PRO40 - dev metrics tab",
+    "ticket": "PRO40",
+    "start": "2026-11-07T10:00:00.000Z",
+    "wallMin": 270,
+    "activeMin": 178,
+    "waitUserMin": 74,
+    "questions": 4,
+    "questionsMidRun": 2,
+    "stalls": 2,
+    "missedWakes": 1,
+    "toolWaits": 0,
+    "questionWaits": 0,
+    "helpers": 0,
+    "costUSD": 0.82
+   },
+   {
+    "sessionId": "s1-7670",
+    "title": "FRO1625 - ai silent patch guard",
+    "ticket": "FRO1625",
+    "start": "2026-11-07T04:42:00.000Z",
+    "wallMin": 200,
+    "activeMin": 78,
+    "waitUserMin": 98,
+    "questions": 2,
+    "questionsMidRun": 0,
+    "stalls": 0,
+    "missedWakes": 0,
+    "toolWaits": 1,
+    "questionWaits": 1,
+    "helpers": 1,
+    "costUSD": 12.44
+   },
+   {
+    "sessionId": "s2-9048",
+    "title": "FRO1040 - eval data panel",
+    "ticket": "FRO1040",
+    "start": "2026-11-06T23:24:00.000Z",
+    "wallMin": 101,
+    "activeMin": 45,
+    "waitUserMin": 45,
+    "questions": 0,
+    "questionsMidRun": 0,
+    "stalls": 0,
+    "missedWakes": 0,
+    "toolWaits": 0,
+    "questionWaits": 1,
+    "helpers": 0,
+    "costUSD": 12.85
+   },
+   {
+    "sessionId": "s3-1189",
+    "title": "PRO45 - session metrics",
+    "ticket": "PRO45",
+    "start": "2026-11-06T18:06:00.000Z",
+    "wallMin": 206,
+    "activeMin": 138,
+    "waitUserMin": 54,
+    "questions": 4,
+    "questionsMidRun": 1,
+    "stalls": 0,
+    "missedWakes": 0,
+    "toolWaits": 0,
+    "questionWaits": 2,
+    "helpers": 3,
+    "costUSD": 9.77
+   },
+   {
+    "sessionId": "s4-2880",
+    "title": "AGE28 - review-of epic fix",
+    "ticket": "AGE28",
+    "start": "2026-11-06T12:48:00.000Z",
+    "wallMin": 109,
+    "activeMin": 43,
+    "waitUserMin": 53,
+    "questions": 2,
+    "questionsMidRun": 0,
+    "stalls": 1,
+    "missedWakes": 0,
+    "toolWaits": 1,
+    "questionWaits": 2,
+    "helpers": 4,
+    "costUSD": 10.23
+   },
+   {
+    "sessionId": "s5-1993",
+    "title": "MAR2 - analytics dashboard refresh",
+    "ticket": "MAR2",
+    "start": "2026-11-06T07:30:00.000Z",
+    "wallMin": 170,
+    "activeMin": 53,
+    "waitUserMin": 94,
+    "questions": 4,
+    "questionsMidRun": 0,
+    "stalls": 0,
+    "missedWakes": 1,
+    "toolWaits": 0,
+    "questionWaits": 1,
+    "helpers": 5,
+    "costUSD": 1.29
+   },
+   {
+    "sessionId": "s6-9934",
+    "title": "FRO162 - GraphEditor thin owner",
+    "ticket": "FRO162",
+    "start": "2026-11-06T02:12:00.000Z",
+    "wallMin": 270,
+    "activeMin": 173,
+    "waitUserMin": 78,
+    "questions": 4,
+    "questionsMidRun": 2,
+    "stalls": 0,
+    "missedWakes": 0,
+    "toolWaits": 0,
+    "questionWaits": 1,
+    "helpers": 1,
+    "costUSD": 10.41
+   },
+   {
+    "sessionId": "s7-3112",
+    "title": "PRO46 - ci timings collect",
+    "ticket": "PRO46",
+    "start": "2026-11-05T20:54:00.000Z",
+    "wallMin": 269,
+    "activeMin": 124,
+    "waitUserMin": 116,
+    "questions": 2,
+    "questionsMidRun": 0,
+    "stalls": 0,
+    "missedWakes": 0,
+    "toolWaits": 1,
+    "questionWaits": 2,
+    "helpers": 3,
+    "costUSD": 5.44
+   }
+  ],
+  "topTickets": [
+   {
+    "ticket": "FRO1625",
+    "sessions": 7,
+    "wallHours": 14.2,
+    "activeHours": 6.1
+   },
+   {
+    "ticket": "PRO40",
+    "sessions": 4,
+    "wallHours": 9.8,
+    "activeHours": 4.4
+   },
+   {
+    "ticket": "AGE27",
+    "sessions": 5,
+    "wallHours": 8.1,
+    "activeHours": 3.9
+   },
+   {
+    "ticket": "FRO1040",
+    "sessions": 3,
+    "wallHours": 5.5,
+    "activeHours": 2.2
+   }
+  ]
+ },
+ "timings": {
+  "series": [
+   {
+    "repo": "agentsynth",
+    "kind": "gate",
+    "host": "local",
+    "name": "ci-local",
+    "points": [
+     {
+      "at": "2026-10-08T10:00:00.000Z",
+      "seconds": 455,
+      "ok": true
+     },
+     {
+      "at": "2026-10-09T18:43:38.181Z",
+      "seconds": 401,
+      "ok": true
+     },
+     {
+      "at": "2026-10-11T03:27:16.363Z",
+      "seconds": 422,
+      "ok": true
+     },
+     {
+      "at": "2026-10-12T12:10:54.545Z",
+      "seconds": 404,
+      "ok": true
+     },
+     {
+      "at": "2026-10-13T20:54:32.727Z",
+      "seconds": 552,
+      "ok": true
+     },
+     {
+      "at": "2026-10-15T05:38:10.909Z",
+      "seconds": 532,
+      "ok": true
+     },
+     {
+      "at": "2026-10-16T14:21:49.090Z",
+      "seconds": 389,
+      "ok": true
+     },
+     {
+      "at": "2026-10-17T23:05:27.272Z",
+      "seconds": 379,
+      "ok": true
+     },
+     {
+      "at": "2026-10-19T07:49:05.454Z",
+      "seconds": 475,
+      "ok": true
+     },
+     {
+      "at": "2026-10-20T16:32:43.636Z",
+      "seconds": 563,
+      "ok": true
+     },
+     {
+      "at": "2026-10-22T01:16:21.818Z",
+      "seconds": 398,
+      "ok": true
+     },
+     {
+      "at": "2026-10-23T10:00:00.000Z",
+      "seconds": 397,
+      "ok": true
+     },
+     {
+      "at": "2026-10-24T18:43:38.181Z",
+      "seconds": 482,
+      "ok": true
+     },
+     {
+      "at": "2026-10-26T03:27:16.363Z",
+      "seconds": 481,
+      "ok": true
+     },
+     {
+      "at": "2026-10-27T12:10:54.545Z",
+      "seconds": 453,
+      "ok": true
+     },
+     {
+      "at": "2026-10-28T20:54:32.727Z",
+      "seconds": 377,
+      "ok": true
+     },
+     {
+      "at": "2026-10-30T05:38:10.909Z",
+      "seconds": 503,
+      "ok": true
+     },
+     {
+      "at": "2026-10-31T14:21:49.090Z",
+      "seconds": 549,
+      "ok": true
+     },
+     {
+      "at": "2026-11-01T23:05:27.272Z",
+      "seconds": 439,
+      "ok": true
+     },
+     {
+      "at": "2026-11-03T07:49:05.454Z",
+      "seconds": 486,
+      "ok": false
+     },
+     {
+      "at": "2026-11-04T16:32:43.636Z",
+      "seconds": 577,
+      "ok": true
+     },
+     {
+      "at": "2026-11-06T01:16:21.818Z",
+      "seconds": 615,
+      "ok": true
+     }
+    ]
+   },
+   {
+    "repo": "agentsynth",
+    "kind": "build",
+    "host": "local",
+    "name": "build-mac",
+    "points": [
+     {
+      "at": "2026-10-08T10:00:00.000Z",
+      "seconds": 217,
+      "ok": true
+     },
+     {
+      "at": "2026-10-10T02:00:00.000Z",
+      "seconds": 156,
+      "ok": true
+     },
+     {
+      "at": "2026-10-11T18:00:00.000Z",
+      "seconds": 214,
+      "ok": true
+     },
+     {
+      "at": "2026-10-13T10:00:00.000Z",
+      "seconds": 245,
+      "ok": false
+     },
+     {
+      "at": "2026-10-15T02:00:00.000Z",
+      "seconds": 173,
+      "ok": true
+     },
+     {
+      "at": "2026-10-16T18:00:00.000Z",
+      "seconds": 170,
+      "ok": true
+     },
+     {
+      "at": "2026-10-18T10:00:00.000Z",
+      "seconds": 162,
+      "ok": true
+     },
+     {
+      "at": "2026-10-20T02:00:00.000Z",
+      "seconds": 260,
+      "ok": true
+     },
+     {
+      "at": "2026-10-21T18:00:00.000Z",
+      "seconds": 180,
+      "ok": true
+     },
+     {
+      "at": "2026-10-23T10:00:00.000Z",
+      "seconds": 238,
+      "ok": true
+     },
+     {
+      "at": "2026-10-25T02:00:00.000Z",
+      "seconds": 217,
+      "ok": true
+     },
+     {
+      "at": "2026-10-26T18:00:00.000Z",
+      "seconds": 215,
+      "ok": true
+     },
+     {
+      "at": "2026-10-28T10:00:00.000Z",
+      "seconds": 256,
+      "ok": true
+     },
+     {
+      "at": "2026-10-30T02:00:00.000Z",
+      "seconds": 220,
+      "ok": true
+     },
+     {
+      "at": "2026-10-31T18:00:00.000Z",
+      "seconds": 202,
+      "ok": true
+     },
+     {
+      "at": "2026-11-02T10:00:00.000Z",
+      "seconds": 286,
+      "ok": true
+     },
+     {
+      "at": "2026-11-04T02:00:00.000Z",
+      "seconds": 282,
+      "ok": true
+     },
+     {
+      "at": "2026-11-05T18:00:00.000Z",
+      "seconds": 194,
+      "ok": true
+     }
+    ]
+   },
+   {
+    "repo": "synth-platform",
+    "kind": "gate",
+    "host": "local",
+    "name": "pre-push",
+    "points": [
+     {
+      "at": "2026-10-08T10:00:00.000Z",
+      "seconds": 83,
+      "ok": true
+     },
+     {
+      "at": "2026-10-09T13:41:32.307Z",
+      "seconds": 63,
+      "ok": true
+     },
+     {
+      "at": "2026-10-10T17:23:04.615Z",
+      "seconds": 85,
+      "ok": true
+     },
+     {
+      "at": "2026-10-11T21:04:36.923Z",
+      "seconds": 80,
+      "ok": true
+     },
+     {
+      "at": "2026-10-13T00:46:09.230Z",
+      "seconds": 65,
+      "ok": true
+     },
+     {
+      "at": "2026-10-14T04:27:41.538Z",
+      "seconds": 75,
+      "ok": false
+     },
+     {
+      "at": "2026-10-15T08:09:13.846Z",
+      "seconds": 63,
+      "ok": true
+     },
+     {
+      "at": "2026-10-16T11:50:46.153Z",
+      "seconds": 67,
+      "ok": true
+     },
+     {
+      "at": "2026-10-17T15:32:18.461Z",
+      "seconds": 100,
+      "ok": true
+     },
+     {
+      "at": "2026-10-18T19:13:50.769Z",
+      "seconds": 95,
+      "ok": true
+     },
+     {
+      "at": "2026-10-19T22:55:23.076Z",
+      "seconds": 99,
+      "ok": true
+     },
+     {
+      "at": "2026-10-21T02:36:55.384Z",
+      "seconds": 98,
+      "ok": true
+     },
+     {
+      "at": "2026-10-22T06:18:27.692Z",
+      "seconds": 89,
+      "ok": true
+     },
+     {
+      "at": "2026-10-23T10:00:00.000Z",
+      "seconds": 83,
+      "ok": true
+     },
+     {
+      "at": "2026-10-24T13:41:32.307Z",
+      "seconds": 87,
+      "ok": true
+     },
+     {
+      "at": "2026-10-25T17:23:04.615Z",
+      "seconds": 97,
+      "ok": true
+     },
+     {
+      "at": "2026-10-26T21:04:36.923Z",
+      "seconds": 94,
+      "ok": true
+     },
+     {
+      "at": "2026-10-28T00:46:09.230Z",
+      "seconds": 105,
+      "ok": true
+     },
+     {
+      "at": "2026-10-29T04:27:41.538Z",
+      "seconds": 110,
+      "ok": true
+     },
+     {
+      "at": "2026-10-30T08:09:13.846Z",
+      "seconds": 89,
+      "ok": true
+     },
+     {
+      "at": "2026-10-31T11:50:46.153Z",
+      "seconds": 112,
+      "ok": true
+     },
+     {
+      "at": "2026-11-01T15:32:18.461Z",
+      "seconds": 73,
+      "ok": true
+     },
+     {
+      "at": "2026-11-02T19:13:50.769Z",
+      "seconds": 109,
+      "ok": true
+     },
+     {
+      "at": "2026-11-03T22:55:23.076Z",
+      "seconds": 103,
+      "ok": true
+     },
+     {
+      "at": "2026-11-05T02:36:55.384Z",
+      "seconds": 106,
+      "ok": true
+     },
+     {
+      "at": "2026-11-06T06:18:27.692Z",
+      "seconds": 82,
+      "ok": true
+     }
+    ]
+   },
+   {
+    "repo": "synth-platform",
+    "kind": "test",
+    "host": "ci",
+    "name": "api tests",
+    "points": [
+     {
+      "at": "2026-10-08T10:00:00.000Z",
+      "seconds": 41,
+      "ok": true
+     },
+     {
+      "at": "2026-10-09T22:00:00.000Z",
+      "seconds": 58,
+      "ok": true
+     },
+     {
+      "at": "2026-10-11T10:00:00.000Z",
+      "seconds": 57,
+      "ok": true
+     },
+     {
+      "at": "2026-10-12T22:00:00.000Z",
+      "seconds": 50,
+      "ok": true
+     },
+     {
+      "at": "2026-10-14T10:00:00.000Z",
+      "seconds": 54,
+      "ok": true
+     },
+     {
+      "at": "2026-10-15T22:00:00.000Z",
+      "seconds": 47,
+      "ok": true
+     },
+     {
+      "at": "2026-10-17T10:00:00.000Z",
+      "seconds": 52,
+      "ok": true
+     },
+     {
+      "at": "2026-10-18T22:00:00.000Z",
+      "seconds": 46,
+      "ok": true
+     },
+     {
+      "at": "2026-10-20T10:00:00.000Z",
+      "seconds": 48,
+      "ok": true
+     },
+     {
+      "at": "2026-10-21T22:00:00.000Z",
+      "seconds": 63,
+      "ok": true
+     },
+     {
+      "at": "2026-10-23T10:00:00.000Z",
+      "seconds": 60,
+      "ok": true
+     },
+     {
+      "at": "2026-10-24T22:00:00.000Z",
+      "seconds": 46,
+      "ok": true
+     },
+     {
+      "at": "2026-10-26T10:00:00.000Z",
+      "seconds": 68,
+      "ok": false
+     },
+     {
+      "at": "2026-10-27T22:00:00.000Z",
+      "seconds": 47,
+      "ok": true
+     },
+     {
+      "at": "2026-10-29T10:00:00.000Z",
+      "seconds": 44,
+      "ok": true
+     },
+     {
+      "at": "2026-10-30T22:00:00.000Z",
+      "seconds": 69,
+      "ok": true
+     },
+     {
+      "at": "2026-11-01T10:00:00.000Z",
+      "seconds": 51,
+      "ok": true
+     },
+     {
+      "at": "2026-11-02T22:00:00.000Z",
+      "seconds": 65,
+      "ok": true
+     },
+     {
+      "at": "2026-11-04T10:00:00.000Z",
+      "seconds": 49,
+      "ok": true
+     },
+     {
+      "at": "2026-11-05T22:00:00.000Z",
+      "seconds": 46,
+      "ok": true
+     }
+    ]
+   }
+  ],
+  "trends": [
+   {
+    "repo": "agentsynth",
+    "kind": "gate",
+    "name": "ci-local",
+    "recentMedian": 468,
+    "priorMedian": 396,
+    "changePct": 18.2,
+    "recentCount": 6,
+    "priorCount": 5
+   },
+   {
+    "repo": "agentsynth",
+    "kind": "build",
+    "name": "build-mac",
+    "recentMedian": 176,
+    "priorMedian": 201,
+    "changePct": -12.4,
+    "recentCount": 5,
+    "priorCount": 6
+   },
+   {
+    "repo": "synth-platform",
+    "kind": "gate",
+    "name": "pre-push",
+    "recentMedian": 77,
+    "priorMedian": 76,
+    "changePct": 1.3,
+    "recentCount": 7,
+    "priorCount": 6
+   }
+  ],
+  "redTime": {
+   "summary": {
+    "branches": 9,
+    "medianMinutes": 34,
+    "p90Minutes": 190,
+    "openNow": 1
+   },
+   "items": [
+    {
+     "repo": "agentsynth",
+     "branch": "fro1625-silent-patch",
+     "redMinutes": 210,
+     "start": "2026-11-04T09:00:00Z",
+     "end": null,
+     "open": true
+    },
+    {
+     "repo": "synth-platform",
+     "branch": "pro37-gates",
+     "redMinutes": 22,
+     "start": "2026-11-01T14:10:00Z",
+     "end": "2026-11-01T14:32:00Z",
+     "open": false
+    }
+   ]
+  },
+  "ci": {
+   "byRepo": [
+    {
+     "repo": "Diabl0269/agentsynth",
+     "workflow": "CI",
+     "runs": 58,
+     "medianSeconds": 612,
+     "p90Seconds": 1040,
+     "failRate": 0.14,
+     "medianQueueSeconds": 22
+    },
+    {
+     "repo": "Diabl0269/synth-platform",
+     "workflow": "CI",
+     "runs": 44,
+     "medianSeconds": 151,
+     "p90Seconds": 240,
+     "failRate": 0.07,
+     "medianQueueSeconds": 9
+    },
+    {
+     "repo": "Diabl0269/synth-platform",
+     "workflow": "Deploy",
+     "runs": 12,
+     "medianSeconds": 320,
+     "p90Seconds": 402,
+     "failRate": 0,
+     "medianQueueSeconds": 5
+    }
+   ]
+  }
+ },
+ "next": [
+  {
+   "id": "PRO41",
+   "title": "Metrics: schedule nightly collect",
+   "project": "productivity-dashboard",
+   "lane": "tools",
+   "priority": "high",
+   "epicId": "PRO36",
+   "epicTitle": "Dev metrics",
+   "score": 92,
+   "reasons": [
+    "epic in progress",
+    "first in lane",
+    "high priority"
+   ]
+  },
+  {
+   "id": "FRO1630",
+   "title": "Gesture claim guard for the mod popover",
+   "project": "agentsynth",
+   "lane": "app",
+   "priority": "medium",
+   "epicId": "FRO1500",
+   "epicTitle": "UI polish",
+   "score": 71,
+   "reasons": [
+    "epic in progress",
+    "oldest"
+   ]
+  },
+  {
+   "id": "MAR9",
+   "title": "Cut the March shorts",
+   "project": "marketing",
+   "lane": "content",
+   "priority": "low",
+   "epicId": null,
+   "epicTitle": null,
+   "score": 40,
+   "reasons": [
+    "due soon"
+   ]
+  }
+ ],
+ "insights": [
+  {
+   "kind": "bottleneck",
+   "title": "Review is where work waits",
+   "detail": "Tickets spend 740 h in review over 30 days, 67% of in-flight time. Median wait is 19 h, the oldest open review has waited 4 days.",
+   "value": "67%"
+  },
+  {
+   "kind": "slower",
+   "title": "Local gate got slower",
+   "detail": "agentsynth ci-local median 7m 48s, up 18% on the week before.",
+   "value": "+18%"
+  },
+  {
+   "kind": "faster",
+   "title": "Mac build is faster",
+   "detail": "build-mac median 2m 56s, down 12%.",
+   "value": "-12%"
+  },
+  {
+   "kind": "warn",
+   "title": "2 epics look forgotten",
+   "detail": "AGE12 has been idle for 19 days."
+  },
+  {
+   "kind": "good",
+   "title": "58% of sessions ran without a stall",
+   "detail": "Up from 46% four weeks ago.",
+   "value": "58%"
+  },
+  {
+   "kind": "info",
+   "title": "Backlog grows 2.4 tickets a week",
+   "detail": "63 open todo tickets."
+  },
+  {
+   "kind": "missing",
+   "title": "No gate logs for marketing",
+   "detail": "Add a gate log to see local build time. See docs/metrics.md."
+  }
+ ],
+ "sources": {
+  "sessions": {
+   "records": 64,
+   "newest": "2026-11-07T10:00:00.000Z"
+  },
+  "ci": {
+   "records": 114,
+   "newest": "2026-11-07T10:00:00.000Z"
+  },
+  "gates": {
+   "records": 66,
+   "newest": "2026-11-07T10:00:00.000Z"
+  },
+  "builds": {
+   "records": 0,
+   "newest": null
+  }
+ }
+}

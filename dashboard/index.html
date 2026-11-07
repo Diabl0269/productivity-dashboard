@@ -65,6 +65,7 @@
   <link rel="stylesheet" href="./styles/projects.css">
   <link rel="stylesheet" href="./styles/mobile.css">
   <link rel="stylesheet" href="./styles/run-plan.css">
+  <link rel="stylesheet" href="./styles/metrics.css">
 </head>
 <body>
   <header>
@@ -104,6 +105,7 @@
         <button id="runPlanTabBtn" role="tab" aria-selected="false" aria-controls="runPlanPanel">Plan</button>
         <button id="memoryTabBtn" role="tab" aria-selected="false" aria-controls="memoryPanel">Memory</button>
         <button id="settingsTabBtn" role="tab" aria-selected="false" aria-controls="settingsPanel">Settings</button>
+        <button id="metricsTabBtn" role="tab" aria-selected="false" aria-controls="metricsPanel">Metrics</button>
       </div>
       <div class="view-toggle" id="taskViewToggle" style="display: none;">
         <button id="boardViewBtn" class="active">Board</button>
@@ -359,6 +361,11 @@
   <!-- PLAN TAB PANEL -->
   <div class="tab-panel" id="runPlanPanel" role="tabpanel" aria-labelledby="runPlanTabBtn">
     <div class="rp-root" id="runPlanMain"></div>
+  </div>
+
+  <!-- METRICS TAB PANEL -->
+  <div class="tab-panel" id="metricsPanel" role="tabpanel" aria-labelledby="metricsTabBtn">
+    <div class="mc-root" id="metricsMain"></div>
   </div>
 
   <!-- PROJECTS TAB PANEL -->
