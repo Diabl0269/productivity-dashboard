@@ -19,6 +19,15 @@
       "updateCommand": "the command or steps that install a newer build of your app   (optional: Ready-for-review cards say whether the installed app has the change. buildCommit is {plist,key[,tag]} or {file} or {command}; the value is a commit sha, or with tag a version mapped to its release tag)"
     }
   ],
+  "metrics": {
+    "claudeProjects": ["~/.claude/projects/-Users-you-work*"],
+    "repos": [{ "repo": "owner/name", "workflows": ["CI"] }],
+    "gateLogs": [{ "repo": "name", "path": "/path/to/checkout/.git/gate-runs.jsonl" }],
+    "buildTimeLogs": [{ "repo": "name", "path": "/path/to/checkout/.git/ci-local-build-times.log" }],
+    "areas": { "lane-or-project-slug": "Area name" },
+    "stallMinutes": 20,
+    "forgottenEpicDays": 3
+  },
   "wipLimit": 3,
   "wipLimits": {
     "in-progress": 3

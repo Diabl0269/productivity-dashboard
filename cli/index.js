@@ -17,7 +17,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { print, printErr, die } from './lib/output.js';
 
-const GROUPS = ['tasks', 'mem', 'gaps', 'context', 'manifest', 'slack'];
+const GROUPS = ['tasks', 'mem', 'gaps', 'context', 'manifest', 'slack', 'metrics'];
 
 const USAGE = `ch <group> [args...]
 
@@ -28,6 +28,7 @@ Groups:
   context   — context/session artifacts
   manifest  — memory manifest operations
   slack     — query Slack messages (recent, channels, thread, reactions)
+  metrics   — development metrics (collect, flow, report, time, record)
 
 Options:
   --help    — show this help

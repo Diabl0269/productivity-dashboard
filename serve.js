@@ -763,6 +763,27 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Metrics tab: GET /api/metrics?since=30d&project=P -> payload (shared/metrics-payload.js);
+  // POST /api/metrics/collect -> run every collector once -> { ok, summary, lines } (409 while one runs).
+  if (url.pathname === '/api/metrics' || url.pathname === '/api/metrics/collect') {
+    const post = url.pathname.endsWith('/collect');
+    if (post !== (req.method === 'POST') || (!post && req.method !== 'GET')) {
+      res.writeHead(405, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'method not allowed' }));
+      return;
+    }
+    try {
+      const lib = await import('./cli/lib/metrics-api.js');
+      const out = post ? await lib.collectExclusive() : lib.metricsPayload(url.searchParams);
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(out));
+    } catch (e) {
+      res.writeHead(e.status || 500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
   // Review projects: POST /api/open-project {path} launches the newest configured build on a saved project
   if (url.pathname === '/api/open-project' && req.method === 'POST') {
     try {

@@ -68,6 +68,7 @@
  */
 
 import { parse } from '../lib/args.js';
+import cmdNext from './tasks-next.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
@@ -2661,6 +2662,7 @@ Subcommands:
   capture "<title>" (--project slug | --no-project) [--priority medium] [--json]
   plan [--pin T1] [--unpin T1] [--carry] [--json]
   runplan [--json]
+  next [--n 5] [--project P] [--json]   best ready tickets to start next (read-only)
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
          [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]...
@@ -2742,6 +2744,7 @@ const SUBCOMMANDS = {
   capture:       cmdCapture,
   plan:          cmdPlan,
   runplan:       cmdRunPlan,
+  next:          cmdNext,
   stale:         cmdStale,
   add:           cmdAdd,
   move:          cmdMove,
