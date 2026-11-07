@@ -32,6 +32,7 @@ const KINDS = ['gate', 'build', 'test', 'ci', 'other'];
 const TIMINGS = 'timings.jsonl';
 const SESSIONS = 'sessions.jsonl';
 const MAX_JOB_FETCHES = 100; // failed-run job lookups per collect, so collect stays fast
+const GH_PR_FIELDS = 'number,headRefName,state,mergedAt,closedAt';
 const GH_FIELDS = 'databaseId,workflowName,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt,attempt';
 
 /** "30d" / "12h" / "2w" -> ms (null when absent/invalid). */
@@ -89,6 +90,30 @@ export function ghRunList(repo, workflow) {
   return JSON.parse(out);
 }
 
+/** Default gh PR runner: returns parsed JSON array of PRs (any state). Throws when gh is missing/fails. */
+export function ghPrList(repo) {
+  const out = execFileSync('gh', ['pr', 'list', '--repo', repo, '--state', 'all', '--limit', '300', '--json', GH_PR_FIELDS], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
+  });
+  return JSON.parse(out);
+}
+
+/** Map `gh pr list` JSON rows to kind 'pr' records (used by redTime to end a red span when the PR closes). */
+export function prRecordsFromList(repo, prs) {
+  return (prs || []).map(p => ({
+    key: `gh-pr:${repo}:${p.number}`,
+    kind: 'pr',
+    repo,
+    branch: p.headRefName,
+    pr: p.number,
+    state: p.state,
+    mergedAt: p.mergedAt || null,
+    closedAt: p.closedAt || null,
+    at: p.mergedAt || p.closedAt || null,
+    source: 'gh',
+  }));
+}
+
 /** Names of the jobs that failed in one run. Throws when gh is missing/fails. */
 export function ghFailedJobs(repo, runId) {
   const out = execFileSync('gh', ['run', 'view', String(runId), '--repo', repo, '--json', 'jobs'], {
@@ -116,12 +141,18 @@ export function attachFailedJobs(records, { existing = [], fetcher = ghFailedJob
   return records;
 }
 
-/** Collect CI runs. `runner(repo, workflow)` and `jobFetcher(repo, runId)` are injectable for tests. */
-export function collectCi({ cfg, sinceMs = null, runner = ghRunList, existing = [], jobFetcher = ghFailedJobs, maxJobFetches = MAX_JOB_FETCHES } = {}) {
+/** Collect CI runs and PRs. `runner(repo, workflow)`, `prRunner(repo)` and `jobFetcher(repo, runId)` are injectable for tests. */
+export function collectCi({ cfg, sinceMs = null, runner = ghRunList, prRunner = ghPrList, existing = [], jobFetcher = ghFailedJobs, maxJobFetches = MAX_JOB_FETCHES } = {}) {
   const cutoff = sinceCutoff(sinceMs);
   const records = [];
+  const prRecords = [];
   const repos = new Set();
   for (const entry of cfg.repos) {
+    try {
+      prRecords.push(...prRecordsFromList(entry.repo, prRunner(entry.repo)));
+    } catch (e) {
+      printErr(`ci: ${entry.repo}: gh pr list failed, skipped (${String(e.message).split('\n')[0]})`);
+    }
     const workflows = entry.workflows && entry.workflows.length ? entry.workflows : [null];
     for (const wf of workflows) {
       try {
@@ -135,7 +166,7 @@ export function collectCi({ cfg, sinceMs = null, runner = ghRunList, existing = 
   }
   const kept = records.filter(r => !cutoff || Date.parse(r.at) >= cutoff);
   attachFailedJobs(kept, { existing, fetcher: jobFetcher, max: maxJobFetches });
-  return { records: kept, repos: repos.size };
+  return { records: [...kept, ...prRecords], repos: repos.size, prs: prRecords.length };
 }
 
 function readJsonl(file) {
@@ -208,10 +239,11 @@ export async function runCollect({ ci, gates, sessions, sinceMs = null } = {}) {
     if (!cfg.repos.length) {
       lines.push('ci: no repos configured (metrics.repos), skipped');
     } else {
-      const { records, repos } = collectCi({ cfg, sinceMs, existing: readRecords(TIMINGS) });
+      const { records, repos, prs } = collectCi({ cfg, sinceMs, existing: readRecords(TIMINGS) });
       upsertRecords(TIMINGS, records);
-      summary.ci = { runs: records.length, repos };
-      lines.push(`ci: ${records.length} runs from ${repos} repos`);
+      const runs = records.length - prs;
+      summary.ci = { runs, prs, repos };
+      lines.push(`ci: ${runs} runs, ${prs} PRs from ${repos} repos`);
     }
   }
   if (all || gates) {

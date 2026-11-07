@@ -86,6 +86,14 @@ CI records also carry `"runId"`, `"workflow"`, `"event"`, `"conclusion"`, `"queu
 (the run attempt, 1 unless re-run) and, on failed runs, `"failedJobs"` (names of the jobs that failed). A
 cancelled or skipped run has `"ok": null`.
 
+`ch metrics collect --ci` also stores one **pr record** per pull request of each configured repo
+(`gh pr list --state all`, newest 300), used only to end red time:
+```json
+{"key":"gh-pr:my-app:12","kind":"pr","repo":"my-app","branch":"fix/x","pr":12,"state":"MERGED",
+ "mergedAt":"ISO|null","closedAt":"ISO|null","at":"mergedAt or closedAt, null while open","source":"gh"}
+```
+pr records have no `seconds`: they never show in timing series, trends, fail rates or the gate/build/CI source counts.
+
 **Gate run log format** (what a repo's gate script appends; the importer maps it to `timings.jsonl`)
 ```json
 {"at":"ISO","name":"ci-local","worktree":"…","branch":"…","sha":"…","ok":true,"seconds":412,
@@ -212,7 +220,9 @@ cancelled or skipped run has `"ok": null`.
   working time; records collected before this field need `ch metrics collect --sessions` again.
 
 **CI**: run seconds = `updatedAt − startedAt`, queue = `startedAt − createdAt`. **Red time** for a
-PR branch: from the first failed run to the next successful run on that branch.
+PR branch: from the first failed run to the next successful run on that branch. If the branch's PR
+merged or closed first (the latest pr record for that repo and branch that closed after the first failure), the span
+ends there instead (`endedBy: merged|closed`, not open), so a merged branch is never "red now". No pr record: unchanged.
 - **Cancelled run**: conclusion `cancelled` or `skipped` (usually a newer push replaced it). Neither a
   pass nor a failure: excluded from fail rate, red time and duration trends, and counted as
   `cancelled` next to the run count. Fail rate = failed / finished (non-cancelled) runs.

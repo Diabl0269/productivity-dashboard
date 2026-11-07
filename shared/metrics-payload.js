@@ -113,7 +113,7 @@ function timingsBlock(all, inWindow, now) {
   }).sort((a, b) => JSON.stringify([a.repo, a.kind, a.name]) < JSON.stringify([b.repo, b.kind, b.name]) ? -1 : 1);
 
   const ciRuns = inWindow.filter(r => r.kind === 'ci');
-  const spans = redTime(ciRuns).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+  const spans = redTime(ciRuns, all.filter(r => r.kind === 'pr')).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   const mins = spans.map(s => s.redMinutes);
   const red = {
     summary: { branches: spans.length, medianMinutes: r1(median(mins)), p90Minutes: r1(percentile(mins, 90)), openNow: spans.filter(s => s.open).length },

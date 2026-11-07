@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { redTime, trend } from '../../shared/ci-metrics.js';
-import { ciRecordsFromRuns, collectCi, attachFailedJobs } from '../commands/metrics.js';
+import { ciRecordsFromRuns, collectCi, attachFailedJobs, prRecordsFromList } from '../commands/metrics.js';
+import { buildMetricsPayload } from '../../shared/metrics-payload.js';
 
 const run = (branch, at, ok, repo = 'o/r') => ({ repo, branch, at, ok });
 
@@ -75,7 +76,7 @@ test('collectCi uses the injected runner and survives a failing repo', () => {
     if (repo === 'o/bad') throw new Error('gh: not found');
     return GH;
   };
-  const { records, repos } = collectCi({ cfg, runner, jobFetcher: () => ['build'] });
+  const { records, repos } = collectCi({ cfg, runner, prRunner: () => [], jobFetcher: () => ['build'] });
   assert.equal(records.length, 2);
   assert.equal(repos, 1);
   assert.deepEqual(calls, [['o/r', 'CI'], ['o/bad', null]]);
@@ -114,4 +115,79 @@ test('attachFailedJobs reuses stored failedJobs, fetches only new failed runs, c
   attachFailedJobs(capped, { fetcher: (r, id) => { c2.push(id); return []; }, max: 2 });
   assert.equal(c2.length, 2);
   assert.deepEqual(capped.filter(r => r.failedJobs).length, 2);
+});
+
+const pr = (branch, extra = {}) => ({ repo: 'o/r', kind: 'pr', branch, pr: 1, state: 'MERGED', ...extra });
+const failA = [run('a', '2026-01-01T10:00:00Z', false), run('a', '2026-01-01T10:20:00Z', false)];
+
+test('redTime: a merged PR ends the open red span at mergedAt', () => {
+  const out = redTime(failA, [pr('a', { mergedAt: '2026-01-01T12:00:00Z', closedAt: '2026-01-01T12:00:00Z' })]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].open, false);
+  assert.equal(out[0].endedBy, 'merged');
+  assert.equal(out[0].end, '2026-01-01T12:00:00Z');
+  assert.equal(out[0].redMinutes, 120);
+});
+
+test('redTime: a closed (unmerged) PR ends the span at closedAt', () => {
+  const out = redTime(failA, [pr('a', { state: 'CLOSED', mergedAt: null, closedAt: '2026-01-01T11:00:00Z' })]);
+  assert.equal(out[0].open, false);
+  assert.equal(out[0].endedBy, 'closed');
+  assert.equal(out[0].redMinutes, 60);
+});
+
+test('redTime: a PR that closed before the failure, an open PR or another branch do not end the span', () => {
+  const out = redTime(failA, [
+    pr('a', { mergedAt: '2026-01-01T09:00:00Z' }),
+    pr('a', { state: 'OPEN', mergedAt: null, closedAt: null }),
+    pr('other', { mergedAt: '2026-01-01T12:00:00Z' }),
+  ]);
+  assert.equal(out[0].open, true);
+  assert.equal(out[0].endedBy, undefined);
+  assert.equal(out[0].redMinutes, 20);
+});
+
+test('redTime: no pr records behaves as before', () => {
+  assert.deepEqual(redTime(failA), redTime(failA, []));
+  assert.equal(redTime(failA)[0].open, true);
+});
+
+test('prRecordsFromList maps gh pr rows', () => {
+  const [m, o] = prRecordsFromList('o/r', [
+    { number: 7, headRefName: 'a', state: 'MERGED', mergedAt: '2026-01-01T12:00:00Z', closedAt: '2026-01-01T12:00:00Z' },
+    { number: 8, headRefName: 'b', state: 'OPEN', mergedAt: null, closedAt: null },
+  ]);
+  assert.deepEqual(m, { key: 'gh-pr:o/r:7', kind: 'pr', repo: 'o/r', branch: 'a', pr: 7, state: 'MERGED', mergedAt: '2026-01-01T12:00:00Z', closedAt: '2026-01-01T12:00:00Z', at: '2026-01-01T12:00:00Z', source: 'gh' });
+  assert.equal(o.at, null);
+});
+
+test('collectCi stores pr records from the injected runner and survives a failing pr runner', () => {
+  const cfg = { repos: [{ repo: 'o/r' }, { repo: 'o/bad' }] };
+  const prRunner = repo => {
+    if (repo === 'o/bad') throw new Error('gh: pr list failed');
+    return [{ number: 3, headRefName: 'a', state: 'MERGED', mergedAt: '2026-01-01T12:00:00Z', closedAt: '2026-01-01T12:00:00Z' }];
+  };
+  const res = collectCi({ cfg, runner: () => GH, prRunner, jobFetcher: () => [] });
+  assert.equal(res.prs, 1);
+  assert.deepEqual(res.records.filter(r => r.kind === 'pr').map(r => r.key), ['gh-pr:o/r:3']);
+  assert.equal(res.records.filter(r => r.kind === 'ci').length, 4); // both repos' runs kept
+  const failing = collectCi({ cfg: { repos: [{ repo: 'o/r' }] }, runner: () => GH, prRunner: () => { throw new Error('x'); }, jobFetcher: () => [] });
+  assert.equal(failing.prs, 0);
+  assert.equal(failing.records.length, 2);
+});
+
+test('payload: pr records end red now, and never appear in series, fail rate or source counts', () => {
+  const now = '2026-01-05T00:00:00Z';
+  const runs = [
+    { key: 'k1', kind: 'ci', repo: 'o/r', branch: 'a', workflow: 'CI', name: 'CI', at: '2026-01-01T10:00:00Z', seconds: 60, ok: false, conclusion: 'failure' },
+  ];
+  const prs = [{ key: 'gh-pr:o/r:1', kind: 'pr', repo: 'o/r', branch: 'a', pr: 1, state: 'MERGED', mergedAt: '2026-01-01T10:05:00Z', closedAt: '2026-01-01T10:05:00Z', at: '2026-01-01T10:05:00Z', source: 'gh' }];
+  const withPr = buildMetricsPayload({ doc: { sections: [] }, timings: [...runs, ...prs], now }).timings;
+  const without = buildMetricsPayload({ doc: { sections: [] }, timings: runs, now }).timings;
+  assert.equal(without.redTime.summary.openNow, 1);
+  assert.equal(withPr.redTime.summary.openNow, 0);
+  assert.equal(withPr.redTime.items[0].endedBy, 'merged');
+  assert.deepEqual(withPr.series, without.series);
+  assert.deepEqual(withPr.ci, without.ci);
+  assert.equal(buildMetricsPayload({ doc: { sections: [] }, timings: [...runs, ...prs], now }).sources.ci.records, 1);
 });

@@ -1,6 +1,6 @@
 /**
  * shared/ci-metrics.js (pure)
- *   redTime(runs)  -> [{repo, branch, redMinutes, start, end, open}]
+ *   redTime(runs, prs?) -> [{repo, branch, redMinutes, start, end, open, endedBy?}]
  *   trend(records, {now, days}) -> [{repo, kind, name, recentMedian, priorMedian, changePct, ...}]
  */
 
@@ -21,20 +21,35 @@ function median(xs) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-function span(r, start, end, open) {
+function span(r, start, end, open, endedBy) {
   return {
     repo: r.repo, branch: r.branch,
-    redMinutes: Math.round(((Date.parse(end) - Date.parse(start)) / 60000) * 10) / 10,
+    redMinutes: Math.max(0, Math.round(((Date.parse(end) - Date.parse(start)) / 60000) * 10) / 10),
     start, end, open,
+    ...(endedBy ? { endedBy } : {}),
   };
+}
+
+/** The latest PR for repo+branch that merged or closed after `start` (ISO), or null. `prs` are kind 'pr' timing records. */
+function closingPr(prs, repo, branch, start) {
+  let best = null;
+  for (const p of prs) {
+    if (p.repo !== repo || p.branch !== branch) continue;
+    const end = p.mergedAt || p.closedAt;
+    if (!end || !(Date.parse(end) > Date.parse(start))) continue;
+    if (!best || Date.parse(end) > Date.parse(best.end)) best = { end, endedBy: p.mergedAt ? 'merged' : 'closed' };
+  }
+  return best;
 }
 
 /**
  * Per repo+branch: from the first failed run to the next success on that branch.
- * A still-failing branch gives an open span ending at its last run. `runs` are
- * timing records ({repo, branch, at, ok}); `at` is when the run started.
+ * A still-failing branch gives an open span ending at its last run, unless the branch's PR merged or
+ * closed after the span started: then the span ends there (`open: false`, `endedBy: 'merged'|'closed'`).
+ * `runs` are timing records ({repo, branch, at, ok}); `at` is when the run started. `prs` are optional
+ * kind 'pr' records ({repo, branch, mergedAt, closedAt}).
  */
-export function redTime(runs) {
+export function redTime(runs, prs = []) {
   const groups = new Map();
   for (const r of runs || []) {
     if (r.ok == null || isUncounted(r) || !r.at || !r.branch) continue;
@@ -54,7 +69,10 @@ export function redTime(runs) {
         redStart = null;
       }
     }
-    if (redStart) out.push(span(list[0], redStart, list[list.length - 1].at, true));
+    if (redStart) {
+      const pr = closingPr(prs || [], list[0].repo, list[0].branch, redStart);
+      out.push(pr ? span(list[0], redStart, pr.end, false, pr.endedBy) : span(list[0], redStart, list[list.length - 1].at, true));
+    }
   }
   return out;
 }
