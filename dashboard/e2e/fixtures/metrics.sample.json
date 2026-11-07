@@ -7,8 +7,8 @@
  "filters": {
   "project": null,
   "projects": [
-   "agentsynth",
-   "synth-platform",
+   "my-app",
+   "my-api",
    "marketing",
    "dashboard"
   ],
@@ -80,7 +80,7 @@
   },
   "groups": {
    "project": {
-    "agentsynth": {
+    "my-app": {
      "counts": {
       "started": 24,
       "shipped": 20,
@@ -131,7 +131,7 @@
       "share": 0.58
      }
     },
-    "synth-platform": {
+    "my-api": {
      "counts": {
       "started": 14,
       "shipped": 12,
@@ -778,14 +778,14 @@
     "id": "AGE12",
     "title": "Nightly eval dashboard refresh",
     "lane": "content",
-    "project": "agentsynth",
+    "project": "my-app",
     "idleDays": 19
    },
    {
     "id": "PRO31",
     "title": "Pricing page experiments with a very long title that must wrap nicely on narrow screens",
     "lane": "web",
-    "project": "synth-platform",
+    "project": "my-api",
     "idleDays": 11
    }
   ]
@@ -1071,7 +1071,7 @@
  "timings": {
   "series": [
    {
-    "repo": "agentsynth",
+    "repo": "my-app",
     "kind": "gate",
     "host": "local",
     "name": "ci-local",
@@ -1189,7 +1189,7 @@
     ]
    },
    {
-    "repo": "agentsynth",
+    "repo": "my-app",
     "kind": "build",
     "host": "local",
     "name": "build-mac",
@@ -1287,7 +1287,7 @@
     ]
    },
    {
-    "repo": "synth-platform",
+    "repo": "my-api",
     "kind": "gate",
     "host": "local",
     "name": "pre-push",
@@ -1425,7 +1425,7 @@
     ]
    },
    {
-    "repo": "synth-platform",
+    "repo": "my-api",
     "kind": "test",
     "host": "ci",
     "name": "api tests",
@@ -1535,7 +1535,7 @@
   ],
   "trends": [
    {
-    "repo": "agentsynth",
+    "repo": "my-app",
     "kind": "gate",
     "name": "ci-local",
     "recentMedian": 468,
@@ -1545,7 +1545,7 @@
     "priorCount": 5
    },
    {
-    "repo": "agentsynth",
+    "repo": "my-app",
     "kind": "build",
     "name": "build-mac",
     "recentMedian": 176,
@@ -1555,7 +1555,7 @@
     "priorCount": 6
    },
    {
-    "repo": "synth-platform",
+    "repo": "my-api",
     "kind": "gate",
     "name": "pre-push",
     "recentMedian": 77,
@@ -1574,7 +1574,7 @@
    },
    "items": [
     {
-     "repo": "agentsynth",
+     "repo": "my-app",
      "branch": "fro1625-silent-patch",
      "redMinutes": 210,
      "start": "2026-11-04T09:00:00Z",
@@ -1582,7 +1582,7 @@
      "open": true
     },
     {
-     "repo": "synth-platform",
+     "repo": "my-api",
      "branch": "pro37-gates",
      "redMinutes": 22,
      "start": "2026-11-01T14:10:00Z",
@@ -1594,7 +1594,7 @@
   "ci": {
    "byRepo": [
     {
-     "repo": "Diabl0269/agentsynth",
+     "repo": "acme/my-app",
      "workflow": "CI",
      "runs": 58,
      "medianSeconds": 612,
@@ -1603,7 +1603,7 @@
      "medianQueueSeconds": 22
     },
     {
-     "repo": "Diabl0269/synth-platform",
+     "repo": "acme/my-api",
      "workflow": "CI",
      "runs": 44,
      "medianSeconds": 151,
@@ -1612,7 +1612,7 @@
      "medianQueueSeconds": 9
     },
     {
-     "repo": "Diabl0269/synth-platform",
+     "repo": "acme/my-api",
      "workflow": "Deploy",
      "runs": 12,
      "medianSeconds": 320,
@@ -1642,7 +1642,7 @@
   {
    "id": "FRO1630",
    "title": "Gesture claim guard for the mod popover",
-   "project": "agentsynth",
+   "project": "my-app",
    "lane": "app",
    "priority": "medium",
    "epicId": "FRO1500",
@@ -1677,7 +1677,7 @@
   {
    "kind": "slower",
    "title": "Local gate got slower",
-   "detail": "agentsynth ci-local median 7m 48s, up 18% on the week before.",
+   "detail": "my-app ci-local median 7m 48s, up 18% on the week before.",
    "value": "+18%"
   },
   {

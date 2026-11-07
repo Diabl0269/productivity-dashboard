@@ -25,12 +25,12 @@ async (page) => {
   // Range + project persist in the URL; Tasks facets keep their own params.
   await page.click('.mc-seg-btn[data-range="7d"]');
   await page.waitForFunction(() => location.search.includes('mrange=7d'));
-  await page.selectOption('#mcProject', 'agentsynth');
-  await page.waitForFunction(() => location.search.includes('mproject=agentsynth'));
+  await page.selectOption('#mcProject', 'my-app');
+  await page.waitForFunction(() => location.search.includes('mproject=my-app'));
   await page.reload();
   await page.waitForSelector('.mc-insight');
   ok(await page.getAttribute('.mc-seg-btn[data-range="7d"]', 'aria-pressed') === 'true', 'range restored from URL');
-  ok(await page.inputValue('#mcProject') === 'agentsynth', 'project restored from URL');
+  ok(await page.inputValue('#mcProject') === 'my-app', 'project restored from URL');
 
   await page.waitForSelector('#metricsMain[aria-busy="false"]');
   // Sortable table: Enter on a header button flips aria-sort, focus stays on it.
