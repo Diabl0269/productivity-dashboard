@@ -42,7 +42,7 @@ export function renderCost(d, h) {
     grid,
     tile('Total at API prices', fmtUSD(t.costUSD), `${t.sessions} sessions · ${fmtTokens(tokenSum(t.tokens))} tokens`, null, 'List-price dollars from token usage, main sessions plus helpers'),
     tile('Helpers', t.costUSD > 0 ? pct(t.helperCostUSD / t.costUSD) : '–', `${fmtUSD(t.helperCostUSD)} spent by subagents`, null, 'Share of the total spent by helper (subagent) transcripts'),
-    tile('Top model', top ? top.model.replace(/^claude-/, '') : '–', top ? `${fmtUSD(top.costUSD)} · ${pct(top.share)} of the total` : ' ', null, 'The model with the most spend in this range'),
+    tile('Top model', top ? top.model.replace(/^claude-/, '') : '–', t.byModel.length ? t.byModel.slice(0, 4).map(m => `${m.model.replace(/^claude-/, '')} ${pct(m.share)}`).join(' · ') : ' ', null, 'Spend by model in this range, largest first'),
   );
   if (c.plan) {
     grid.appendChild(tile('Month at API prices', fmtUSD(c.plan.apiEquivalentPer30d), `${c.plan.multiple}x your ${fmtUSD(c.plan.usdPerMonth)} plan`, null, 'This range scaled to 30 days, against planUSDPerMonth in config.json'));
@@ -57,12 +57,12 @@ export function renderCost(d, h) {
   const cal = !!(c.limits && c.limits.weekUSD > 0);
   const wk = (r) => (r.weekShare === undefined ? '' : `${(r.weekShare * 100).toFixed(1)}%`);
   const tickets = c.byTicket.map((r) => [
-    ticketLink(r.ticket), r.title || '', fmtUSD(r.costUSD), fmtTokens(r.tokens), String(r.toolCalls), String(r.sessions), pct(r.share), ...(cal ? [wk(r)] : []),
+    ticketLink(r.ticket), r.title || '', fmtUSD(r.costUSD), ...(cal ? [wk(r)] : []), pct(r.share), fmtTokens(r.tokens), String(r.toolCalls), String(r.sessions),
   ]);
   s.appendChild(card('Cost per ticket', 'Usage while the ticket was current in a session (a session on an epic switches ticket when it moves a child to in-progress), plus its helpers. Top 30. "% wk" is the share of an estimated week\'s plan limit, shown once a weekly-limit hit calibrates it.',
     table('Cost per ticket', [
-      { label: 'Ticket' }, { label: 'Title' }, { label: 'Cost', num: true }, { label: 'Tokens', num: true },
-      { label: 'Tool calls', num: true }, { label: 'Sessions', num: true }, { label: 'Share', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []),
+      { label: 'Ticket' }, { label: 'Title' }, { label: 'Cost', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Share', num: true },
+      { label: 'Tokens', num: true }, { label: 'Tool calls', num: true }, { label: 'Sessions', num: true },
     ], tickets)));
 
   if (c.byEpic.length) {
@@ -72,11 +72,11 @@ export function renderCost(d, h) {
         append(kids, k.own ? el('span', 'mc-cost-own', `own ${fmtUSD(k.costUSD)}`) : ticketLink(k.ticket), k.own ? null : el('span', 'mc-cost-amt', ` ${fmtUSD(k.costUSD)} `));
       }
       if (e.children.length > 8) kids.appendChild(el('span', 'mc-cost-amt', `+${e.children.length - 8} more`));
-      return [ticketLink(e.epic), e.title || '', fmtUSD(e.costUSD), pct(e.share), ...(cal ? [wk(e)] : []), kids];
+      return [ticketLink(e.epic), e.title || '', fmtUSD(e.costUSD), ...(cal ? [wk(e)] : []), pct(e.share), kids];
     });
     s.appendChild(card('Epics', 'An epic\'s cost is its own sessions plus every ticket under it.',
       table('Cost per epic', [
-        { label: 'Epic' }, { label: 'Title' }, { label: 'Cost', num: true }, { label: 'Share', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Children' },
+        { label: 'Epic' }, { label: 'Title' }, { label: 'Cost', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Share', num: true }, { label: 'Children' },
       ], epics)));
   }
 

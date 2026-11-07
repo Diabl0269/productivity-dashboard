@@ -157,16 +157,18 @@ test('applyHelpers adds helper spans to work, tagged by the ticket current at th
   assert.deepEqual(rec.intervals.work, [[ms(0), ms(5), 'EPC1'], [ms(5), ms(8), 'FRO7'], [ms(20), ms(35), 'FRO7']]);
 });
 
-test('typical: median share over tickets whose stay closed; open stays (forgotten tickets) do not count', () => {
+test('typical: average share over tickets whose stay closed; open stays (forgotten tickets) do not count', () => {
   const closedWith = (id, workMin) => ({ id, work: [[ms(60), ms(60 + workMin), id]] });
   const mk = (id) => tk(id, { history: [
     { at: at(0), event: 'created', to: 'todo' }, { at: at(60), event: 'moved', from: 'todo', to: 'in-progress' },
     { at: at(160), event: 'moved', from: 'in-progress', to: 'review' }] }); // 100 min stay
-  const sessions = [{ intervals: { work: [...[closedWith('CA1', 50), closedWith('CB1', 60), closedWith('CC1', 70)].flatMap(x => x.work)], waitUser: [] } }];
+  const sessions = [{ intervals: { work: [...[closedWith('CA1', 50), closedWith('CB1', 60), closedWith('CC1', 100)].flatMap(x => x.work)], waitUser: [] } }];
   const r = splitInProgress({ doc: doc([mk('CA1'), mk('CB1'), mk('CC1'), tk('OLD1')]), sessions, timings: [], now: NOW, since: at(0) });
   assert.equal(r.typical.n, 3);
-  assert.equal(r.typical.shares.working, 0.6); // median of 0.5, 0.6, 0.7
-  assert.equal(r.typical.shares.idle, 0.4);
+  assert.equal(r.typical.shares.working, 0.7); // mean of 0.5, 0.6, 1.0 (the median would be 0.6)
+  assert.equal(r.typical.shares.idle, 0.3);
+  const sh = r.typical.shares;
+  assert.ok(Math.abs(sh.working + sh.ci + sh.you + sh.idle - 1) < 0.002); // the shares add up to 100%
   assert.equal(r.typical.medianHours, 1.67);
   assert.ok(r.total.shares.idle > 0.7); // the forgotten open ticket dominates the total
   const none = splitInProgress({ doc: doc([tk('OLD1')]), sessions: [], timings: [], now: NOW, since: at(0) });

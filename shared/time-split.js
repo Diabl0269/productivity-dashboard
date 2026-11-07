@@ -155,14 +155,15 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
   rows.sort((x, y) => y.idleMs - x.idleMs || (x.ticket < y.ticket ? -1 : 1));
   const sum = total.workingMs + total.ciMs + total.youMs + total.idleMs;
   const groupOut = map => Object.fromEntries([...map].sort((x, y) => (x[0] < y[0] ? -1 : 1)).map(([k, v]) => [k, hoursOf(v)]));
-  const med = k => (typicalRows.length ? Math.round(median(typicalRows.map(r => r[k])) * 1000) / 1000 : null);
+  // Mean, not median, per category: per-category medians do not add up to 100%, means of shares do.
+  const avg = k => (typicalRows.length ? Math.round((typicalRows.reduce((n, r) => n + r[k], 0) / typicalRows.length) * 1000) / 1000 : null);
   return {
-    // The typical ticket: median per-category share over tickets whose in-progress stay closed in the window
+    // The typical ticket: average per-category share over tickets whose in-progress stay closed in the window
     // (open stays excluded, so tickets forgotten in progress do not decide it).
     typical: {
       n: typicalRows.length,
       medianHours: typicalRows.length ? r2(median(typicalRows.map(r => r.hours))) : null,
-      shares: { working: med('working'), ci: med('ci'), you: med('you'), idle: med('idle') },
+      shares: { working: avg('working'), ci: avg('ci'), you: avg('you'), idle: avg('idle') },
     },
     total: {
       ...hoursOf(total),

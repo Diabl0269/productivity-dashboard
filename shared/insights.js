@@ -39,7 +39,7 @@ function splitRule(sp, out) {
     out.push({
       weight: 75, kind: (s.idle || 0) >= 0.5 ? 'warn' : 'info', value: s.idle,
       title: `A typical ticket: nothing running ${pct(s.idle || 0)}% of its time in progress`,
-      detail: `A typical ticket (median of ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
+      detail: `A typical ticket (average share over ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
         + `All in-progress time together: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nothing running ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
         + `tickets forgotten in progress inflate that, see stale tickets.`
         + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),

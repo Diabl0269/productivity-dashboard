@@ -46,7 +46,7 @@ export function renderTimeSplit(f, h) {
   const totalBar = makeBar(`All in-progress time ${fmtHours(total.hours)}`, total.shares, (p) => fmtHours(total[p.hours]));
   const kids = [];
   if (hasTypical) {
-    kids.push(el('p', 'mc-card-sub', `A typical ticket (median share over ${ty.n} tickets that left in progress, median ${fmtHours(ty.medianHours)} there)`),
+    kids.push(el('p', 'mc-card-sub', `A typical ticket (average share over ${ty.n} tickets that left in progress, median ${fmtHours(ty.medianHours)} there)`),
       makeBar('A typical ticket', ty.shares, null), legend,
       el('p', 'mc-card-sub', `All in-progress time together: ${fmtHours(total.hours)}, working ${fmtPct(total.shares.working)}, CI ${fmtPct(total.shares.ci)}, waiting on you ${fmtPct(total.shares.you)}, nothing running ${fmtPct(total.shares.idle)}. Tickets forgotten in progress inflate this; they also show as stale tickets.`),
       totalBar);

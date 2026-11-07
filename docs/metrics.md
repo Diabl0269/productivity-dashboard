@@ -237,10 +237,10 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
 - **CI intervals**: a CI record (`kind: ci`) belongs to the ticket named in its branch (`fix/fro1610-menus` is
   FRO1610, same rule as the session ticket from a branch) and covers `[at, at + seconds]`. Cancelled runs count:
   CI was running. Runs on `main` or on a branch with no ticket id belong to no ticket.
-- **Typical ticket** (`typical`: `n`, `medianHours`, `shares`): the median of each ticket's share per category over
+- **Typical ticket** (`typical`: `n`, `medianHours`, `shares`): the average of each ticket's share per category over
   tickets whose in-progress stay closed in the window (open stays excluded, like the bottleneck's median closed stay),
   so tickets forgotten in progress do not decide it. The insight and the dashboard lead with it; `total` is secondary
-  and is inflated by forgotten tickets (they also show as stale tickets). Medians per category need not add up to 100%.
+  and is inflated by forgotten tickets (they also show as stale tickets). Averages of shares add up to 100% (per-category medians would not).
 - **Output**: `typical`, `total` (hours, `workingH`, `ciH`, `youH`, `idleH`, `shares`), `byTicket` (the 20 with the most
   nothing-running hours), `byProject`, `byArea`, `sessionsWithIntervals`. Without sessions or CI collected everything
   reads as nothing running, so the insight is skipped then and the tab says so.

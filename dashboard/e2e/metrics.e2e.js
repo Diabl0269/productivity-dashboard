@@ -23,6 +23,7 @@ async (page) => {
   ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').first().innerText()).includes('$88.40'), 'top ticket cost shown');
   ok((await page.locator('.mc-note:has-text("Limit hits")').innerText()).includes("a week's limit ≈ $295"), 'limits line with the calibrated week');
   ok((await page.locator('[aria-label="Cost per ticket"] thead th').allInnerTexts()).some((t) => /% wk/i.test(t)), '% wk column when calibrated');
+  ok(/% wk/i.test((await page.locator('[aria-label="Cost per ticket"] thead th').allInnerTexts())[3] || ''), '% wk sits right after Cost, visible without scrolling');
   ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').first().innerText()).includes('30.0%'), 'top ticket share of a week');
   ok((await page.locator('[aria-label="Cost per epic"] tbody tr').count()) === 1, 'epic row');
   ok((await page.locator('[aria-label="Cost per shipped ticket by model label"] tbody tr').count()) === 3, 'per-shipped rows by label');
