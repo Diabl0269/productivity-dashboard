@@ -286,6 +286,8 @@ export function loadTasksJson(text) {
       reviewOf: (typeof t.reviewOf === 'string' && t.reviewOf.trim()) ? t.reviewOf.trim() : null,
       result: isPlainObject(t.result) ? t.result : null,
       noChecksReason: (typeof t.noChecksReason === 'string' && t.noChecksReason.trim()) ? t.noChecksReason.trim() : null,
+      reviewEvidence: Array.isArray(t.reviewEvidence) ? t.reviewEvidence.filter(x => typeof x === 'string' && x) : [],
+      forcedReview: isPlainObject(t.forcedReview) ? t.forcedReview : null,
       section: sec.id,
     }));
   }
@@ -326,6 +328,8 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (typeof t.reviewOf === 'string' && t.reviewOf.trim()) row.reviewOf = t.reviewOf.trim();
         if (isPlainObject(t.result)) row.result = t.result;
         if (typeof t.noChecksReason === 'string' && t.noChecksReason.trim()) row.noChecksReason = t.noChecksReason.trim();
+        if (Array.isArray(t.reviewEvidence) && t.reviewEvidence.length) row.reviewEvidence = t.reviewEvidence;
+        if (isPlainObject(t.forcedReview)) row.forcedReview = t.forcedReview;
         const desc = (t.description || '').trim();
         if (desc) row.description = desc;
         if (t.parentId) row.parentId = t.parentId;

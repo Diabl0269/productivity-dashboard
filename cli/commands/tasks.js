@@ -27,6 +27,7 @@
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]...   (N = the Nth --check; path under $CH_HOME/evidence)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
+ *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *       needs at least one --check (or checks in --result-json, or checks already on the ticket) unless --no-checks "<reason>" says why
  *       there is nothing to check (stored as noChecksReason). Refuses a ticket with unchecked subtasks unless --force.
@@ -101,6 +102,7 @@ import {
   NOTE_KINDS, addReviewNote, editReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
 } from '../../shared/review-notes.js';
 import { planFiling, applyFiling } from '../../shared/review-filing.js';
+import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -528,6 +530,8 @@ function cmdGet(argv) {
   if (task.blocked) print(`  blocked: yes${task.waitingOn ? ` (waiting on: ${task.waitingOn})` : ''}`);
   else if (task.waitingOn) print(`  waiting on: ${task.waitingOn}`);
   if (Array.isArray(task.labels) && task.labels.length) print(`  labels: ${task.labels.join(', ')}`);
+  if (Array.isArray(task.reviewEvidence) && task.reviewEvidence.length) print(`  evidence: ${task.reviewEvidence.join(', ')}`);
+  if (task.forcedReview?.reason) print(`  forced review: ${task.forcedReview.reason} (${String(task.forcedReview.at || '').slice(0, 10)})`);
   if (Array.isArray(task.links) && task.links.length) {
     task.links.forEach((l, i) => {
       print(`  link ${i + 1}: ${l.label ? `${l.label} — ` : ''}${l.url}`);
@@ -918,7 +922,7 @@ function reviewCheckItems(base, values) {
  * Everything is inline flags so a cloud session can file it as one argv.
  */
 function cmdReview(argv) {
-  const { values, positionals } = parse(argv, {
+  const { values, positionals } = parse(splitForceReason(argv), {
     shipped:       { type: 'string', multiple: true },
     left:          { type: 'string', multiple: true },
     tests:         { type: 'string', multiple: true },
@@ -939,10 +943,17 @@ function cmdReview(argv) {
     'design-link': { type: 'string' },
     'no-checks':   { type: 'string' },
     force:         { type: 'boolean' },
+    'force-reason': { type: 'string' },
+    evidence:      { type: 'string', multiple: true },
     'allow-check-owner': { type: 'boolean' },
     'clear-unverified':   { type: 'boolean' },
     'resolve-unverified': { type: 'string' },
   });
+  // `review --force T1 ...`: the id came right after a bare --force.
+  if (!positionals.length && values['force-reason'] !== undefined) {
+    positionals.push(values['force-reason']);
+    delete values['force-reason'];
+  }
 
   if (values.rollup) {
     // One-off tidy: children of an epic still sitting in Ready for review fold into their epic.
@@ -1035,7 +1046,24 @@ function cmdReview(argv) {
     }
   }
 
+  // PRO37: a ui/audio ticket reaches review only with its proofs done.
+  const evidenceRels = (values.evidence || []).map(v => evidenceRelOrDie(v, 'file', '--evidence'));
+  const forceReason = values['force-reason'] === undefined ? null : values['force-reason'].trim();
+  const unverifiedAfter = (result || task.result)?.unverified || [];
+  const proofProblem = proofGateProblem({
+    task,
+    epic: epicOf(doc, task)?.task,
+    unverified: unverifiedAfter,
+    hasEvidence: evidenceRels.length > 0 || (task.reviewEvidence || []).length > 0
+      || checkItems.some(c => c.project || c.video || c.audio),
+  });
+  if (proofProblem && !forceReason) {
+    die(values.force && values['force-reason'] !== undefined ? `--force needs a reason: --force "<why>"\n${proofProblem}` : proofProblem);
+  }
+
   if (result) task.result = result;
+  if (evidenceRels.length) task.reviewEvidence = [...new Set([...(task.reviewEvidence || []), ...evidenceRels])];
+  if (proofProblem && forceReason) task.forcedReview = { reason: forceReason, at: new Date().toISOString() };
   if (noChecksReason && !checkTexts.length && !(task.checks || []).length) task.noChecksReason = noChecksReason;
   applyUnverifiedEdits(task, values);
   const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
@@ -2637,6 +2665,10 @@ Subcommands:
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
          [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]...
          [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
+         [--evidence <path>]...   a saved proof file under $CH_HOME/evidence (screenshot, AX dump, render, run log)
+         ui/audio tickets (label on the ticket or its epic): each --unverified line starts with taste: / hardware: /
+         outside: / consent:, and the review needs --evidence (or a check with a file attached) or a tagged
+         --unverified line; --force "<why>" overrides and records the reason on the ticket
          [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--json]
          --check-project / --check-video / --check-audio attach a saved .agsproj / short .mp4 / .wav (or .mp3 .m4a .ogg .flac) to the Nth --check of this call (Open project / Play video / audio player
          on the Plan page); the path is absolute or relative to $CH_HOME/evidence, must lie inside it and exist; --result-json checks may be
