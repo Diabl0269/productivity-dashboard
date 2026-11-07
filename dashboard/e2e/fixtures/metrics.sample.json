@@ -798,7 +798,84 @@
     "idleDays": 5.5
    }
   ],
-  "staleDays": 3
+  "staleDays": 3,
+  "inProgressSplit": {
+   "total": {
+    "hours": 372,
+    "workingH": 58.4,
+    "ciH": 31.2,
+    "youH": 74.5,
+    "idleH": 207.9,
+    "shares": {
+     "working": 0.157,
+     "ci": 0.084,
+     "you": 0.2,
+     "idle": 0.559
+    }
+   },
+   "byTicket": [
+    {
+     "ticket": "AGE12",
+     "title": "Nightly eval dashboard refresh",
+     "open": true,
+     "hours": 120.5,
+     "workingH": 4.2,
+     "ciH": 1.1,
+     "youH": 9.8,
+     "idleH": 105.4
+    },
+    {
+     "ticket": "PRO31",
+     "title": "Pricing page experiments with a very long title that must wrap nicely on narrow screens",
+     "open": true,
+     "hours": 64,
+     "workingH": 6.5,
+     "ciH": 2.4,
+     "youH": 12.1,
+     "idleH": 43
+    },
+    {
+     "ticket": "T-12",
+     "title": "Fix the flaky export",
+     "open": false,
+     "hours": 9.3,
+     "workingH": 3.9,
+     "ciH": 3.1,
+     "youH": 0.8,
+     "idleH": 1.5
+    }
+   ],
+   "byProject": {
+    "my-app": {
+     "hours": 180,
+     "workingH": 30,
+     "ciH": 15,
+     "youH": 35,
+     "idleH": 100
+    }
+   },
+   "byArea": {
+    "other": {
+     "hours": 372,
+     "workingH": 58.4,
+     "ciH": 31.2,
+     "youH": 74.5,
+     "idleH": 207.9
+    }
+   },
+   "sessionsWithIntervals": 42,
+   "tickets": 24,
+   "typical": {
+    "n": 38,
+    "medianHours": 6.5,
+    "shares": {
+     "working": 0.41,
+     "ci": 0.18,
+     "you": 0.12,
+     "idle": 0.29
+    }
+   }
+  }
  },
  "sessions": {
   "summary": {
@@ -1075,6 +1152,171 @@
     "sessions": 3,
     "wallHours": 5.5,
     "activeHours": 2.2
+   }
+  ]
+ },
+ "costs": {
+  "total": {
+   "costUSD": 412.5,
+   "tokens": {
+    "input": 9000000,
+    "output": 2100000,
+    "cacheRead": 610000000,
+    "cacheWrite": 38000000
+   },
+   "sessions": 64,
+   "helperCostUSD": 131.2,
+   "byModel": [
+    {
+     "model": "claude-opus-5-5",
+     "costUSD": 301.4,
+     "share": 0.731
+    },
+    {
+     "model": "claude-sonnet-5-5",
+     "costUSD": 98.1,
+     "share": 0.238
+    },
+    {
+     "model": "claude-haiku-4-5",
+     "costUSD": 13.0,
+     "share": 0.032
+    }
+   ]
+  },
+  "byTicket": [
+   {
+    "ticket": "FRO1040",
+    "title": "Synthetic audio feature",
+    "type": "task",
+    "labels": [
+     "model:opus"
+    ],
+    "state": "review",
+    "costUSD": 88.4,
+    "tokens": 91000000,
+    "toolCalls": 1240,
+    "sessions": 3,
+    "activeMin": 310,
+    "share": 0.214,
+    "weekShare": 0.3
+   },
+   {
+    "ticket": "PRO40",
+    "title": "Dev metrics tab",
+    "type": "task",
+    "labels": [
+     "model:sonnet"
+    ],
+    "state": "done",
+    "costUSD": 42.1,
+    "tokens": 52000000,
+    "toolCalls": 610,
+    "sessions": 2,
+    "activeMin": 178,
+    "share": 0.102
+   },
+   {
+    "ticket": "FRO1625",
+    "title": "Silent patch guard",
+    "type": "task",
+    "labels": [],
+    "state": "done",
+    "costUSD": 12.75,
+    "tokens": 14000000,
+    "toolCalls": 205,
+    "sessions": 2,
+    "activeMin": 61,
+    "share": 0.031
+   }
+  ],
+  "byEpic": [
+   {
+    "epic": "FRO162",
+    "title": "Synthetic epic",
+    "costUSD": 140.2,
+    "share": 0.34,
+    "children": [
+     {
+      "ticket": "FRO1040",
+      "title": "Synthetic audio feature",
+      "costUSD": 88.4,
+      "own": false
+     },
+     {
+      "ticket": "FRO1625",
+      "title": "Silent patch guard",
+      "costUSD": 12.75,
+      "own": false
+     },
+     {
+      "ticket": "FRO162",
+      "title": "Synthetic epic",
+      "costUSD": 39.05,
+      "own": true
+     }
+    ]
+   }
+  ],
+  "perShipped": [
+   {
+    "label": "model:opus",
+    "n": 3,
+    "medianUSD": 31.5,
+    "p75USD": 52.0,
+    "totalUSD": 140.3
+   },
+   {
+    "label": "model:sonnet",
+    "n": 4,
+    "medianUSD": 9.2,
+    "p75USD": 14.1,
+    "totalUSD": 41.8
+   },
+   {
+    "label": "none",
+    "n": 2,
+    "medianUSD": 6.0,
+    "p75USD": 7.5,
+    "totalUSD": 12.0
+   }
+  ],
+  "plan": {
+   "usdPerMonth": 200,
+   "apiEquivalentPer30d": 412.5,
+   "multiple": 2.1
+  },
+  "limits": {
+   "sessionHits": 4,
+   "weeklyHits": 2,
+   "lostHours": 6.5,
+   "weekUSD": 294.67,
+   "sessionWindowUSD": 41.2,
+   "nWeekly": 2,
+   "nSession": 3
+  }
+ },
+ "estimates": {
+  "sampleWindowDays": 90,
+  "samples": 23,
+  "byLabel": [
+   {
+    "label": "model:sonnet",
+    "n": 14,
+    "medianUSD": 3.9,
+    "p75USD": 8.6
+   },
+   {
+    "label": "model:opus",
+    "n": 6,
+    "medianUSD": 21.4,
+    "p75USD": 33.1
+   },
+   {
+    "label": "none",
+    "n": 3,
+    "medianUSD": 2.2,
+    "p75USD": 4.0
    }
   ]
  },

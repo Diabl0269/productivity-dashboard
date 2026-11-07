@@ -92,5 +92,6 @@ export function metricsConfig() {
     areas: m.areas && typeof m.areas === 'object' ? m.areas : {},
     stallMinutes: Number.isFinite(m.stallMinutes) ? m.stallMinutes : 20,
     forgottenEpicDays: Number.isFinite(m.forgottenEpicDays) ? m.forgottenEpicDays : 3,
+    planUSDPerMonth: Number.isFinite(m.planUSDPerMonth) && m.planUSDPerMonth > 0 ? m.planUSDPerMonth : null,
   };
 }

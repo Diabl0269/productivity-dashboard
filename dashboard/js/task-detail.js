@@ -10,6 +10,7 @@ import { createClaudeLaunchButton } from './claude-launch.js';
 import { todayStr } from './tasks-parser.js';
 import { deleteTask, moveTask } from './tasks-board.js';
 import { showStatus } from './state.js';
+import { mountTicketCost } from './ticket-cost-ui.js';
 import {
   normalizeTicketTypes,
   DEFAULT_TICKET_TYPE_ID,
@@ -462,6 +463,12 @@ function buildFocusStrip(task) {
   if (task.estimateMinutes) bits.push(`<span class="td-focus-chip">Est ${escapeHtml(formatEstimate(task.estimateMinutes))}</span>`);
   if (task.loggedMinutes) bits.push(`<span class="td-focus-chip">Logged ${escapeHtml(formatEstimate(task.loggedMinutes))}</span>`);
   chips.innerHTML = bits.join('');
+  if (task.taskId) {
+    const costChip = document.createElement('span');
+    costChip.className = 'td-focus-chip td-focus-cost';
+    chips.appendChild(costChip);
+    mountTicketCost(costChip, task.taskId);
+  }
 
   const timerSlot = document.createElement('div');
   timerSlot.className = 'td-focus-timer';

@@ -2419,3 +2419,6 @@
 @media (prefers-reduced-motion: reduce) {
   .td-note-thumbs, .td-note-thumb { animation: none; }
 }
+
+/* Likely cost / cost so far chip (ticket-cost-ui.js): a sentence, not a label */
+.td-focus-chip.td-focus-cost { text-transform: none; }

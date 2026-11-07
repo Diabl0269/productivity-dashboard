@@ -146,6 +146,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Cost estimate endpoints (synthetic): every ticket "likely $4, up to $9"; every epic ~$40 left.
+  if (url.pathname === '/api/metrics/ticket-cost' && req.method === 'GET') {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ state: 'todo', cost: null, estimate: { typicalUSD: 4, highUSD: 9, n: 23, basis: 'model:sonnet · task' } }));
+    return;
+  }
+  if (url.pathname === '/api/metrics/estimates' && req.method === 'GET') {
+    const out = {};
+    for (const id of (url.searchParams.get('ids') || '').split(',').filter(Boolean)) {
+      out[id] = { typicalUSD: 40, highUSD: 70, n: 3, basis: 'sum of 3 open tickets', spentUSD: 2 };
+    }
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(out));
+    return;
+  }
+
   // Health / proof this is the mock server
   if (url.pathname === '/api/e2e-info') {
     res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });

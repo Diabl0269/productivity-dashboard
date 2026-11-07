@@ -6,6 +6,10 @@ import { flowMetrics, median, percentile } from './flow-metrics.js';
 import { rankReadyTickets } from './next-ticket.js';
 import { redTime, trend, isUncounted, isFlakyRerun } from './ci-metrics.js';
 import { buildInsights } from './insights.js';
+import { costsBlock } from './cost-metrics.js';
+import { limitsBlock } from './plan-share.js';
+import { estimatorFor, estimatesSummary } from './cost-estimate.js';
+import { splitInProgress } from './time-split.js';
 
 const DAY = 24 * 3600 * 1000;
 const toMs = v => {
@@ -43,6 +47,8 @@ function sessionsBlock(list, sinceMs, untilMs) {
   for (const s of list) for (const [k, v] of Object.entries(s.toolWaitTools || {})) toolWaitTools[k] = (toolWaitTools[k] || 0) + v;
   const missedWakeOrigins = {};
   for (const s of list) for (const [k, v] of Object.entries(s.missedWakeOrigins || {})) missedWakeOrigins[k] = (missedWakeOrigins[k] || 0) + v;
+  const missedWakeCauses = {};
+  for (const s of list) for (const [k, v] of Object.entries(s.missedWakeCauses || {})) missedWakeCauses[k] = (missedWakeCauses[k] || 0) + v;
   const replies = list.flatMap(s => s.replyWaits || []);
   const summary = {
     n: list.length,
@@ -57,6 +63,7 @@ function sessionsBlock(list, sinceMs, untilMs) {
     questionWaits: sum(list, s => s.questionWaits),
     missedWakes: sum(list, s => s.missedWakes),
     missedWakeOrigins,
+    missedWakeCauses,
     helperWaits: sum(list, s => s.helperWaits),
     missedWakeSessions: list.filter(s => s.missedWakes > 0).length,
     toolWaitTools,
@@ -110,7 +117,7 @@ function timingsBlock(all, inWindow, now) {
   }).sort((a, b) => JSON.stringify([a.repo, a.kind, a.name]) < JSON.stringify([b.repo, b.kind, b.name]) ? -1 : 1);
 
   const ciRuns = inWindow.filter(r => r.kind === 'ci');
-  const spans = redTime(ciRuns).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+  const spans = redTime(ciRuns, all.filter(r => r.kind === 'pr')).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
   const mins = spans.map(s => s.redMinutes);
   const red = {
     summary: { branches: spans.length, medianMinutes: r1(median(mins)), p90Minutes: r1(percentile(mins, 90)), openNow: spans.filter(s => s.open).length },
@@ -147,7 +154,7 @@ function timingsBlock(all, inWindow, now) {
  * @param {{doc:object, sessions?:object[], timings?:object[], cfg?:object, now?:Date|string|number,
  *   since?:Date|string|number, project?:string}} args
  */
-export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}, now = new Date(), since, project } = {}) {
+export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}, now = new Date(), since, project, costLimit } = {}) {
   const nowMs = toMs(now) ?? Date.now();
   const sinceMs = toMs(since) ?? nowMs - 30 * DAY;
   const inRange = ms => ms !== null && ms >= sinceMs && ms <= nowMs;
@@ -158,10 +165,14 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     for (let cur = t, i = 0; cur && i < 10; cur = byId.get(cur.parentId), i++) if (cur.lane) return cur.lane;
     return 'unassigned';
   };
+  const sectionOf = new Map();
+  for (const sec of doc?.sections || []) for (const t of sec.tasks || []) if (t?.id && !sectionOf.has(t.id)) sectionOf.set(t.id, sec.id);
   const projects = [...new Set([...byId.values()].map(t => t.project).filter(Boolean))].sort();
   const lanes = [...new Set([...byId.values()].map(laneOf))].sort();
 
   const flow = flowMetrics(doc, { now: nowMs, since: sinceMs, project, areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays });
+  // Where in-progress time goes (sessions are not window-filtered: a session that began earlier still counts inside a stay).
+  flow.inProgressSplit = splitInProgress({ doc, sessions, timings, now: nowMs, since: sinceMs, project, areas: cfg.areas });
 
   const sess = (sessions || []).filter(s => {
     if (!inRange(toMs(s.start))) return false;
@@ -169,6 +180,10 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     const t = s.ticket ? byId.get(s.ticket) : null;
     return !!t && t.project === project;
   });
+  // Calibrate on every session in the data, not only this window and project.
+  const limits = limitsBlock({ sessions: sessions || [], sinceMs, nowMs });
+  const estimator = estimatorFor({ doc, sessions, cfg, nowMs, project });
+  const next = rankReadyTickets(doc, { n: 8, project, now: nowMs }).map(t => ({ ...t, estimate: estimator.estimate(t.id) }));
   const timingsAll = timings || [];
   const timingsWin = timingsAll.filter(r => inRange(toMs(r.at)));
 
@@ -178,8 +193,10 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     filters: { project: project || null, projects, lanes },
     flow,
     sessions: sessionsBlock(sess, sinceMs, nowMs),
+    costs: { ...costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit, weekUSD: limits.weekUSD }), limits },
+    estimates: estimatesSummary(estimator),
     timings: timingsBlock(timingsAll, timingsWin, nowMs),
-    next: rankReadyTickets(doc, { n: 8, project, now: nowMs }),
+    next,
     sources: {
       sessions: { records: (sessions || []).length, newest: newest(sessions || [], s => s.start) },
       ci: { records: timingsAll.filter(r => r.kind === 'ci').length, newest: newest(timingsAll.filter(r => r.kind === 'ci'), r => r.at) },

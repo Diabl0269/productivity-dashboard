@@ -26,6 +26,44 @@ function fmtSecondsPair(a, b) {
 }
 const fmtMinutes = m => (m < 90 ? `${Math.round(m)} min` : fmtHours(m / 60));
 
+/** Where in-progress time went: skipped without session or CI data (everything would read as "nothing running"). */
+function splitRule(sp, out) {
+  const t = sp?.total;
+  if (!t || !(t.hours >= 1) || !(t.workingH + t.ciH + t.youH > 0)) return;
+  const ty = sp.typical;
+  if (ty && ty.n > 0) {
+    const s = ty.shares;
+    const bits = [['working', s.working], ['CI', s.ci], ['waiting on you', s.you], ['nothing running', s.idle]]
+      .map(([k, v]) => `${k} ${pct(v || 0)}%`).join(', ');
+    const top = sp.byTicket?.[0];
+    out.push({
+      weight: 75, kind: (s.idle || 0) >= 0.5 ? 'warn' : 'info', value: s.idle,
+      title: `A typical ticket: nothing running ${pct(s.idle || 0)}% of its time in progress`,
+      detail: `A typical ticket (average share over ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
+        + `All in-progress time together: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nothing running ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
+        + `tickets forgotten in progress inflate that, see stale tickets.`
+        + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
+    });
+    return;
+  }
+  const sh = t.shares || {};
+  const idle = pct(sh.idle || 0);
+  const parts = [
+    ['working', t.workingH, sh.working], ['waiting on CI', t.ciH, sh.ci], ['waiting on you', t.youH, sh.you],
+  ];
+  const big = parts.slice().sort((a, b) => b[1] - a[1])[0];
+  const notes = [];
+  if (big[1] > 0) notes.push(`The biggest part besides that is ${big[0]}: ${fmtHours(big[1])} (${pct(big[2] || 0)}%).`);
+  if (t.workingH < t.ciH) notes.push('Waiting on CI is longer than the sessions spent working.');
+  const top = sp.byTicket?.[0];
+  out.push({
+    weight: 75, kind: sh.idle >= 0.5 ? 'warn' : 'info', value: sh.idle,
+    title: `Nothing was running for ${idle}% of in-progress time`,
+    detail: `Of ${fmtHours(t.hours)} tickets spent in progress: working ${fmtHours(t.workingH)}, waiting on CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nothing running ${fmtHours(t.idleH)} (${idle}%). ${notes.join(' ')}`
+      + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
+  });
+}
+
 function flowRules(flow, out) {
   if (!flow) return;
   const b = flow.bottleneck;
@@ -62,6 +100,7 @@ function flowRules(flow, out) {
       detail: 'Median time in To do versus in progress, for tickets that finished in the window.',
     });
   }
+  splitRule(flow.inProgressSplit, out);
   const growth = flow.backlog?.growthPerWeek;
   if (typeof growth === 'number' && Math.abs(growth) >= 1) {
     const grows = growth > 0;
@@ -130,10 +169,14 @@ function sessionRules(sessions, out) {
   if (s.missedWakeSessions > 0) {
     const o = s.missedWakeOrigins || {};
     const n = k => o[k] || 0;
+    const cz = s.missedWakeCauses || {};
+    const labels = { 'usage-limit': 'usage limit', 'api-error': 'API error', 'app-closed': 'app closed', interrupt: 'interrupted by you', unknown: 'no cause found' };
+    const causes = Object.keys(labels).filter(k => cz[k] > 0).map(k => `${cz[k]} ${labels[k]}`);
+    const why = causes.length ? ` The ${plural(n('tool-result'), 'mid-turn stop')}: ${causes.join(', ')}.` : '';
     out.push({
       weight: 95, kind: 'warn', value: s.missedWakeSessions,
       title: `${plural(s.missedWakeSessions, 'session')} got stuck 20+ min (${n('tool-result')} stopped mid-turn, ${n('task-notification') + n('peer') + n('human')} unanswered)`,
-      detail: `${plural(n('tool-result'), 'time')} a session stopped right after a tool finished (interrupted, an API error or a usage limit), and ${plural(n('task-notification'), 'notification')}, ${plural(n('peer'), 'peer message')} and ${plural(n('human'), 'prompt')} of yours went unanswered: each sat 20 minutes or more until something else woke the session. This is the stuck-session signal.`,
+      detail: `${plural(n('tool-result'), 'time')} a session stopped right after a tool finished (a usage limit, an API error, the app closing, you interrupting it, or no sign of why; a tool still running when the silence ended is a tool wait, not this), and ${plural(n('task-notification'), 'notification')}, ${plural(n('peer'), 'peer message')} and ${plural(n('human'), 'prompt')} of yours went unanswered: each sat 20 minutes or more until something else woke the session. This is the stuck-session signal.${why}`,
     });
   }
   if (s.silentSessions > 0) {
@@ -153,6 +196,46 @@ function sessionRules(sessions, out) {
       detail: `Time from a finished turn to your next prompt. Total waiting on you: ${fmtHours(s.waitUserHours || 0)}, a median of ${fmtMinutes(s.medianActiveMin ?? 0)} of active work per session.`,
     });
   }
+}
+
+const usd = n => `$${n >= 100 ? Math.round(n) : n.toFixed(2)}`;
+
+/** Calibrated "a week's limit" sentence, or why there is none; shared by the insight, the CLI and the tab. */
+export function weekLimitText(l) {
+  return l && l.weekUSD > 0
+    ? `A week's limit is about ${usd(l.weekUSD)} at API prices (from ${plural(l.nWeekly, 'weekly-limit hit')}).`
+    : 'Not calibrated yet: no weekly-limit hit in the data.';
+}
+
+/** Usage-limit hits in the window: how many, the time lost and the calibrated week. */
+function limitRules(l, out) {
+  const hits = (l?.sessionHits || 0) + (l?.weeklyHits || 0);
+  if (!(hits > 0)) return;
+  out.push({
+    weight: 85, kind: 'warn', value: hits,
+    title: `Hit a usage limit ${plural(hits, 'time')}, losing ${fmtHours(l.lostHours || 0)}`,
+    detail: `${plural(l.sessionHits, 'session-limit hit')} and ${plural(l.weeklyHits, 'weekly-limit hit')} in the window; the lost time runs from a hit to when work resumed or the limit reset. ${weekLimitText(l)}`,
+  });
+}
+
+/** One cost finding: what cost most in the window (an epic when there is one, else a ticket). */
+function costRules(costs, out) {
+  limitRules(costs?.limits, out);
+  const total = costs?.total;
+  if (!total || !(total.costUSD > 0)) return;
+  const epic = costs.byEpic?.[0];
+  const top = costs.byTicket?.[0];
+  const lead = epic
+    ? `${epic.epic} cost the most: ${usd(epic.costUSD)}, ${pct(epic.share)}% of the window's ${usd(total.costUSD)}`
+    : top ? `${top.ticket} cost the most: ${usd(top.costUSD)}, ${pct(top.share)}% of the window's ${usd(total.costUSD)}` : `Claude work cost ${usd(total.costUSD)} at API prices`;
+  const plan = costs.plan
+    ? ` At this pace a month is about ${usd(costs.plan.apiEquivalentPer30d)} at API prices, ${costs.plan.multiple}x your ${usd(costs.plan.usdPerMonth)} plan.`
+    : '';
+  out.push({
+    weight: 78, kind: 'info', value: total.costUSD,
+    title: lead,
+    detail: `Dollars at API list prices, from token usage across ${plural(total.sessions, 'session')}; helpers made up ${usd(total.helperCostUSD)} of it.${plan}`,
+  });
 }
 
 function timingRules(timings, out) {
@@ -207,6 +290,7 @@ export function buildInsights(p) {
   const out = [];
   flowRules(p?.flow, out);
   sessionRules(p?.sessions, out);
+  costRules(p?.costs, out);
   timingRules(p?.timings, out);
   for (const [src, title, detail] of MISSING) {
     if (p?.sources?.[src] && !p.sources[src].records) out.push({ weight: 20, kind: 'missing', title, detail });
