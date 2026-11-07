@@ -1198,7 +1198,8 @@
     "toolCalls": 1240,
     "sessions": 3,
     "activeMin": 310,
-    "share": 0.214
+    "share": 0.214,
+    "weekShare": 0.3
    },
    {
     "ticket": "PRO40",
@@ -1284,6 +1285,15 @@
    "usdPerMonth": 200,
    "apiEquivalentPer30d": 412.5,
    "multiple": 2.1
+  },
+  "limits": {
+   "sessionHits": 4,
+   "weeklyHits": 2,
+   "lostHours": 6.5,
+   "weekUSD": 294.67,
+   "sessionWindowUSD": 41.2,
+   "nWeekly": 2,
+   "nSession": 3
   }
  },
  "estimates": {

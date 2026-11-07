@@ -5,6 +5,7 @@
  */
 
 import { priceUsage, normalizeModel } from './model-prices.js';
+import { classifyErrorLine, isInterruptLine, isNoResponseLine, isToolResultLine, parseResetsAt, stopCause } from './limit-hits.js';
 
 const TICKET_RE = /^[\s"'`]*([A-Z]{2,5}\d+)\b/;
 const BRANCH_RE = /(?:^|[^a-z])([a-z]{2,5}\d+)(?![a-z0-9])/i;
@@ -319,6 +320,9 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   let missedWakes = 0;
   let missedWakeMs = 0;
   const missedWakeOrigins = {};
+  const toolResultWakes = []; // [prevMs, ms] of each missed wake that stopped right after a tool finished
+  const errEvents = []; // {ms, cause}: usage-limit / api-error / interrupt lines, for the stop causes
+  const hits = []; // usage-limit hits: {kind, atMs, resetsAt, open, endMs}
   let helperWaits = 0;
   let helperWaitMs = 0;
   let lastWasUser = false; // the last conversation line was a user line (prompt or tool result)
@@ -393,19 +397,27 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
         toolWaits += 1;
         toolWaitMs += gap;
         for (const n of new Set(names)) toolWaitTools[n] = (toolWaitTools[n] || 0) + 1;
+      } else if (assistantStarted && lastWasUser && isToolResultLine(line)) {
+        // One tool result, then another after the silence (a parallel or background tool whose call we
+        // never saw pending): a slow tool, not a stopped session.
+        toolWaits += 1;
+        toolWaitMs += gap;
+        toolWaitTools.tool = (toolWaitTools.tool || 0) + 1;
       } else if (!assistantStarted && HELPER_ORIGINS.has(openOrigin) && type === 'user'
         && classifyUser(line) === 'other' && HELPER_ORIGINS.has(line.origin && line.origin.kind)) {
         // The turn was opened by a notification or peer message and the next line is another one: the
         // session was waiting on a still-running subagent or background task, not stuck.
         helperWaits += 1;
         helperWaitMs += gap;
-      } else if (!assistantStarted || (lastWasUser && type !== 'assistant')) {
+      } else if (!assistantStarted || (lastWasUser && (type !== 'assistant' || isNoResponseLine(line)))) {
         // The prompt that opened the turn, or the last tool result, was never answered (idle-stopped,
-        // queued or blocked). When the model does answer after the gap, it is a stall instead.
+        // queued or blocked). When the model does answer after the gap, it is a stall instead, except
+        // "No response requested.", which is the app having closed and the session resumed.
         const origin = assistantStarted ? 'tool-result' : openOrigin;
         missedWakes += 1;
         missedWakeMs += gap;
         missedWakeOrigins[origin] = (missedWakeOrigins[origin] || 0) + 1;
+        if (origin === 'tool-result') toolResultWakes.push([prevMs, ms]);
       } else {
         stalls += 1;
         stallTotal += gap;
@@ -413,6 +425,23 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     }
     if (firstMs === null || ms < firstMs) firstMs = ms;
     if (lastMs === null || ms > lastMs) lastMs = ms;
+
+    // Usage-limit hits (repeated lines with no real assistant work between are one hit: you retrying),
+    // other API errors and interrupts; the last two only feed the stop causes.
+    const err = classifyErrorLine(line);
+    if (err) {
+      errEvents.push({ ms, cause: err.type === 'limit' ? 'usage-limit' : 'api-error' });
+      const last = hits[hits.length - 1];
+      if (err.type === 'limit' && !(last && last.open && last.kind === err.kind)) {
+        hits.push({ kind: err.kind, atMs: ms, resetsAt: parseResetsAt(err.resetText, ms), open: true, endMs: null });
+      }
+    } else if (isInterruptLine(line)) {
+      errEvents.push({ ms, cause: 'interrupt' });
+    } else if (isNoResponseLine(line)) {
+      errEvents.push({ ms, cause: 'app-closed' });
+    } else if (type === 'assistant' && !(line.message && line.message.model === '<synthetic>')) {
+      for (const h of hits) if (h.open) { h.open = false; h.endMs = ms; }
+    }
 
     if (type === 'user') {
       const content = line.message && line.message.content;
@@ -494,6 +523,20 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   }
   for (const e of Object.values(byTicket)) e.costUSD = rUSD(e.costUSD, RAW);
   if (ticket && !byTicket[ticket]) byTicket[ticket] = { costUSD: 0, tokens: 0, toolCalls: 0 };
+  const missedWakeCauses = {};
+  for (const [a, b] of toolResultWakes) {
+    const c = stopCause(a, b, errEvents);
+    missedWakeCauses[c] = (missedWakeCauses[c] || 0) + 1;
+  }
+  // Minutes lost = from the hit to the next real assistant line, cut at the reset time; with no later
+  // line, to the reset time; null when neither is known.
+  const limitHits = hits.map((h) => {
+    const resetMs = h.resetsAt ? Date.parse(h.resetsAt) : null;
+    let lost = null;
+    if (h.endMs !== null) lost = (resetMs !== null ? Math.min(h.endMs, resetMs) : h.endMs) - h.atMs;
+    else if (resetMs !== null) lost = resetMs - h.atMs;
+    return { kind: h.kind, at: new Date(h.atMs).toISOString(), resetsAt: h.resetsAt, lostMin: lost === null ? null : r1(Math.max(0, lost) / 60000) };
+  });
   return {
     key: sessionId,
     sessionId,
@@ -514,6 +557,8 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     missedWakes,
     missedWakeMin: r1(missedWakeMs / 60000),
     missedWakeOrigins,
+    missedWakeCauses,
+    limitHits,
     helperWaits,
     helperWaitMin: r1(helperWaitMs / 60000),
     toolWaits,

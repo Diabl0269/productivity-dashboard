@@ -21,6 +21,9 @@ async (page) => {
   ok((await page.locator('.mc-tile:has-text("Total at API prices") .mc-tile-value').innerText()) === '$412.50', 'total cost tile');
   ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').count()) === 3, 'cost per ticket rows');
   ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').first().innerText()).includes('$88.40'), 'top ticket cost shown');
+  ok((await page.locator('.mc-note:has-text("Limit hits")').innerText()).includes("a week's limit ≈ $295"), 'limits line with the calibrated week');
+  ok((await page.locator('[aria-label="Cost per ticket"] thead th').allInnerTexts()).some((t) => /% wk/i.test(t)), '% wk column when calibrated');
+  ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').first().innerText()).includes('30.0%'), 'top ticket share of a week');
   ok((await page.locator('[aria-label="Cost per epic"] tbody tr').count()) === 1, 'epic row');
   ok((await page.locator('[aria-label="Cost per shipped ticket by model label"] tbody tr').count()) === 3, 'per-shipped rows by label');
   ok((await page.locator('[aria-label="Cost estimate samples by model label"] tbody tr').count()) === 3, 'estimate samples rows by label');

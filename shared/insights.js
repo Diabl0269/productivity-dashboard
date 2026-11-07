@@ -169,10 +169,14 @@ function sessionRules(sessions, out) {
   if (s.missedWakeSessions > 0) {
     const o = s.missedWakeOrigins || {};
     const n = k => o[k] || 0;
+    const cz = s.missedWakeCauses || {};
+    const labels = { 'usage-limit': 'usage limit', 'api-error': 'API error', 'app-closed': 'app closed', interrupt: 'interrupted by you', unknown: 'no cause found' };
+    const causes = Object.keys(labels).filter(k => cz[k] > 0).map(k => `${cz[k]} ${labels[k]}`);
+    const why = causes.length ? ` The ${plural(n('tool-result'), 'mid-turn stop')}: ${causes.join(', ')}.` : '';
     out.push({
       weight: 95, kind: 'warn', value: s.missedWakeSessions,
       title: `${plural(s.missedWakeSessions, 'session')} got stuck 20+ min (${n('tool-result')} stopped mid-turn, ${n('task-notification') + n('peer') + n('human')} unanswered)`,
-      detail: `${plural(n('tool-result'), 'time')} a session stopped right after a tool finished (interrupted, an API error or a usage limit), and ${plural(n('task-notification'), 'notification')}, ${plural(n('peer'), 'peer message')} and ${plural(n('human'), 'prompt')} of yours went unanswered: each sat 20 minutes or more until something else woke the session. This is the stuck-session signal.`,
+      detail: `${plural(n('tool-result'), 'time')} a session stopped right after a tool finished (a usage limit, an API error, the app closing, you interrupting it, or no sign of why; a tool still running when the silence ended is a tool wait, not this), and ${plural(n('task-notification'), 'notification')}, ${plural(n('peer'), 'peer message')} and ${plural(n('human'), 'prompt')} of yours went unanswered: each sat 20 minutes or more until something else woke the session. This is the stuck-session signal.${why}`,
     });
   }
   if (s.silentSessions > 0) {
@@ -196,8 +200,27 @@ function sessionRules(sessions, out) {
 
 const usd = n => `$${n >= 100 ? Math.round(n) : n.toFixed(2)}`;
 
+/** Calibrated "a week's limit" sentence, or why there is none; shared by the insight, the CLI and the tab. */
+export function weekLimitText(l) {
+  return l && l.weekUSD > 0
+    ? `A week's limit is about ${usd(l.weekUSD)} at API prices (from ${plural(l.nWeekly, 'weekly-limit hit')}).`
+    : 'Not calibrated yet: no weekly-limit hit in the data.';
+}
+
+/** Usage-limit hits in the window: how many, the time lost and the calibrated week. */
+function limitRules(l, out) {
+  const hits = (l?.sessionHits || 0) + (l?.weeklyHits || 0);
+  if (!(hits > 0)) return;
+  out.push({
+    weight: 85, kind: 'warn', value: hits,
+    title: `Hit a usage limit ${plural(hits, 'time')}, losing ${fmtHours(l.lostHours || 0)}`,
+    detail: `${plural(l.sessionHits, 'session-limit hit')} and ${plural(l.weeklyHits, 'weekly-limit hit')} in the window; the lost time runs from a hit to when work resumed or the limit reset. ${weekLimitText(l)}`,
+  });
+}
+
 /** One cost finding: what cost most in the window (an epic when there is one, else a ticket). */
 function costRules(costs, out) {
+  limitRules(costs?.limits, out);
   const total = costs?.total;
   if (!total || !(total.costUSD > 0)) return;
   const epic = costs.byEpic?.[0];
@@ -209,7 +232,7 @@ function costRules(costs, out) {
     ? ` At this pace a month is about ${usd(costs.plan.apiEquivalentPer30d)} at API prices, ${costs.plan.multiple}x your ${usd(costs.plan.usdPerMonth)} plan.`
     : '';
   out.push({
-    weight: 60, kind: 'info', value: total.costUSD,
+    weight: 78, kind: 'info', value: total.costUSD,
     title: lead,
     detail: `Dollars at API list prices, from token usage across ${plural(total.sessions, 'session')}; helpers made up ${usd(total.helperCostUSD)} of it.${plan}`,
   });

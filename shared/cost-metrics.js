@@ -25,7 +25,9 @@ function attribution(s) {
  *   sinceMs:number, nowMs:number, limit?:number}} args  `sessions` are already filtered to the window and project;
  *   `limit` caps byTicket (default 30) and byEpic (half of it); Infinity keeps every row.
  */
-export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs, limit = 30 }) {
+export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs, limit = 30, weekUSD = null }) {
+  // `weekShare`: cost as a share of a week's plan limit (shared/plan-share.js); only when calibrated.
+  const wk = weekUSD > 0 ? raw => ({ weekShare: r3(raw / weekUSD) }) : () => ({});
   let totalUSD = 0;
   let helperUSD = 0;
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -67,6 +69,7 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
       costUSD: r2(e.costUSD), tokens: e.tokens, toolCalls: e.toolCalls, sessions: e.sessions,
       activeMin: Math.round((activeBy.get(e.ticket) || 0) * 10) / 10,
       share: totalUSD > 0 ? r3(e.costUSD / totalUSD) : 0,
+      ...wk(e.costUSD),
       _raw: e.costUSD,
     };
   }).sort((a, b) => b._raw - a._raw || (a.ticket < b.ticket ? -1 : 1));
@@ -90,6 +93,7 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
     .slice(0, limit === Infinity ? Infinity : Math.ceil(limit / 2)).map(ep => ({
     epic: ep.epic, title: ep.title, costUSD: r2(ep._raw),
     share: totalUSD > 0 ? r3(ep._raw / totalUSD) : 0,
+    ...wk(ep._raw),
     children: [...ep.kids].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id, c]) => ({
       ticket: id, title: byId.get(id)?.title ?? null, costUSD: r2(c), own: id === ep.epic,
     })),

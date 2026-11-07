@@ -7,6 +7,7 @@ import { rankReadyTickets } from './next-ticket.js';
 import { redTime, trend, isUncounted, isFlakyRerun } from './ci-metrics.js';
 import { buildInsights } from './insights.js';
 import { costsBlock } from './cost-metrics.js';
+import { limitsBlock } from './plan-share.js';
 import { estimatorFor, estimatesSummary } from './cost-estimate.js';
 import { splitInProgress } from './time-split.js';
 
@@ -46,6 +47,8 @@ function sessionsBlock(list, sinceMs, untilMs) {
   for (const s of list) for (const [k, v] of Object.entries(s.toolWaitTools || {})) toolWaitTools[k] = (toolWaitTools[k] || 0) + v;
   const missedWakeOrigins = {};
   for (const s of list) for (const [k, v] of Object.entries(s.missedWakeOrigins || {})) missedWakeOrigins[k] = (missedWakeOrigins[k] || 0) + v;
+  const missedWakeCauses = {};
+  for (const s of list) for (const [k, v] of Object.entries(s.missedWakeCauses || {})) missedWakeCauses[k] = (missedWakeCauses[k] || 0) + v;
   const replies = list.flatMap(s => s.replyWaits || []);
   const summary = {
     n: list.length,
@@ -60,6 +63,7 @@ function sessionsBlock(list, sinceMs, untilMs) {
     questionWaits: sum(list, s => s.questionWaits),
     missedWakes: sum(list, s => s.missedWakes),
     missedWakeOrigins,
+    missedWakeCauses,
     helperWaits: sum(list, s => s.helperWaits),
     missedWakeSessions: list.filter(s => s.missedWakes > 0).length,
     toolWaitTools,
@@ -176,6 +180,8 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     const t = s.ticket ? byId.get(s.ticket) : null;
     return !!t && t.project === project;
   });
+  // Calibrate on every session in the data, not only this window and project.
+  const limits = limitsBlock({ sessions: sessions || [], sinceMs, nowMs });
   const estimator = estimatorFor({ doc, sessions, cfg, nowMs, project });
   const next = rankReadyTickets(doc, { n: 8, project, now: nowMs }).map(t => ({ ...t, estimate: estimator.estimate(t.id) }));
   const timingsAll = timings || [];
@@ -187,7 +193,7 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     filters: { project: project || null, projects, lanes },
     flow,
     sessions: sessionsBlock(sess, sinceMs, nowMs),
-    costs: costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit }),
+    costs: { ...costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit, weekUSD: limits.weekUSD }), limits },
     estimates: estimatesSummary(estimator),
     timings: timingsBlock(timingsAll, timingsWin, nowMs),
     next,

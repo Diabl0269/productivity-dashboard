@@ -24,6 +24,7 @@ import { normalizeTasksDoc } from '../lib/schema.js';
 import { flowMetrics } from '../../shared/flow-metrics.js';
 import { buildMetricsPayload } from '../../shared/metrics-payload.js';
 import { fmtHours } from '../../shared/insights.js';
+import { limitsLine } from '../../shared/plan-share.js';
 import { formatRange, usd, MIN_SAMPLES, estimatesSummary } from '../../shared/cost-estimate.js';
 import { estimatorForDoc } from '../lib/estimator.js';
 import { splitInProgress } from '../../shared/time-split.js';
@@ -434,6 +435,7 @@ function reportCmd(argv) {
 
 const money = n => `$${(Number(n) || 0).toFixed(2)}`;
 const tok = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+const weekPct = r => (r.weekShare === undefined ? '' : `${(r.weekShare * 100).toFixed(1)}%`);
 const tokSum = t => (t ? (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0) : 0);
 
 /** `ch metrics cost [<ticket-id>]`: the byTicket table, or one ticket's (an epic's: per child) cost. */
@@ -447,22 +449,24 @@ function costCmd(argv) {
   if (!id) {
     if (values.json) { jsonOut(c); return; }
     print(`Cost ${day(p.window.since)} to ${day(p.window.until)}: ${money(c.total.costUSD)} at API prices (helpers ${money(c.total.helperCostUSD)}, ${tok(tokSum(c.total.tokens))} tokens)`);
+    print(limitsLine(c.limits));
     if (!c.byTicket.length) { print('  no cost recorded in this range'); return; }
-    print(`${pad('Ticket', 10)}${pad('Cost', 10)}${pad('Share', 7)}${pad('Tokens', 9)}${pad('Tools', 7)}${pad('Sess', 6)}Title`);
-    for (const t of c.byTicket) print(`${pad(t.ticket, 10)}${pad(money(t.costUSD), 10)}${pad(Math.round(t.share * 100) + '%', 7)}${pad(tok(t.tokens), 9)}${pad(t.toolCalls, 7)}${pad(t.sessions, 6)}${t.title ?? ''}`);
+    const cal = c.limits.weekUSD > 0;
+    print(`${pad('Ticket', 10)}${pad('Cost', 10)}${pad('Share', 7)}${cal ? pad('% wk', 7) : ''}${pad('Tokens', 9)}${pad('Tools', 7)}${pad('Sess', 6)}Title`);
+    for (const t of c.byTicket) print(`${pad(t.ticket, 10)}${pad(money(t.costUSD), 10)}${pad(Math.round(t.share * 100) + '%', 7)}${cal ? pad(weekPct(t), 7) : ''}${pad(tok(t.tokens), 9)}${pad(t.toolCalls, 7)}${pad(t.sessions, 6)}${t.title ?? ''}`);
     return;
   }
   const epic = c.byEpic.find(e => e.epic === id);
   const one = c.byTicket.find(t => t.ticket === id);
   if (!epic && !one) die(`no cost recorded for ${id} in this range`);
   if (values.json) { jsonOut({ ticket: one ?? null, epic: epic ?? null }); return; }
-  if (one) print(`${id}  ${money(one.costUSD)}  ${tok(one.tokens)} tokens, ${one.toolCalls} tool calls, ${one.sessions} session${one.sessions === 1 ? '' : 's'}, ${one.activeMin} min active${one.title ? `  ${one.title}` : ''}`);
+  if (one) print(`${id}  ${money(one.costUSD)}${one.weekShare === undefined ? '' : ` (${weekPct(one)} of a week)`}  ${tok(one.tokens)} tokens, ${one.toolCalls} tool calls, ${one.sessions} session${one.sessions === 1 ? '' : 's'}, ${one.activeMin} min active${one.title ? `  ${one.title}` : ''}`);
   if (one) {
     const sp = splitInProgress({ doc: readDoc(), sessions: readRecords(SESSIONS), timings: readRecords(TIMINGS), now, since: sinceMs ?? undefined, only: id }).total;
     if (sp.hours > 0) print(`  In progress ${hrs(sp.hours)}: working ${hrs(sp.workingH)}, CI ${hrs(sp.ciH)}, you ${hrs(sp.youH)}, nothing ${hrs(sp.idleH)}`);
   }
   if (epic) {
-    print(`Epic ${id}  ${money(epic.costUSD)} in all, ${Math.round(epic.share * 100)}% of the total${epic.title ? `  ${epic.title}` : ''}`);
+    print(`Epic ${id}  ${money(epic.costUSD)} in all${epic.weekShare === undefined ? '' : ` (${weekPct(epic)} of a week)`}, ${Math.round(epic.share * 100)}% of the total${epic.title ? `  ${epic.title}` : ''}`);
     for (const k of epic.children) print(`  ${pad(k.ticket, 10)}${pad(money(k.costUSD), 10)}${k.own ? '(its own sessions) ' : ''}${k.title ?? ''}`);
   }
 }

@@ -174,6 +174,34 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
 - **Per shipped ticket**: tickets now in review or done with any cost, by their `model:` label
   (`none` without one): median, p75 and total dollars per ticket.
 - **Plan comparison**: with `planUSDPerMonth`, the window's cost scaled to 30 days and divided by it.
+- **Limit hits** (`limitHits` per session; `costs.limits` in the payload; `shared/limit-hits.js`, `shared/plan-share.js`):
+  an assistant line with `isApiErrorMessage` whose text says `You've hit your session|weekly limit · resets
+  …` is a usage-limit hit (`kind`, `at`, `resetsAt`, `lostMin`). `resetsAt` is read from the text with Intl
+  only (`resets 12:40pm (Zone)` = the next such time after the hit; `resets Sep 22 at 2pm (Zone)` = that
+  date), null when it does not parse. Repeated hit lines with no real assistant line between them are one
+  hit (you retrying). `lostMin` runs from the hit to the next real assistant line, cut at `resetsAt`; with no
+  later line, to `resetsAt`; null when neither is known. "Credit balance is too low" and other API errors
+  are not limit hits (an API-key session, not a subscription). `costs.limits` = `{sessionHits, weeklyHits,
+  lostHours, weekUSD, sessionWindowUSD, nWeekly, nSession}`: hits and lost hours inside the window,
+  deduped across sessions (parallel sessions share a limit) by `resetsAt`, or by `at` within 1 hour.
+- **Week calibration** (`weekUSD`, `sessionWindowUSD`; `weekShare` on `byTicket` and `byEpic` rows, "% wk"
+  in the table, `ch metrics cost`): for each distinct weekly hit, the API-price cost of every session in the
+  data (all projects, not only the filtered one) that started in the 7 days before it; the median over hits
+  is `weekUSD`, and the same over the 5 hours before a session hit is `sessionWindowUSD`. `n` is the hits
+  used; with no weekly hit there is no `weekUSD` and no `weekShare` ("not calibrated yet"). It is an
+  estimate: computed cost is about 0.88 of what Claude Code counts (see Unit), the reset window starts at
+  first use and is not known exactly, sessions are attributed whole by their start time, and the data may
+  hold less than a full period before the first hit. Read it as a rough size of a week, not a quota.
+- **Stop causes** (`missedWakeCauses` per session, summed in `sessions.summary`): each missed wake that
+  stopped right after a tool finished (`tool-result` origin) is classified by lines within 2 minutes of the
+  silence: `usage-limit` (a limit hit line), `api-error` (API Error text, credit balance, a system
+  `api_error`), `app-closed` (the assistant text `No response requested.`, written when a closed or
+  crashed app's session is resumed; such a line right after the silence is a missed wake, not a stall),
+  `interrupt` (`[Request interrupted by user…`), else `unknown`; first match in that order. `unknown` is
+  mostly a session idle after a tool result until a notification, peer message or your prompt woke it.
+  Not a missed wake: when the silence ends with another tool result (a parallel or background tool that was
+  still running) it is a tool wait (`toolWaits`, tool name `tool` when its call was never seen pending).
+  The stuck-session insight names the causes.
 
 **Cost estimate** (`estimates` and `next[].estimate` in the payload; `ch metrics estimate`, `ch tasks next`, the Plan tab, the ticket panel; `shared/cost-estimate.js`). Pure statistics, no model calls, same unit as Cost.
 - **Samples**: non-epic tickets now in review or done with cost above zero, costed over the last 90 days of
