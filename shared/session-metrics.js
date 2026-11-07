@@ -61,6 +61,8 @@ export function classifyUser(line) {
   return 'human';
 }
 
+const HELPER_ORIGINS = new Set(['task-notification', 'peer']);
+
 const r1 = (n) => Math.round(n * 10) / 10;
 
 export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15, project } = {}) {
@@ -86,6 +88,8 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   let missedWakes = 0;
   let missedWakeMs = 0;
   const missedWakeOrigins = {};
+  let helperWaits = 0;
+  let helperWaitMs = 0;
   let lastWasUser = false; // the last conversation line was a user line (prompt or tool result)
   let assistantStarted = false; // an assistant line was written since the open turn's prompt
   let openOrigin = 'human'; // origin of the prompt that opened the turn
@@ -146,6 +150,12 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
         toolWaits += 1;
         toolWaitMs += gap;
         for (const n of new Set(names)) toolWaitTools[n] = (toolWaitTools[n] || 0) + 1;
+      } else if (!assistantStarted && HELPER_ORIGINS.has(openOrigin) && type === 'user'
+        && classifyUser(line) === 'other' && HELPER_ORIGINS.has(line.origin && line.origin.kind)) {
+        // The turn was opened by a notification or peer message and the next line is another one: the
+        // session was waiting on a still-running subagent or background task, not stuck.
+        helperWaits += 1;
+        helperWaitMs += gap;
       } else if (!assistantStarted || (lastWasUser && type !== 'assistant')) {
         // The prompt that opened the turn, or the last tool result, was never answered (idle-stopped,
         // queued or blocked). When the model does answer after the gap, it is a stall instead.
@@ -236,6 +246,8 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     missedWakes,
     missedWakeMin: r1(missedWakeMs / 60000),
     missedWakeOrigins,
+    helperWaits,
+    helperWaitMin: r1(helperWaitMs / 60000),
     toolWaits,
     toolWaitMin: r1(toolWaitMs / 60000),
     toolWaitTools,

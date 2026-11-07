@@ -34,12 +34,24 @@ function flowRules(flow, out) {
     const others = Object.entries(flow.groups?.project || {})
       .filter(([, g]) => g.bottleneck && g.bottleneck.stage !== b.stage)
       .map(([slug, g]) => `${slug}: ${STAGE_LABEL[g.bottleneck.stage] || g.bottleneck.stage}`);
-    out.push({
-      weight: 100, kind: 'bottleneck', value: b.share,
-      title: `${label} holds ${pct(b.share)}% of the work time`,
-      detail: `${fmtHours(b.totalHours)} of the time tickets spend building or in review is ${label.toLowerCase()}.`
-        + (others.length ? ` Different in: ${others.join(', ')}.` : ''),
-    });
+    const otherStage = b.stage === 'review' ? 'in-progress' : 'review';
+    const otherMed = flow.stages?.[otherStage]?.median;
+    const phrase = st => (st === 'review' ? 'in review' : 'building');
+    const typical = b.medianHours;
+    const diff = others.length ? ` Different in: ${others.join(', ')}.` : '';
+    if (typical != null && otherMed != null) {
+      out.push({
+        weight: 100, kind: 'bottleneck', value: b.share,
+        title: `${label} is the slowest step: typically ${fmtHours(typical)} vs ${fmtHours(otherMed)} ${phrase(otherStage)}`,
+        detail: `${label} is the slowest step: a typical ticket ${b.stage === 'review' ? 'waits' : 'spends'} ${fmtHours(typical)} ${b.stage === 'review' ? 'there' : 'building'} vs ${fmtHours(otherMed)} ${phrase(otherStage)} (median closed stay). In total ${label.toLowerCase()} holds ${pct(b.share)}% of the work time (${fmtHours(b.totalHours)}).${diff}`,
+      });
+    } else {
+      out.push({
+        weight: 100, kind: 'bottleneck', value: b.share,
+        title: `${label} is the slowest step${typical != null ? `: typically ${fmtHours(typical)}` : ''}`,
+        detail: `${fmtHours(b.totalHours)} of the time tickets spend building or in review is ${label.toLowerCase()} (${pct(b.share)}%).${diff}`,
+      });
+    }
   }
   const wait = flow.stages?.todo?.median;
   const build = flow.stages?.['in-progress']?.median;
@@ -83,6 +95,15 @@ function flowRules(flow, out) {
       detail: fe.slice(0, 3).map(e => `${e.id} idle ${round1(e.idleDays)} days`).join(', ') + (fe.length > 3 ? ` and ${fe.length - 3} more` : '') + '.',
     });
   }
+  const st = flow.staleTickets || [];
+  if (st.length) {
+    const days = flow.staleDays ?? 3;
+    out.push({
+      weight: 68, kind: 'warn', value: st.length,
+      title: `${plural(st.length, 'ticket')} in progress with no activity for ${days}+ days`,
+      detail: st.slice(0, 4).map(t => `${t.id} idle ${round1(t.idleDays)} days`).join(', ') + (st.length > 4 ? ` and ${st.length - 4} more` : '') + '.',
+    });
+  }
 }
 
 function sessionRules(sessions, out) {
@@ -103,7 +124,7 @@ function sessionRules(sessions, out) {
     out.push({
       weight: 75, kind: dropped || share < 50 ? 'warn' : share >= 70 ? 'good' : 'info', value: s.autonomousShare,
       title: `${share}% of sessions ran without asking or going silent`,
-      detail: `${plural(s.questionsMidRun, 'mid-run question')} (${round1(s.questionsMidRun / s.n)} per session) and ${plural(silences, 'silence')} (${round1(silences / s.n)} per session) across ${plural(s.n, 'session')}.${change}`,
+      detail: `${plural(s.questionsMidRun, 'mid-run question')} (${round1(s.questionsMidRun / s.n)} per session) and ${plural(silences, 'silence')} (${round1(silences / s.n)} per session) across ${plural(s.n, 'session')}.${change}${s.helperWaits ? ` ${plural(s.helperWaits, 'wait')} on a running helper, not counted as stuck.` : ''}`,
     });
   }
   if (s.missedWakeSessions > 0) {
@@ -147,11 +168,15 @@ function timingRules(timings, out) {
   }
   for (const r of timings?.ci?.byRepo || []) {
     if (r.runs >= 3 && r.failRate >= 0.2) {
-      const failed = Math.round(r.failRate * r.runs);
+      const failed = r.failed ?? Math.round(r.failRate * r.runs);
+      const jobs = (r.topFailedJobs || []).slice(0, 3).map(j => `${j.name} (${j.count})`).join(', ');
       out.push({
         weight: 65, kind: 'warn', value: r.failRate,
-        title: `${[r.repo, r.workflow].filter(Boolean).join(' ')} fails ${pct(r.failRate)}% of runs`,
-        detail: `About ${failed} of ${r.runs} CI runs in the window failed.`,
+        title: `${[r.repo, r.workflow].filter(Boolean).join(' ')} fails ${pct(r.failRate)}% of finished runs`,
+        detail: `${failed} of ${r.runs} finished CI runs failed`
+          + (r.cancelled ? ` (${r.cancelled} cancelled by newer pushes not counted)` : '')
+          + (r.flakyReruns ? `; ${r.flakyReruns} passed on a rerun` : '')
+          + `.${jobs ? ` Most failing jobs: ${jobs}.` : ''}`,
       });
     }
   }

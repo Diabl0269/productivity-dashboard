@@ -4,7 +4,7 @@
  */
 import { flowMetrics, median, percentile } from './flow-metrics.js';
 import { rankReadyTickets } from './next-ticket.js';
-import { redTime, trend } from './ci-metrics.js';
+import { redTime, trend, isUncounted, isFlakyRerun } from './ci-metrics.js';
 import { buildInsights } from './insights.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -57,6 +57,7 @@ function sessionsBlock(list, sinceMs, untilMs) {
     questionWaits: sum(list, s => s.questionWaits),
     missedWakes: sum(list, s => s.missedWakes),
     missedWakeOrigins,
+    helperWaits: sum(list, s => s.helperWaits),
     missedWakeSessions: list.filter(s => s.missedWakes > 0).length,
     toolWaitTools,
     silentSessions: list.filter(silent).length,
@@ -97,7 +98,7 @@ function sessionsBlock(list, sinceMs, untilMs) {
 function timingsBlock(all, inWindow, now) {
   const groups = new Map();
   for (const r of inWindow) {
-    if (!Number.isFinite(r.seconds)) continue;
+    if (!Number.isFinite(r.seconds) || isUncounted(r)) continue;
     const k = JSON.stringify([r.repo ?? null, r.kind ?? null, r.host ?? null, r.name ?? null]);
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push({ at: r.at, seconds: r.seconds, ok: r.ok !== false });
@@ -121,14 +122,22 @@ function timingsBlock(all, inWindow, now) {
     if (!byRepoMap.has(k)) byRepoMap.set(k, []);
     byRepoMap.get(k).push(r);
   }
-  const byRepo = [...byRepoMap].map(([k, runs]) => {
+  const byRepo = [...byRepoMap].map(([k, all]) => {
     const [repo, workflow] = JSON.parse(k);
+    const runs = all.filter(r => !isUncounted(r)); // cancelled/skipped are neither pass nor failure
     const secs = runs.map(r => r.seconds);
+    const failedRuns = runs.filter(r => r.ok === false);
+    const jobCounts = new Map();
+    for (const r of failedRuns) for (const n of r.failedJobs || []) jobCounts.set(n, (jobCounts.get(n) || 0) + 1);
+    const topFailedJobs = [...jobCounts].map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : 1)).slice(0, 5);
     return {
-      repo, workflow, runs: runs.length,
+      repo, workflow, runs: runs.length, failed: failedRuns.length,
+      cancelled: all.length - runs.length, flakyReruns: runs.filter(isFlakyRerun).length,
       medianSeconds: r1(median(secs)), p90Seconds: r1(percentile(secs, 90)),
-      failRate: Math.round((runs.filter(r => r.ok === false).length / runs.length) * 1000) / 1000,
+      failRate: runs.length ? Math.round((failedRuns.length / runs.length) * 1000) / 1000 : 0,
       medianQueueSeconds: r1(median(runs.map(r => r.queuedSeconds))),
+      topFailedJobs,
     };
   }).sort((a, b) => (JSON.stringify([a.repo, a.workflow]) < JSON.stringify([b.repo, b.workflow]) ? -1 : 1));
   return { series, trends: trend(all, { now }), redTime: red, ci: { byRepo } };

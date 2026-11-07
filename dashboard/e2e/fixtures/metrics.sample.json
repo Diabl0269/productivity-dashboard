@@ -788,7 +788,17 @@
     "project": "my-api",
     "idleDays": 11
    }
-  ]
+  ],
+  "staleTickets": [
+   {
+    "id": "TSK7",
+    "title": "Tidy the export settings panel",
+    "lane": "web",
+    "project": "my-api",
+    "idleDays": 5.5
+   }
+  ],
+  "staleDays": 3
  },
  "sessions": {
   "summary": {

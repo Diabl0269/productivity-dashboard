@@ -4,6 +4,16 @@
  *   trend(records, {now, days}) -> [{repo, kind, name, recentMedian, priorMedian, changePct, ...}]
  */
 
+/** A cancelled or skipped run is neither a pass nor a failure: it never counts toward fail rate, red time or duration. */
+export function isUncounted(r) {
+  return r?.conclusion === 'cancelled' || r?.conclusion === 'skipped';
+}
+
+/** A run that passed on a later attempt (attempt > 1, success): the first attempt failed for a flaky reason. */
+export function isFlakyRerun(r) {
+  return r?.conclusion === 'success' && Number(r.attempt) > 1;
+}
+
 function median(xs) {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -27,7 +37,7 @@ function span(r, start, end, open) {
 export function redTime(runs) {
   const groups = new Map();
   for (const r of runs || []) {
-    if (r.ok == null || !r.at || !r.branch) continue;
+    if (r.ok == null || isUncounted(r) || !r.at || !r.branch) continue;
     const k = `${r.repo}\u0000${r.branch}`;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(r);
@@ -55,7 +65,7 @@ export function trend(records, { now = Date.now(), days = 7 } = {}) {
   const win = days * 86400000;
   const groups = new Map();
   for (const r of records || []) {
-    if (!Number.isFinite(r.seconds) || !r.at) continue;
+    if (!Number.isFinite(r.seconds) || !r.at || isUncounted(r)) continue;
     const age = nowMs - Date.parse(r.at);
     if (!(age >= 0) || age >= 2 * win) continue;
     const k = JSON.stringify([r.repo ?? null, r.kind ?? null, r.name ?? null]);

@@ -55,9 +55,11 @@ test('cycle and lead time, counts, stage dwell with an open stay', () => {
   assert.equal(m.stages.review.n, 0); // open stays are reported separately
   assert.deepEqual(m.stages.review.open, { n: 1, oldestHours: 84 });
   assert.equal(m.stages.review.totalHours, 84);
-  assert.equal(m.bottleneck.stage, 'review');
-  assert.equal(m.bottleneck.totalHours, 84);
-  assert.ok(Math.abs(m.bottleneck.share - 84 / 156) < 0.001);
+  // review has no closed stay yet, so the slowest step by median closed stay is building (36 h)
+  assert.equal(m.bottleneck.stage, 'in-progress');
+  assert.equal(m.bottleneck.medianHours, 36);
+  assert.equal(m.bottleneck.totalHours, 72);
+  assert.ok(Math.abs(m.bottleneck.share - 72 / 156) < 0.001);
   assert.deepEqual(m.window, { since: '2026-10-08T12:00:00.000Z', until: NOW.toISOString() });
   const week = m.cycleByWeek.find(w => w.week === '2026-11-02');
   assert.deepEqual(week, { week: '2026-11-02', n: 2, median: 36 });
@@ -87,7 +89,7 @@ test('reopened and closedWithoutWork', () => {
   assert.deepEqual(late.counts, { started: 0, shipped: 0, reopened: 1, closedWithoutWork: 1 });
 });
 
-test('bottleneck is the stage with the largest total dwell, not the largest median; todo never is', () => {
+test('bottleneck is the stage with the largest median closed stay, not the largest total; todo never is', () => {
   // todo: three 4h stays (total 12); in-progress: three 2h stays plus one 10h stay (total 16, median 2).
   const quick = [1, 2, 3].map(i => task(`B${i}`, { history: [mv(at(1, 4), 'todo', 'in-progress'), mv(at(1, 6), 'in-progress', 'done')] }));
   const slow = task('B4', { history: [mv(at(1, 0), 'todo', 'in-progress'), mv(at(1, 10), 'in-progress', 'done')] });
@@ -96,6 +98,12 @@ test('bottleneck is the stage with the largest total dwell, not the largest medi
   assert.equal(m.stages['in-progress'].totalHours, 16);
   assert.equal(m.bottleneck.stage, 'in-progress');
   assert.equal(m.bottleneck.share, 1);
+  // review: one 5h stay (total 5, median 5) beats in-progress (total 16, median 2) by median
+  const rv = task('B6', { history: [mv(at(1, 0), 'todo', 'review'), mv(at(1, 5), 'review', 'done')] });
+  const m2 = flowMetrics(docOf({ done: [...quick, slow, rv] }), { now: NOW });
+  assert.equal(m2.bottleneck.stage, 'review');
+  assert.equal(m2.bottleneck.medianHours, 5);
+  assert.equal(m2.bottleneck.totalHours, 5);
   // only a long todo wait: no bottleneck at all
   const waiting = task('B5', { history: [mv(at(5), 'todo', 'done')] });
   assert.equal(flowMetrics(docOf({ done: [waiting] }), { now: NOW }).bottleneck, null);
@@ -182,4 +190,16 @@ test('grouping by project, lane (own or epic lane) and area; project/lane filter
   assert.deepEqual(Object.keys(m.groups.project.p1), ['counts', 'cycle', 'stages', 'bottleneck']);
   assert.equal(flowMetrics(doc, { now: NOW, project: 'p2' }).counts.shipped, 2);
   assert.equal(flowMetrics(doc, { now: NOW, lane: 'timeline' }).counts.shipped, 1);
+});
+
+test('staleTickets: tickets (not epics) in progress with no own event for 3+ days, oldest first', () => {
+  const old = task('S1', { history: [mv(at(1), 'todo', 'in-progress')] }); // idle 6.5 d
+  const older = task('S2', { lane: 'web', project: 'p2', history: [mv('2026-10-30T12:00:00.000Z', 'todo', 'in-progress')] }); // 8 d
+  const fresh = task('S3', { history: [mv(at(6), 'todo', 'in-progress')] }); // 1.5 d
+  const epic = task('S4', { type: 'epic', history: [mv(at(1), 'todo', 'in-progress')] });
+  const review = task('S5', { history: [mv(at(1), 'todo', 'review')] });
+  const m = flowMetrics(docOf({ 'in-progress': [old, older, fresh, epic], review: [review] }), { now: NOW });
+  assert.deepEqual(m.staleTickets.map(t => [t.id, t.idleDays, t.lane, t.project]), [['S2', 8, 'web', 'p2'], ['S1', 6.5, 'timeline', 'p1']]);
+  assert.deepEqual(m.forgottenEpics.map(e => e.id), ['S4']);
+  assert.equal(flowMetrics(docOf({ 'in-progress': [old] }), { now: NOW, forgottenEpicDays: 7 }).staleTickets.length, 0);
 });
