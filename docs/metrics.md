@@ -197,7 +197,11 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   silence: `usage-limit` (a limit hit line), `api-error` (API Error text, credit balance, a system
   `api_error`), `app-closed` (the assistant text `No response requested.`, written when a closed or
   crashed app's session is resumed; such a line right after the silence is a missed wake, not a stall),
-  `interrupt` (`[Request interrupted by user…`), else `unknown`; first match in that order. `unknown` is
+  `interrupt` (`[Request interrupted by user…`), else `unknown`; first match in that order. A script can record
+  causes it saw outside the transcript in `$CH_HOME/stop-causes.jsonl` (one JSON object per line: `sessionId`, `at`
+  (ISO UTC of the stop), `cause` (`idle-sweep`, `app-quit`, `app-update`, `rate-limit`, `network`, `keypress`,
+  `mac-sleep` or `unknown`), `evidence`, `recordedAt`); an entry for the session whose `at` is within the gap ±2 min
+  and whose cause is not `unknown` counts with that cause, right after `usage-limit` in the order (a missing file changes nothing). `unknown` is
   mostly a session idle after a tool result until a notification, peer message or your prompt woke it.
   Not a missed wake: when the silence ends with another tool result (a parallel or background tool that was
   still running) it is a tool wait (`toolWaits`, tool name `tool` when its call was never seen pending).

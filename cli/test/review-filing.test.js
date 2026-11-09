@@ -111,7 +111,7 @@ test('apply files tickets, the design pair, hands checks over and finishes the r
   // no usable account epic (the in-progress one is a "(later)" epic): new one, blocked by it, pinned
   const acct = find(doc, find(doc, doc.sections.flatMap(s => s.tasks).find(x => x.reviewOf === 'T4').id).t.parentId);
   assert.deepEqual([acct.s, acct.t.title, acct.t.blockedBy], ['todo', 'Account follow-ups', ['T8']]);
-  assert.ok(res.pin.includes(acct.t.id));
+  assert.ok(res.pin.includes(acct.t.id), 'the planner still names it; the CLI no longer pins it (PRO61)');
   // checks handed over, notes filed, review finished
   assert.deepEqual(t3.t.checks.map(c => [c.checked, c.handedTo]), [[true, fix.t.id], [true, build.t.id]]);
   assert.ok(t3.t.reviewNotes.every(n => n.state === 'filed'));
@@ -140,7 +140,7 @@ test('CLI: notes route prints the plan; notes send files and moves the review to
   const route = runCli(['tasks', 'notes', 'route'], home);
   assert.equal(route.status, 0, route.err);
   assert.match(route.out, /Canvas -> T1 Edit Layout 4 \(todo\)\n  T3#1 \[fix\] Handle jumps on drag/);
-  assert.match(route.out, /Account -> new epic "Account follow-ups" \(todo, pinned\)\n  T4#1 \[fix\] Avatar is cropped/);
+  assert.match(route.out, /Account -> new epic "Account follow-ups" \(todo\)\n  T4#1 \[fix\] Avatar is cropped/);
   assert.match(route.out, /Needs an area:\n  T5#1/);
 
   const send = runCli(['tasks', 'notes', 'send', '--ticket', 'T3'], home);
@@ -157,7 +157,7 @@ test('CLI: notes route prints the plan; notes send files and moves the review to
   const epic = after.sections.flatMap(s => s.tasks).find(t => t.title === 'Account follow-ups');
   assert.ok(epic);
   assert.deepEqual(epic.labels, ['model:opus'], 'new epics name their orchestrator');
-  assert.ok(after.meta.dailyPlan.taskIds.includes(epic.id), 'new follow-ups epic is pinned');
+  assert.ok(!after.meta.dailyPlan.taskIds.includes(epic.id), 'a todo epic is not pinned (pins mean this week\'s focus)');
   assert.equal(runCli(['tasks', 'lint'], home).status, 0);
 });
 

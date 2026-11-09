@@ -25,6 +25,7 @@ import {
   isHexColor,
   escapeHtml,
 } from './ticket-types.js';
+import { buildEpicPlanPanel } from './epic-ready-ui.js';
 import {
   ensureTaskFieldDefaults,
   blockedByCandidates,
@@ -866,6 +867,7 @@ function buildEssentialsForm(task, body) {
 
   bindFieldLayoutDnD(root, refresh);
   bindEssentialsSectionDnD(root, refresh);
+  if (task.type === 'epic') body.appendChild(buildEpicPlanPanel(task, { state: getState() || {}, commit, refresh }));
   body.appendChild(root);
 
   const foot = document.createElement('div');

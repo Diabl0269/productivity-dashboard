@@ -1,4 +1,4 @@
-// run-plan-view.js — "Plan" tab: pinned epics as lanes (rows); see shared/run-plan.js
+// run-plan-view.js — "Plan" tab: Ready state, then in-progress, Ready and pinned epics as lanes (rows); see shared/run-plan.js
 
 import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
@@ -14,44 +14,12 @@ import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { moveTask } from './tasks-board.js';
 import { loadTasksJson } from './tasks-json.js';
 import { todayStr } from './tasks-parser.js';
+import { stateToDoc as toDoc, renderReadyState } from './epic-ready-ui.js';
 
 let getState = null;
 let toastTimer = null;
 
 export function setRunPlanStateGetter(fn) { getState = fn; }
-
-/** Adapt the dashboard in-memory shape (taskId, per-section arrays) to the tasks.json doc shape. */
-function toDoc(state) {
-  if (!state.meta) state.meta = {};
-  return {
-    meta: state.meta,
-    sections: (state.sections || []).map(sec => ({
-      id: sec.id,
-      tasks: (state.tasks?.[sec.id] || []).filter(t => t.taskId).map(t => ({
-        id: t.taskId,
-        title: t.title,
-        checked: !!t.checked,
-        type: t.type,
-        parentId: t.parentId,
-        blockedBy: t.blockedBy || [],
-        labels: t.labels || [],
-        lane: t.lane || undefined,
-        project: t.project || undefined,
-        // Review queue inputs (shared/review.js reads these).
-        links: t.links || [],
-        waitingOn: t.waitingOn || undefined,
-        decisions: t.decisions || [],
-        reviewOf: t.reviewOf || undefined,
-        result: t.result || undefined,
-        checks: t.checks || [],
-        reviewNotes: t.reviewNotes || [],
-        history: t.history || [],
-        created: t.created || undefined,
-        updated: t.updated || undefined,
-      })),
-    })),
-  };
-}
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -863,7 +831,7 @@ function renderRules(plan) {
     p.appendChild(document.createTextNode(rest));
     rules.appendChild(p);
   };
-  pill('Lanes run side by side', '; cards in a lane run left to right, cards stacked in one column can run at the same time');
+  pill('Epics in one lane run in order; lanes run side by side', '. Cards in a lane run left to right, cards stacked in one column can run at the same time');
   pill(`At most ${plan.machineCap} app builds at once`, ` (${plan.appStartCount} could start now)`);
   pill('Partly ready', ' = run it now, it stops at the design picks; run the same command again after your picks');
   return rules;
@@ -895,8 +863,9 @@ export function renderRunPlanView() {
   const plan = computeRunPlan(currentDoc);
 
   root.appendChild(renderReview(plan.review || [], plan.openChecks || []));
+  root.appendChild(renderReadyState(plan.readiness || [], id => idButton(id, 'rp-link rp-chip-id')));
   if (plan.lanes.length === 0) {
-    root.appendChild(el('p', 'rp-empty', 'No pinned epics. Pin one with ch tasks plan --pin <id>'));
+    root.appendChild(el('p', 'rp-empty', 'No epic is in progress or Ready, and none is pinned.'));
     return;
   }
   root.appendChild(renderRules(plan));

@@ -124,6 +124,27 @@ const NEAR_MS = 2 * 60000;
  */
 export function stopCause(prevMs, ms, events) {
   const near = events.filter((e) => e.ms >= prevMs - NEAR_MS && e.ms <= ms + NEAR_MS);
-  for (const c of ['usage-limit', 'api-error', 'app-closed', 'interrupt']) if (near.some((e) => e.cause === c)) return c;
+  for (const c of STOP_CAUSE_ORDER) if (near.some((e) => e.cause === c)) return c;
   return 'unknown';
+}
+
+/**
+ * Causes a suite script records in $CH_HOME/stop-causes.jsonl (one JSON object per line:
+ * sessionId, at, cause, evidence, recordedAt). They sit right after usage-limit in the priority.
+ */
+export const RECORDED_STOP_CAUSES = ['idle-sweep', 'app-quit', 'app-update', 'rate-limit', 'network', 'keypress', 'mac-sleep'];
+const STOP_CAUSE_ORDER = ['usage-limit', ...RECORDED_STOP_CAUSES, 'api-error', 'app-closed', 'interrupt'];
+
+/**
+ * Stop-cause events ({ms, cause}) for one session from the recorded entries: matching sessionId, a
+ * known cause that is not 'unknown', and a readable `at`. Anything else is ignored.
+ */
+export function recordedStopEvents(entries, sessionId) {
+  const out = [];
+  for (const e of entries || []) {
+    if (!e || !sessionId || e.sessionId !== sessionId || !RECORDED_STOP_CAUSES.includes(e.cause)) continue;
+    const ms = Date.parse(e.at);
+    if (Number.isFinite(ms)) out.push({ ms, cause: e.cause });
+  }
+  return out;
 }

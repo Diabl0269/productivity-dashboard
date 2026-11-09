@@ -221,6 +221,8 @@ async function collectSessionsStep(cfg, sinceMs) {
   try { cache = JSON.parse(fs.readFileSync(cachePath, 'utf8')); } catch { /* none yet */ }
   const res = await collectSessions({
     dirs: cfg.claudeProjects, cache, since: sinceMs ? sinceCutoff(sinceMs) : null, stallMinutes: cfg.stallMinutes,
+    // A suite script writes why sessions stopped to $CH_HOME/stop-causes.jsonl; a missing file changes nothing.
+    stopCauses: readRecords(path.join(dataRoot(), 'stop-causes.jsonl')),
   });
   const st = upsertRecords(SESSIONS, res.records);
   fs.writeFileSync(cachePath, JSON.stringify(res.cache ?? cache));

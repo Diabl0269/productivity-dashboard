@@ -189,6 +189,9 @@ export function normalizeTasksMeta(meta) {
   const carriedIds = Array.isArray(dailyPlan.carriedIds)
     ? dailyPlan.carriedIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta.projects)))
     : [];
+  const handPinnedIds = Array.isArray(dailyPlan.handPinnedIds)
+    ? [...new Set(dailyPlan.handPinnedIds.map(id => String(id).trim()).filter(id => isValidTaskId(id, collectKnownPrefixes(meta.projects))))]
+    : [];
 
   let weeklyCapacityMinutes = base.weeklyCapacityMinutes;
   if (typeof meta.weeklyCapacityMinutes === 'number'
@@ -216,7 +219,8 @@ export function normalizeTasksMeta(meta) {
     : {};
 
   return {
-    dailyPlan: { date, taskIds, carriedIds },
+    // handPinnedIds (epics Tal pinned by hand, PRO61) is only written once there is one
+    dailyPlan: { date, taskIds, carriedIds, ...(handPinnedIds.length ? { handPinnedIds } : {}) },
     weeklyCapacityMinutes,
     projects,
     ideas,

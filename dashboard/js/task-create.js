@@ -464,29 +464,38 @@ function buildTypeField() {
   return field;
 }
 
-/** Lane for a new epic (required: a lane-less epic lands in "No lane yet" on the Plan page). */
-function buildEpicLaneInput(state) {
+/**
+ * Lane field for an epic, with a datalist of the lanes already in use. Without `opts` it edits the
+ * new-ticket draft (required there: a lane-less epic lands in "No lane yet" on the Plan page);
+ * the ticket window passes its own value and handler.
+ * @param {object} state
+ * @param {{ id?: string, listId?: string, label?: string, value?: string, onInput?: (v: string) => void }} [opts]
+ */
+export function buildEpicLaneInput(state, opts = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'td-field';
   const label = document.createElement('span');
   label.className = 'td-field-label';
-  label.textContent = 'Lane (required for an epic)';
+  label.textContent = opts.label || 'Lane (required for an epic)';
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'td-text-input';
-  input.id = 'tcLane';
+  input.id = opts.id || 'tcLane';
   input.placeholder = 'e.g. canvas, website';
   input.setAttribute('aria-label', 'Epic lane');
-  input.value = draft.lane || '';
+  input.value = opts.value !== undefined ? opts.value : (draft.lane || '');
   const list = document.createElement('datalist');
-  list.id = 'tcLaneList';
+  list.id = opts.listId || 'tcLaneList';
   const lanes = new Set();
   for (const sectionTasks of Object.values(state.tasks || {})) {
     for (const t of sectionTasks || []) if (t.type === 'epic' && t.lane) lanes.add(t.lane);
   }
   [...lanes].sort().forEach(l => { const o = document.createElement('option'); o.value = l; list.appendChild(o); });
   input.setAttribute('list', list.id);
-  input.addEventListener('input', () => { draft.lane = input.value; input.classList.remove('tc-title-error'); });
+  input.addEventListener('input', () => {
+    if (opts.onInput) opts.onInput(input.value); else draft.lane = input.value;
+    input.classList.remove('tc-title-error');
+  });
   wrap.appendChild(label);
   wrap.appendChild(input);
   wrap.appendChild(list);
