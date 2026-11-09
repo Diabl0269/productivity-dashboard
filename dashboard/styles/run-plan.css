@@ -76,7 +76,7 @@ button.rp-link:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .rp-chip-later { color: var(--rp-c-later); }
 .rp-chip-pick { color: var(--rp-cpick); }
 
-.rp-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 2px; }
+.rp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; padding-top: 2px; }
 .rp-btn { font: inherit; font-size: 12.5px; cursor: pointer; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 4px 9px; }
 .rp-btn:hover { border-color: var(--c, var(--text-secondary)); }
 .rp-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -210,3 +210,13 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
 .rp-aq-row.rp-aq-dragging { opacity: .55; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); cursor: grabbing; }
 .rp-aq-grip { color: var(--text-secondary); letter-spacing: -2px; user-select: none; }
 .rp-aq-lane { border-radius: 999px; padding: 1px 9px; font-size: 12px; border: 1px solid var(--border); color: var(--text-secondary); }
+
+/* PRO64: compact Auto switch and the folded Not-ready list. */
+.rp-auto-toggle { font-size: 12px; gap: 5px; color: var(--text-secondary); }
+.rp-auto-toggle input { width: 14px; height: 14px; margin: 0; }
+.rp-actions .rp-auto-toggle { margin-right: auto; }
+.rp-fold-btn { align-self: flex-start; padding: 2px 10px; font-size: 12.5px; color: var(--text-secondary); }
+.rp-fold-btn[aria-expanded="true"] { color: var(--text-primary); border-color: var(--rp-c-ready); }
+.rp-fold { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .25s ease, visibility 0s linear .25s; }
+.rp-fold.rp-fold-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows .25s ease, visibility 0s; }
+.rp-fold-inner { min-height: 0; overflow: hidden; }

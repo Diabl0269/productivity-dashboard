@@ -1,7 +1,7 @@
 // epic-ready-ui.js — Ready / Not ready state, Auto switch and Lane field for epics (PRO61).
 // Used by the ticket window (task-detail.js) and the Plan tab (run-plan-view.js); rules in shared/epic-ready.js.
 
-import { epicReadiness, readinessLabel, AUTO_LABEL, isAuto, autoPriorityOf } from '../../shared/epic-ready.js';
+import { epicReadiness, readinessLabel, isAuto, autoPriorityOf, withAutoLabel, autoToggleView, foldReadiness } from '../../shared/epic-ready.js';
 import { buildEpicLaneInput } from './task-create.js';
 
 /** Adapt the dashboard in-memory shape (taskId, per-section arrays) to the tasks.json doc shape. */
@@ -121,10 +121,7 @@ export function buildEpicPlanPanel(task, { state, commit, refresh }) {
   box.id = 'tdEpicAuto';
   box.checked = isAuto({ labels: task.labels || [] });
   box.addEventListener('change', () => {
-    if (!Array.isArray(task.labels)) task.labels = [];
-    const has = task.labels.some(l => String(l).trim().toLowerCase() === AUTO_LABEL);
-    if (box.checked && !has) task.labels.push(AUTO_LABEL);
-    if (!box.checked) task.labels = task.labels.filter(l => String(l).trim().toLowerCase() !== AUTO_LABEL);
+    task.labels = withAutoLabel(task.labels, box.checked);
     commit(box.checked ? 'Auto on' : 'Auto off');
     refresh();
   });
@@ -134,29 +131,87 @@ export function buildEpicPlanPanel(task, { state, commit, refresh }) {
   return wrap;
 }
 
+const FOLD_KEY = 'runPlanNotReadyOpen';
+function readFold() {
+  try { return localStorage.getItem(FOLD_KEY) === '1'; } catch { return false; }
+}
+function writeFold(open) {
+  try { localStorage.setItem(FOLD_KEY, open ? '1' : '0'); } catch { /* storage unavailable */ }
+}
+
 /**
- * The Plan tab's "Ready state" block: every open epic as Ready / Ready · Auto / Not ready: reason.
+ * Compact Auto switch for a Plan page card or Ready row: a real checkbox named by the epic id.
+ * Flipping it writes the same `auto` label as the epic window checkbox, through `onToggle`.
+ * @param {{id: string, ready: boolean, auto: boolean}} r  epicReadiness result
+ * @param {(on: boolean) => void} onToggle
+ */
+export function buildAutoToggle(r, onToggle) {
+  const v = autoToggleView(r);
+  const label = el('label', 'td-epic-auto rp-auto-toggle');
+  label.title = v.title;
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = v.checked;
+  box.dataset.autoToggle = r.id;
+  box.setAttribute('aria-label', v.ariaLabel);
+  box.addEventListener('change', () => onToggle(box.checked));
+  label.appendChild(box);
+  label.appendChild(el('span', null, v.text));
+  return label;
+}
+
+/**
+ * The Plan tab's "Ready state" block: Ready epics, with Not-ready ones folded under one button.
  * @param {object[]} readiness  plan.readiness
  * @param {(id: string) => HTMLElement} idButton  makes the epic id a button that opens the ticket
+ * @param {(r: object, on: boolean, where: string) => void} [onAuto]  writes the Auto label for an epic
  */
-export function renderReadyState(readiness, idButton) {
+export function renderReadyState(readiness, idButton, onAuto) {
   const sec = el('section', 'rp-ready');
   sec.setAttribute('aria-label', 'Ready state of every open epic');
   sec.appendChild(el('h3', 'rp-ready-title', 'Ready state'));
   sec.appendChild(el('p', 'rp-ready-note',
-    'An epic runs by itself only when it is Ready and Auto is on for it (the Auto box in its ticket window).'));
-  const list = el('ul', 'rp-ready-list');
-  for (const r of readiness) {
+    'An epic runs by itself only when it is Ready and Auto is on for it (the Auto switch here or in its ticket window).'));
+  const { ready, notReady, buttonLabel } = foldReadiness(readiness);
+  const row = (r) => {
     const li = el('li', `rp-ready-row ${r.ready ? 'rp-ready-yes' : 'rp-ready-no'}`);
     li.dataset.epic = r.id;
     li.appendChild(idButton(r.id));
     li.appendChild(el('span', 'rp-ready-name', r.title));
     li.appendChild(el('span', 'rp-ready-state', r.ready ? 'Ready' : 'Not ready'));
-    if (r.auto) li.appendChild(el('span', 'rp-ready-auto', 'Auto'));
+    if (onAuto) li.appendChild(buildAutoToggle(r, on => onAuto(r, on, 'ready')));
     if (!r.ready) li.appendChild(el('span', 'rp-ready-why', r.reasons.join('; ')));
-    list.appendChild(li);
-  }
+    return li;
+  };
+  const list = el('ul', 'rp-ready-list');
+  ready.forEach(r => list.appendChild(row(r)));
   if (!readiness.length) list.appendChild(el('li', 'rp-ready-row', 'No open epics.'));
+  else if (!ready.length) list.appendChild(el('li', 'rp-ready-row', 'No epic is Ready.'));
   sec.appendChild(list);
+
+  if (notReady.length) {
+    let open = readFold();
+    const btn = el('button', 'rp-btn rp-fold-btn');
+    btn.type = 'button';
+    const fold = el('div', 'rp-fold');
+    fold.id = 'rpNotReadyFold';
+    btn.setAttribute('aria-controls', fold.id);
+    const inner = el('div', 'rp-fold-inner');
+    const nrList = el('ul', 'rp-ready-list');
+    notReady.forEach(r => nrList.appendChild(row(r)));
+    inner.appendChild(nrList);
+    fold.appendChild(inner);
+    const apply = () => {
+      btn.textContent = `${buttonLabel} ${open ? '▴' : '▾'}`;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.title = open ? 'Hide the Not-ready epics' : 'Show the Not-ready epics';
+      fold.classList.toggle('rp-fold-open', open);
+    };
+    apply();
+    // Toggle in place (no redraw) so the height transition runs.
+    btn.addEventListener('click', () => { open = !open; writeFold(open); apply(); });
+    sec.appendChild(btn);
+    sec.appendChild(fold);
+  }
   return sec;
 }

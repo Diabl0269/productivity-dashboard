@@ -8,13 +8,14 @@ import { projectGroupHeader, playVideoButton, audioPlayer } from './check-eviden
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
+import { withAutoLabel } from '../../shared/epic-ready.js';
 import { fillEpicEstimates } from './ticket-cost-ui.js';
 import { openTaskDetail, toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { moveTask } from './tasks-board.js';
 import { loadTasksJson } from './tasks-json.js';
 import { todayStr } from './tasks-parser.js';
-import { stateToDoc as toDoc, renderReadyState } from './epic-ready-ui.js';
+import { stateToDoc as toDoc, renderReadyState, buildAutoToggle } from './epic-ready-ui.js';
 import { renderAutoQueue } from './auto-queue-ui.js';
 import { markChanged } from './tasks-io.js';
 import { showStatus } from './state.js';
@@ -610,6 +611,20 @@ function openClaudeSession(card) {
   showToast(folder ? `Opening Claude: ${card.command}${pick}` : `Opening Claude${pick} (set claudeSessionFolder in config.json to pick the folder)`);
 }
 
+// Readiness by epic id for this draw, and where to put focus after the redraw a toggle causes.
+let readinessById = new Map();
+let pendingAutoFocus = null;
+
+/** Flip an epic's Auto label through the normal save; the redraw updates the queue and any open epic window. */
+function setEpicAuto(r, on, where) {
+  const task = findTicket(r.id);
+  if (!task) { showToast(`Ticket ${r.id} not found`); return; }
+  task.labels = withAutoLabel(task.labels, on);
+  pendingAutoFocus = { id: r.id, where };
+  showStatus(`${r.id}: Auto ${on ? 'on' : 'off'}`);
+  commitReviewChange(task);
+}
+
 function renderCard(card, phase) {
   const key = `${card.id}:${phase}`;
   const article = el('article', `rp-card rp-${card.state}`);
@@ -657,6 +672,8 @@ function renderCard(card, phase) {
   if (card.why && !(card.ticketIds && /^(Picks|Co-tasks): /.test(card.why))) article.appendChild(el('div', 'rp-why', card.why));
 
   const actions = el('div', 'rp-actions');
+  const autoR = !card.ticketIds && card.state !== 'pick' && !card.isPrompt ? readinessById.get(card.id) : null;
+  if (autoR) actions.appendChild(buildAutoToggle(autoR, on => setEpicAuto(autoR, on, 'lane')));
   if (card.command) {
     const copy = el('button', 'rp-btn rp-cmd', card.isPrompt ? 'Copy prompt' : card.command);
     copy.type = 'button';
@@ -880,7 +897,8 @@ export function renderRunPlanView() {
   const plan = computeRunPlan(currentDoc);
 
   root.appendChild(renderReview(plan.review || [], plan.openChecks || []));
-  root.appendChild(renderReadyState(plan.readiness || [], id => idButton(id, 'rp-link rp-chip-id')));
+  readinessById = new Map((plan.readiness || []).map(r => [r.id, r]));
+  root.appendChild(renderReadyState(plan.readiness || [], id => idButton(id, 'rp-link rp-chip-id'), setEpicAuto));
   root.appendChild(renderAutoQueue(plan.readiness || [], {
     idButton: id => idButton(id, 'rp-link rp-chip-id'),
     openTicket,
@@ -898,6 +916,16 @@ export function renderRunPlanView() {
   root.appendChild(tracks);
   if (plan.doneEpics.length) root.appendChild(renderDoneNote(plan.doneEpics));
   fillEpicEstimates(root);
+  restoreAutoFocus(root);
+}
+
+/** After a switch redraws the page, put focus back on the same switch (same place on the page). */
+function restoreAutoFocus(root) {
+  if (!pendingAutoFocus) return;
+  const { id, where } = pendingAutoFocus;
+  pendingAutoFocus = null;
+  const scope = where === 'ready' ? '.rp-ready' : '.rp-tracks';
+  root.querySelector(`${scope} [data-auto-toggle="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
 }
 
 /** Re-render when tasks change (called from renderTasks); only if the tab is showing. */

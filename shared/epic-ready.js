@@ -217,3 +217,34 @@ export function autoQueueOrder(readiness) {
       || a.i - b.i)
     .map(x => x.r);
 }
+
+/** A labels array with the `auto` label added (on) or removed (off); other labels untouched. Returns a new array. */
+export function withAutoLabel(labels, on) {
+  const list = Array.isArray(labels) ? labels : [];
+  const rest = list.filter(l => String(l).trim().toLowerCase() !== AUTO_LABEL);
+  return on ? [...rest, AUTO_LABEL] : rest;
+}
+
+/**
+ * What an epic's compact Auto switch shows (Plan page lane cards and Ready rows).
+ * @param {{id: string, ready: boolean, auto: boolean}} r  one epicReadiness result
+ */
+export function autoToggleView(r) {
+  const waits = !r.ready;
+  return {
+    checked: !!r.auto,
+    text: waits ? 'Auto (waits until Ready)' : 'Auto',
+    title: waits
+      ? `Auto is allowed for ${r.id}, but it waits until the epic is Ready`
+      : `Run ${r.id} automatically`,
+    ariaLabel: `Auto for ${r.id}${waits ? ', waits until Ready' : ''}`,
+  };
+}
+
+/** Split the Ready list: Ready epics stay visible, Not-ready ones fold. `buttonLabel` is the fold line text. */
+export function foldReadiness(readiness) {
+  const list = readiness || [];
+  const ready = list.filter(r => r.ready);
+  const notReady = list.filter(r => !r.ready);
+  return { ready, notReady, buttonLabel: `${notReady.length} not ready` };
+}
