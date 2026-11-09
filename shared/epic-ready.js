@@ -21,6 +21,21 @@ const LATER_TITLE = /\b(later|future)\b/i;
 const COMPUTER_USE_TEXT = /computer use|open\/save panel|menu bar|voiceover|another app/i;
 const RUNNABLE_SECTIONS = new Set(['todo', 'in-progress']);
 
+/** Auto-queue priorities, first to run first. Stored on the epic as `autoPriority` (the ticket's own `priority` stays low/medium/high). */
+export const AUTO_PRIORITIES = ['high', 'normal', 'low'];
+
+/** An epic's queue priority: 'high' | 'normal' | 'low'; missing or unknown = 'normal'. */
+export function autoPriorityOf(epic) {
+  const p = String(epic?.autoPriority ?? '').trim().toLowerCase();
+  return AUTO_PRIORITIES.includes(p) ? p : 'normal';
+}
+
+/** An epic's `autoRank` (finite number, lower runs first), or null when it has none. */
+export function autoRankOf(epic) {
+  const n = epic?.autoRank;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
 const labelsOf = t => (t?.labels || []).map(l => String(l).trim().toLowerCase());
 
 /** True when the epic carries the `auto` label (Tal switched Auto on for it). */
@@ -145,12 +160,14 @@ function readinessIn(ix, epic) {
     ready: reasons.length === 0,
     reasons,
     auto: isAuto(epic),
+    priority: autoPriorityOf(epic),
+    autoRank: autoRankOf(epic),
     model: runnable.some(c => c.model === 'opus') ? 'opus' : 'sonnet',
     children,
   };
 }
 
-/** Readiness of one epic: { id, title, section, lane, ready, reasons, auto, model, children }. */
+/** Readiness of one epic: { id, title, section, lane, ready, reasons, auto, priority, autoRank, model, children }. */
 export function epicReadiness(doc, epic) {
   return readinessIn(indexDoc(doc), epic);
 }
@@ -184,4 +201,19 @@ export function epicIdsForLanes(readiness, doc) {
     if (sec.id === 'in-progress') for (const t of sec.tasks || []) if (t.type === 'epic') inProgress.add(t.id);
   }
   return readiness.filter(r => r.ready || inProgress.has(r.id)).map(r => r.id);
+}
+
+/**
+ * The order Auto epics start in: priority (high, normal, low), then `autoRank` (lower first; epics
+ * without one come after ranked ones), then the order given (plan order). Returns a new array.
+ * @param {{priority?: string, autoRank?: number|null}[]} readiness  epicReadiness results, in plan order
+ */
+export function autoQueueOrder(readiness) {
+  const prio = r => AUTO_PRIORITIES.indexOf(AUTO_PRIORITIES.includes(r?.priority) ? r.priority : 'normal');
+  const rank = r => (typeof r?.autoRank === 'number' && Number.isFinite(r.autoRank) ? r.autoRank : Infinity);
+  return (readiness || []).map((r, i) => ({ r, i }))
+    .sort((a, b) => prio(a.r) - prio(b.r)
+      || (rank(a.r) === rank(b.r) ? 0 : rank(a.r) < rank(b.r) ? -1 : 1)
+      || a.i - b.i)
+    .map(x => x.r);
 }

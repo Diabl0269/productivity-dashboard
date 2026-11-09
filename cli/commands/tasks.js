@@ -13,6 +13,7 @@
  *              [--blocked] [--waiting-on "..."] [--label L] [--link URL] [--link-label "..."] [--blocked-by T1]
  *              [--review-of T1]
  *   (add/update also take --lane <slug> and update --clear-lane: run-plan lane)
+ *   (update on an epic also takes --auto-priority <high|normal|low> and --auto-rank <n> / --clear-auto-rank: its place in the Auto queue)
  *   (an epic needs a lane and a model:<tier> label naming its orchestrator)
  *   runplan [--json]
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
@@ -1282,6 +1283,9 @@ function cmdUpdate(argv) {
     'clear-energy':  { type: 'boolean' },
     lane:            { type: 'string' },
     'clear-lane':    { type: 'boolean' },
+    'auto-priority': { type: 'string' },
+    'auto-rank':     { type: 'string' },
+    'clear-auto-rank': { type: 'boolean' },
     model: { type: 'string' },
     'clear-model': { type: 'boolean' },
     snooze:          { type: 'string' },
@@ -1507,6 +1511,25 @@ function cmdUpdate(argv) {
     changed = true;
   } else if (values.lane !== undefined) {
     task.lane = values.lane.trim();
+    changed = true;
+  }
+  // Auto queue (epics): where the epic starts among Auto epics. --priority stays the ticket priority.
+  if (values['auto-priority'] !== undefined) {
+    const p = values['auto-priority'].trim().toLowerCase();
+    if (!['high', 'normal', 'low'].includes(p)) die(`invalid --auto-priority "${values['auto-priority']}". Valid: high, normal, low`);
+    if (task.type !== 'epic') die(`${id} is not an epic: --auto-priority only applies to epics`);
+    task.autoPriority = p;
+    changed = true;
+  }
+  if (values['clear-auto-rank']) {
+    delete task.autoRank;
+    changed = true;
+  } else if (values['auto-rank'] !== undefined) {
+    const raw = values['auto-rank'].trim();
+    const n = Number(raw);
+    if (raw === '' || !Number.isFinite(n)) die(`invalid --auto-rank "${values['auto-rank']}". Use a number (lower starts first)`);
+    if (task.type !== 'epic') die(`${id} is not an epic: --auto-rank only applies to epics`);
+    task.autoRank = n;
     changed = true;
   }
   // Only when this update makes it an epic or strips its lane; older lane-less epics stay editable.
@@ -2743,6 +2766,7 @@ Subcommands:
              [--decision "..."] [--remove-decision N] [--clear-decisions]
              [--remove-time-entry N] [--clear-time-entries]
              [--estimate 2h] [--clear-estimate]
+             [--auto-priority high|normal|low] [--auto-rank N] [--clear-auto-rank]   (epics: place in the Auto queue)
              [--assignee name] [--clear-assignee] [--check] [--uncheck]
              [--blocked] [--unblocked] [--waiting-on "..."] [--clear-waiting-on]
              [--add-label L] [--remove-label L] [--clear-labels]

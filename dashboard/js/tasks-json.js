@@ -263,6 +263,8 @@ export function loadTasksJson(text) {
       project: (typeof t.project === 'string' && t.project.trim()) ? t.project.trim() : null,
       energy: readEnergy(t),
       lane: (typeof t.lane === 'string' && t.lane.trim()) ? t.lane.trim() : null,
+      autoPriority: ['high', 'normal', 'low'].includes(t.autoPriority) ? t.autoPriority : null,
+      autoRank: (typeof t.autoRank === 'number' && Number.isFinite(t.autoRank)) ? t.autoRank : null,
       model: readModel(t),
       custom: readCustomFromJson(t),
       snoozeUntil: (typeof t.snoozeUntil === 'string' && DATE_RE.test(t.snoozeUntil)) ? t.snoozeUntil : null,
@@ -345,6 +347,8 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (t.project) row.project = String(t.project).trim();
         if (t.energy && ENERGY_VALUES.has(t.energy)) row.energy = t.energy;
         if (typeof t.lane === 'string' && t.lane.trim()) row.lane = t.lane.trim();
+        if (['high', 'normal', 'low'].includes(t.autoPriority)) row.autoPriority = t.autoPriority;
+        if (typeof t.autoRank === 'number' && Number.isFinite(t.autoRank)) row.autoRank = t.autoRank;
         const model = normalizeModel(t.model);
         if (model) row.model = model;
         const custom = serializeCustomToJson(t);

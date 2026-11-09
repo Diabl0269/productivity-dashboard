@@ -254,6 +254,10 @@ export function normalizeTask(task) {
     if (task.lane === '') delete task.lane;
   }
 
+  // autoPriority / autoRank (epics: Auto queue); empty -> removed, bad values kept so validate reports them
+  if (task.autoPriority === '' || task.autoPriority == null) delete task.autoPriority;
+  if (task.autoRank === '' || task.autoRank == null) delete task.autoRank;
+
   if (task.energy === '' || task.energy == null) delete task.energy;
   else if (typeof task.energy === 'string' && !ENERGY_VALUES.includes(task.energy)) delete task.energy;
 
@@ -855,6 +859,14 @@ export function validateTasksDoc(doc) {
         if (typeof task.lane !== 'string' || !isLaneSlug(task.lane)) {
           errors.push(`${ref} (id=${task.id ?? '?'}) .lane "${task.lane}" must be a slug (lowercase letters, digits, hyphens)`);
         }
+      }
+
+      // autoPriority / autoRank (optional, epics: where the epic sits in the Auto queue)
+      if (task.autoPriority !== undefined && !['high', 'normal', 'low'].includes(task.autoPriority)) {
+        errors.push(`${ref} (id=${task.id ?? '?'}) .autoPriority "${task.autoPriority}" must be one of high, normal, low`);
+      }
+      if (task.autoRank !== undefined && !(typeof task.autoRank === 'number' && Number.isFinite(task.autoRank))) {
+        errors.push(`${ref} (id=${task.id ?? '?'}) .autoRank "${task.autoRank}" must be a number`);
       }
 
       // energy (optional)

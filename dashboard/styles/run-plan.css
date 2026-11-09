@@ -193,3 +193,20 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
 .rp-ready-no .rp-ready-state { color: var(--text-secondary); }
 .rp-ready-auto { border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; background: var(--rp-c-running); color: #fff; }
 .rp-ready-why { color: var(--text-secondary); }
+
+/* Auto queue (PRO63): Auto epics grouped High / Normal / Low, reordered by drag or Alt+Arrow */
+.rp-aq { background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--rp-c-running); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rp-aq-title { margin: 0; font-size: 15px; font-weight: 700; }
+.rp-aq-empty { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.rp-aq-live { margin: 0; min-height: 0; font-size: 12px; color: var(--text-secondary); }
+.rp-aq-live:empty { display: none; }
+.rp-aq-group { display: flex; flex-direction: column; gap: 4px; }
+.rp-aq-group-title { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
+.rp-aq-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-height: 34px; border-radius: 8px; }
+.rp-aq-list:empty { border: 1px dashed var(--border); }
+.rp-aq-list:empty::after { content: 'Empty. Drag an epic here.'; display: block; padding: 7px 10px; font-size: 12px; color: var(--text-secondary); }
+.rp-aq-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1, var(--surface-2)); cursor: grab; }
+.rp-aq-row:focus-visible { outline: 2px solid var(--rp-c-running); outline-offset: 1px; }
+.rp-aq-row.rp-aq-dragging { opacity: .55; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); cursor: grabbing; }
+.rp-aq-grip { color: var(--text-secondary); letter-spacing: -2px; user-select: none; }
+.rp-aq-lane { border-radius: 999px; padding: 1px 9px; font-size: 12px; border: 1px solid var(--border); color: var(--text-secondary); }
