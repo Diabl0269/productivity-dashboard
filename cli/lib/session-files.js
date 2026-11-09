@@ -152,7 +152,7 @@ const sinceMs = (since) => {
  * `since` (ms, Date, ISO or "30d") drops sessions that ended before it.
  * Returns {records, cache}; cache is {[path]: {mtimeMs, size, record}} to pass back next time.
  */
-export async function collectSessions({ dirs = [], cache = {}, since, stallMinutes = 20, midRunMinutes = 15 } = {}) {
+export async function collectSessions({ dirs = [], cache = {}, since, stallMinutes = 20, midRunMinutes = 15, stopCauses = [] } = {}) {
   const cutoff = sinceMs(since);
   const next = {};
   const records = [];
@@ -162,14 +162,17 @@ export async function collectSessions({ dirs = [], cache = {}, since, stallMinut
       if (cutoff !== null && t.mtimeMs < cutoff) continue;
       const hit = cache[t.path];
       const sig = helperSignature(helperFiles(dir, t.sessionId));
+      // Recorded stop causes (stop-causes.jsonl) for this session: a change re-reads the transcript.
+      const mine = stopCauses.filter((e) => e && e.sessionId === t.sessionId);
+      const stopSig = mine.length ? JSON.stringify(mine.map((e) => [e.at, e.cause])) : '';
       let record;
-      if (hit && hit.v === CACHE_VERSION && hit.mtimeMs === t.mtimeMs && hit.size === t.size && hit.helperSig === sig && hit.record !== undefined) {
+      if (hit && hit.v === CACHE_VERSION && hit.mtimeMs === t.mtimeMs && hit.size === t.size && hit.helperSig === sig && (hit.stopSig || '') === stopSig && hit.record !== undefined) {
         record = hit.record;
       } else {
-        record = await summarizeTranscriptFile(t.path, { stallMinutes, midRunMinutes, project });
+        record = await summarizeTranscriptFile(t.path, { stallMinutes, midRunMinutes, project, stopCauses: mine });
       }
       if (record) record.helpers = t.helperCount;
-      next[t.path] = { v: CACHE_VERSION, mtimeMs: t.mtimeMs, size: t.size, helperSig: sig, record };
+      next[t.path] = { v: CACHE_VERSION, mtimeMs: t.mtimeMs, size: t.size, helperSig: sig, stopSig, record };
       if (record) records.push(record);
     }
   }

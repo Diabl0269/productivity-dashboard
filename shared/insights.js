@@ -170,7 +170,7 @@ function sessionRules(sessions, out) {
     const o = s.missedWakeOrigins || {};
     const n = k => o[k] || 0;
     const cz = s.missedWakeCauses || {};
-    const labels = { 'usage-limit': 'usage limit', 'api-error': 'API error', 'app-closed': 'app closed', interrupt: 'interrupted by you', unknown: 'no cause found' };
+    const labels = { 'usage-limit': 'usage limit', 'idle-sweep': 'idle sweep', 'app-quit': 'app quit', 'app-update': 'app update', 'rate-limit': 'rate limit', network: 'network', keypress: 'Escape keypress', 'mac-sleep': 'Mac slept', 'api-error': 'API error', 'app-closed': 'app closed', interrupt: 'interrupted by you', unknown: 'no cause found' };
     const causes = Object.keys(labels).filter(k => cz[k] > 0).map(k => `${cz[k]} ${labels[k]}`);
     const why = causes.length ? ` The ${plural(n('tool-result'), 'mid-turn stop')}: ${causes.join(', ')}.` : '';
     out.push({

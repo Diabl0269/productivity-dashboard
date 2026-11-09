@@ -5,7 +5,7 @@
  */
 
 import { priceUsage, normalizeModel } from './model-prices.js';
-import { classifyErrorLine, isInterruptLine, isNoResponseLine, isToolResultLine, parseResetsAt, stopCause } from './limit-hits.js';
+import { classifyErrorLine, isInterruptLine, isNoResponseLine, isToolResultLine, parseResetsAt, stopCause, recordedStopEvents } from './limit-hits.js';
 
 const TICKET_RE = /^[\s"'`]*([A-Z]{2,5}\d+)\b/;
 const BRANCH_RE = /(?:^|[^a-z])([a-z]{2,5}\d+)(?![a-z0-9])/i;
@@ -294,7 +294,7 @@ export function mergeIntervals(list) {
   return out;
 }
 
-export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15, project } = {}) {
+export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15, project, stopCauses } = {}) {
   const stallMs = stallMinutes * 60000;
   const midMs = midRunMinutes * 60000;
   let sessionId = null;
@@ -524,8 +524,9 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   for (const e of Object.values(byTicket)) e.costUSD = rUSD(e.costUSD, RAW);
   if (ticket && !byTicket[ticket]) byTicket[ticket] = { costUSD: 0, tokens: 0, toolCalls: 0 };
   const missedWakeCauses = {};
+  const events = stopCauses && stopCauses.length ? [...errEvents, ...recordedStopEvents(stopCauses, sessionId)] : errEvents;
   for (const [a, b] of toolResultWakes) {
-    const c = stopCause(a, b, errEvents);
+    const c = stopCause(a, b, events);
     missedWakeCauses[c] = (missedWakeCauses[c] || 0) + 1;
   }
   // Minutes lost = from the hit to the next real assistant line, cut at the reset time; with no later
