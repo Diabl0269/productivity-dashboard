@@ -180,3 +180,16 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
   .rp-picks { margin: 8px 0; max-width: none; border-left: 0; border-top: 2px dashed var(--rp-cpick); padding: 6px 0 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Ready state: every open epic as Ready / Not ready (with the reason) and an Auto badge (PRO61) */
+.rp-ready { background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--rp-c-ready); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rp-ready-title { margin: 0; font-size: 15px; font-weight: 700; }
+.rp-ready-note { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.rp-ready-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rp-ready-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; }
+.rp-ready-name { font-weight: 600; }
+.rp-ready-state { border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); }
+.rp-ready-yes .rp-ready-state { color: var(--rp-c-ready); border-color: var(--rp-c-ready); }
+.rp-ready-no .rp-ready-state { color: var(--text-secondary); }
+.rp-ready-auto { border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; background: var(--rp-c-running); color: #fff; }
+.rp-ready-why { color: var(--text-secondary); }

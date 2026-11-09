@@ -6,6 +6,10 @@
  */
 
 import { checksOnOpenWork, reviewQueue } from './review.js';
+import { isDesignPick, isPickGate } from './pick-gate.js';
+import { openEpicReadiness, epicIdsForLanes } from './epic-ready.js';
+
+export { isDesignPick, isPickGate };
 
 export const DEFAULT_MACHINE_CAP = 3;
 export const UNASSIGNED_LANE = 'unassigned';
@@ -38,19 +42,6 @@ export function openEpicsWithoutModel(doc) {
   return out;
 }
 
-/** Open epics missing from the day plan's pins: every open epic stays on the Plan page (Tal, 2026-10-14). */
-export function openEpicsNotPinned(doc) {
-  const pinned = new Set(doc?.meta?.dailyPlan?.taskIds || []);
-  const out = [];
-  for (const section of doc?.sections || []) {
-    if (CLOSED_EPIC_SECTIONS.includes(section.id)) continue;
-    for (const t of section.tasks || []) {
-      if (t.type === 'epic' && !pinned.has(t.id)) out.push(t);
-    }
-  }
-  return out;
-}
-
 /** Lane slugs shown as words: "timeline" -> "Timeline", "mod-lanes" -> "Mod lanes", "ai" -> "AI". */
 const LANE_ACRONYMS = new Set(['ai', 'ui', 'ux', 'cli', 'midi', 'api', 'ci']);
 export function laneDisplayName(slug) {
@@ -59,17 +50,6 @@ export function laneDisplayName(slug) {
   if (!words.length) return '';
   words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
   return words.join(' ');
-}
-
-/**
- * A co-task that needs a design board: a "design" label, "pick" in its title, or a design canvas
- * link already on it. Other co-tasks
- * (submit a form, check something in the app) are plain to-dos for Tal and get no canvas.
- */
-export function isDesignPick(task) {
-  if ((task?.labels || []).some(l => /^design$/i.test(String(l).trim()))) return true;
-  if (Array.isArray(task?.links) && task.links.some(l => l && /design canvas/i.test(l.label || ''))) return true;
-  return /\bpick\b/i.test(String(task?.title || ''));
 }
 
 /** The design canvas link on a ticket ({ label?, url }), or null while none is drawn. */
@@ -134,16 +114,6 @@ function stableTopo(ids, depsOf) {
 }
 
 /**
- * A "pick" gate is a ticket the human must act on before dependants can proceed: a title
- * starting "Co-task:" (case-insensitive) or a label "co-task". A "Design:" ticket is NOT a
- * pick; an agent builds it.
- */
-export function isPickGate(task) {
-  if (/^\s*co-task\s*:/i.test(String(task?.title || ''))) return true;
-  return (task?.labels || []).some(l => /^co-task$/i.test(String(l).trim()));
-}
-
-/**
  * The model to pick for a ticket, from its `model:<tier>` label ("opus" -> "Opus"); null when
  * unlabelled. The desktop app's new-session link cannot set a model, so the plan names it.
  */
@@ -197,6 +167,12 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   for (const id of [...(plan.taskIds || []), ...(plan.carriedIds || [])]) {
     if (!pinned.includes(id) && byId.get(id)?.type === 'epic') pinned.push(id);
   }
+  // Pins mean this week's focus, not "show on the plan": every in-progress or Ready epic gets a lane too.
+  const readiness = openEpicReadiness(doc);
+  const extraLane = new Set();
+  for (const id of epicIdsForLanes(readiness, doc)) {
+    if (!pinned.includes(id)) { pinned.push(id); extraLane.add(id); }
+  }
 
   const childrenOf = new Map();
   for (const t of byId.values()) {
@@ -224,7 +200,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   for (const id of pinned) {
     const kids = descendants(id);
     const done = isCheckedDone(byId.get(id), sectionOf.get(id)) || (kids.length > 0 && kids.every(k => !isOpen(k)));
-    if (done) { doneEpics.push(id); continue; }
+    if (done) { if (!extraLane.has(id)) doneEpics.push(id); continue; }
     live.push(id);
     members.set(id, new Set(kids));
   }
@@ -470,6 +446,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     lanes,
     doneEpics,
     picks: pickList,
+    // Ready / Not ready (with reasons) for every open epic, and whether Auto is on (shared/epic-ready.js).
+    readiness,
     machineCap,
     appLaneCount: lanes.filter(l => l.needsBuild).length,
     appStartCount,

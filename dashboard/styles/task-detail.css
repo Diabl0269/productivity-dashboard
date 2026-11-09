@@ -2422,3 +2422,11 @@
 
 /* Likely cost / cost so far chip (ticket-cost-ui.js): a sentence, not a label */
 .td-focus-chip.td-focus-cost { text-transform: none; }
+
+/* Epic plan block: Ready / Not ready line, Lane field, Auto switch (PRO61) */
+.td-epic-plan { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.td-epic-ready { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.td-epic-ready-yes { color: var(--status-done, #2f7d32); }
+.td-epic-ready-no { color: var(--text-secondary); }
+.td-epic-auto { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); cursor: pointer; }
+.td-epic-auto input { width: 16px; height: 16px; }

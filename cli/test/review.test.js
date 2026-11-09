@@ -402,18 +402,21 @@ test('moving a pinned epic to done unpins it; moving a child to review counts as
   assert.ok(!pins(tmpDir).includes(other));
 });
 
-test('every open epic is pinned; updating an unpinned open epic pins it', () => {
+test('an epic pins itself only when it moves to in-progress (PRO61)', () => {
   const tmpDir = makeTmpDir();
   const add = (...extra) => JSON.parse(runCli(['tasks', 'add', '--no-project', 'E', '--type', 'epic', '--label', 'model:opus', '--json', ...extra], tmpDir).stdout).id;
   const first = add('--lane', 'canvas');
   const second = add('--lane', 'canvas', '--section', 'backlog');
-  assert.ok(pins(tmpDir).includes(first));
-  assert.ok(pins(tmpDir).includes(second));
+  assert.ok(!pins(tmpDir).includes(first), 'a todo epic is not pinned');
+  assert.ok(!pins(tmpDir).includes(second));
 
-  runCli(['tasks', 'plan', '--unpin', second], tmpDir);
-  const r = runCli(['tasks', 'update', second, '--add-note', 'still planned'], tmpDir);
+  const r = runCli(['tasks', 'move', first, 'in-progress'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
-  assert.ok(pins(tmpDir).includes(second));
+  assert.match(r.stdout, /\(pinned\)/);
+  assert.ok(pins(tmpDir).includes(first), 'starting it pins it');
+  const u = runCli(['tasks', 'update', second, '--add-note', 'noted'], tmpDir);
+  assert.equal(u.status, 0, u.stderr);
+  assert.ok(!pins(tmpDir).includes(second), 'updating a todo epic does not pin it');
 });
 
 test('an epic needs a lane: add refuses without one, update cannot make or leave a lane-less epic', () => {
@@ -466,19 +469,14 @@ test('lint warns about open epics with no model label, not closed or labelled on
   assert.doesNotMatch(r.stderr, /T91[23] has no model label/);
 });
 
-test('lint warns about open epics not pinned to the plan, not pinned or closed ones', () => {
+test('lint no longer warns about unpinned open epics (PRO61)', () => {
   const tmpDir = makeTmpDir();
   const doc = readTasks(tmpDir);
-  const put = (sec, t) => doc.sections.find(s => s.id === sec).tasks.push({ checked: false, priority: 'medium', created: '2026-10-01', subtasks: [], lane: 'canvas', type: 'epic', labels: ['model:opus'], ...t });
-  put('in-progress', { id: 'T921', title: 'Unpinned epic' });
-  put('todo', { id: 'T922', title: 'Pinned epic' });
-  put('done', { id: 'T923', title: 'Closed epic' });
-  doc.meta = { ...(doc.meta || {}), dailyPlan: { date: '2026-10-01', taskIds: ['T922'], carriedIds: [] } };
+  doc.sections.find(s => s.id === 'in-progress').tasks.push({ checked: false, priority: 'medium', created: '2026-10-01', subtasks: [], lane: 'canvas', type: 'epic', labels: ['model:opus'], id: 'T921', title: 'Unpinned epic' });
   fs.writeFileSync(path.join(tmpDir, 'tasks.json'), JSON.stringify(doc));
   const r = runCli(['tasks', 'lint'], tmpDir);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stderr, /epic T921 is not pinned to the plan \(ch tasks plan --pin T921\)/);
-  assert.doesNotMatch(r.stderr, /T922|T923/);
+  assert.doesNotMatch(r.stderr, /not pinned/);
 });
 
 test('lint warns about open epics with no lane, not closed ones', () => {

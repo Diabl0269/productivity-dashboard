@@ -69,6 +69,9 @@
 
 import { parse } from '../lib/args.js';
 import cmdNext from './tasks-next.js';
+import cmdReady from './tasks-ready.js';
+import { readinessLabel } from '../../shared/epic-ready.js';
+import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
@@ -91,7 +94,7 @@ import { parseEstimate, formatEstimate } from '../lib/estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
 import { storeImageFile, attachmentAbsPath } from '../../shared/note-images.js';
-import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsNotPinned, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
+import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
@@ -127,9 +130,9 @@ function autoUnpin(doc, task) {
   return unpinFromPlan(doc, epicsToUnpin(doc, task));
 }
 
-/** Every open epic stays pinned so nothing gets lost off the Plan page (Tal, 2026-10-14; lane or not). */
+/** An epic pins itself only when it starts (moves to in-progress): pins mean this week's focus (PRO61). */
 function autoPinLaneEpic(doc, task, sectionId) {
-  if (task.type !== 'epic' || isClosedSection(sectionId)) return false;
+  if (task.type !== 'epic' || sectionId !== 'in-progress') return false;
   if (!doc.meta) doc.meta = defaultMeta();
   doc.meta = normalizeMeta(doc.meta);
   const plan = doc.meta.dailyPlan;
@@ -853,13 +856,14 @@ function cmdMove(argv) {
   }
   const rolled = epicBefore ? rollUpEpics(doc, epicBefore) : { epics: [], unpinned: [] };
   const unpinned = [...new Set([...autoUnpin(doc, task), ...rolled.unpinned])];
+  const pinned = autoPinLaneEpic(doc, task, targetSectionId); // an epic that starts is this week's focus
   save(doc);
 
   if (values.json) {
-    jsonOut({ id, from: fromSection.id, to: targetSectionId, spawned: spawned?.id || null, unpinned, epicMoved: rolled.epics });
+    jsonOut({ id, from: fromSection.id, to: targetSectionId, pinned, spawned: spawned?.id || null, unpinned, epicMoved: rolled.epics });
     return;
   }
-  ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${epicNote(rolled.epics)}`);
+  ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${pinned ? ' (pinned)' : ''}${epicNote(rolled.epics)}`);
 }
 
 /** Checks are for what only Tal can judge; refuse the ones the session should verify itself. */
@@ -1984,7 +1988,7 @@ function cmdNotes(argv) {
       if (!plan.groups.length && !plan.unrouted.length) { print('No new review notes.'); return; }
       for (const g of plan.groups) {
         const e = g.epic;
-        const where = e.isNew ? `new epic "${e.title}" (${e.section}${e.section === 'backlog' ? '' : ', pinned'})` : `${e.id} ${e.title} (${e.section})`;
+        const where = e.isNew ? `new epic "${e.title}" (${e.section})` : `${e.id} ${e.title} (${e.section})`;
         print(`${g.area ? laneDisplayName(g.area) : 'No area'} -> ${where}`);
         for (const it of g.items) print(`  ${it.handle} [${it.noteKind}] ${it.title}`);
       }
@@ -1995,7 +1999,7 @@ function cmdNotes(argv) {
       return;
     }
     const res = applyFiling(doc, plan, { newId: (project) => nextId(doc, project) });
-    const pinned = res.pin.filter(id => autoPinLaneEpic(doc, findTask(doc, id).task, 'todo'));
+    const pinned = []; // new follow-up epics are no longer pinned : pins mean this week's focus (PRO61)
     const unpinned = res.movedToDone.flatMap(id => autoUnpin(doc, findTask(doc, id).task));
     if (res.created.length || res.movedToDone.length) save(doc);
     if (values.json) { jsonOut({ ...res, pinned, unpinned, unrouted: plan.unrouted }); return; }
@@ -2183,8 +2187,6 @@ function cmdLint(argv) {
   const noLane = openEpicsWithoutLane(doc);
   for (const t of noLane) printErr(`lint: warning: epic ${t.id} has no lane (ch tasks update ${t.id} --lane <slug>)`);
   for (const t of openEpicsWithoutModel(doc)) printErr(`lint: warning: epic ${t.id} has no model label (ch tasks update ${t.id} --add-label model:opus|sonnet)`);
-  // Every open epic stays pinned (2026-10-14); a hand unpin or a write that skipped the CLI drops it off the Plan page.
-  for (const t of openEpicsNotPinned(doc)) printErr(`lint: warning: epic ${t.id} is not pinned to the plan (ch tasks plan --pin ${t.id})`);
 
   // Reviews are Tal's: a ticket that went review -> done within minutes was probably closed by a session.
   for (const t of doc.sections.filter(s => s.id === 'done').flatMap(s => s.tasks)) {
@@ -2345,14 +2347,22 @@ function assertLane(value) {
   }
 }
 
-/** Run plan: which pinned epics can be launched now, as parallel lanes. */
+/** The "Ready state" block of `runplan`: every open epic as Ready / Ready \u00b7 Auto / Not ready: reason. */
+function printReadyState(readiness) {
+  if (!readiness?.length) return;
+  print('Ready state (an epic runs by itself only when it is Ready and Auto is on):');
+  for (const e of readiness) print(`  ${e.id}  ${e.title}  -  ${readinessLabel(e)}`);
+}
+
+/** Run plan: which in-progress, Ready or pinned epics can be launched now, as parallel lanes. */
 function cmdRunPlan(argv) {
   const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
   const plan = computeRunPlan(load());
   if (values.json) return jsonOut(plan);
 
+  printReadyState(plan.readiness);
   if (plan.lanes.length === 0) {
-    print('No pinned epics. Pin one with: ch tasks plan --pin <id>');
+    print('No epic is in progress or Ready, and none is pinned.');
   }
   const line = (c, prev) => {
     const mark = c.inProgress && (c.state === 'ready' || c.state === 'partial')
@@ -2390,7 +2400,7 @@ function cmdRunPlan(argv) {
     for (const r of plan.openChecks) print(`  ${r.id}  ${r.title} · checks ${r.checks.done}/${r.checks.total}`);
   }
   if (plan.doneEpics.length) print(`Done epics, still pinned: ${plan.doneEpics.join(', ')} (unpin with ch tasks plan --unpin <id>)`);
-  print('Lanes run side by side; cards in a lane run top to bottom; a \u2016 line runs alongside the card above it');
+  print('Epics in one lane run in order; lanes run side by side; cards in a lane run top to bottom; a \u2016 line runs alongside the card above it');
   print(`At most ${plan.machineCap} app builds at once (${plan.appStartCount} could start now)`);
 }
 
@@ -2449,6 +2459,8 @@ function cmdPlan(argv) {
     pin:    { type: 'string', multiple: true },
     unpin:  { type: 'string', multiple: true },
     carry:  { type: 'boolean' },
+    'cleanup-pins': { type: 'boolean' },
+    'dry-run': { type: 'boolean' },
     json:   { type: 'boolean', short: 'j' },
   });
 
@@ -2473,6 +2485,7 @@ function cmdPlan(argv) {
       date: today,
       taskIds: unfinished,
       carriedIds: [...unfinished],
+      handPinnedIds: (plan.handPinnedIds || []).filter(id => unfinished.includes(id)),
     };
     doc.meta.dailyPlan = plan;
     changed = true;
@@ -2501,6 +2514,7 @@ function cmdPlan(argv) {
       assertTaskId(id, '--pin', doc);
       if (!findTask(doc, id)) die(`task ${id} not found. Try: ch tasks list`);
       if (!plan.taskIds.includes(id)) plan.taskIds.push(id);
+      handPin(doc, id);
     }
     plan.date = today;
     changed = true;
@@ -2510,7 +2524,15 @@ function cmdPlan(argv) {
     const remove = new Set(values.unpin);
     plan.taskIds = (plan.taskIds || []).filter(id => !remove.has(id));
     plan.carriedIds = (plan.carriedIds || []).filter(id => !remove.has(id));
+    for (const id of remove) handUnpin(doc, id);
     changed = true;
+  }
+
+  let cleaned = null;
+  if (values['cleanup-pins']) {
+    doc.meta.dailyPlan = plan;
+    cleaned = cleanupPins(doc, { dryRun: values['dry-run'] });
+    if (cleaned.length && !values['dry-run']) changed = true;
   }
 
   doc.meta.dailyPlan = plan;
@@ -2528,8 +2550,13 @@ function cmdPlan(argv) {
   });
 
   if (values.json) {
-    jsonOut({ date: plan.date, taskIds: plan.taskIds, carriedIds: plan.carriedIds || [], tasks: rows });
+    jsonOut({ date: plan.date, taskIds: plan.taskIds, carriedIds: plan.carriedIds || [], handPinnedIds: plan.handPinnedIds || [], tasks: rows, ...(cleaned ? { unpinned: cleaned, dryRun: !!values['dry-run'] } : {}) });
     return;
+  }
+  if (cleaned) {
+    const verb = values['dry-run'] ? 'would unpin' : 'unpinned';
+    for (const c of cleaned) print(`${verb} ${c.id} ${c.title} (${c.why})`);
+    print(cleaned.length ? `${verb} ${cleaned.length} pin(s)` : 'no pins to clean up');
   }
 
   print(`Today plan (${plan.date}):`);
@@ -2660,8 +2687,12 @@ Subcommands:
   list [--section S] [--priority P] [--active] [--json]
   get <id> [--json]
   capture "<title>" (--project slug | --no-project) [--priority medium] [--json]
-  plan [--pin T1] [--unpin T1] [--carry] [--json]
+  plan [--pin T1] [--unpin T1] [--carry] [--cleanup-pins [--dry-run]] [--json]
+         (a pin means this week's focus; an epic pins itself only when it moves to in-progress; --cleanup-pins unpins every epic
+          that is not in-progress and was not pinned by hand with --pin; task history records no hand pins, so hand pins are
+          remembered in meta.dailyPlan.handPinnedIds)
   runplan [--json]
+  ready [--json] [--auto]   every open epic as Ready or Not ready (reasons), and Auto; --auto = Ready and Auto only (read-only)
   next [--n 5] [--project P] [--json]   best ready tickets to start next (read-only)
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
@@ -2745,6 +2776,7 @@ const SUBCOMMANDS = {
   plan:          cmdPlan,
   runplan:       cmdRunPlan,
   next:          cmdNext,
+  ready:         cmdReady,
   stale:         cmdStale,
   add:           cmdAdd,
   move:          cmdMove,
