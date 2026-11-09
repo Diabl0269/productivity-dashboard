@@ -1,4 +1,5 @@
-// project-drag.js — Drag tickets between sub-projects and epics in Projects view.
+// project-drag.js — Drag tickets between sub-projects and epics in Projects view, and reorder rows in a list
+// (bindReorderDrag: the Plan page's Auto queue). Same MIME type and drag-state as the ticket drag.
 
 import { showStatus } from './state.js';
 import { applyMoveToEpic, applyMoveToProject } from './task-move.js';
@@ -102,4 +103,80 @@ export function bindProjectsDragDrop(container, state, onChanged) {
     if (dragTaskId) e.preventDefault();
   });
   container.addEventListener('drop', () => clearDropHighlights(container));
+}
+
+/**
+ * FLIP: run `mutate` (which moves/redraws rows), then slide each row from where it was to where it
+ * is now, so neighbours make room instead of jumping. Rows are matched by `data-epic`.
+ * @param {Element[]} rows  rows before the change
+ * @param {() => Element[]} mutate  applies the change, returns the rows after it
+ */
+export function flipRows(rows, mutate, { ms = 160 } = {}) {
+  const before = new Map(rows.map(r => [r.dataset.epic, r.getBoundingClientRect()]));
+  const after = mutate() || [];
+  playFlip(after, before, ms);
+}
+
+/** Slide `rows` from the rects in `before` (Map id -> DOMRect) to where they are now. */
+export function playFlip(rows, before, ms = 160) {
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  for (const row of rows) {
+    const was = before.get(row.dataset.epic);
+    if (!was || !row.animate) continue;
+    const now = row.getBoundingClientRect();
+    const dy = was.top - now.top;
+    if (Math.abs(dy) < 1) continue;
+    row.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], { duration: ms, easing: 'ease-out' });
+  }
+}
+
+/**
+ * Drag rows (`[data-epic]` inside each list) within and between `lists` (elements with a
+ * `data-priority`). While dragging, the row moves live and neighbours slide aside; on drop,
+ * `onDrop(id, listEl, index)` gets the final place. A drag that ends elsewhere calls `onCancel`.
+ */
+export function bindReorderDrag(lists, { onDrop, onCancel }) {
+  let dragRow = null;
+  let dropped = false;
+  const rowsIn = (list) => [...list.querySelectorAll(':scope > [data-epic]')];
+  const allRows = () => lists.flatMap(rowsIn);
+
+  for (const list of lists) {
+    list.addEventListener('dragstart', (e) => {
+      const row = e.target.closest?.('[data-epic]');
+      if (!row || !list.contains(row)) return;
+      dragRow = row;
+      dropped = false;
+      dragTaskId = row.dataset.epic;
+      row.classList.add('rp-aq-dragging');
+      e.dataTransfer.setData(DRAG_MIME, row.dataset.epic);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    list.addEventListener('dragover', (e) => {
+      if (!dragRow) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const others = rowsIn(list).filter(r => r !== dragRow);
+      const next = others.find(r => { const b = r.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) || null;
+      const inPlace = dragRow.parentElement === list && dragRow.nextElementSibling === next
+        && (next || list.lastElementChild === dragRow);
+      if (inPlace) return;
+      flipRows(allRows(), () => { list.insertBefore(dragRow, next); return allRows(); });
+    });
+    list.addEventListener('drop', (e) => {
+      if (!dragRow) return;
+      e.preventDefault();
+      dropped = true;
+      onDrop(dragRow.dataset.epic, list, rowsIn(list).indexOf(dragRow));
+    });
+  }
+  const end = () => {
+    if (!dragRow) return;
+    const row = dragRow;
+    dragRow = null;
+    dragTaskId = null;
+    row.classList.remove('rp-aq-dragging');
+    if (!dropped) onCancel?.();
+  };
+  for (const list of lists) list.addEventListener('dragend', end);
 }

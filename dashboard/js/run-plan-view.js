@@ -15,6 +15,9 @@ import { moveTask } from './tasks-board.js';
 import { loadTasksJson } from './tasks-json.js';
 import { todayStr } from './tasks-parser.js';
 import { stateToDoc as toDoc, renderReadyState } from './epic-ready-ui.js';
+import { renderAutoQueue } from './auto-queue-ui.js';
+import { markChanged } from './tasks-io.js';
+import { showStatus } from './state.js';
 
 let getState = null;
 let toastTimer = null;
@@ -848,6 +851,20 @@ function renderLegend() {
   return legend;
 }
 
+/** Write a queue move: set autoPriority / autoRank on each changed epic ('normal' = no field), save and redraw. */
+function applyQueueChanges(changes, note) {
+  const tasks = changes.map(c => ({ c, task: findTicket(c.id) })).filter(x => x.task);
+  tasks.forEach(({ c, task }, i) => {
+    task.autoPriority = c.priority === 'normal' ? null : c.priority;
+    task.autoRank = c.autoRank;
+    if (i < tasks.length - 1) markChanged(task);
+    else commitReviewChange(task);
+  });
+  showStatus(note);
+  const live = document.querySelector('.rp-aq-live');
+  if (live) live.textContent = note;
+}
+
 export function renderRunPlanView() {
   const root = document.getElementById('runPlanMain');
   if (!root) return;
@@ -864,6 +881,12 @@ export function renderRunPlanView() {
 
   root.appendChild(renderReview(plan.review || [], plan.openChecks || []));
   root.appendChild(renderReadyState(plan.readiness || [], id => idButton(id, 'rp-link rp-chip-id')));
+  root.appendChild(renderAutoQueue(plan.readiness || [], {
+    idButton: id => idButton(id, 'rp-link rp-chip-id'),
+    openTicket,
+    redraw: renderRunPlanView,
+    apply: applyQueueChanges,
+  }));
   if (plan.lanes.length === 0) {
     root.appendChild(el('p', 'rp-empty', 'No epic is in progress or Ready, and none is pinned.'));
     return;

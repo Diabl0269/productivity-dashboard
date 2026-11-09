@@ -1,7 +1,7 @@
 // epic-ready-ui.js — Ready / Not ready state, Auto switch and Lane field for epics (PRO61).
 // Used by the ticket window (task-detail.js) and the Plan tab (run-plan-view.js); rules in shared/epic-ready.js.
 
-import { epicReadiness, readinessLabel, AUTO_LABEL, isAuto } from '../../shared/epic-ready.js';
+import { epicReadiness, readinessLabel, AUTO_LABEL, isAuto, autoPriorityOf } from '../../shared/epic-ready.js';
 import { buildEpicLaneInput } from './task-create.js';
 
 /** Adapt the dashboard in-memory shape (taskId, per-section arrays) to the tasks.json doc shape. */
@@ -20,6 +20,8 @@ export function stateToDoc(state) {
         blockedBy: t.blockedBy || [],
         labels: t.labels || [],
         lane: t.lane || undefined,
+        autoPriority: t.autoPriority || undefined,
+        autoRank: t.autoRank == null ? undefined : t.autoRank,
         project: t.project || undefined,
         // Readiness inputs (shared/epic-ready.js).
         description: t.description || '',
@@ -50,7 +52,7 @@ function el(tag, className, text) {
 const LANE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
- * Epic block of the ticket window: Ready / Not ready line, Lane field, Auto switch.
+ * Epic block of the ticket window: Ready / Not ready line, Lane field, Auto priority, Auto switch.
  * @param {object} task    dashboard-shaped epic
  * @param {{ state: object, commit: (note: string) => void, refresh: () => void }} ctx
  */
@@ -91,6 +93,27 @@ export function buildEpicPlanPanel(task, { state, commit, refresh }) {
   input.addEventListener('change', save);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
   wrap.appendChild(laneField);
+
+  // Auto priority: where this epic starts among Auto epics (High, then Normal, then Low).
+  const prioField = el('div', 'td-field');
+  prioField.appendChild(el('span', 'td-field-label', 'Auto priority'));
+  const prioSelect = el('select', 'td-select');
+  prioSelect.id = 'tdEpicAutoPriority';
+  prioSelect.setAttribute('aria-label', 'Auto priority');
+  for (const p of ['high', 'normal', 'low']) {
+    const o = el('option', null, p[0].toUpperCase() + p.slice(1));
+    o.value = p;
+    prioSelect.appendChild(o);
+  }
+  prioSelect.value = autoPriorityOf(task);
+  prioSelect.addEventListener('change', () => {
+    task.autoPriority = prioSelect.value === 'normal' ? null : prioSelect.value;
+    task.autoRank = null; // a new group: starts at the end of it; drag the row on the Plan page to place it
+    commit(`Auto priority set to ${prioSelect.value}`);
+    refresh();
+  });
+  prioField.appendChild(prioSelect);
+  wrap.appendChild(prioField);
 
   const autoLabel = el('label', 'td-epic-auto');
   const box = document.createElement('input');
