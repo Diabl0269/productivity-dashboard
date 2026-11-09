@@ -1,4 +1,4 @@
-// run-plan-view.js — "Plan" tab: Ready state, then in-progress, Ready and pinned epics as lanes (rows); see shared/run-plan.js
+// run-plan-view.js — "Plan" tab: review, Auto queue, Ready state, then in-progress, Ready and pinned epics as lanes (rows); see shared/run-plan.js
 
 import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
@@ -898,13 +898,13 @@ export function renderRunPlanView() {
 
   root.appendChild(renderReview(plan.review || [], plan.openChecks || []));
   readinessById = new Map((plan.readiness || []).map(r => [r.id, r]));
-  root.appendChild(renderReadyState(plan.readiness || [], id => idButton(id, 'rp-link rp-chip-id'), setEpicAuto));
   root.appendChild(renderAutoQueue(plan.readiness || [], {
     idButton: id => idButton(id, 'rp-link rp-chip-id'),
     openTicket,
     redraw: renderRunPlanView,
     apply: applyQueueChanges,
   }));
+  root.appendChild(renderReadyState(plan.readiness || [], id => idButton(id, 'rp-link rp-chip-id'), setEpicAuto));
   if (plan.lanes.length === 0) {
     root.appendChild(el('p', 'rp-empty', 'No epic is in progress or Ready, and none is pinned.'));
     return;
