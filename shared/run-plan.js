@@ -159,7 +159,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
       if (t && t.id && !byId.has(t.id)) { byId.set(t.id, t); sectionOf.set(t.id, sec.id); }
     }
   }
-  const isOpen = id => byId.has(id) && !byId.get(id).checked;
+  // A ticket or epic waiting in Ready for review (or done/archive) is finished work: it blocks nothing.
+  const isOpen = id => byId.has(id) && !byId.get(id).checked && !FINISHED_SECTIONS.has(sectionOf.get(id));
   const openBlockers = t => (t.blockedBy || []).filter(isOpen);
 
   const plan = doc?.meta?.dailyPlan || {};
