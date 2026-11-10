@@ -51,12 +51,64 @@ function attribution(s) {
   return { [s.ticket]: { costUSD: num(s.costUSD), tokens: tokensTotal(s.tokens) + tokensTotal(s.helperTokens), toolCalls: num(s.toolCallsTotal) + num(s.helperToolCalls) } };
 }
 
+const HOUR = 3600000;
+/** Dollars of `byHour` ({hour: usd}) inside [sinceMs, untilMs], each hour weighted by its overlap. */
+function inWindowUSD(byHour, sinceMs, untilMs) {
+  let t = 0;
+  for (const [h, v] of Object.entries(byHour || {})) {
+    const a = Number(h) * HOUR;
+    const o = Math.min(untilMs, a + HOUR) - Math.max(sinceMs, a);
+    if (o > 0) t += num(v) * (o / HOUR);
+  }
+  return t;
+}
+
+const TOK_KEYS = ['input', 'output', 'cacheRead', 'cacheWrite'];
+const scaleTokens = (t, f) => Object.fromEntries(TOK_KEYS.map(k => [k, num(t?.[k]) * f]));
+const scaleModels = (m, f) => Object.fromEntries(Object.entries(m || {}).map(([k, v]) => [k, { ...scaleTokens(v, f), costUSD: num(v.costUSD) * f }]));
+const sumOf = o => Object.values(o || {}).reduce((a, v) => a + num(v), 0);
+
+/**
+ * Cost counted by when it was spent. `all` are the project-filtered records, `inList` those among them that pass
+ * the start-time rule. A record with `costByHour` becomes a copy holding only its in-window part (costUSD,
+ * helperCostUSD, tokens, byModel, parts scaled per side, main and helpers, by the in-window cost fraction); a record
+ * written before it existed counts whole when it is in `inList`.
+ */
+export function windowedSessions(all, inList, sinceMs, untilMs) {
+  const kept = new Set(inList);
+  const out = [];
+  for (const s of all) {
+    if (!s.costByHour || typeof s.costByHour !== 'object') { if (kept.has(s)) out.push(s); continue; }
+    const mainBy = s.mainCostByHour || s.costByHour;
+    const wm = inWindowUSD(mainBy, sinceMs, untilMs);
+    const wh = inWindowUSD(s.helperCostByHour, sinceMs, untilMs);
+    if (!(wm > 0) && !(wh > 0)) continue;
+    const totM = sumOf(mainBy);
+    const totH = sumOf(s.helperCostByHour);
+    const fm = totM > 0 ? wm / totM : 0;
+    const fh = totH > 0 ? wh / totH : 0;
+    const parts = (p, f) => (p && typeof p === 'object' ? Object.fromEntries(PART_KEYS.map(k => [k, num(p[k]) * f])) : undefined);
+    const copy = {
+      ...s, costUSD: wm + wh, helperCostUSD: wh,
+      tokens: scaleTokens(s.tokens, fm), helperTokens: scaleTokens(s.helperTokens, fh),
+      byModel: scaleModels(s.byModel, fm), helperByModel: scaleModels(s.helperByModel, fh),
+      parts: parts(s.parts, fm), helperParts: parts(s.helperParts, fh),
+    };
+    if (!copy.parts) delete copy.parts;
+    if (!copy.helperParts) delete copy.helperParts;
+    out.push(copy);
+  }
+  return out;
+}
+
 /**
  * @param {{sessions:object[], byId:Map<string,object>, sectionOf:Map<string,string>, cfg?:object,
- *   sinceMs:number, nowMs:number, limit?:number}} args  `sessions` are already filtered to the window and project;
+ *   sinceMs:number, nowMs:number, limit?:number, windowed?:object[]}} args  `sessions` are already filtered to the window and project
+ *   (start-time rule: byTicket, byEpic, perShipped, shares, context); `windowed` (default `sessions`) is the in-window cost list
+ *   (windowedSessions) that the totals, parts, tokens, models and plan come from;
  *   `limit` caps byTicket (default 30) and byEpic (half of it); Infinity keeps every row.
  */
-export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs, limit = 30, weekUSD = null }) {
+export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs, limit = 30, weekUSD = null, windowed = sessions }) {
   // `weekShare`: cost as a share of a week's plan limit (shared/plan-share.js); only when calibrated.
   const wk = weekUSD > 0 ? raw => ({ weekShare: r3(raw / weekUSD) }) : () => ({});
   let totalUSD = 0;
@@ -69,20 +121,24 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
   const hist = {};
   let ctxCalls = 0;
   let ctxSessions = 0;
-  for (const s of sessions) {
+  let startUSD = 0;
+  for (const s of windowed) {
     const mp = partsOf(s, 'parts', 'byModel');
     const hp = partsOf(s, 'helperParts', 'helperByModel');
     for (const k of PART_KEYS) { byPart.main[k] += num(mp[k]); byPart.helpers[k] += num(hp[k]); }
-    if (num(s.ctxCalls) > 0 && s.ctxHist && typeof s.ctxHist === 'object') {
-      ctxCalls += s.ctxCalls;
-      ctxSessions += 1;
-      for (const [b, c] of Object.entries(s.ctxHist)) hist[b] = (hist[b] || 0) + num(c);
-    }
     totalUSD += num(s.costUSD);
     helperUSD += num(s.helperCostUSD);
     for (const k of Object.keys(tokens)) tokens[k] += num(s.tokens?.[k]) + num(s.helperTokens?.[k]);
     for (const src of [s.byModel, s.helperByModel]) {
       for (const [m, v] of Object.entries(src || {})) models.set(m, (models.get(m) || 0) + num(v.costUSD));
+    }
+  }
+  for (const s of sessions) {
+    startUSD += num(s.costUSD);
+    if (num(s.ctxCalls) > 0 && s.ctxHist && typeof s.ctxHist === 'object') {
+      ctxCalls += s.ctxCalls;
+      ctxSessions += 1;
+      for (const [b, c] of Object.entries(s.ctxHist)) hist[b] = (hist[b] || 0) + num(c);
     }
     if (s.ticket) activeBy.set(s.ticket, (activeBy.get(s.ticket) || 0) + num(s.activeMin));
     for (const [id, a] of Object.entries(attribution(s))) {
@@ -111,7 +167,7 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
     context,
     costUSD: r2(totalUSD),
     tokens,
-    sessions: sessions.length,
+    sessions: windowed.length,
     helperCostUSD: r2(helperUSD),
     byModel: [...models].map(([model, c]) => ({ model, costUSD: r2(c), share: totalUSD > 0 ? r3(c / totalUSD) : 0 }))
       .sort((a, b) => b.costUSD - a.costUSD || (a.model < b.model ? -1 : 1)),
@@ -125,7 +181,7 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
       state: sectionOf.get(e.ticket) ?? null,
       costUSD: r2(e.costUSD), tokens: e.tokens, toolCalls: e.toolCalls, sessions: e.sessions,
       activeMin: Math.round((activeBy.get(e.ticket) || 0) * 10) / 10,
-      share: totalUSD > 0 ? r3(e.costUSD / totalUSD) : 0,
+      share: startUSD > 0 ? r3(e.costUSD / startUSD) : 0,
       ...wk(e.costUSD),
       _raw: e.costUSD,
     };
@@ -149,7 +205,7 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
   const byEpic = [...epics.values()].sort((a, b) => b._raw - a._raw || (a.epic < b.epic ? -1 : 1))
     .slice(0, limit === Infinity ? Infinity : Math.ceil(limit / 2)).map(ep => ({
     epic: ep.epic, title: ep.title, costUSD: r2(ep._raw),
-    share: totalUSD > 0 ? r3(ep._raw / totalUSD) : 0,
+    share: startUSD > 0 ? r3(ep._raw / startUSD) : 0,
     ...wk(ep._raw),
     children: [...ep.kids].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id, c]) => ({
       ticket: id, title: byId.get(id)?.title ?? null, costUSD: r2(c), own: id === ep.epic,

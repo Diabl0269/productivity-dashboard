@@ -9,7 +9,7 @@ import readline from 'node:readline';
 import { summarizeSession, summarizeHelperUsage, applyHelpers } from '../../shared/session-metrics.js';
 
 // Bump when the summary logic changes so cached records are recomputed.
-const CACHE_VERSION = 13;
+const CACHE_VERSION = 14;
 const WANTED = new Set(['user', 'assistant', 'system', 'custom-title', 'pr-link', 'cost-state']);
 const LEAD_TYPE_RE = /^\{"type":"([\w-]+)"/; // pr-link, cost-state, api-request-*, file-history-*... lead with type
 

@@ -324,3 +324,42 @@ test('cost by part: parts sum to the total, main vs helpers, old records priced 
   const oldRec = { costUSD: 0.01, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, byModel: { 'claude-opus-5': { input: 1e6, output: 0, cacheRead: 0, cacheWrite: 0, costUSD: 5 } } };
   close(costsBlock({ sessions: [oldRec], byId: new Map(), sectionOf: new Map(), sinceMs: 0, nowMs: 1 }).total.byPart.find(x => x.part === 'input').mainUSD, 5);
 });
+
+test('cost window: counted by the hour spent, not by session start; old records fall back to the start rule', () => {
+  const out = (min, id) => asst(min, id, 'claude-opus-5', u({ output_tokens: 1e6 })); // $25 each
+  const rec = summarizeSession([human(0), out(30, 'a1'), out(150, 'a2'), out(200, 'a3')]);
+  assert.equal(Object.keys(rec.costByHour).length, 3);
+  close(rec.costUSD, 75);
+  const doc = { sections: [] };
+  const since = T0 + 2 * 3600000;
+  // Window T0+2h .. T0+4h: the session started before it, but two of its three messages fall inside.
+  let p = buildMetricsPayload({ doc, sessions: [rec], now: T0 + 4 * 3600000, since });
+  close(p.costs.total.costUSD, 50);
+  assert.equal(p.costs.total.sessions, 1);
+  close(p.costs.total.tokens.output, 2e6);
+  close(p.costs.total.byModel[0].costUSD, 50);
+  assert.equal(p.sessions.summary.n, 0); // sessions block still follows the start rule
+  // A window ending mid-hour counts that hour in proportion (message 3 is in hour 3, window ends 30 min in).
+  p = buildMetricsPayload({ doc, sessions: [rec], now: T0 + 3.5 * 3600000, since });
+  close(p.costs.total.costUSD, 25 + 12.5);
+  // A record from before costByHour existed counts whole by its start time.
+  const { costByHour, mainCostByHour, helperCostByHour, ...old } = rec;
+  p = buildMetricsPayload({ doc, sessions: [old], now: T0 + 4 * 3600000, since });
+  close(p.costs.total.costUSD, 0);
+  p = buildMetricsPayload({ doc, sessions: [old], now: T0 + 4 * 3600000, since: T0 - 3600000 });
+  close(p.costs.total.costUSD, 75);
+});
+
+test('cost window: helper cost is windowed by its own hours', () => {
+  const rec = summarizeSession([human(0), asst(30, 'm1', 'claude-opus-5', u({ output_tokens: 1e6 }))]);
+  const helper = summarizeHelperUsage([
+    asst(10, 'h1', 'claude-opus-5', u({ output_tokens: 1e6 }), undefined, { isSidechain: true }),
+    asst(130, 'h2', 'claude-opus-5', u({ output_tokens: 1e6 }), undefined, { isSidechain: true }),
+  ]);
+  applyHelpers(rec, [helper]);
+  close(rec.costUSD, 75);
+  const p = buildMetricsPayload({ doc: { sections: [] }, sessions: [rec], now: T0 + 4 * 3600000, since: T0 + 2 * 3600000 });
+  close(p.costs.total.costUSD, 25);
+  close(p.costs.total.helperCostUSD, 25);
+  close(p.costs.total.tokens.output, 1e6);
+});

@@ -6,7 +6,7 @@ import { flowMetrics, median, percentile } from './flow-metrics.js';
 import { rankReadyTickets } from './next-ticket.js';
 import { redTime, trend, isUncounted, isFlakyRerun } from './ci-metrics.js';
 import { buildInsights } from './insights.js';
-import { costsBlock } from './cost-metrics.js';
+import { costsBlock, windowedSessions } from './cost-metrics.js';
 import { limitsBlock } from './plan-share.js';
 import { estimatorFor, estimatesSummary } from './cost-estimate.js';
 import { splitInProgress } from './time-split.js';
@@ -180,6 +180,13 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     const t = s.ticket ? byId.get(s.ticket) : null;
     return !!t && t.project === project;
   });
+  // Cost is counted by the hour it was spent: records with costByHour count their in-window part.
+  const inProject = s => {
+    if (!project) return true;
+    const t = s.ticket ? byId.get(s.ticket) : null;
+    return !!t && t.project === project;
+  };
+  const costWindow = windowedSessions((sessions || []).filter(inProject), sess, sinceMs, nowMs);
   // Calibrate on every session in the data, not only this window and project.
   const limits = limitsBlock({ sessions: sessions || [], sinceMs, nowMs });
   const estimator = estimatorFor({ doc, sessions, cfg, nowMs, project });
@@ -193,7 +200,7 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     filters: { project: project || null, projects, lanes },
     flow,
     sessions: sessionsBlock(sess, sinceMs, nowMs),
-    costs: { ...costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit, weekUSD: limits.weekUSD }), limits },
+    costs: { ...costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit, windowed: costWindow, weekUSD: limits.weekUSD }), limits },
     estimates: estimatesSummary(estimator),
     timings: timingsBlock(timingsAll, timingsWin, nowMs),
     next,

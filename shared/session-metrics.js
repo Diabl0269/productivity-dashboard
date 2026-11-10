@@ -99,7 +99,8 @@ function usageOf(u) {
  */
 class UsageTracker {
   constructor() {
-    this.msgs = new Map(); // message id -> {model, usage, ticket}
+    this.msgs = new Map(); // message id -> {model, usage, ticket, ms}
+    this.lastMs = null;
     this.toolIds = new Set();
     this.toolCalls = {};
     this.toolCallsTotal = 0;
@@ -112,6 +113,8 @@ class UsageTracker {
   addAssistant(line, ticket) {
     const msg = line.message;
     if (!msg || typeof msg !== 'object') return;
+    const at = Date.parse(line.timestamp);
+    if (!Number.isNaN(at)) this.lastMs = at;
     const u = usageOf(msg.usage);
     if (u) {
       const id = msg.id || line.uuid;
@@ -119,7 +122,7 @@ class UsageTracker {
       if (prev) {
         for (const k of Object.keys(u)) prev.usage[k] = Math.max(prev.usage[k], u[k]);
       } else {
-        this.msgs.set(id || `anon${this.msgs.size}`, { model: msg.model || null, usage: u, ticket });
+        this.msgs.set(id || `anon${this.msgs.size}`, { model: msg.model || null, usage: u, ticket, ms: this.lastMs });
       }
     }
     if (!Array.isArray(msg.content)) return;
@@ -148,9 +151,10 @@ class UsageTracker {
     const byTicket = {};
     const parts = zeroParts();
     const ctx = [];
+    const costByHour = {};
     let cost = 0;
     let priced = false;
-    for (const { model, usage, ticket } of this.msgs.values()) {
+    for (const { model, usage, ticket, ms } of this.msgs.values()) {
       const prompt = usage.input + usage.cacheRead + usage.cacheWrite5m + usage.cacheWrite1h;
       if (prompt > 0) ctx.push(prompt);
       const write = usage.cacheWrite5m + usage.cacheWrite1h;
@@ -167,6 +171,7 @@ class UsageTracker {
       const c = priceUsage(model, usage);
       if (c !== null) {
         m.costUSD += c; cost += c; priced = true;
+        if (ms !== null && ms !== undefined) { const h = Math.floor(ms / 3600000); costByHour[h] = (costByHour[h] || 0) + c; }
         const pp = priceParts(model, usage);
         for (const k of Object.keys(parts)) parts[k] += pp[k];
       }
@@ -177,7 +182,8 @@ class UsageTracker {
       }
     }
     for (const m of Object.values(byModel)) m.costUSD = rUSD(m.costUSD, RAW);
-    return { tokens, byModel, costUSD: priced ? cost : null, byTicket, parts: roundParts(parts), ctx };
+    for (const h of Object.keys(costByHour)) costByHour[h] = rUSD(costByHour[h], RAW);
+    return { tokens, byModel, costUSD: priced ? cost : null, byTicket, parts: roundParts(parts), ctx, costByHour };
   }
 }
 
@@ -214,7 +220,7 @@ export function summarizeHelperUsage(lines, { stallMinutes = 20 } = {}) {
     else spans.push([ms, ms]);
   }
   const t = tr.totals();
-  return { firstMs, spans: spans.filter(([a, b]) => b > a), tokens: t.tokens, byModel: t.byModel, costUSD: t.costUSD, parts: t.parts, toolCallsTotal: tr.toolCallsTotal };
+  return { firstMs, spans: spans.filter(([a, b]) => b > a), tokens: t.tokens, byModel: t.byModel, costUSD: t.costUSD, costByHour: t.costByHour, parts: t.parts, toolCallsTotal: tr.toolCallsTotal };
 }
 
 /** The ticket current at `ms`: the last switch in `rec.ticketTimeline` ([[iso, id], ...]) at or before it, else the session's. */
@@ -239,8 +245,10 @@ export function applyHelpers(rec, helpers) {
   let priced = false;
   let calls = 0;
   const parts = zeroParts();
+  const helperCostByHour = {};
   const byTicket = rec.byTicket || (rec.byTicket = {});
   for (const h of helpers || []) {
+    for (const [k, v] of Object.entries(h.costByHour || {})) helperCostByHour[k] = (helperCostByHour[k] || 0) + v;
     for (const k of Object.keys(tokens)) tokens[k] += h.tokens[k];
     calls += h.toolCallsTotal || 0;
     for (const k of Object.keys(parts)) parts[k] += (h.parts && h.parts[k]) || 0;
@@ -262,6 +270,11 @@ export function applyHelpers(rec, helpers) {
     }
   }
   for (const m of Object.values(byModel)) m.costUSD = rUSD(m.costUSD, RAW);
+  for (const k of Object.keys(helperCostByHour)) helperCostByHour[k] = rUSD(helperCostByHour[k], RAW);
+  rec.helperCostByHour = helperCostByHour;
+  rec.mainCostByHour = rec.mainCostByHour || {};
+  rec.costByHour = {};
+  for (const src of [rec.mainCostByHour, helperCostByHour]) for (const [k, v] of Object.entries(src)) rec.costByHour[k] = rUSD((rec.costByHour[k] || 0) + v, RAW);
   rec.helperCostUSD = priced ? rUSD(cost) : null;
   rec.helperTokens = tokens;
   rec.helperByModel = byModel;
@@ -608,6 +621,9 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     parts: ut.parts,
     ...ctxFields(ut.ctx),
     mainCostUSD: ut.costUSD === null ? null : rUSD(ut.costUSD, RAW),
+    // Dollars by the hour the tokens were spent (key Math.floor(ms / 3600000)); helpers are added by applyHelpers.
+    mainCostByHour: ut.costByHour,
+    costByHour: { ...ut.costByHour },
     costUSD: ut.costUSD === null ? null : rUSD(ut.costUSD),
     toolCalls: usage.toolCalls,
     toolCallsTotal: usage.toolCallsTotal,
