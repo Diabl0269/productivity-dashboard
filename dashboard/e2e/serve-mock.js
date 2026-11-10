@@ -197,6 +197,38 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Autorun card: same shape as serve.js /api/autorun, files live under RUNTIME only.
+  if (url.pathname === '/api/autorun' && (req.method === 'GET' || req.method === 'POST')) {
+    try {
+      const lib = await import(path.join(REAL_DASHBOARD, '..', 'shared', 'autorun-settings.js'));
+      const file = path.join(RUNTIME, 'autorun.json');
+      const offFile = path.join(RUNTIME, 'autorun.off');
+      let stored = null;
+      try { stored = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* defaults */ }
+      if (req.method === 'POST') {
+        const body = JSON.parse(await readBody(req));
+        const checked = lib.validateSettings(body);
+        if (!checked.ok) {
+          res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: checked.error }));
+          return;
+        }
+        if (Object.keys(checked.values).length) {
+          stored = lib.mergeSettings(stored, checked.values);
+          fs.writeFileSync(file, JSON.stringify(stored, null, 2) + '\n');
+        }
+        if (body.off === true) fs.writeFileSync(offFile, '');
+        if (body.off === false) fs.rmSync(offFile, { force: true });
+      }
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ settings: lib.normalizeSettings(stored), off: fs.existsSync(offFile) }));
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/global-save') {
     res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, stubbed: true }));

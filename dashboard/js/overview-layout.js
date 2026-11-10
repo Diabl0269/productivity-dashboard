@@ -13,6 +13,7 @@ function corporateHiddenPref() {
 export const OVERVIEW_WIDGETS = [
   { id: 'sprint', title: 'Sprint Info', wide: false, sprint: true },
   { id: 'today-plan', title: 'Today Plan', wide: false },
+  { id: 'autorun', title: 'Autorun', wide: false },
   { id: 'task-summary', title: 'Task Summary', wide: false },
   { id: 'focus', title: 'Focus Agenda', wide: false },
   { id: 'projects', title: 'By Project', wide: false },

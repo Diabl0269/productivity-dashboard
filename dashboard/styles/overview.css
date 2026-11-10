@@ -1088,3 +1088,63 @@
   font-size: 11px !important;
   padding: 2px 6px !important;
 }
+
+/* ── Autorun card ── */
+.autorun-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.autorun-switch input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+
+.autorun-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+
+.autorun-fields.is-off { opacity: 0.6; }
+
+.autorun-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.autorun-field input {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.autorun-field input:focus-visible,
+.autorun-switch input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.autorun-field input[aria-invalid="true"] { border-color: var(--danger, #d64545); }
+
+.autorun-actions { display: flex; align-items: center; gap: var(--space-3); }
+
+.autorun-status { font-size: var(--text-sm); color: var(--text-secondary); }
+.autorun-status.is-error { color: var(--danger, #d64545); }
+
+.autorun-hint {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}

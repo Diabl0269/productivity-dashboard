@@ -158,6 +158,7 @@ See `memory.example/` for the expected format.
 - **Sprint Tracker:** Progress bar for current sprint (configured in `config.json`)
 - **Task Summary:** Counts for in-progress, todo, done, and blocked — click to open Tasks with that filter; total time estimate for active work
 - **Today Plan:** Filter (Pinned / Epics in progress / Both, default Both) over `ch tasks plan --pin` tickets and in-progress epics, with done/total progress on epic rows; the choice is remembered in localStorage
+- **Autorun:** Edits `$CH_HOME/autorun.json` (max runs, max total, pace stop, review cap, max starts, finished idle minutes; blank = default, blank max total = ignore manual sessions) and the `autorun.off` kill switch the autorun dispatcher reads every tick
 - **Upcoming Deadlines:** Prefer `dueDate`; fall back to dates scraped from descriptions
 - **Quick Links:** Configurable shortcuts to your tools (Jira, Notion, Slack, etc.)
 - **1:1 Topics:** Scratchpad for manager meeting topics
@@ -314,6 +315,7 @@ You can also manage scheduled agents through the Claude Desktop app UI:
 │   │   ├── http-loader.js       # HTTP API integration
 │   │   ├── state.js             # Shared app state
 │   │   ├── overview.js          # Overview tab widgets
+│   │   ├── autorun-card.js      # Overview Autorun card (autorun.json + kill switch)
 │   │   ├── search.js            # Full-text search
 │   │   ├── global-memory.js     # Cross-project memory
 │   │   ├── persistence.js       # IndexedDB + FileSystem API

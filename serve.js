@@ -763,6 +763,39 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Overview "Autorun" card: GET /api/autorun -> { settings (defaults filled), off } and
+  // POST /api/autorun { maxRuns?, maxTotal?, paceStop?, reviewCap?, maxStarts?, finishedIdleMin?, off? } -> same shape.
+  // Merge-writes DATA_ROOT/autorun.json (unknown keys kept, tmp + rename); off creates/removes autorun.off.
+  if (url.pathname === '/api/autorun' && (req.method === 'GET' || req.method === 'POST')) {
+    try {
+      const lib = await import('./shared/autorun-settings.js');
+      const file = path.join(DATA_ROOT, 'autorun.json');
+      const offFile = path.join(DATA_ROOT, 'autorun.off');
+      let stored = null;
+      try { stored = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* missing or unreadable: defaults */ }
+      if (req.method === 'POST') {
+        const body = JSON.parse(await readBody(req));
+        const checked = lib.validateSettings(body);
+        if (!checked.ok) throw Object.assign(new Error(checked.error), { status: 400 });
+        if (body.off !== undefined && typeof body.off !== 'boolean') throw Object.assign(new Error('off must be true or false'), { status: 400 });
+        if (Object.keys(checked.values).length) {
+          const tmp = `${file}.${process.pid}.tmp`;
+          fs.writeFileSync(tmp, JSON.stringify(lib.mergeSettings(stored, checked.values), null, 2) + '\n', 'utf8');
+          fs.renameSync(tmp, file);
+          stored = JSON.parse(fs.readFileSync(file, 'utf8'));
+        }
+        if (body.off === true && !fs.existsSync(offFile)) fs.writeFileSync(offFile, 'Paused from the dashboard Autorun card.\n', 'utf8');
+        if (body.off === false) fs.rmSync(offFile, { force: true });
+      }
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ settings: lib.normalizeSettings(stored), off: fs.existsSync(offFile) }));
+    } catch (e) {
+      res.writeHead(e.status || (e instanceof SyntaxError ? 400 : 500), { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Metrics tab: GET /api/metrics?since=30d&project=P -> payload (shared/metrics-payload.js);
   // POST /api/metrics/collect -> run every collector once -> { ok, summary, lines } (409 while one runs).
   if (url.pathname === '/api/metrics' || url.pathname === '/api/metrics/collect') {
