@@ -440,6 +440,22 @@ const tok = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.rou
 const weekPct = r => (r.weekShare === undefined ? '' : `${(r.weekShare * 100).toFixed(1)}%`);
 const tokSum = t => (t ? (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0) : 0);
 
+/** The "Cost by part" and "Main-thread context per call" lines of `ch metrics cost`. */
+function partLines(t) {
+  const lines = [];
+  const label = { cacheRead: 'cache reads', cacheWrite: 'cache writes', output: 'output', input: 'input' };
+  if (t.byPart?.some(x => x.costUSD > 0)) {
+    lines.push(`Cost by part: ${t.byPart.map(x => `${label[x.part]} ${money(x.costUSD)} (${Math.round(x.share * 100)}%: main ${money(x.mainUSD)}, helpers ${money(x.helpersUSD)})`).join(', ')}`);
+  }
+  const x = t.context;
+  if (x && x.calls > 0) {
+    lines.push(`Main-thread context per call: median ${tok(x.median)}, p90 ${tok(x.p90)} (${x.calls.toLocaleString('en-US')} calls${x.sessionsWithout ? ` in ${x.sessions} of ${x.sessions + x.sessionsWithout} sessions; the rest have none recorded, run ch metrics collect --sessions` : ''})`);
+  } else if (x && x.sessionsWithout > 0) {
+    lines.push(`Main-thread context per call: not recorded for these ${x.sessionsWithout} sessions (run ch metrics collect --sessions)`);
+  }
+  return lines;
+}
+
 /** `ch metrics cost [<ticket-id>]`: the byTicket table, or one ticket's (an epic's: per child) cost. */
 function costCmd(argv) {
   const { values, positionals } = parse(argv, { project: { type: 'string' }, since: { type: 'string' }, json: { type: 'boolean' } });
@@ -452,6 +468,7 @@ function costCmd(argv) {
     if (values.json) { jsonOut(c); return; }
     print(`Cost ${day(p.window.since)} to ${day(p.window.until)}: ${money(c.total.costUSD)} at API prices (helpers ${money(c.total.helperCostUSD)}, ${tok(tokSum(c.total.tokens))} tokens)`);
     print(limitsLine(c.limits));
+    for (const line of partLines(c.total)) print(line);
     if (!c.byTicket.length) { print('  no cost recorded in this range'); return; }
     const cal = c.limits.weekUSD > 0;
     print(`${pad('Ticket', 10)}${pad('Cost', 10)}${pad('Share', 7)}${cal ? pad('% wk', 7) : ''}${pad('Tokens', 9)}${pad('Tools', 7)}${pad('Sess', 6)}Title`);

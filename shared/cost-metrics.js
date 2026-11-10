@@ -5,6 +5,8 @@
  * existed only have `costUSD`; they are attributed whole to the session's ticket.
  */
 import { median, percentile } from './flow-metrics.js';
+import { priceParts } from './model-prices.js';
+import { CTX_BUCKET } from './session-metrics.js';
 
 const DAY = 24 * 3600 * 1000;
 const r2 = n => Math.round(n * 100) / 100;
@@ -12,6 +14,35 @@ const r3 = n => Math.round(n * 1000) / 1000;
 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const tokensTotal = t => (t ? num(t.input) + num(t.output) + num(t.cacheRead) + num(t.cacheWrite) : 0);
 const MODEL_LABEL_RE = /^model:\s*\S/i;
+
+const PART_KEYS = ['cacheRead', 'cacheWrite', 'output', 'input'];
+
+/**
+ * Dollars by part of one side of a session (`parts` = main, `helperParts` = helpers). Records from
+ * before the split are priced from their per-model totals (`byModel` / `helperByModel`): exact
+ * except for the long-prompt multiplier and the 1-hour cache write rate, which those totals lost.
+ */
+function partsOf(s, partsKey, modelKey) {
+  if (s[partsKey] && typeof s[partsKey] === 'object') return s[partsKey];
+  const out = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  for (const [m, v] of Object.entries(s[modelKey] || {})) {
+    const p = priceParts(m, { input: num(v.input), output: num(v.output), cacheRead: num(v.cacheRead), cacheWrite5m: num(v.cacheWrite) });
+    if (p) for (const k of PART_KEYS) out[k] += p[k];
+  }
+  return out;
+}
+
+/** Window median / p90 from merged bucket histograms ({bucket index: calls}); linear inside a bucket. */
+function histQuantile(hist, n, q) {
+  const target = q * n;
+  let seen = 0;
+  for (const i of Object.keys(hist).map(Number).sort((a, b) => a - b)) {
+    const c = hist[i];
+    if (seen + c >= target) return Math.round((i + (c > 0 ? (target - seen) / c : 0)) * CTX_BUCKET);
+    seen += c;
+  }
+  return null;
+}
 
 /** Per-ticket attribution of one session: {ticket: {costUSD, tokens, toolCalls}}. */
 function attribution(s) {
@@ -34,7 +65,19 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
   const models = new Map();
   const tickets = new Map();
   const activeBy = new Map();
+  const byPart = { main: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, helpers: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+  const hist = {};
+  let ctxCalls = 0;
+  let ctxSessions = 0;
   for (const s of sessions) {
+    const mp = partsOf(s, 'parts', 'byModel');
+    const hp = partsOf(s, 'helperParts', 'helperByModel');
+    for (const k of PART_KEYS) { byPart.main[k] += num(mp[k]); byPart.helpers[k] += num(hp[k]); }
+    if (num(s.ctxCalls) > 0 && s.ctxHist && typeof s.ctxHist === 'object') {
+      ctxCalls += s.ctxCalls;
+      ctxSessions += 1;
+      for (const [b, c] of Object.entries(s.ctxHist)) hist[b] = (hist[b] || 0) + num(c);
+    }
     totalUSD += num(s.costUSD);
     helperUSD += num(s.helperCostUSD);
     for (const k of Object.keys(tokens)) tokens[k] += num(s.tokens?.[k]) + num(s.helperTokens?.[k]);
@@ -51,7 +94,21 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
       tickets.set(id, e);
     }
   }
+  // Cost by part: dollars of cache reads / cache writes / output / input, main thread and helpers.
+  const partSum = PART_KEYS.reduce((a, k) => a + byPart.main[k] + byPart.helpers[k], 0);
+  const parts = PART_KEYS.map(part => {
+    const main = byPart.main[part];
+    const helpers = byPart.helpers[part];
+    return { part, costUSD: r2(main + helpers), mainUSD: r2(main), helpersUSD: r2(helpers), share: partSum > 0 ? r3((main + helpers) / partSum) : 0 };
+  });
+  const context = {
+    calls: ctxCalls, sessions: ctxSessions, sessionsWithout: sessions.length - ctxSessions,
+    median: ctxCalls ? histQuantile(hist, ctxCalls, 0.5) : null,
+    p90: ctxCalls ? histQuantile(hist, ctxCalls, 0.9) : null,
+  };
   const total = {
+    byPart: parts,
+    context,
     costUSD: r2(totalUSD),
     tokens,
     sessions: sessions.length,
