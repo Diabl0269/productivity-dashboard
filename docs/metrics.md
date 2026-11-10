@@ -155,6 +155,10 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
 
 **Cost** (`costs` in the payload; Cost section of the tab; `ch metrics cost`)
 - **Unit**: US dollars at API list prices, computed from token usage, with tokens as secondary detail.
+  Cost is counted by the hour it was spent: a session that began before the window counts the part spent
+  inside it, and a long session that began inside counts only what fell in the window (`costByHour` on each
+  record; an hour is weighted by how much of it lies in the window). Per-ticket, per-epic and per-shipped rows
+  still follow the session's start time. Records written before `costByHour` count whole by start time.
   It is the size of the work, comparable across tickets and models, not what a plan bills. Claude
   Code's own `cost-state` line is rare, so every session is computed from usage (`costStateUSD` is kept
   only to cross-check: on 2026-11-07, where the token counts agree the computed cost matches it per model to about 1.0; across 218 sessions the computed total was a median 0.88 of it, because some calls Claude Code counts are not in the transcript files, and a session resumed after its last `cost-state` line costs more than that line).
