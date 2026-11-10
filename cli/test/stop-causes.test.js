@@ -30,7 +30,7 @@ test('a recorded cause inside the gap counts for that session; none means no cha
   assert.deepEqual(toolStop().missedWakeCauses, { unknown: 1 });
   assert.deepEqual(toolStop([], { stopCauses: [] }).missedWakeCauses, { unknown: 1 });
   assert.deepEqual(toolStop([], { stopCauses: [entry(20, 'idle-sweep')] }).missedWakeCauses, { 'idle-sweep': 1 });
-  for (const c of ['app-quit', 'app-update', 'rate-limit', 'network', 'keypress', 'mac-sleep']) {
+  for (const c of ['app-quit', 'app-update', 'rate-limit', 'network', 'keypress', 'mac-sleep', 'auth', 'archived']) {
     assert.deepEqual(toolStop([], { stopCauses: [entry(3, c)] }).missedWakeCauses, { [c]: 1 }, c);
   }
 });
@@ -60,13 +60,14 @@ test('priority: usage-limit first, then a recorded cause, then api-error, app-cl
   assert.deepEqual(sum([sys, sys], [entry(20, 'network')]), { 'usage-limit': 1 }, 'usage-limit beats recorded');
   assert.equal(stopCause(0, 10, [{ ms: 5, cause: 'interrupt' }, { ms: 5, cause: 'mac-sleep' }]), 'mac-sleep');
   assert.deepEqual(recordedStopEvents([entry(1, 'network'), null, { cause: 'network' }], 's1').length, 1);
+  assert.deepEqual(recordedStopEvents([entry(1, 'auth'), entry(2, 'archived')], 's1').map((e) => e.cause), ['auth', 'archived']);
 });
 
 test('insights name the recorded causes', () => {
   const summary = { n: 1, missedWakeSessions: 1, missedWakes: 1, missedWakeOrigins: { 'tool-result': 1 },
-    missedWakeCauses: { 'idle-sweep': 1, 'app-quit': 1, 'app-update': 1, 'rate-limit': 1, network: 1, keypress: 1, 'mac-sleep': 1 } };
+    missedWakeCauses: { 'idle-sweep': 1, 'app-quit': 1, 'app-update': 1, 'rate-limit': 1, network: 1, keypress: 1, 'mac-sleep': 1, auth: 1, archived: 1 } };
   const text = JSON.stringify(buildInsights({ sessions: { summary } }));
-  for (const label of ['idle sweep', 'app quit', 'app update', 'rate limit', 'network', 'Escape keypress', 'Mac slept']) assert.ok(text.includes(label), label);
+  for (const label of ['idle sweep', 'app quit', 'app update', 'rate limit', 'network', 'Escape keypress', 'Mac slept', 'not logged in', 'archived on purpose']) assert.ok(text.includes(label), label);
 });
 
 test('collectSessions applies the file entries and re-reads a transcript when they change', async () => {

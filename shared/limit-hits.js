@@ -132,7 +132,7 @@ export function stopCause(prevMs, ms, events) {
  * Causes a suite script records in $CH_HOME/stop-causes.jsonl (one JSON object per line:
  * sessionId, at, cause, evidence, recordedAt). They sit right after usage-limit in the priority.
  */
-export const RECORDED_STOP_CAUSES = ['idle-sweep', 'app-quit', 'app-update', 'rate-limit', 'network', 'keypress', 'mac-sleep'];
+export const RECORDED_STOP_CAUSES = ['idle-sweep', 'app-quit', 'app-update', 'rate-limit', 'network', 'keypress', 'mac-sleep', 'auth', 'archived'];
 const STOP_CAUSE_ORDER = ['usage-limit', ...RECORDED_STOP_CAUSES, 'api-error', 'app-closed', 'interrupt'];
 
 /**
