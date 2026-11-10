@@ -151,6 +151,30 @@
         </div>
       </div>
 
+      <!-- Autorun Widget -->
+      <div class="widget-card" id="autorunWidget" data-widget-id="autorun">
+        <h3>Autorun</h3>
+        <div class="widget-content">
+          <label class="autorun-switch">
+            <input type="checkbox" id="autorunOn" role="switch" aria-describedby="autorunHint">
+            <span id="autorunOnLabel">Autorun is on</span>
+          </label>
+          <div class="autorun-fields" id="autorunFields">
+            <label class="autorun-field" for="autorunMaxRuns"><span>Max runs</span><input type="number" id="autorunMaxRuns" data-key="maxRuns" min="1" step="1" inputmode="numeric"></label>
+            <label class="autorun-field" for="autorunMaxTotal"><span>Max total</span><input type="number" id="autorunMaxTotal" data-key="maxTotal" min="1" step="1" inputmode="numeric" aria-describedby="autorunHint"></label>
+            <label class="autorun-field" for="autorunPaceStop"><span>Pace stop (0-1)</span><input type="number" id="autorunPaceStop" data-key="paceStop" min="0" max="1" step="0.05" inputmode="decimal"></label>
+            <label class="autorun-field" for="autorunReviewCap"><span>Review cap</span><input type="number" id="autorunReviewCap" data-key="reviewCap" min="0" step="1" inputmode="numeric"></label>
+            <label class="autorun-field" for="autorunMaxStarts"><span>Max starts</span><input type="number" id="autorunMaxStarts" data-key="maxStarts" min="1" step="1" inputmode="numeric"></label>
+            <label class="autorun-field" for="autorunFinishedIdle"><span>Finished idle (min)</span><input type="number" id="autorunFinishedIdle" data-key="finishedIdleMin" min="1" step="1" inputmode="numeric"></label>
+          </div>
+          <div class="autorun-actions">
+            <button type="button" class="overview-edit-btn" id="autorunSave">Save</button>
+            <span class="autorun-status" id="autorunStatus" role="status" aria-live="polite"></span>
+          </div>
+          <p class="autorun-hint" id="autorunHint">Autorun starts Claude sessions from Ready + Auto epics. Max runs = its own sessions; Max total also counts sessions you run by hand.</p>
+        </div>
+      </div>
+
       <!-- Task Summary Widget -->
       <div class="widget-card" data-widget-id="task-summary">
         <h3>Task Summary</h3>

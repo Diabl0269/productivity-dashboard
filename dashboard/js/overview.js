@@ -30,6 +30,7 @@ import { setTaskSearch } from './search.js';
 import { escapeHtml } from './ticket-types.js';
 import { markChanged } from './tasks-io.js';
 import { todayStr } from './tasks-parser.js';
+import { initAutorunCard } from './autorun-card.js';
 
 /** Whether corporate/team UI is hidden (Settings → Display → Hide corporate). */
 let corporateHidden = false;
@@ -945,6 +946,7 @@ export function initOverview() {
   });
 
   updateSprintInfo();
+  initAutorunCard();
 
   import('./overview-layout.js').then(m => m.initOverviewLayout()).catch(() => {});
 
