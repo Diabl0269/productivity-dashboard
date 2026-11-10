@@ -9,10 +9,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { normalizeModel, priceUsage } from '../../shared/model-prices.js';
+import { normalizeModel, priceUsage, priceParts } from '../../shared/model-prices.js';
 import { summarizeSession, summarizeHelperUsage, applyHelpers } from '../../shared/session-metrics.js';
 import { collectSessions } from '../lib/session-files.js';
 import { buildMetricsPayload } from '../../shared/metrics-payload.js';
+import { costsBlock } from '../../shared/cost-metrics.js';
 import { buildInsights } from '../../shared/insights.js';
 
 const CH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'ch');
@@ -274,4 +275,52 @@ test('ch metrics cost: table, one ticket, an epic per child, json, report block'
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('context per call: 3 calls, one message id written twice, per-session fields and window median', () => {
+  const call = (min, id, input, read, write) => asst(min, id, 'claude-opus-5', u({ input_tokens: input, cache_read_input_tokens: read, cache_creation: { ephemeral_5m_input_tokens: write, ephemeral_1h_input_tokens: 0 } }));
+  const r = summarizeSession([
+    human(0),
+    call(1, 'a', 10, 90000, 0),       // 90,010
+    call(1, 'a', 10, 90000, 0),       // same message id: counted once
+    call(2, 'b', 5, 200000, 5000),    // 205,005
+    call(3, 'c', 5, 300000, 20000),   // 320,005
+    asst(4, 'side', 'claude-opus-5', u({ input_tokens: 999999 }), undefined, { isSidechain: true }),
+  ]);
+  assert.equal(r.ctxCalls, 3);
+  assert.equal(r.ctxMedian, 205005);
+  assert.equal(r.ctxP90, 320005);
+  assert.equal(Object.values(r.ctxHist).reduce((a, b) => a + b, 0), 3);
+  // window: merged histograms (old session without the fields is skipped, not a crash)
+  const old = { costUSD: 1, tokens: {}, byModel: {} };
+  const c = costsBlock({ sessions: [r, old], byId: new Map(), sectionOf: new Map(), sinceMs: 0, nowMs: 1 }).total.context;
+  assert.equal(c.calls, 3);
+  assert.equal(c.sessionsWithout, 1);
+  assert.ok(Math.abs(c.median - 205005) <= 5000, `median ${c.median}`);
+  assert.ok(Math.abs(c.p90 - 320005) <= 5000, `p90 ${c.p90}`);
+  assert.equal(costsBlock({ sessions: [old], byId: new Map(), sectionOf: new Map(), sinceMs: 0, nowMs: 1 }).total.context.median, null);
+});
+
+test('cost by part: parts sum to the total, main vs helpers, old records priced from byModel', () => {
+  close(priceParts('claude-opus-5', { input: 1e6, output: 1e6, cacheRead: 1e6, cacheWrite5m: 1e6, cacheWrite1h: 1e6 }).cacheWrite, 6.25 + 10);
+  assert.equal(priceParts('<synthetic>', { input: 1 }), null);
+  const big = { input: 1000, cacheRead: 200000, output: 1000 };
+  const p = priceParts('claude-haiku-5-5', big); // long-prompt 5x applies to every part
+  close(p.input + p.output + p.cacheRead + p.cacheWrite, priceUsage('claude-haiku-5-5', big));
+  const main = summarizeSession([
+    human(0),
+    asst(1, 'm1', 'claude-opus-5', u({ input_tokens: 1e5, output_tokens: 5e4, cache_read_input_tokens: 1e6, cache_creation: { ephemeral_5m_input_tokens: 2e5, ephemeral_1h_input_tokens: 3e5 } })),
+  ]);
+  const helper = summarizeHelperUsage([asst(2, 'h1', 'claude-opus-5', u({ input_tokens: 1e4, output_tokens: 2e4, cache_read_input_tokens: 5e5 }))]);
+  const rec = applyHelpers(main, [helper]);
+  const t = costsBlock({ sessions: [rec], byId: new Map(), sectionOf: new Map(), sinceMs: 0, nowMs: 1 }).total;
+  assert.ok(Math.abs(t.byPart.reduce((a, x) => a + x.costUSD, 0) - t.costUSD) < 0.015); // each part rounded to cents
+  assert.deepEqual(t.byPart.map(x => x.part), ['cacheRead', 'cacheWrite', 'output', 'input']);
+  const w = t.byPart.find(x => x.part === 'cacheWrite');
+  close(w.mainUSD, (2e5 * 5 * 1.25 + 3e5 * 5 * 2) / 1e6);
+  close(w.helpersUSD, 0);
+  close(t.byPart.find(x => x.part === 'output').helpersUSD, 2e4 * 25 / 1e6);
+  // an old record (no parts, only byModel) is priced from its per-model totals, never crashes
+  const oldRec = { costUSD: 0.01, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, byModel: { 'claude-opus-5': { input: 1e6, output: 0, cacheRead: 0, cacheWrite: 0, costUSD: 5 } } };
+  close(costsBlock({ sessions: [oldRec], byId: new Map(), sectionOf: new Map(), sinceMs: 0, nowMs: 1 }).total.byPart.find(x => x.part === 'input').mainUSD, 5);
 });

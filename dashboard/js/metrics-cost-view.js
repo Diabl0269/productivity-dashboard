@@ -44,6 +44,13 @@ export function renderCost(d, h) {
     tile('Helpers', t.costUSD > 0 ? pct(t.helperCostUSD / t.costUSD) : '–', `${fmtUSD(t.helperCostUSD)} spent by subagents`, null, 'Share of the total spent by helper (subagent) transcripts'),
     tile('Top model', top ? top.model.replace(/^claude-/, '') : '–', t.byModel.length ? t.byModel.slice(0, 4).map(m => `${m.model.replace(/^claude-/, '')} ${pct(m.share)}`).join(' · ') : ' ', null, 'Spend by model in this range, largest first'),
   );
+  if (t.byPart?.some(x => x.costUSD > 0)) {
+    const nm = { cacheRead: 'reads', cacheWrite: 'writes', output: 'output', input: 'input' };
+    grid.appendChild(tile('Cost by part', t.byPart.slice(0, 2).map(x => `cache ${nm[x.part]} ${pct(x.share)}`).join(' · '), t.byPart.slice(2).map(x => `${nm[x.part]} ${pct(x.share)}`).join(' · '), null, 'Share of the total by cache reads, cache writes, output and input tokens (main thread plus helpers; the split is in ch metrics cost)'));
+  }
+  if (t.context && t.context.calls > 0) {
+    grid.appendChild(tile('Context per call', fmtTokens(t.context.median), `p90 ${fmtTokens(t.context.p90)} · ${t.context.calls.toLocaleString('en-US')} main-thread calls`, null, 'Median input + cache read + cache write tokens of one main-thread API call'));
+  }
   if (c.plan) {
     grid.appendChild(tile('Month at API prices', fmtUSD(c.plan.apiEquivalentPer30d), `${c.plan.multiple}x your ${fmtUSD(c.plan.usdPerMonth)} plan`, null, 'This range scaled to 30 days, against planUSDPerMonth in config.json'));
   }

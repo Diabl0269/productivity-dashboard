@@ -4,7 +4,7 @@
  * `/ship-task <id>`; it is never stored in the record.
  */
 
-import { priceUsage, normalizeModel } from './model-prices.js';
+import { priceUsage, priceParts, normalizeModel } from './model-prices.js';
 import { classifyErrorLine, isInterruptLine, isNoResponseLine, isToolResultLine, parseResetsAt, stopCause, recordedStopEvents } from './limit-hits.js';
 
 const TICKET_RE = /^[\s"'`]*([A-Z]{2,5}\d+)\b/;
@@ -70,6 +70,11 @@ const HELPER_ORIGINS = new Set(['task-notification', 'peer']);
 const MOVE_RE = /\bch\s+tasks\s+move\s+([A-Za-z]{2,5}\d+)\s+in-progress\b/i;
 const SESSION = '\u0000session'; // stands for the session's own ticket, known only at the end
 const rUSD = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+export const CTX_BUCKET = 5000; // main-thread context histogram: bucket width in tokens
+export const CTX_BUCKETS = 200; // buckets 0..199 (up to 1M); the last one also holds anything larger
+const ctxBucket = (n) => Math.min(Math.floor(n / CTX_BUCKET), CTX_BUCKETS - 1);
+const zeroParts = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+const roundParts = (p) => { for (const k of Object.keys(p)) p[k] = rUSD(p[k], RAW); return p; };
 const RAW = 6; // decimals kept on per-model / per-ticket dollars (a small ticket costs fractions of a cent)
 
 /** Token counts of one `message.usage` object; cache writes fall back to the 5-minute bucket. */
@@ -141,9 +146,13 @@ class UsageTracker {
     const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     const byModel = {};
     const byTicket = {};
+    const parts = zeroParts();
+    const ctx = [];
     let cost = 0;
     let priced = false;
     for (const { model, usage, ticket } of this.msgs.values()) {
+      const prompt = usage.input + usage.cacheRead + usage.cacheWrite5m + usage.cacheWrite1h;
+      if (prompt > 0) ctx.push(prompt);
       const write = usage.cacheWrite5m + usage.cacheWrite1h;
       tokens.input += usage.input;
       tokens.output += usage.output;
@@ -156,7 +165,11 @@ class UsageTracker {
       m.cacheRead += usage.cacheRead;
       m.cacheWrite += write;
       const c = priceUsage(model, usage);
-      if (c !== null) { m.costUSD += c; cost += c; priced = true; }
+      if (c !== null) {
+        m.costUSD += c; cost += c; priced = true;
+        const pp = priceParts(model, usage);
+        for (const k of Object.keys(parts)) parts[k] += pp[k];
+      }
       if (ticket) {
         const t = byTicket[ticket] || (byTicket[ticket] = { costUSD: 0, tokens: 0 });
         t.tokens += usage.input + usage.output + usage.cacheRead + write;
@@ -164,8 +177,17 @@ class UsageTracker {
       }
     }
     for (const m of Object.values(byModel)) m.costUSD = rUSD(m.costUSD, RAW);
-    return { tokens, byModel, costUSD: priced ? cost : null, byTicket };
+    return { tokens, byModel, costUSD: priced ? cost : null, byTicket, parts: roundParts(parts), ctx };
   }
+}
+
+/** {ctxCalls, ctxMedian, ctxP90, ctxHist} of per-call context sizes (tokens). */
+function ctxFields(ctx) {
+  const sorted = [...ctx].sort((a, b) => a - b);
+  const at = (q) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1)] : null);
+  const hist = {};
+  for (const n of sorted) { const b = ctxBucket(n); hist[b] = (hist[b] || 0) + 1; }
+  return { ctxCalls: sorted.length, ctxMedian: at(0.5), ctxP90: at(0.9), ctxHist: hist };
 }
 
 /**
@@ -192,7 +214,7 @@ export function summarizeHelperUsage(lines, { stallMinutes = 20 } = {}) {
     else spans.push([ms, ms]);
   }
   const t = tr.totals();
-  return { firstMs, spans: spans.filter(([a, b]) => b > a), tokens: t.tokens, byModel: t.byModel, costUSD: t.costUSD, toolCallsTotal: tr.toolCallsTotal };
+  return { firstMs, spans: spans.filter(([a, b]) => b > a), tokens: t.tokens, byModel: t.byModel, costUSD: t.costUSD, parts: t.parts, toolCallsTotal: tr.toolCallsTotal };
 }
 
 /** The ticket current at `ms`: the last switch in `rec.ticketTimeline` ([[iso, id], ...]) at or before it, else the session's. */
@@ -216,10 +238,12 @@ export function applyHelpers(rec, helpers) {
   let cost = 0;
   let priced = false;
   let calls = 0;
+  const parts = zeroParts();
   const byTicket = rec.byTicket || (rec.byTicket = {});
   for (const h of helpers || []) {
     for (const k of Object.keys(tokens)) tokens[k] += h.tokens[k];
     calls += h.toolCallsTotal || 0;
+    for (const k of Object.keys(parts)) parts[k] += (h.parts && h.parts[k]) || 0;
     for (const [name, m] of Object.entries(h.byModel || {})) {
       const x = byModel[name] || (byModel[name] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUSD: 0 });
       x.input += m.input; x.output += m.output; x.cacheRead += m.cacheRead; x.cacheWrite += m.cacheWrite; x.costUSD += m.costUSD;
@@ -241,6 +265,7 @@ export function applyHelpers(rec, helpers) {
   rec.helperCostUSD = priced ? rUSD(cost) : null;
   rec.helperTokens = tokens;
   rec.helperByModel = byModel;
+  rec.helperParts = roundParts(parts);
   rec.helperToolCalls = calls;
   const main = rec.mainCostUSD;
   rec.costUSD = (main === null || main === undefined) && !priced ? null : rUSD((main || 0) + cost);
@@ -577,6 +602,11 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     costStateUSD: costStateUSD === null ? null : rUSD(costStateUSD),
     tokens: ut.tokens,
     byModel: ut.byModel,
+    // Cost split by part in dollars (main thread), and main-thread context per API call
+    // (input + cache read + cache write of one message): count, median, p90 and a bucket histogram
+    // ({bucket index: calls}, CTX_BUCKET tokens wide) so a window's median can be combined across sessions.
+    parts: ut.parts,
+    ...ctxFields(ut.ctx),
     mainCostUSD: ut.costUSD === null ? null : rUSD(ut.costUSD, RAW),
     costUSD: ut.costUSD === null ? null : rUSD(ut.costUSD),
     toolCalls: usage.toolCalls,

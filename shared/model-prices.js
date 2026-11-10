@@ -37,21 +37,29 @@ export function normalizeModel(model) {
 }
 
 /**
- * USD for one usage record ({input, output, cacheRead, cacheWrite5m, cacheWrite1h} token counts),
- * or null when the model is not in the table (e.g. `<synthetic>`).
+ * USD of one usage record split by part: {input, output, cacheRead, cacheWrite} (cache writes 5m + 1h),
+ * or null when the model is not in the table. The long-prompt multiplier applies to every part.
  */
-export function priceUsage(model, usage = {}) {
+export function priceParts(model, usage = {}) {
   const p = MODEL_PRICES[normalizeModel(model)];
   if (!p) return null;
   const [inP, outP, readP, tier] = p;
   const n = (k) => Number(usage[k]) || 0;
   const prompt = n('input') + n('cacheRead') + n('cacheWrite5m') + n('cacheWrite1h');
-  const mult = tier && prompt > tier.over ? tier.mult : 1;
-  return mult * (
-    n('input') * inP +
-    n('output') * outP +
-    n('cacheRead') * readP +
-    n('cacheWrite5m') * inP * CACHE_WRITE_5M +
-    n('cacheWrite1h') * inP * CACHE_WRITE_1H
-  ) / 1e6;
+  const mult = (tier && prompt > tier.over ? tier.mult : 1) / 1e6;
+  return {
+    input: mult * n('input') * inP,
+    output: mult * n('output') * outP,
+    cacheRead: mult * n('cacheRead') * readP,
+    cacheWrite: mult * (n('cacheWrite5m') * inP * CACHE_WRITE_5M + n('cacheWrite1h') * inP * CACHE_WRITE_1H),
+  };
+}
+
+/**
+ * USD for one usage record ({input, output, cacheRead, cacheWrite5m, cacheWrite1h} token counts),
+ * or null when the model is not in the table (e.g. `<synthetic>`).
+ */
+export function priceUsage(model, usage = {}) {
+  const x = priceParts(model, usage);
+  return x === null ? null : x.input + x.output + x.cacheRead + x.cacheWrite;
 }

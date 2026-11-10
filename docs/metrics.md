@@ -171,6 +171,17 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   helper that starts after it) goes to that child (`byTicket`: cost, tokens, tool calls). Without such
   a call, the whole session is its ticket's. Older records without `byTicket` go whole to their ticket.
 - **Epic cost**: the epic's own sessions plus every ticket under it (rolled up the `parentId` chain).
+- **Cost by part** (`costs.total.byPart`, first line under the header of `ch metrics cost`): dollars and
+  share of cache reads, cache writes, output and input, each split main thread vs helpers. Each API
+  message is priced by part with the same `shared/model-prices.js` rules as `costUSD` (cache write
+  5m/1h rates, long-prompt multiplier), so the parts sum to the total; sessions store them as `parts` and
+  `helperParts`. Records from before the split are priced from their per-model totals (close, not exact).
+- **Main-thread context per call** (`costs.total.context`: `median`, `p90`, `calls`, `sessionsWithout`;
+  second line of `ch metrics cost`): context = input + cache read + cache write tokens of one main-thread
+  API message (deduped by message id). Sessions store `ctxCalls`, `ctxMedian`, `ctxP90` and `ctxHist`
+  (calls per 5,000-token bucket, last bucket open-ended); the window median and p90 come from the merged
+  histograms, so they are accurate to about one bucket. Sessions collected before this existed are
+  skipped for this line (`sessionsWithout`); `ch metrics collect --sessions` re-reads them.
 - **Per shipped ticket**: tickets now in review or done with any cost, by their `model:` label
   (`none` without one): median, p75 and total dollars per ticket.
 - **Plan comparison**: with `planUSDPerMonth`, the window's cost scaled to 30 days and divided by it.
