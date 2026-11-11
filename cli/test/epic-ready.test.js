@@ -126,6 +126,16 @@ test('needsComputerUse: label or How to check it wording; the child stays runnab
   assert.deepEqual(cu, { T1: [true, true], T2: [true, true], T3: [true, true], T4: [false, true] });
 });
 
+test('needsComputerUse: a decision saying the ticket waits for a run Tal starts; the child stays runnable', () => {
+  const dec = text => [{ at: '2026-01-01T00:00:00Z', text }];
+  const doc = mk({ todo: [epic('E1'),
+    task('T1', { parentId: 'E1', decisions: dec('Skipped. Waits for a run Tal starts.') }),
+    task('T2', { parentId: 'E1', decisions: dec('Chose option B') }),
+    task('T3', { parentId: 'E1', decisions: ['Left for a run Tal starts'] })] });
+  const cu = Object.fromEntries(ready(doc, 'E1').children.map(c => [c.id, [c.needsComputerUse, c.runnable]]));
+  assert.deepEqual(cu, { T1: [true, true], T2: [false, true], T3: [true, true] });
+});
+
 test('lanes hold in-progress and Ready epics even when nothing is pinned', () => {
   const doc = mk({
     'in-progress': [epic('E1', { lane: 'x', description: '' }), task('T1', { parentId: 'E1', description: '' })],
