@@ -55,6 +55,9 @@
  *              [--edit-subtask N --subtask-text "..."]
  *              [--add-check "text"] [--check-check N] [--uncheck-check N]
  *              [--remove-check N] [--clear-checks] [--check-all-checks]
+             [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...
+                 attach (or replace) evidence on the Nth EXISTING check as `ch tasks get` lists it; same rules as review; text and tick unchanged
+ *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...   (N = the Nth existing check; attach or replace)
  *              [--review-of T1] [--clear-review-of] [--clear-result]
  *              [--clear-unverified] [--resolve-unverified N]   (edit result.unverified; an epic's lines are numbered as listed)
  *              [--promote-subtask N [--parent EPIC | --promote-parent EPIC]]   (subtask N becomes its own task in todo; with
@@ -938,6 +941,36 @@ function reviewCheckItems(base, values) {
 }
 
 /**
+ * `ch tasks update`: attach (or replace) a project / video / audio / no-video reason on the Nth
+ * EXISTING check (N as listed by `ch tasks get`). Same validation as `review`; text and tick untouched.
+ */
+function applyCheckEvidence(task, values) {
+  const count = (task.checks || []).length;
+  const given = {};
+  let any = false;
+  for (const kind of ['project', 'video', 'audio']) {
+    given[kind] = parseCheckEvidenceFlags(values[`check-${kind}`], `--check-${kind}`, count)
+      .map(({ n, value }) => ({ n, value: evidenceRelOrDie(value, kind, `--check-${kind}`) }));
+    if (given[kind].length) any = true;
+  }
+  given.noVideo = parseCheckNoVideoFlags(values['check-no-video'], count);
+  if (given.noVideo.length) any = true;
+  if (!any) return false;
+  for (const a of given.video) for (const b of given.noVideo) {
+    if (a.n === b.n) die(`check ${a.n} has both a video and a no-video reason: give one or the other`);
+  }
+  for (const kind of ['project', 'video', 'audio', 'noVideo']) {
+    for (const { n, value } of given[kind]) {
+      const check = task.checks[n - 1];
+      check[kind] = value;
+      if (kind === 'video') delete check.noVideo;
+      if (kind === 'noVideo') delete check.video;
+    }
+  }
+  return true;
+}
+
+/**
  * Ship a ticket into "Ready for review": record what shipped (result), add the
  * "worth checking yourself" list (checks) and move it to the review section.
  * Everything is inline flags so a cloud session can file it as one argv.
@@ -1347,6 +1380,10 @@ function cmdUpdate(argv) {
     'add-check':     { type: 'string', multiple: true },
     'check-check':   { type: 'string' },  // N (1-based) as string
     'uncheck-check': { type: 'string' },
+    'check-project': { type: 'string', multiple: true },   // N=<path>: attach to the Nth existing check
+    'check-video':   { type: 'string', multiple: true },
+    'check-audio':   { type: 'string', multiple: true },
+    'check-no-video': { type: 'string', multiple: true },
     'remove-check':  { type: 'string' },
     'clear-checks':  { type: 'boolean' },
     'check-all-checks': { type: 'boolean' },
@@ -1879,6 +1916,7 @@ function cmdUpdate(argv) {
     if (state) ticked = true;
     changed = true;
   }
+  if (applyCheckEvidence(task, values)) changed = true;
   if (values['check-all-checks']) {
     for (const c of task.checks || []) c.checked = true;
     ticked = true;
