@@ -531,7 +531,8 @@ export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOSt
     ({ task: t, section }) => t.id !== task.id && t.type !== 'epic' && !CLOSED_SECTIONS.has(section),
   );
   // An epic with no checks at all (none unticked, none ever) has nothing for Tal to look at: Done, not review.
-  const noChecks = !(epic.checks || []).length;
+  // Left or unverified lines on its result are still for Tal, so those epics go to review.
+  const noChecks = !(epic.checks || []).length && !(epic.result?.left || []).length && !(epic.result?.unverified || []).length;
   const closing = epicSection !== REVIEW_SECTION && !siblingsOpen;
   const moveEpicToDone = closing && noChecks && epicSection !== 'done';
   const moveEpicToReview = closing && !noChecks && (epicSection !== 'done' || added > 0);

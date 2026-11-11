@@ -194,6 +194,15 @@ test('rollUpIntoEpic: an epic with checks still goes to review', () => {
   assert.equal(rollUpIntoEpic(ticked.doc, ticked.child, []).moveEpicToReview, true);
 });
 
+test('rollUpIntoEpic: no checks but a left or unverified line still goes to review', () => {
+  for (const key of ['left', 'unverified']) {
+    const { doc, child } = epicDoc('todo');
+    child.result[key] = ['run bash scripts/install.sh install'];
+    const out = rollUpIntoEpic(doc, child, []);
+    assert.deepEqual([out.moveEpicToReview, out.moveEpicToDone], [true, false], key);
+  }
+});
+
 test('rollUpIntoEpic: an epic already in done returns to review only when checks are added', () => {
   const a = epicDoc('done');
   const noAdd = rollUpIntoEpic(a.doc, a.child, []);
