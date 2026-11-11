@@ -1027,13 +1027,14 @@ function cmdReview(argv) {
       appendHistory(child, { event: 'moved', from: REVIEW_SECTION, to: 'done' });
       child.updated = today;
       doneSection.tasks.push(child);
-      if (rolled.moveEpicToReview) rolled.epic.checked = true;
+      if (rolled.moveEpicToReview || rolled.moveEpicToDone) rolled.epic.checked = true;
       rolled.epic.updated = today;
-      if (rolled.moveEpicToReview) {
+      if (rolled.moveEpicToReview || rolled.moveEpicToDone) {
+        const dest = rolled.moveEpicToDone ? doneSection : reviewSection;
         const src = sectionById(doc, rolled.epicSection);
         src.tasks = src.tasks.filter(t => t.id !== rolled.epic.id);
-        appendHistory(rolled.epic, { event: 'moved', from: rolled.epicSection, to: REVIEW_SECTION });
-        reviewSection.tasks.push(rolled.epic);
+        appendHistory(rolled.epic, { event: 'moved', from: rolled.epicSection, to: dest.id });
+        dest.tasks.push(rolled.epic);
       }
       moved.push(`${child.id}->${rolled.epic.id}`);
     }
@@ -1137,21 +1138,22 @@ function cmdReview(argv) {
       doneSection.tasks.push(task);
     }
     const { epic, epicSection } = rolled;
-    if (rolled.moveEpicToReview) epic.checked = true;
+    if (rolled.moveEpicToReview || rolled.moveEpicToDone) epic.checked = true;
     epic.updated = today;
-    if (rolled.moveEpicToReview) {
+    if (rolled.moveEpicToReview || rolled.moveEpicToDone) {
+      const dest = rolled.moveEpicToDone ? doneSection : toSection;
       const src = sectionById(doc, epicSection);
       src.tasks = src.tasks.filter(t => t.id !== epic.id);
-      appendHistory(epic, { event: 'moved', from: epicSection, to: REVIEW_SECTION });
-      toSection.tasks.push(epic);
+      appendHistory(epic, { event: 'moved', from: epicSection, to: dest.id });
+      dest.tasks.push(epic);
     }
     const unpinned = autoUnpin(doc, task);
     save(doc);
     if (values.json) {
-      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview, added: rolled.added, result: task.result || null, unpinned, filed });
+      jsonOut({ id, section: 'done', from: fromSection.id, epic: epic.id, epicMoved: rolled.moveEpicToReview || rolled.moveEpicToDone, epicTo: rolled.moveEpicToDone ? 'done' : rolled.moveEpicToReview ? 'review' : null, added: rolled.added, result: task.result || null, unpinned, filed });
       return;
     }
-    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToReview ? ' (now in review)' : ''}${unpinNote(unpinned)}${filedNote(filed)}`);
+    ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToDone ? ' (no checks: epic now done)' : rolled.moveEpicToReview ? ' (now in review)' : ''}${unpinNote(unpinned)}${filedNote(filed)}`);
     return;
   }
 

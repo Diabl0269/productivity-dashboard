@@ -156,6 +156,16 @@ const CHECK_EVIDENCE_RULES = [
     ].join('|'), 'i'),
   },
   {
+    reason: 'it asks the reviewer to read a doc, source file or log, or run a CLI command: do it yourself and put the result in --tests',
+    needs: false,
+    re: new RegExp([
+      String.raw`(?:^|[\s("'\x60])docs?/\S*`,
+      String.raw`\b[\w.~/-]*\.(?:md|markdown|cpp|hpp|h|mm|js|mjs|ts|py|sh|json|log|txt|ya?ml|toml)\b`,
+      String.raw`\b(?:run|runs|running)\s+(?:ch|gh|git|curl|make|cmake|ctest|npm|pnpm|node|docker|ssh)\s+[\w-]`,
+      String.raw`\b(?:autorun|server|crash|debug|console|build|session|error|tick|stop-cause)\s+logs?\s+(?:shows?|contains?|has|lists?|prints?|says?)\b`,
+    ].join('|'), 'i'),
+  },
+  {
     reason: 'it points at a file on disk: attach it (--check-video / --check-audio / --check-project) instead of a path',
     needs: true,
     re: new RegExp([
@@ -484,12 +494,13 @@ function descendantsOf(doc, epicId) {
 /**
  * Fold a shipped child's result and checks into its epic, so the Plan page's "Ready for
  * review" holds one card per epic. Lines are prefixed with the child's id; the child keeps
- * its own result and goes to Done. Returns { epic, epicSection, moveEpicToReview } for the
+ * its own result and goes to Done. Returns { epic, epicSection, added, moveEpicToReview, moveEpicToDone } for the
  * caller to apply, or null when the ticket has no epic.
  *
  * The epic moves to review once every other ticket under it is Done or Ready for review
  * (checks ticked on it finish it as for any ticket). An epic already in Done comes back to
- * review only when the child added checks.
+ * review only when the child added checks. An epic with no checks at all goes to Done
+ * (moveEpicToDone) instead of review.
  */
 export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOString() } = {}) {
   // checkTexts items are strings or { text, project?, video?, audio?, noVideo? }; the prefix goes on the text only.
@@ -519,8 +530,13 @@ export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOSt
   const siblingsOpen = descendantsOf(doc, epic.id).some(
     ({ task: t, section }) => t.id !== task.id && t.type !== 'epic' && !CLOSED_SECTIONS.has(section),
   );
-  const moveEpicToReview = epicSection !== REVIEW_SECTION && !siblingsOpen && (epicSection !== 'done' || added > 0);
-  return { epic, epicSection, added, moveEpicToReview };
+  // An epic with no checks at all (none unticked, none ever) has nothing for Tal to look at: Done, not review.
+  // Left or unverified lines on its result are still for Tal, so those epics go to review.
+  const noChecks = !(epic.checks || []).length && !(epic.result?.left || []).length && !(epic.result?.unverified || []).length;
+  const closing = epicSection !== REVIEW_SECTION && !siblingsOpen;
+  const moveEpicToDone = closing && noChecks && epicSection !== 'done';
+  const moveEpicToReview = closing && !noChecks && (epicSection !== 'done' || added > 0);
+  return { epic, epicSection, added, moveEpicToReview, moveEpicToDone };
 }
 
 const CLOSED_SECTIONS = new Set(['done', REVIEW_SECTION, 'archive']);

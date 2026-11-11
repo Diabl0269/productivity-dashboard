@@ -40,6 +40,12 @@ const REFUSED = [
   ['Open ~/Desktop/demo.mp4 and watch the fade', /--check-video/],
   ['Look at /Users/someone/shot.png', /--check-video/],
   ['Open end.agsproj and press play', /--check-project/],
+  // reading a doc / source / log, or running a CLI command (PRO68)
+  ["Open docs/layout/layout.md, section 'Every drag follows the view': it names the three families still to build", /--tests/],
+  ['In DragSurfaceRegistryTests.cpp kFollowGaps holds 22 entries and the three exempt surfaces sit in kFollow with a reason', /--tests/],
+  ['Run ch metrics cost --since 24h: the cost is about the same share', /--tests/],
+  ['Tomorrow after 04:00, ~/Library/Logs/agentsynth-stop-cause.log shows causes instead of unknown', /--tests/],
+  ['After the next autorun tick, the autorun log shows REAP lines', /--tests/],
   // AI content, no project
   ['Ask the assistant for a lo-fi song and listen', /--check-project/],
   ['Make an AI song and check the bass', /--check-project/],
@@ -47,6 +53,9 @@ const REFUSED = [
 ];
 
 const ALLOWED = [
+  'Open the Key field menu on the transport: a Play the scale row shows its state',
+  "Open Settings > Sound packs and click a pack's arrow",
+  'Open the project lane-custom-lfo, right-click the lane and pick Custom LFO',
   'Run your finger along the strip: the glow follows it',
   'Press Run and the arp starts',
   'Pick Harmonics, then Stack harmonics and press Stack: peaks land on the harmonic lines; Cmd+Z removes them in one step',
