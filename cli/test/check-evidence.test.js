@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import {
-  projectPathError, videoPathError, normalizeCheckInput, addChecks, groupChecksByProject, rollUpIntoEpic,
+  projectPathError, videoPathError, normalizeCheckInput, noVideoReasonError, addChecks, groupChecksByProject, rollUpIntoEpic,
 } from '../../shared/review.js';
 import { validateTasksDoc as validateTasks } from '../lib/schema.js';
 import {
@@ -380,4 +380,77 @@ test('dashboard helpers: url encoding, age text, toast message, open-project rou
   const boom = async () => { throw new Error('offline'); };
   await dashOpenProject(P, { toast: m => toasts.push(m), fetchFn: boom });
   assert.match(toasts[2], /offline/);
+});
+
+// --- noVideo (FRO1684): why a check has no video ----------------------------
+
+test('noVideo: normalize trims, bounds 3-200 chars, refuses together with video', () => {
+  assert.deepEqual(normalizeCheckInput({ text: 'a', noVideo: '  pure CLI change  ' }), { text: 'a', noVideo: 'pure CLI change' });
+  assert.throws(() => normalizeCheckInput({ text: 'a', noVideo: 'no' }), /3-200/);
+  assert.throws(() => normalizeCheckInput({ text: 'a', noVideo: 'x'.repeat(201) }), /3-200/);
+  assert.throws(() => normalizeCheckInput({ text: 'a', video: V, noVideo: 'because' }), /both video and noVideo/);
+  assert.match(noVideoReasonError('   ab   '), /3-200/);
+});
+
+test('noVideo: addChecks gains it on a repeated text, rollUp keeps it, lint rejects bad ones', () => {
+  const task = { checks: [{ text: 'a', checked: true, addedAt: 'x' }] };
+  addChecks(task, [{ text: 'a', noVideo: 'terminal only' }, { text: 'b', noVideo: 'no UI' }]);
+  assert.equal(task.checks[0].noVideo, 'terminal only');
+  assert.equal(task.checks[0].checked, true);
+  assert.equal(task.checks[1].noVideo, 'no UI');
+  const doc = { sections: [{ id: 'in-progress', tasks: [
+    { id: 'E1', type: 'epic', title: 'e' },
+    { id: 'C1', type: 'task', title: 'c', parentId: 'E1', result: { at: '2026-01-01T00:00:00Z', shipped: ['s'], ci: 'all passed' } },
+  ] }, { id: 'review', tasks: [] }, { id: 'done', tasks: [] }] };
+  rollUpIntoEpic(doc, doc.sections[0].tasks[1], [{ text: 'look', noVideo: 'no UI change' }]);
+  assert.equal(doc.sections[0].tasks[0].checks[0].noVideo, 'no UI change');
+  const home = makeHome();
+  const full = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8'));
+  const errsFor = () => validateTasks(full).errors.filter(e => /checks\[0\]/.test(e));
+  full.sections[0].tasks[0].checks = [{ text: 'a', checked: false, noVideo: 'x' }];
+  assert.equal(errsFor().length, 1);
+  full.sections[0].tasks[0].checks = [{ text: 'a', checked: false, noVideo: 'fine reason', video: V }];
+  assert.equal(errsFor().length, 1);
+  full.sections[0].tasks[0].checks = [{ text: 'a', checked: false, noVideo: 'fine reason' }];
+  assert.deepEqual(errsFor(), []);
+});
+
+test('review: --check-no-video N=<reason> is stored, shown by get, and refused with a video or bad input', () => {
+  const home = makeHome();
+  const r = run(['tasks', 'review', 'T1', '--shipped', 's', '--check', 'first', '--check', 'second', '--check-no-video', '2=nothing visible to film'], home);
+  assert.equal(r.status, 0, r.stderr);
+  const [c1, c2] = taskOf(home, 'T1').checks;
+  assert.equal(c1.noVideo, undefined);
+  assert.equal(c2.noVideo, 'nothing visible to film');
+  assert.match(run(['tasks', 'get', 'T1'], home).stdout, /second \(no video: nothing visible to film\)/);
+  for (const [args, re] of [
+    [['--check-video', `1=${V}`, '--check-no-video', '1=because'], /both a video and a no-video/],
+    [['--check-no-video', '2=because'], /between 1 and 1/],
+    [['--check-no-video', '1=ab'], /3-200/],
+    [['--check-no-video', 'oops'], /N=/],
+  ]) {
+    const h = makeHome();
+    const bad = run(['tasks', 'review', 'T1', '--shipped', 's', '--check', 'one', ...args], h);
+    assert.notEqual(bad.status, 0, args.join(' '));
+    assert.match(bad.stderr, re);
+    assert.equal(taskOf(h, 'T1').checks, undefined);
+  }
+});
+
+test('review: --result-json check objects accept noVideo and refuse video + noVideo', () => {
+  const home = makeHome();
+  const ok = run(['tasks', 'review', 'T1', '--result-json', JSON.stringify({ shipped: ['s'], checks: [{ text: 'x', noVideo: 'no UI here' }] })], home);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(taskOf(home, 'T1').checks[0].noVideo, 'no UI here');
+  const bad = run(['tasks', 'review', 'T2', '--result-json', JSON.stringify({ shipped: ['s'], checks: [{ text: 'x', video: V, noVideo: 'no UI here' }] })], home);
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /both video and noVideo/);
+});
+
+test('dashboard loader keeps noVideo on a check', () => {
+  const doc = JSON.parse(fs.readFileSync(FIXTURE_SAMPLE, 'utf8'));
+  doc.sections[0].tasks[0].checks = [{ text: 'a', checked: false, noVideo: 'no UI' }];
+  const mem = loadTasksJson(JSON.stringify(doc));
+  const out = JSON.parse(serializeTasksJson(mem.sections, mem.tasks, mem.ticketTypes, mem.meta));
+  assert.equal(out.sections[0].tasks[0].checks[0].noVideo, 'no UI');
 });

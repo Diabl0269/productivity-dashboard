@@ -147,6 +147,7 @@ export function normalizeChecks(raw) {
     if (typeof c.project === 'string' && c.project) e.project = c.project;
     if (typeof c.video === 'string' && c.video) e.video = c.video;
     if (typeof c.audio === 'string' && c.audio) e.audio = c.audio;
+    if (typeof c.noVideo === 'string' && c.noVideo && !e.video) e.noVideo = c.noVideo;
     out.push(e);
   }
   return out;
