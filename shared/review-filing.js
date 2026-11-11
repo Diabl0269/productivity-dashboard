@@ -163,8 +163,15 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
         ? rows(doc).find(r => r.section === 'in-progress' && r.task.type === 'epic' && r.task.lane === group.area && sameProject(r.task.project, e.project))
         : null;
       epicId = newId(e.project);
+      // The epic's label names its orchestrator (AGE34): opus only when a design pick gates its
+      // builds; a bucket of independent fixes or ideas runs on sonnet. /process-review-notes
+      // re-judges it once it knows which tickets share files.
+      const designGated = group.items.some(item => {
+        const src = byId(item.sourceId);
+        return (src?.reviewNotes || []).some(x => `${src.id}#${x.n}` === item.handle && x.kind === 'design');
+      });
       const epic = makeTask(epicId, e.title, {
-        section: e.section, project: e.project, type: 'epic', lane: group.area, labels: ['model:opus'], now,
+        section: e.section, project: e.project, type: 'epic', lane: group.area, labels: [designGated ? 'model:opus' : 'model:sonnet'], now,
         blockedBy: blocker ? [blocker.task.id] : [],
         description: `## In plain words\n**What you'll notice:** ${e.section === 'backlog' ? 'ideas noted during reviews wait here' : 'fixes and design picks noted during reviews land here'}.\n**Why it matters:** keeps review notes with the rest of the ${laneDisplayName(group.area)} work.\n**How to check it:** open the tickets under it.\n\n## Technical detail (for Claude)\nCreated by File review.`,
       });

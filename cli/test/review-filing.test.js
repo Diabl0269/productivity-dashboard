@@ -74,6 +74,19 @@ test('idea notes go to the lane\'s later epic, or a new one in backlog', () => {
   assert.equal(again.epic.id, 'T10');
 });
 
+test('a new epic runs on opus only when a design pick gates it', () => {
+  const doc = makeDoc();
+  // With T1 closed the canvas fix and design notes need a new epic; the design pick makes it opus.
+  const todo = doc.sections.find(s => s.id === 'todo');
+  const t1 = todo.tasks.find(t => t.id === 'T1');
+  todo.tasks = todo.tasks.filter(t => t !== t1);
+  doc.sections.find(s => s.id === 'done').tasks.push(t1);
+  applyFiling(doc, planFiling(doc), { newId: newId(doc), now: AT });
+  const t3 = find(doc, 'T3');
+  assert.deepEqual(find(doc, find(doc, t3.t.reviewNotes[2].filed).t.parentId).t.labels, ['model:opus']);
+  assert.deepEqual(find(doc, find(doc, t3.t.reviewNotes[1].filed).t.parentId).t.labels, ['model:sonnet']);
+});
+
 test('plan is limited by ticket and does not mutate', () => {
   const doc = makeDoc();
   const before = JSON.stringify(doc);
@@ -106,7 +119,7 @@ test('apply files tickets, the design pair, hands checks over and finishes the r
   assert.equal(idea.s, 'backlog');
   const laterEpic = find(doc, idea.t.parentId);
   assert.deepEqual([laterEpic.s, laterEpic.t.title, laterEpic.t.lane], ['backlog', 'Canvas: later', 'canvas']);
-  assert.deepEqual(laterEpic.t.labels, ['model:opus']);
+  assert.deepEqual(laterEpic.t.labels, ['model:sonnet'], 'an ideas bucket runs on sonnet');
   assert.ok(!res.pin.includes(laterEpic.t.id), 'later epic is not pinned');
   // no usable account epic (the in-progress one is a "(later)" epic): new one, blocked by it, pinned
   const acct = find(doc, find(doc, doc.sections.flatMap(s => s.tasks).find(x => x.reviewOf === 'T4').id).t.parentId);
@@ -156,7 +169,7 @@ test('CLI: notes route prints the plan; notes send files and moves the review to
   const after = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8'));
   const epic = after.sections.flatMap(s => s.tasks).find(t => t.title === 'Account follow-ups');
   assert.ok(epic);
-  assert.deepEqual(epic.labels, ['model:opus'], 'new epics name their orchestrator');
+  assert.deepEqual(epic.labels, ['model:sonnet'], 'a new epic of plain fixes runs on sonnet');
   assert.ok(!after.meta.dailyPlan.taskIds.includes(epic.id), 'a todo epic is not pinned (pins mean this week\'s focus)');
   assert.equal(runCli(['tasks', 'lint'], home).status, 0);
 });
