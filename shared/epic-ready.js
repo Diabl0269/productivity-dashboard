@@ -19,6 +19,10 @@ export const HELD_LABELS = ['deploy', 'money', 'public-post', 'needs-approval'];
 export const AUTO_LABEL = 'auto';
 const LATER_TITLE = /\b(later|future)\b/i;
 const COMPUTER_USE_TEXT = /computer use|open\/save panel|menu bar|voiceover|another app/i;
+// An autorun session that skips a ticket records only a decision saying it waits for a run Tal starts.
+const SKIPPED_FOR_TAL_RUN = /waits? for a run Tal starts|left for a run Tal starts/i;
+const skippedForTalRun = t => (Array.isArray(t.decisions) ? t.decisions : [])
+  .some(d => SKIPPED_FOR_TAL_RUN.test(typeof d === 'string' ? d : String((d && d.text) || '')));
 const RUNNABLE_SECTIONS = new Set(['todo', 'in-progress']);
 
 /** Auto-queue priorities, first to run first. Stored on the epic as `autoPriority` (the ticket's own `priority` stays low/medium/high). */
@@ -129,7 +133,7 @@ function readinessIn(ix, epic) {
       runnable: why === null,
       why,
       model: modelTier(t),
-      needsComputerUse: labelsOf(t).includes('computer-use') || (check !== null && COMPUTER_USE_TEXT.test(check)),
+      needsComputerUse: labelsOf(t).includes('computer-use') || (check !== null && COMPUTER_USE_TEXT.test(check)) || skippedForTalRun(t),
       blockedBy,
     };
   });
