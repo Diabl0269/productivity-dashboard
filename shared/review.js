@@ -264,8 +264,8 @@ export function tidyEvidencePath(value) {
 }
 
 /**
- * A check as given on the CLI or in --result-json: a string or { text, project?, video?, audio? }.
- * Returns { text, project?, video?, audio? } with tidied paths; throws on a bad shape or path.
+ * A check as given on the CLI or in --result-json: a string or { text, project?, video?, audio?, noVideo? }.
+ * Returns { text, project?, video?, audio?, noVideo? } with tidied paths; throws on a bad shape or path.
  */
 export function normalizeCheckInput(item) {
   const obj = typeof item === 'string' ? { text: item } : item;
@@ -279,10 +279,23 @@ export function normalizeCheckInput(item) {
     if (err) throw new Error(err);
     out[key] = tidyEvidencePath(obj[key]);
   }
+  if (obj.noVideo !== undefined && obj.noVideo !== null && obj.noVideo !== '') {
+    const err = noVideoReasonError(obj.noVideo, 'check noVideo');
+    if (err) throw new Error(err);
+    if (out.video) throw new Error('a check cannot carry both video and noVideo (attach the video or give the reason, not both)');
+    out.noVideo = obj.noVideo.trim();
+  }
   return out;
 }
 
-/** Schema errors for a stored check's project/video (empty when valid). */
+/** A check's `noVideo` reason: why this check has no video (3-200 chars after trim); '' when fine. */
+export const noVideoReasonError = (v, label = 'noVideo') => {
+  if (typeof v !== 'string') return `${label} must be a string (the reason there is no video)`;
+  const n = v.trim().length;
+  return n < 3 || n > 200 ? `${label} must be 3-200 characters (why there is no video), got ${n}` : '';
+};
+
+/** Schema errors for a stored check's project/video/noVideo (empty when valid). */
 export function checkEvidenceErrors(check, ref) {
   const errors = [];
   if (check?.project !== undefined) {
@@ -296,6 +309,11 @@ export function checkEvidenceErrors(check, ref) {
   if (check?.audio !== undefined) {
     const e = audioPathError(check.audio, `${ref}.audio`);
     if (e) errors.push(e);
+  }
+  if (check?.noVideo !== undefined) {
+    const e = noVideoReasonError(check.noVideo, `${ref}.noVideo`);
+    if (e) errors.push(e);
+    if (check.video !== undefined) errors.push(`${ref} cannot carry both video and noVideo`);
   }
   return errors;
 }
@@ -327,7 +345,7 @@ export function groupChecksByProject(checks) {
 }
 
 /**
- * Add checks (strings or { text, project?, video?, audio? }), skipping texts already on the ticket.
+ * Add checks (strings or { text, project?, video?, audio?, noVideo? }), skipping texts already on the ticket.
  * A text already present keeps its tick but gains a project/video it lacked. Returns how many were added.
  */
 export function addChecks(task, texts, { now = new Date().toISOString() } = {}) {
@@ -341,10 +359,13 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
     const have = byText.get(text);
     if (have) {
       for (const key of ['project', 'video', 'audio']) if (input[key] && !have[key]) have[key] = input[key];
+      if (input.noVideo && !have.noVideo && !have.video) have.noVideo = input.noVideo;
+      if (input.video && have.noVideo) delete have.noVideo;
       continue;
     }
     const check = { text, checked: false, addedAt: now };
     for (const key of ['project', 'video', 'audio']) if (input[key]) check[key] = input[key];
+    if (input.noVideo && !check.video) check.noVideo = input.noVideo;
     task.checks.push(check);
     byText.set(text, check);
     added++;
@@ -471,7 +492,7 @@ function descendantsOf(doc, epicId) {
  * review only when the child added checks.
  */
 export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOString() } = {}) {
-  // checkTexts items are strings or { text, project?, video?, audio? }; the prefix goes on the text only.
+  // checkTexts items are strings or { text, project?, video?, audio?, noVideo? }; the prefix goes on the text only.
   const found = epicOf(doc, task);
   if (!found) return null;
   const { task: epic, section: epicSection } = found;

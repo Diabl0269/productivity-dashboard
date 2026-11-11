@@ -212,6 +212,10 @@ function renderCheckGrid(task) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(playVideoButton(c, i + 1, what));
     }
+    if (c.noVideo) {
+      what.appendChild(document.createTextNode(' '));
+      what.appendChild(el('span', 'rp-check-muted', `No video: ${c.noVideo}`));
+    }
     if (c.audio) what.appendChild(audioPlayer(c, i + 1));
     row.appendChild(what);
     row.appendChild(noteCell(task, unsent.filter(n => n.check === c.text), {

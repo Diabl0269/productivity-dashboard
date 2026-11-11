@@ -26,7 +26,7 @@
   notes dismiss <id>#<n>
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
- *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]...   (N = the Nth --check; path under $CH_HOME/evidence)
+ *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
@@ -99,7 +99,7 @@ import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLan
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
-  REVIEW_SECTION, normalizeResult, normalizeCheckInput, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
+  REVIEW_SECTION, normalizeResult, normalizeCheckInput, noVideoReasonError, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
   rollUpAfterClose, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
@@ -614,7 +614,7 @@ function cmdGet(argv) {
   if (Array.isArray(task.checks) && task.checks.length > 0) {
     print(`  Checks (${task.checks.filter(c => c.checked).length}/${task.checks.length}):`);
     task.checks.forEach((c, i) => {
-      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}`);
+      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}${c.noVideo ? ` (no video: ${c.noVideo})` : ''}`);
     });
   }
   print(`  created: ${task.created || 'n/a'}  updated: ${task.updated || 'n/a'}`);
@@ -897,6 +897,15 @@ function parseCheckEvidenceFlags(list, flag, count) {
   });
 }
 
+/** `--check-no-video N=<reason>` values: [{ n, value }] (same N rules as the evidence flags). */
+function parseCheckNoVideoFlags(list, count) {
+  return parseCheckEvidenceFlags(list, '--check-no-video', count).map(({ n, value }) => {
+    const err = noVideoReasonError(value, '--check-no-video');
+    if (err) die(err);
+    return { n, value };
+  });
+}
+
 /**
  * The checks of one `review` call as [{ text, project?, video? }]: those in --result-json
  * (strings or objects) first, then --check, with --check-project / --check-video N=<path>
@@ -918,6 +927,12 @@ function reviewCheckItems(base, values) {
     for (const { n, value } of parseCheckEvidenceFlags(values[`check-${kind}`], flag, flagTexts.length)) {
       flagItems[n - 1][kind] = evidenceRelOrDie(value, kind, flag);
     }
+  }
+  for (const { n, value } of parseCheckNoVideoFlags(values['check-no-video'], flagTexts.length)) {
+    flagItems[n - 1].noVideo = value;
+  }
+  for (const item of [...items, ...flagItems]) {
+    if (item.video && item.noVideo) die(`check "${item.text}" has both a video and a no-video reason: give one or the other`);
   }
   return [...items, ...flagItems];
 }
@@ -941,6 +956,7 @@ function cmdReview(argv) {
     'check-project': { type: 'string', multiple: true },
     'check-video': { type: 'string', multiple: true },
     'check-audio': { type: 'string', multiple: true },
+    'check-no-video': { type: 'string', multiple: true },
     'result-json': { type: 'string' },
     section:       { type: 'string',  short: 's' },
     json:          { type: 'boolean', short: 'j' },
@@ -971,7 +987,7 @@ function cmdReview(argv) {
     const today = todayStr();
     const moved = [];
     for (const child of children) {
-      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio }));
+      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo }));
       assertChecksAreTals(checkItems, values['allow-check-owner']);
       const rolled = rollUpIntoEpic(doc, child, checkItems);
       reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
@@ -995,7 +1011,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force]');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -2719,16 +2735,16 @@ Subcommands:
   next [--n 5] [--project P] [--json]   best ready tickets to start next (read-only)
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
-         [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]...
+         [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...
          [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
          [--evidence <path>]...   a saved proof file under $CH_HOME/evidence (screenshot, AX dump, render, run log)
          ui/audio tickets (label on the ticket or its epic): each --unverified line starts with taste: / hardware: /
          outside: / consent:, and the review needs --evidence (or a check with a file attached) or a tagged
          --unverified line; --force "<why>" overrides and records the reason on the ticket
          [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--json]
-         --check-project / --check-video / --check-audio attach a saved .agsproj / short .mp4 / .wav (or .mp3 .m4a .ogg .flac) to the Nth --check of this call (Open project / Play video / audio player
+         --check-project / --check-video / --check-audio attach a saved .agsproj / short .mp4 / .wav (or .mp3 .m4a .ogg .flac) to the Nth --check of this call; --check-no-video N=<reason> (3-200 chars) says why a check has no video (not with a video on the same check) (Open project / Play video / audio player
          on the Plan page); the path is absolute or relative to $CH_HOME/evidence, must lie inside it and exist; --result-json checks may be
-         {"text","project","video","audio"} objects
+         {"text","project","video","audio","noVideo"} objects
          refuses checks a session should verify itself (CI green, running commands/evals/scripts, older projects, regressions, VoiceOver, measured results): put those in --tests;
          also refuses "nothing to check" texts (use --no-checks), file paths in a check without an attached project/video/audio (attach it),
          and AI-generated-content checks without --check-project (create the project with the AI yourself)
