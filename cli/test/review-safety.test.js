@@ -169,3 +169,47 @@ test('rollUpIntoEpic drops unticked pick checks of the blockers the ticket was w
   ]);
   assert.equal(removeStalePickChecks({ checks: [] }, ['T501']), 0);
 });
+
+function epicDoc(epicSection, epicExtra = {}) {
+  const child = tk('T702', { parentId: 'T701', result: { at: '2026-01-01T00:00:00.000Z', shipped: ['s'], ci: 'all passed' } });
+  const epic = tk('T701', { type: 'epic', ...epicExtra });
+  const doc = { sections: [sec('in-progress', [child]), sec(epicSection, [epic]), ...['review', 'done'].filter(x => x !== epicSection).map(x => sec(x))] };
+  return { doc, child, epic };
+}
+
+test('rollUpIntoEpic: last child with no checks at all sends the epic to done, not review', () => {
+  const { doc, child } = epicDoc('todo');
+  const out = rollUpIntoEpic(doc, child, []);
+  assert.equal(out.moveEpicToDone, true);
+  assert.equal(out.moveEpicToReview, false);
+  assert.equal(out.epic.result.shipped[0], 'T702: s');
+});
+
+test('rollUpIntoEpic: an epic with checks still goes to review', () => {
+  const { doc, child } = epicDoc('todo');
+  const out = rollUpIntoEpic(doc, child, ['Turn the knob']);
+  assert.equal(out.moveEpicToReview, true);
+  assert.equal(out.moveEpicToDone, false);
+  const ticked = epicDoc('todo', { checks: [{ text: 'old', checked: true }] });
+  assert.equal(rollUpIntoEpic(ticked.doc, ticked.child, []).moveEpicToReview, true);
+});
+
+test('rollUpIntoEpic: an epic already in done returns to review only when checks are added', () => {
+  const a = epicDoc('done');
+  const noAdd = rollUpIntoEpic(a.doc, a.child, []);
+  assert.deepEqual([noAdd.moveEpicToReview, noAdd.moveEpicToDone], [false, false]);
+  const b = epicDoc('done');
+  const add = rollUpIntoEpic(b.doc, b.child, ['Look']);
+  assert.deepEqual([add.moveEpicToReview, add.moveEpicToDone], [true, false]);
+});
+
+test('ch tasks review --no-checks on the last child moves a check-less epic to done and unpins it', () => {
+  const child = tk('T802', { parentId: 'T801', checked: false });
+  const epic = tk('T801', { type: 'epic' });
+  const dir = makeDir({ 'in-progress': [child, epic] });
+  const r = run(['tasks', 'review', 'T802', '--shipped', 'did it', '--no-checks', 'internal only', '--json'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(where(dir, 'T802').section, 'done');
+  assert.equal(where(dir, 'T801').section, 'done');
+  assert.equal(JSON.parse(r.stdout).epicTo, 'done');
+});
