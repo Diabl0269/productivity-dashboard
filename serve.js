@@ -829,6 +829,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Plan page "Next start" line: GET /api/next-start -> { next, reason, line } (shared/next-start.js; read-only).
+  if (url.pathname === '/api/next-start' && req.method === 'GET') {
+    try {
+      const lib = await import('./cli/lib/next-start-inputs.js');
+      const out = await lib.nextStartNow();
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(out));
+    } catch (e) {
+      res.writeHead(e.status || 500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Metrics tab: GET /api/metrics?since=30d&project=P -> payload (shared/metrics-payload.js);
   // POST /api/metrics/collect -> run every collector once -> { ok, summary, lines } (409 while one runs).
   if (url.pathname === '/api/metrics' || url.pathname === '/api/metrics/collect') {
