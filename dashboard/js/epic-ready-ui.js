@@ -34,6 +34,8 @@ export function stateToDoc(state) {
         result: t.result || undefined,
         checks: t.checks || [],
         reviewNotes: t.reviewNotes || [],
+        asks: t.asks || [],
+        resolvedAsks: t.resolvedAsks || [],
         history: t.history || [],
         created: t.created || undefined,
         updated: t.updated || undefined,

@@ -26,6 +26,14 @@ export function unverifiedTag(line) {
   return m ? m[1].toLowerCase() : null;
 }
 
+// `needs-tal:` at the start, after an optional "<id>: " an epic adds when it rolls a child's line up.
+const NEEDS_TAL_RE = /^\s*(?:[A-Za-z]{1,8}\d+:\s*)?needs-tal\s*:/i;
+
+/** Is this Unverified line one only Tal can judge (`needs-tal: ...`)? Read by the Asks strip (PRO73). */
+export function isNeedsTalLine(line) {
+  return NEEDS_TAL_RE.test(String(line ?? ''));
+}
+
 /** The proof labels (`ui`, `audio`) on the ticket or its epic. */
 export function proofLabels(task, epic) {
   const labels = [...(task?.labels || []), ...(epic?.labels || [])].map(l => String(l).toLowerCase());

@@ -221,3 +221,18 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
 .rp-fold { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .25s ease, visibility 0s linear .25s; }
 .rp-fold.rp-fold-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows .25s ease, visibility 0s; }
 .rp-fold-inner { min-height: 0; overflow: hidden; }
+
+/* Asks for you (PRO73): questions sessions left, above Ready for review and on Overview; same blocks as review */
+.rp-asks { --rp-c-review: var(--accent); }
+.rp-review.rp-asks { border-left-color: var(--accent); }
+.rp-asks-bare { display: flex; flex-direction: column; gap: 8px; }
+.rp-ask .rp-chip { color: var(--accent); }
+.rp-ask .rp-chip.rp-ask-taste { color: var(--status-review); }
+.rp-ask .rp-chip.rp-ask-by { color: var(--text-secondary); }
+.rp-ask .rp-why { font-size: 12.5px; color: var(--text-secondary); }
+.rp-ask-lines { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.rp-ask-answer { display: flex; flex-direction: column; gap: 6px; }
+.rp-ask-input { font: inherit; font-size: 13px; width: 100%; box-sizing: border-box; resize: vertical; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1, var(--surface-2)); color: var(--text-primary); padding: 6px 8px; }
+.rp-ask-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rp-tab-badge { display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--surface-0); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.rp-tab-badge[hidden] { display: none; }

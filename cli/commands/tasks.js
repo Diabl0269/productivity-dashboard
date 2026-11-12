@@ -31,8 +31,12 @@
  *              [--held-pr "<why>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr; adds the check 'Try on branch X, then say merge or not')
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
+ *              [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   (PRO73: each --ask shows in the Plan page's Asks for you strip)
  *       needs at least one --check (or checks in --result-json, or checks already on the ticket) unless --no-checks "<reason>" says why
  *       there is nothing to check (stored as noChecksReason). Refuses a ticket with unchecked subtasks unless --force.
+ *   ask <id> "<question>" [--ask-by YYYY-MM-DD] [--merge-pr URL]   leave a question for Tal (Plan page: Asks for you)
+ *   answer <id> <key> ["<reply>"] [--done | --dismiss]               resolve it (answer and done record a decision)
+ *   asks [--ticket ID] [--refresh] [--json]                          open asks; --refresh closes merge asks whose PR merged
  *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint), a review ticket with unticked checks/unsent notes, and an epic with unticked checks, unless --force
  *   move <id> <section> [--force]  same refusal when moving to done
  *   (done / move done / update --parent|--clear-parent / ticking the last check also close the parent epic when nothing
@@ -116,6 +120,8 @@ import {
 import { planFiling, applyFiling } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
 import { openPrGate } from '../lib/open-pr-gate.js';
+import { addAsk, askByError, askLines, countAsks, asksNotice } from '../../shared/asks.js';
+import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -593,6 +599,7 @@ function cmdGet(argv) {
     print('  Result:');
     for (const l of resultLines(task.result)) print(`    ${l}`);
   }
+  for (const l of askLines(task)) print(`  ${l}`);
   if (Array.isArray(task.reviewNotes) && task.reviewNotes.length) {
     const count = (st) => task.reviewNotes.filter(x => x.state === st).length;
     print(`  review notes: ${count('new')} new, ${count('filed')} filed, ${count('dismissed')} dismissed`);
@@ -1024,6 +1031,8 @@ function cmdReview(argv) {
     'link-label':  { type: 'string', multiple: true },
     'clear-unverified':   { type: 'boolean' },
     'resolve-unverified': { type: 'string' },
+    ask:           { type: 'string', multiple: true },
+    'ask-by':      { type: 'string' },
   });
   // `review --force T1 ...`: the id came right after a bare --force.
   if (!positionals.length && values['force-reason'] !== undefined) {
@@ -1077,6 +1086,8 @@ function cmdReview(argv) {
     }
     if (!base || typeof base !== 'object' || Array.isArray(base)) die('invalid --result-json: must be a JSON object');
   }
+  if (values['ask-by'] !== undefined && askByError(values['ask-by'])) die(askByError(values['ask-by']));
+  if (values['ask-by'] !== undefined && !(values.ask || []).length) die('--ask-by needs an --ask "<question>"');
   const asList = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
   const checkItems = reviewCheckItems(base, values);
   const checkTexts = checkItems.map(c => c.text);
@@ -1163,6 +1174,9 @@ function cmdReview(argv) {
   if (proofProblem && forceReason) task.forcedReview = { reason: forceReason, at: new Date().toISOString() };
   if (noChecksReason && !checkTexts.length && !(task.checks || []).length) task.noChecksReason = noChecksReason;
   applyUnverifiedEdits(task, values);
+  for (const text of values.ask || []) {
+    try { addAsk(task, { text, by: values['ask-by'] }); } catch (e) { die(`--ask: ${e.message}`); }
+  }
   const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
   const today = todayStr();
 
@@ -1195,6 +1209,7 @@ function cmdReview(argv) {
       return;
     }
     ok(`review ${id} -> done; result and ${rolled.added} check(s) rolled up into epic ${epic.id}${rolled.moveEpicToDone ? ' (no checks: epic now done)' : rolled.moveEpicToReview ? ' (now in review)' : ''}${unpinNote(unpinned)}${filedNote(filed)}`);
+    printAsksNotice(doc);
     return;
   }
 
@@ -1216,6 +1231,13 @@ function cmdReview(argv) {
     return;
   }
   ok(`review ${id}${moved ? ` moved from ${fromSection.id}` : ' (already in review)'}, ${added} check(s) added${task.noChecksReason ? ` (no checks: ${task.noChecksReason})` : ''}${unpinNote(unpinned)}${filedNote(filed)}`);
+  printAsksNotice(doc);
+}
+
+/** PRO73: after review / done, say how many asks wait for Tal on the Plan page (nothing when none). */
+function printAsksNotice(doc) {
+  const line = asksNotice(countAsks(doc));
+  if (line) print(line);
 }
 
 /** --clear-unverified / --resolve-unverified N on a ticket's result (review and update). Returns true when it changed anything. */
@@ -1334,6 +1356,7 @@ function cmdDone(argv) {
     return;
   }
   ok(`done ${id}${alreadyDone ? ' (already in done)' : ` moved from ${fromSection.id}`}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${epicNote(rolled.epics)}`);
+  printAsksNotice(doc);
 }
 
 /** Copy --note-image files into attachments/<id>/; dies with a clear message on a bad file. */
@@ -2840,6 +2863,14 @@ Subcommands:
          ship a ticket to "Ready for review": records the result and the checks to tick;
          --file-left files each left/unverified line as a follow-up ticket (same epic, review-of)
          a design ticket (label design) needs a design-board link: --design-link URL or an existing artifact link
+         [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   each --ask becomes an ask on the ticket (Plan page: Asks for you)
+  ask <id> "<question>" [--ask-by YYYY-MM-DD] [--merge-pr URL] [--json]
+         leave a question for Tal; it shows in the Plan page's "Asks for you" strip until answered, even after the ticket
+         is done; --merge-pr makes it a merge ask that closes itself once that PR merges (ch tasks asks --refresh, or the page)
+  answer <id> <key> ["<reply>"] [--done | --dismiss] [--json]
+         resolve an ask (keys from ch tasks asks: the ask's number, L<i> for an older Left line ending in '?' or saying
+         'Merge it', T for a ticket's needs-tal Unverified lines); a reply or --done records a decision on the ticket
+  asks [--ticket ID] [--refresh] [--json]   every open ask; --refresh first closes merge asks whose PR merged (needs gh)
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
       (--project slug | --no-project; a --parent/--review-of child inherits its parent's project) [--energy deep|shallow|errands|creative] [--lane slug]
@@ -2909,6 +2940,9 @@ const SUBCOMMANDS = {
   add:           cmdAdd,
   move:          cmdMove,
   review:        cmdReview,
+  ask:           cmdAsk,
+  answer:        cmdAnswer,
+  asks:          cmdAsks,
   notes:         cmdNotes,
   done:          cmdDone,
   update:        cmdUpdate,

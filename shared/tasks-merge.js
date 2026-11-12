@@ -15,7 +15,8 @@
  *     whose state is not `new` beats one that is; two different notes added with the same
  *     `n` keep both, the local one renumbered to the next free n); `checks` are merged by
  *     text (ticked when the side that changed it ticked it); `history` is unioned; every
- *     other field comes from current unless only local changed it.
+ *     `asks` merge by `n` like notes (an ask no longer `open` wins), `resolvedAsks` and `decisions`
+ *     are unioned; every other field comes from current unless only local changed it.
  * Top-level keys other than `sections` (meta, ticketTypes, version) follow the same
  * "local only changed it -> local, else current" rule.
  *
@@ -73,8 +74,8 @@ function mergeChecks(b, l, c) {
   return out;
 }
 
-/** Union review notes by n. */
-function mergeNotes(b, l, c) {
+/** Union review notes (or asks, fresh = 'open') by n. */
+function mergeNotes(b, l, c, fresh = 'new') {
   const bm = new Map((b || []).filter(Boolean).map(x => [x.n, x]));
   const out = [];
   const used = new Set();
@@ -90,7 +91,7 @@ function mergeNotes(b, l, c) {
       // Added on both sides with the same n.
       if (same(cn, ln)) continue;
       if (cn.at === ln.at && cn.text === ln.text) {
-        if (cn.state === 'new' && ln.state !== 'new') out[idx] = clone(ln);
+        if (cn.state === fresh && ln.state !== fresh) out[idx] = clone(ln);
         continue;
       }
       const moved = { ...clone(ln), n: next++ };
@@ -98,8 +99,8 @@ function mergeNotes(b, l, c) {
       continue;
     }
     // In all three: the one that moved on from `new` wins, else whichever changed.
-    if (cn.state === 'new' && ln.state !== 'new') out[idx] = clone(ln);
-    else if (cn.state !== 'new' && ln.state === 'new') { /* current wins */ }
+    if (cn.state === fresh && ln.state !== fresh) out[idx] = clone(ln);
+    else if (cn.state !== fresh && ln.state === fresh) { /* current wins */ }
     else if (same(cn, bn) && !same(ln, bn)) out[idx] = clone(ln);
   }
   return out;
@@ -117,13 +118,16 @@ function mergeHistory(l, c) {
   return rows.sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')));
 }
 
+// Lists merged item by item when both sides changed a ticket (the rest: current wins unless only local changed).
+const UNIONED = new Set(['reviewNotes', 'checks', 'history', 'asks', 'resolvedAsks', 'decisions']);
+
 /** Both sides changed the ticket: start from current, bring in what only local changed. */
 function mergeTicket(b, l, c) {
   const base = b || {};
   const m = clone(c);
   const keys = new Set([...Object.keys(l), ...Object.keys(base)]);
   for (const k of keys) {
-    if (k === 'reviewNotes' || k === 'checks' || k === 'history') continue;
+    if (UNIONED.has(k)) continue;
     if (same(l[k], base[k])) continue; // local did not change it
     if (!same(c[k], base[k])) continue; // remote changed it too: current wins
     if (l[k] === undefined) delete m[k]; else m[k] = clone(l[k]);
@@ -139,6 +143,17 @@ function mergeTicket(b, l, c) {
   if (l.history || c.history) {
     m.history = mergeHistory(l.history, c.history);
     if (!m.history.length) delete m.history;
+  }
+  // PRO73: an ask answered on the Plan page while a session added another (or a decision) keeps both.
+  if (l.asks || c.asks || base.asks) {
+    const asks = mergeNotes(base.asks, l.asks, c.asks, 'open');
+    if (asks.length) m.asks = asks; else delete m.asks;
+  }
+  for (const k of ['resolvedAsks', 'decisions']) {
+    if (!l[k] && !c[k]) continue;
+    if (same(l[k], base[k])) continue; // local did not touch it: current's stands
+    const rows = mergeHistory(l[k], c[k]);
+    if (rows.length) m[k] = rows; else delete m[k];
   }
   return m;
 }

@@ -25,6 +25,7 @@ import { setKeyboardCallbacks, initTaskKeyboard } from './task-keyboard.js';
 import { initTaskTimer, setTimerCallbacks } from './task-timer.js';
 import { setProjectsViewCallbacks, refreshProjectsView } from './projects-view.js';
 import { setRunPlanStateGetter, refreshRunPlanView } from './run-plan-view.js';
+import { refreshAsks } from './asks-strip.js';
 import { setBackupCallbacks, initTasksBackup } from './tasks-backup.js';
 import { computeNextTaskId, appendHistory } from './task-fields.js';
 import { REVIEW_SECTION, REVIEW_SECTION_NAME } from '../../shared/review.js';
@@ -58,6 +59,7 @@ export function renderTasks() {
   refreshOverviewTaskWidgets({ tasks: taskState.tasks, meta: taskState.meta });
   refreshProjectsView();
   refreshRunPlanView();
+  refreshAsks(taskState); // Overview "Asks for you" widget + tab title / favicon count (PRO73)
   syncTaskDetailAfterReload(taskState.tasks);
 }
 

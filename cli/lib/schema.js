@@ -21,6 +21,7 @@ import {
 import { normalizeModel } from '../../shared/model.js';
 import { resultErrors, checkEvidenceErrors } from '../../shared/review.js';
 import { reviewNoteErrors } from '../../shared/review-notes.js';
+import { askErrors } from '../../shared/asks.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -975,6 +976,9 @@ export function validateTasksDoc(doc) {
       if (task.result !== undefined && task.result !== null) {
         errors.push(...resultErrors(task.result, `${ref} (id=${task.id ?? '?'})`));
       }
+
+      // asks / resolvedAsks (optional): questions left for Tal (shared/asks.js)
+      errors.push(...askErrors(task, `${ref} (id=${task.id ?? '?'})`));
 
       // reviewNotes (optional): notes written while reviewing (shared/review-notes.js)
       if (task.reviewNotes !== undefined && task.reviewNotes !== null) {

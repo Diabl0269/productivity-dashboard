@@ -10,6 +10,7 @@ import { normalizeProjectRow } from '../../shared/projects.js';
 
 import { normalizeModel } from '../../shared/model.js';
 import { NOTE_KINDS, NOTE_STATES } from '../../shared/review-notes.js';
+import { cleanAsks } from '../../shared/asks.js';
 import { readCustomFromJson, serializeCustomToJson } from './custom-fields.js';
 
 const ENERGY_VALUES = new Set(['deep', 'shallow', 'errands', 'creative']);
@@ -296,6 +297,7 @@ export function loadTasksJson(text) {
       reviewEvidence: Array.isArray(t.reviewEvidence) ? t.reviewEvidence.filter(x => typeof x === 'string' && x) : [],
       forcedReview: isPlainObject(t.forcedReview) ? t.forcedReview : null,
       heldPr: isPlainObject(t.heldPr) ? t.heldPr : null,
+      ...cleanAsks(t),
       section: sec.id,
     }));
   }
@@ -339,6 +341,9 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (Array.isArray(t.reviewEvidence) && t.reviewEvidence.length) row.reviewEvidence = t.reviewEvidence;
         if (isPlainObject(t.forcedReview)) row.forcedReview = t.forcedReview;
         if (isPlainObject(t.heldPr)) row.heldPr = t.heldPr;
+        const { asks, resolvedAsks } = cleanAsks(t);
+        if (asks.length) row.asks = asks;
+        if (resolvedAsks.length) row.resolvedAsks = resolvedAsks;
         const desc = (t.description || '').trim();
         if (desc) row.description = desc;
         if (t.parentId) row.parentId = t.parentId;
