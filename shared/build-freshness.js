@@ -56,7 +56,8 @@ export function matchTicketPr(rules, task) {
 
 /**
  * The card line for a result { state: 'current'|'stale'|'unknown', mergedAt?, buildAt?, updateCommand? }:
- * { text, command? }, or null when unknown (a card then shows nothing).
+ * { text, command?, unknown? }, or null for no result. An unknown result (a rule exists but the
+ * installed build or merge commit could not be read) says so rather than showing nothing.
  */
 export function freshnessLine(result) {
   if (!result) return null;
@@ -71,5 +72,6 @@ export function freshnessLine(result) {
     if (result.updateCommand) out.command = result.updateCommand;
     return out;
   }
+  if (result.state === 'unknown') return { text: 'No build info for this change', unknown: true };
   return null;
 }
