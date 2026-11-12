@@ -3,7 +3,7 @@
  * Does the installed app contain a PR's merge commit? Local git only (no network at render time):
  * find the PR's squash/merge commit with `git log --grep "(#N)"`, read the installed build's commit
  * from the configured source, and decide with `git merge-base --is-ancestor`. Anything unreadable
- * gives state "unknown" (the card shows nothing). Rules come from config.json `buildFreshness`
+ * gives state "unknown" (the card says "No build info for this change"). Rules come from config.json `buildFreshness`
  * (see shared/build-freshness.js). `run` is injectable so tests need no real shell.
  */
 
