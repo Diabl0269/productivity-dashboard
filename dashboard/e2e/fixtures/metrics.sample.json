@@ -1,5 +1,5 @@
 {
- "schema": 3,
+ "schema": 4,
  "generatedAt": "2026-11-07T10:00:00.000Z",
  "window": {
   "since": "2026-10-08",
@@ -811,8 +811,12 @@
      "working": 0.157,
      "ci": 0.084,
      "you": 0.2,
-     "idle": 0.559
-    }
+     "idle": 0.559,
+     "waiting": 0.386,
+     "left": 0.173
+    },
+    "waitingH": 143.5,
+    "leftH": 64.4
    },
    "byTicket": [
     {
@@ -823,7 +827,9 @@
      "workingH": 4.2,
      "ciH": 1.1,
      "youH": 9.8,
-     "idleH": 105.4
+     "idleH": 105.4,
+     "waitingH": 26.4,
+     "leftH": 79.0
     },
     {
      "ticket": "PRO31",
@@ -833,7 +839,9 @@
      "workingH": 6.5,
      "ciH": 2.4,
      "youH": 12.1,
-     "idleH": 43
+     "idleH": 43,
+     "waitingH": 30.1,
+     "leftH": 12.9
     },
     {
      "ticket": "T-12",
@@ -843,7 +851,9 @@
      "workingH": 3.9,
      "ciH": 3.1,
      "youH": 0.8,
-     "idleH": 1.5
+     "idleH": 1.5,
+     "waitingH": 1.5,
+     "leftH": 0.0
     }
    ],
    "byProject": {
@@ -873,8 +883,40 @@
      "working": 0.41,
      "ci": 0.18,
      "you": 0.12,
-     "idle": 0.29
+     "idle": 0.29,
+     "waiting": 0.174,
+     "left": 0.116
     }
+   },
+   "idleTop": {
+    "waiting": [
+     {
+      "ticket": "PRO31",
+      "title": "Pricing page experiments",
+      "hours": 30.1,
+      "open": true
+     },
+     {
+      "ticket": "AGE12",
+      "title": "Nightly eval dashboard refresh",
+      "hours": 26.4,
+      "open": true
+     }
+    ],
+    "left": [
+     {
+      "ticket": "AGE12",
+      "title": "Nightly eval dashboard refresh",
+      "hours": 79,
+      "open": true
+     },
+     {
+      "ticket": "PRO31",
+      "title": "Pricing page experiments",
+      "hours": 12.9,
+      "open": true
+     }
+    ]
    }
   }
  },

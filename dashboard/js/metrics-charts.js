@@ -20,6 +20,21 @@ export function fmtHours(h) {
   return `${trim(h / 24, 1)}\u00a0d`;
 }
 
+/** Hours -> "45 min", "5 h", "2 d 3 h": days and hours, never "609 h" (PRO87). */
+export function fmtDaysHours(h) {
+  if (h == null || !Number.isFinite(h)) return '–';
+  if (h === 0) return '0';
+  const abs = Math.abs(h);
+  if (abs < 1 / 60) return '<1\u00a0min';
+  if (abs < 1) return `${Math.round(h * 60)}\u00a0min`;
+  const total = Math.round(abs);
+  const d = Math.floor(total / 24);
+  const hh = total % 24;
+  const sign = h < 0 ? '-' : '';
+  if (d === 0) return `${sign}${hh}\u00a0h`;
+  return hh ? `${sign}${d}\u00a0d ${hh}\u00a0h` : `${sign}${d}\u00a0d`;
+}
+
 /** Hours for sums that can get huge: like fmtHours, but 3 weeks and more read as "766 wk" (a sum of many stays). */
 export function fmtTotalHours(h) {
   if (h == null || !Number.isFinite(h)) return '–';

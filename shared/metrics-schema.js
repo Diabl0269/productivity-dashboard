@@ -4,4 +4,4 @@
  * "new page, old running server" shows one clear banner instead of misleading empty sections.
  * Bump it whenever the page starts reading a new top-level part of the payload.
  */
-export const METRICS_SCHEMA = 3;
+export const METRICS_SCHEMA = 4;

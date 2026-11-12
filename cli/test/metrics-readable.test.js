@@ -8,9 +8,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fmtPercentileLabel, percentileTip } from '../../dashboard/js/metrics-charts.js';
+import { fmtPercentileLabel, percentileTip, fmtDaysHours } from '../../dashboard/js/metrics-charts.js';
 import { PART_IDS, navItems, LIKELY_COST } from '../../dashboard/js/metrics-nav.js';
 import { renderCost } from '../../dashboard/js/metrics-cost-view.js';
+import { renderTimeSplit, timeVerdict } from '../../dashboard/js/metrics-time-view.js';
 import { makeHelpers, makeNode, textOf, find } from './fixtures/fake-dom.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -102,4 +103,41 @@ test('contents row: an anchor for every part of the page, plus Likely cost per t
     if (it.id.startsWith('mcH-')) assert.ok(code.includes(`section('${it.id.slice(4)}'`) || code.includes(`.id = '${it.id}'`), it.id);
     else assert.match(code, new RegExp(it.id.replace(/-/g, '\\-')));
   }
+});
+
+test('fmtDaysHours reads as days and hours, never "609 h"', () => {
+  assert.equal(fmtDaysHours(51), '2\u00a0d 3\u00a0h');
+  assert.equal(fmtDaysHours(609), '25\u00a0d 9\u00a0h');
+  assert.equal(fmtDaysHours(24), '1\u00a0d');
+  assert.equal(fmtDaysHours(5), '5\u00a0h');
+  assert.equal(fmtDaysHours(0.5), '30\u00a0min');
+  assert.equal(fmtDaysHours(null), '–');
+});
+
+test('time card: opens with one plain verdict made from the numbers, two idle buckets, each with its top tickets', () => {
+  const total = { hours: 100, workingH: 10, ciH: 5, youH: 5, idleH: 80, waitingH: 55, leftH: 25, shares: { working: 0.1, ci: 0.05, you: 0.05, idle: 0.8, waiting: 0.55, left: 0.25 } };
+  assert.equal(timeVerdict(total), 'Of the 4\u00a0d 4\u00a0h tickets sat in progress, 55% they waited their turn behind another ticket of the same run and 25% nobody had them open.');
+  const h = makeHelpers();
+  const card = renderTimeSplit({ inProgressSplit: {
+    total, typical: { n: 4, medianHours: 6, shares: { working: 0.2, ci: 0.1, you: 0.1, idle: 0.6, waiting: 0.4, left: 0.2 } },
+    idleTop: { waiting: [{ ticket: 'AAA1', hours: 51 }], left: [{ ticket: 'BBB2', hours: 30 }] },
+    byTicket: [{ ticket: 'AAA1', title: 't', hours: 60, workingH: 1, ciH: 0, youH: 0, waitingH: 51, leftH: 8 }], forgotten: { n: 0 }, sessionsWithIntervals: 3, tickets: 1,
+  } }, h);
+  const kids = card.children;
+  const verdictIdx = kids.findIndex((k) => k.cls === 'mc-verdict');
+  assert.equal(verdictIdx, 2, 'the verdict is the first body element, right after the title and subtitle');
+  const keys = find(card, (n) => n.cls === 'mc-splitkey');
+  assert.equal(keys.length, 5);
+  const text = textOf(card);
+  assert.match(text, /Waiting its turn/);
+  assert.match(text, /Left in progress/);
+  assert.match(text, /AAA1\s+2\u00a0d 3\u00a0h/);
+  assert.match(text, /BBB2\s+1\u00a0d 6\u00a0h/);
+  assert.match(text, /What this tells you/);
+  assert.doesNotMatch(text, /Nobody working on it|609 h/);
+});
+
+test('time card from an older server (one idle number) still adds up: idle reads as left', () => {
+  const total = { hours: 10, workingH: 2, ciH: 0, youH: 0, idleH: 8, shares: { working: 0.2, ci: 0, you: 0, idle: 0.8 } };
+  assert.match(timeVerdict(total), /80% nobody had them open/);
 });

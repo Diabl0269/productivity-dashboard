@@ -29,13 +29,18 @@ async (page) => {
   ok((await page.locator('[aria-label="Cost per shipped ticket by model label"] tbody tr').count()) === 3, 'per-shipped rows by label');
   ok((await page.locator('[aria-label="Likely cost per ticket by model label"] tbody tr').count()) === 3, 'likely cost rows by label');
   ok((await page.locator('.mc-stage.is-bottleneck').count()) === 1, 'one bottleneck stage highlighted');
-  // Where in-progress time went: four-part bar with legend, and a per-ticket table.
+  // Where in-progress time went: five-part bar with legend, a plain verdict and a contents row, and a per-ticket table.
   ok((await page.locator('.mc-splitbar').count()) === 2, 'typical bar and total bar');
   ok((await page.locator('.mc-splitbar').first().getAttribute('aria-label')).startsWith('Average ticket'), 'typical bar leads');
-  ok((await page.locator('.mc-splitbar').first().locator('.mc-split').count()) === 4, 'typical bar has four segments');
-  ok((await page.locator('.mc-splitkey').count()) === 4, 'split legend has four entries');
+  ok((await page.locator('.mc-splitbar').first().locator('.mc-split').count()) === 5, 'typical bar has five segments');
+  ok((await page.locator('.mc-splitkey').count()) === 5, 'split legend has five entries');
   const splitLabel = await page.locator('.mc-splitbar').last().getAttribute('aria-label');
-  ok(/nobody working on it 8\.7\sd/.test(splitLabel), `split bar label carries the hours, got "${splitLabel}"`); // fmtHours uses a no-break space
+  ok(/left in progress 2\sd\s16\sh/.test(splitLabel), `split bar label carries days and hours, got "${splitLabel}"`); // no-break spaces
+  ok(/waited their turn behind another ticket of the same run/.test(await page.locator('.mc-verdict').innerText()), 'time card opens with the plain verdict');
+  ok((await page.locator('.mc-nav-link').count()) >= 12, 'contents row has a link per section plus Likely cost per ticket');
+  await page.locator('.mc-nav-link:has-text("Likely cost per ticket")').click();
+  ok(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'mcC-likely-cost', 'a contents link jumps to its card and focuses it');
+  ok(!(await page.locator('.mc-stale').count()), 'no out-of-date banner against a current payload');
   ok((await page.locator('[aria-label="Where in-progress time went"] tbody tr').count()) === 3, 'split table rows');
   ok((await page.locator('[aria-label="Where in-progress time went"] tbody tr').first().innerText()).includes('AGE12'), 'most idle ticket first');
   await page.waitForSelector('.mc-svg');

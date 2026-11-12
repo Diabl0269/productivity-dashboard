@@ -254,3 +254,69 @@ test('ch metrics flow prints and returns the split; ch metrics cost <id> prints 
   assert.equal(cost.status, 0, cost.stderr);
   assert.match(cost.stdout, /In progress 10\.0 h: working 2\.0 h, CI 0 min, you 1\.0 h, nothing 7\.0 h/);
 });
+
+// ---------- PRO87: "nobody working on it" splits into waiting its turn and left in progress ----------
+
+const iso = (min) => new Date(ms(min)).toISOString();
+const todoToProg = (id, parentId, from, to) => ({
+  id, parentId, type: parentId ? 'task' : 'epic', title: `T ${id}`, project: 'demo', created: iso(0),
+  history: [{ at: iso(0), event: 'created', to: 'todo' }, { at: iso(from), event: 'moved', from: 'todo', to: 'in-progress' }, ...(to == null ? [] : [{ at: iso(to), event: 'moved', from: 'in-progress', to: 'review' }])],
+});
+const sessionOn = (id, a, b, extra = {}) => ({ start: iso(a), intervals: { work: [[ms(a), ms(b), id]], waitUser: [] }, ...extra });
+const split = (tasks, sessions) => splitInProgress({ doc: { sections: [{ id: 's', tasks }] }, sessions, timings: [], now: ms(1000), since: ms(0) });
+
+test('idle split: a session on a sibling ticket of the same epic makes the idle time "waiting its turn"; no session is "left"', () => {
+  const tasks = [
+    { id: 'EPC1', type: 'epic', title: 'epic', project: 'demo', created: iso(0), history: [{ at: iso(0), event: 'created', to: 'todo' }] },
+    todoToProg('AAA1', 'EPC1', 0, 600),   // 10 h in progress; a sibling runs for the first 4 h
+    { ...todoToProg('LONE1', null, 0, 600), type: 'task' },    // no epic, no session
+  ];
+  const tasks2 = [...tasks, todoToProg('AAA2', 'EPC1', 0, 600)];
+  const r2 = split(tasks2, [sessionOn('AAA2', 0, 240)]);
+  const a1 = r2.byTicket.find((x) => x.ticket === 'AAA1');
+  assert.equal(a1.idleH, 10);
+  assert.equal(a1.waitingH, 4);
+  assert.equal(a1.leftH, 6);
+  const lone = r2.byTicket.find((x) => x.ticket === 'LONE1');
+  assert.equal(lone.waitingH, 0);
+  assert.equal(lone.leftH, 10);
+  // waiting + left is the old idle number, and the four-part sum still covers every hour
+  assert.equal(r2.total.waitingH + r2.total.leftH, r2.total.idleH);
+  assert.ok(Math.abs(r2.total.shares.working + r2.total.shares.ci + r2.total.shares.you + r2.total.shares.waiting + r2.total.shares.left - 1) < 0.003);
+});
+
+test('idle split: a session on the epic card itself credits its children like a dispatcher batch', () => {
+  const tasks = [
+    { id: 'EPC1', type: 'epic', title: 'epic', project: 'demo', created: iso(0), history: [{ at: iso(0), event: 'created', to: 'todo' }] },
+    todoToProg('AAA1', 'EPC1', 0, 600),
+  ];
+  const r = split(tasks, [sessionOn('EPC1', 60, 180)]); // a coordinator session on the epic for 2 h
+  const a1 = r.byTicket.find((x) => x.ticket === 'AAA1');
+  assert.equal(a1.waitingH, 2);
+  assert.equal(a1.leftH, 8);
+});
+
+test('idle split: time a ticket was worked, waited on CI or on you is never counted as waiting its turn', () => {
+  const tasks = [
+    { id: 'EPC1', type: 'epic', title: 'epic', project: 'demo', created: iso(0), history: [{ at: iso(0), event: 'created', to: 'todo' }] },
+    todoToProg('AAA1', 'EPC1', 0, 600),
+    todoToProg('AAA2', 'EPC1', 0, 600),
+  ];
+  // both tickets worked 0-3 h by their own sessions; the sibling's 0-3 h must not turn AAA1's own work into "waiting"
+  const r = split(tasks, [sessionOn('AAA1', 0, 180), sessionOn('AAA2', 0, 180)]);
+  const a1 = r.byTicket.find((x) => x.ticket === 'AAA1');
+  assert.equal(a1.workingH, 3);
+  assert.equal(a1.waitingH, 0);
+  assert.equal(a1.leftH, 7);
+});
+
+test('idle split: the top tickets of each bucket are listed, biggest first', () => {
+  const tasks = [
+    { id: 'EPC1', type: 'epic', title: 'epic', project: 'demo', created: iso(0), history: [{ at: iso(0), event: 'created', to: 'todo' }] },
+    todoToProg('AAA1', 'EPC1', 0, 600), todoToProg('AAA2', 'EPC1', 0, 600), { ...todoToProg('LONE1', null, 0, 300), type: 'task' },
+  ];
+  const r = split(tasks, [sessionOn('AAA2', 0, 480)]);
+  assert.equal(r.idleTop.waiting[0].ticket, 'AAA1');
+  assert.equal(r.idleTop.waiting[0].hours, 8);
+  assert.deepEqual(r.idleTop.left.map((g) => g.ticket), ['LONE1', 'AAA1', 'AAA2']);
+});
