@@ -180,11 +180,11 @@ test('insight leads with the typical ticket and points at stale tickets for the 
   const total = { hours: 100, workingH: 5, ciH: 10, youH: 23, idleH: 62, shares: { working: 0.05, ci: 0.1, you: 0.23, idle: 0.62 } };
   const typical = { n: 12, medianHours: 4, shares: { working: 0.4, ci: 0.2, you: 0.1, idle: 0.3 } };
   const f = { stages: {}, groups: {}, backlog: {}, inProgressSplit: { total, typical, byTicket: [{ ticket: 'A1', idleH: 30 }] } };
-  const [i] = buildInsights({ flow: f, sources: {} }).filter(x => x.title.startsWith('A typical ticket'));
-  assert.equal(i.title, 'A typical ticket: nobody working on it 30% of its time in progress');
+  const [i] = buildInsights({ flow: f, sources: {} }).filter(x => x.title.startsWith('Average ticket'));
+  assert.equal(i.title, 'Average ticket: nobody working on it 30% of its time in progress');
   assert.equal(i.kind, 'info');
   assert.match(i.detail, /working 40%, CI 20%, waiting on you 10%, nobody working on it 30%/);
-  assert.match(i.detail, /see stale tickets/);
+  assert.match(i.detail, /forgotten stays/);
 });
 
 // ---------- insight and payload ----------
@@ -247,7 +247,7 @@ test('ch metrics flow prints and returns the split; ch metrics cost <id> prints 
 
   const text = run('flow');
   assert.equal(text.status, 0, text.stderr);
-  assert.match(text.stdout, /All in-progress time 10\.0 h \(forgotten tickets inflate it\): working 2\.0 h \(20%\), CI 0 min \(0%\), waiting on you 1\.0 h \(10%\), nobody working on it 7\.0 h \(70%\)/);
+  assert.match(text.stdout, /All in-progress hours 10\.0 h \(forgotten stays left out\): working 2\.0 h \(20%\), CI 0 min \(0%\), waiting on you 1\.0 h \(10%\), nobody working on it 7\.0 h \(70%\)/);
   assert.match(text.stdout, /A1\s+10\.0 h\s+2\.0 h/);
 
   const cost = run('cost', 'A1');

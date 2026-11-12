@@ -170,9 +170,11 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
   const projects = [...new Set([...byId.values()].map(t => t.project).filter(Boolean))].sort();
   const lanes = [...new Set([...byId.values()].map(laneOf))].sort();
 
-  const flow = flowMetrics(doc, { now: nowMs, since: sinceMs, project, areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays });
   // Where in-progress time goes (sessions are not window-filtered: a session that began earlier still counts inside a stay).
-  flow.inProgressSplit = splitInProgress({ doc, sessions, timings, now: nowMs, since: sinceMs, project, areas: cfg.areas });
+  const split = splitInProgress({ doc, sessions, timings, now: nowMs, since: sinceMs, project, areas: cfg.areas });
+  // Forgotten stays stay out of the bottleneck and review-vs-build numbers too.
+  const flow = flowMetrics(doc, { now: nowMs, since: sinceMs, project, areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays, skipStays: new Set(split.forgottenStays) });
+  flow.inProgressSplit = split;
 
   const sess = (sessions || []).filter(s => {
     if (!inRange(toMs(s.start))) return false;

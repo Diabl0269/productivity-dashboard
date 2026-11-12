@@ -103,7 +103,7 @@ function mondayMs(ms) {
  *   areas?: Record<string,string>, forgottenEpicDays?: number}} [opts]
  */
 export function flowMetrics(doc, {
-  now = new Date(), since, project, lane, areas = {}, forgottenEpicDays = 3,
+  now = new Date(), since, project, lane, areas = {}, forgottenEpicDays = 3, skipStays,
 } = {}) {
   const nowMs = toMs(now) ?? Date.now();
   const sinceMs = toMs(since) ?? nowMs - 30 * DAY;
@@ -180,6 +180,8 @@ export function flowMetrics(doc, {
         const v = stageVals[s.stage];
         if (!v) continue;
         if (f.epic && s.stage !== 'review') continue;
+        // Forgotten in-progress stays (see time-split.js) are left out of the in-progress numbers.
+        if (skipStays && s.stage === 'in-progress' && skipStays.has(`${f.t.id}|${s.from}`)) continue;
         const a = Date.parse(s.from);
         const b = Date.parse(s.to);
         if (s.stage === 'review' && !s.open && b - a < MIN_REVIEW_MS) continue;

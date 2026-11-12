@@ -355,8 +355,10 @@ function printSplit(sp) {
   if (!(t.hours > 0)) { print('In-progress time: none in the window'); return; }
   const p = x => `${Math.round((x || 0) * 100)}%`;
   const ty = sp.typical;
-  if (ty && ty.n) print(`Typical ticket (${ty.n} that left in progress, median ${hrs(ty.medianHours)}): working ${p(ty.shares.working)}, CI ${p(ty.shares.ci)}, waiting on you ${p(ty.shares.you)}, nobody working on it ${p(ty.shares.idle)}`);
-  print(`All in-progress time ${hrs(t.hours)} (forgotten tickets inflate it): working ${hrs(t.workingH)} (${p(t.shares.working)}), CI ${hrs(t.ciH)} (${p(t.shares.ci)}), waiting on you ${hrs(t.youH)} (${p(t.shares.you)}), nobody working on it ${hrs(t.idleH)} (${p(t.shares.idle)})`);
+  if (ty && ty.n) print(`Average ticket (${ty.n} that left in progress, median ${hrs(ty.medianHours)}): working ${p(ty.shares.working)}, CI ${p(ty.shares.ci)}, waiting on you ${p(ty.shares.you)}, nobody working on it ${p(ty.shares.idle)}`);
+  print(`All in-progress hours ${hrs(t.hours)} (forgotten stays left out): working ${hrs(t.workingH)} (${p(t.shares.working)}), CI ${hrs(t.ciH)} (${p(t.shares.ci)}), waiting on you ${hrs(t.youH)} (${p(t.shares.you)}), nobody working on it ${hrs(t.idleH)} (${p(t.shares.idle)})`);
+  const fg = sp.forgotten;
+  if (fg && fg.n) print(`Forgotten stays (${fg.n}, ${hrs(fg.hours)}, in progress over 72 h with no session work; left out above): ${fg.tickets.map(g => `${g.ticket} ${hrs(g.hours)}`).join(', ')}`);
   if (!sp.sessionsWithIntervals) print('  (no session intervals yet: run ch metrics collect --sessions)');
   const rows = sp.byTicket.slice(0, 5);
   if (rows.length) print(`  ${pad('Ticket', 10)}${pad('total', 10)}${pad('working', 10)}${pad('CI', 10)}${pad('you', 10)}nothing`);
@@ -371,14 +373,15 @@ function flowCmd(argv) {
   const sinceMs = cliSince(values.since, now);
   const cfg = metricsConfig();
   const doc = readDoc();
-  const m = flowMetrics(doc, {
-    now, since: sinceMs ?? undefined, project: values.project, lane: values.lane,
-    areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays,
-  });
-  m.inProgressSplit = splitInProgress({
+  const split = splitInProgress({
     doc, sessions: readRecords(SESSIONS), timings: readRecords(TIMINGS), now, since: sinceMs ?? undefined,
     project: values.project, areas: cfg.areas,
   });
+  const m = flowMetrics(doc, {
+    now, since: sinceMs ?? undefined, project: values.project, lane: values.lane,
+    areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays, skipStays: new Set(split.forgottenStays),
+  });
+  m.inProgressSplit = split;
   if (values.json) { jsonOut(m); return; }
   const filt = [values.project && `project ${values.project}`, values.lane && `lane ${values.lane}`].filter(Boolean).join(', ');
   print(`Flow ${day(m.window.since)} to ${day(m.window.until)}${filt ? ` (${filt})` : ''}`);

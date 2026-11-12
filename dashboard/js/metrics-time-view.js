@@ -43,12 +43,12 @@ export function renderTimeSplit(f, h) {
     append(li, el('span', `mc-splitdot ${p.cls}`), el('span', 'mc-splitname', p.label), el('span', 'mc-splitval', lead), el('span', 'mc-splitnote', p.note));
     legend.appendChild(li);
   }
-  const totalBar = makeBar(`All in-progress time ${fmtHours(total.hours)}`, total.shares, (p) => fmtHours(total[p.hours]));
+  const totalBar = makeBar(`All in-progress hours ${fmtHours(total.hours)}`, total.shares, (p) => fmtHours(total[p.hours]));
   const kids = [];
   if (hasTypical) {
-    kids.push(el('p', 'mc-card-sub', `A typical ticket (average share over ${ty.n} tickets that left in progress, median ${fmtHours(ty.medianHours)} there)`),
-      makeBar('A typical ticket', ty.shares, null), legend,
-      el('p', 'mc-card-sub', `All in-progress time together: ${fmtHours(total.hours)}, working ${fmtPct(total.shares.working)}, CI ${fmtPct(total.shares.ci)}, waiting on you ${fmtPct(total.shares.you)}, nobody working on it ${fmtPct(total.shares.idle)}. Tickets forgotten in progress inflate this; they also show as stale tickets.`),
+    kids.push(el('p', 'mc-card-sub', `Average ticket (average share over ${ty.n} tickets that left in progress, median ${fmtHours(ty.medianHours)} there)`),
+      makeBar('Average ticket', ty.shares, null), legend,
+      el('p', 'mc-card-sub', `All in-progress hours: ${fmtHours(total.hours)}, working ${fmtPct(total.shares.working)}, CI ${fmtPct(total.shares.ci)}, waiting on you ${fmtPct(total.shares.you)}, nobody working on it ${fmtPct(total.shares.idle)}. Forgotten stays are left out (below).`),
       totalBar);
   } else {
     kids.push(totalBar, legend);
@@ -60,8 +60,12 @@ export function renderTimeSplit(f, h) {
     { label: 'Ticket' }, { label: 'Title' }, { label: 'In progress', num: true }, { label: 'Working', spoken: 'working', num: true },
     { label: 'CI', num: true }, { label: 'You', num: true }, { label: 'Nobody', num: true },
   ], rows);
+  const fg = sp.forgotten;
+  const forgotten = fg && fg.n > 0
+    ? el('p', 'mc-card-sub', `Forgotten (${fg.n} ${fg.n === 1 ? 'stay' : 'stays'}, ${fmtHours(fg.hours)}): in progress over 72 h with no session work, left out of the numbers above. ${fg.tickets.slice(0, 12).map((g) => `${g.ticket} ${fmtHours(g.hours)}`).join(', ')}${fg.n > 12 ? ` and ${fg.n - 12} more` : ''}.`)
+    : null;
   const note = sp.sessionsWithIntervals ? null : empty('No session timing yet, so everything reads as nobody working on it. Press Refresh data to read your Claude Code transcripts.');
   return card('Where in-progress time went',
     `${sp.tickets} tickets, ${fmtHours(total.hours)} in all. A moment counts once: working first, then CI, then waiting on you, the rest is nobody working on it. Top ${rows.length} by time with nobody working on it.`,
-    ...kids, note, tbl);
+    ...kids, forgotten, note, tbl);
 }

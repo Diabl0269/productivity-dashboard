@@ -31,7 +31,7 @@ async (page) => {
   ok((await page.locator('.mc-stage.is-bottleneck').count()) === 1, 'one bottleneck stage highlighted');
   // Where in-progress time went: four-part bar with legend, and a per-ticket table.
   ok((await page.locator('.mc-splitbar').count()) === 2, 'typical bar and total bar');
-  ok((await page.locator('.mc-splitbar').first().getAttribute('aria-label')).startsWith('A typical ticket'), 'typical bar leads');
+  ok((await page.locator('.mc-splitbar').first().getAttribute('aria-label')).startsWith('Average ticket'), 'typical bar leads');
   ok((await page.locator('.mc-splitbar').first().locator('.mc-split').count()) === 4, 'typical bar has four segments');
   ok((await page.locator('.mc-splitkey').count()) === 4, 'split legend has four entries');
   const splitLabel = await page.locator('.mc-splitbar').last().getAttribute('aria-label');

@@ -38,10 +38,10 @@ function splitRule(sp, out) {
     const top = sp.byTicket?.[0];
     out.push({
       weight: 75, kind: (s.idle || 0) >= 0.5 ? 'warn' : 'info', value: s.idle,
-      title: `A typical ticket: nobody working on it ${pct(s.idle || 0)}% of its time in progress`,
-      detail: `A typical ticket (average share over ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
-        + `All in-progress time together: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nobody working on it ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
-        + `tickets forgotten in progress inflate that, see stale tickets.`
+      title: `Average ticket: nobody working on it ${pct(s.idle || 0)}% of its time in progress`,
+      detail: `Average ticket (average share over ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
+        + `All in-progress hours: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nobody working on it ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
+        + `forgotten stays (in progress over 72 h, no session work) are left out.`
         + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
     });
     return;

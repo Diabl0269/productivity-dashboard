@@ -75,6 +75,7 @@
 import { parse } from '../lib/args.js';
 import cmdNext from './tasks-next.js';
 import cmdReady from './tasks-ready.js';
+import cmdSweepIdle from './tasks-sweep-idle.js';
 import { readinessLabel, parkedEpics, parkedAfterClosing } from '../../shared/epic-ready.js';
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
@@ -2816,6 +2817,8 @@ Subcommands:
           remembered in meta.dailyPlan.handPinnedIds)
   runplan [--json]
   ready [--json] [--auto]   every open epic as Ready or Not ready (reasons), and Auto; --auto = Ready and Auto only (read-only)
+  sweep-idle [--hours 24] [--dry-run] [--no-collect] [--json]   move in-progress tickets (not epics) with no session work for --hours back to todo,
+         with a decision saying why; a real run reads the Claude Code sessions first (--no-collect skips that, --dry-run changes nothing)
   next [--n 5] [--project P] [--json]   best ready tickets to start next (read-only)
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
@@ -2901,6 +2904,7 @@ const SUBCOMMANDS = {
   runplan:       cmdRunPlan,
   next:          cmdNext,
   ready:         cmdReady,
+  'sweep-idle':  cmdSweepIdle,
   stale:         cmdStale,
   add:           cmdAdd,
   move:          cmdMove,
