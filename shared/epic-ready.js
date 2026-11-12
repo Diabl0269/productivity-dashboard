@@ -142,23 +142,35 @@ function readinessIn(ix, epic) {
   // Parked: the only open tickets under the epic sit in backlog (PRO72).
   const parked = children.length > 0 && children.every(c => c.section === 'backlog') ? children.map(c => c.id) : [];
   const reasons = [];
-  if (!['todo', 'in-progress'].includes(sectionId)) reasons.push(`in ${sectionId === 'backlog' ? 'backlog' : sectionId}`);
-  if (LATER_TITLE.test(String(epic.title || ''))) reasons.push('a later bucket');
+  // PRO85: the same reasons as structured data ({kind, ids, text}); `reasons` keeps the short strings for the CLI and lint.
+  const reasonDetails = [];
+  const addReason = (kind, ids, str) => {
+    reasons.push(str);
+    reasonDetails.push({ kind, ids, text: plainReasonText(str, parked) });
+  };
+  if (!['todo', 'in-progress'].includes(sectionId)) addReason(sectionId === 'backlog' ? 'backlog' : 'section', [], `in ${sectionId === 'backlog' ? 'backlog' : sectionId}`);
+  if (LATER_TITLE.test(String(epic.title || ''))) addReason('later-bucket', [], 'a later bucket');
   const epicBlockers = openBlockers(epic);
-  if (epicBlockers.length) reasons.push(`waits on ${epicBlockers.join(', ')}`);
-  if (epic.blocked) reasons.push('marked blocked');
-  for (const p of gatePicks) reasons.push(`waits on your ${isDesignPick(p) ? 'pick' : 'co-task'} ${p.id}`);
+  if (epicBlockers.length) addReason('epic-blocker', epicBlockers, `waits on ${epicBlockers.join(', ')}`);
+  if (epic.blocked) addReason('blocked', [], 'marked blocked');
+  for (const p of gatePicks) {
+    const pick = isDesignPick(p);
+    addReason(pick ? 'pick' : 'co-task', [p.id], `waits on your ${pick ? 'pick' : 'co-task'} ${p.id}`);
+  }
   if (!runnable.length && !reasons.length && parked.length) {
-    reasons.push(`waits on ${parked.join(', ')} in backlog`);
+    addReason('parked', parked, `waits on ${parked.join(', ')} in backlog`);
   } else if (!runnable.length && !reasons.length) {
     const held = children.filter(c => /^held:/.test(c.why || ''));
-    reasons.push(!children.length ? 'nothing open to run'
-      : held.length === children.length ? 'every open ticket is held for your go-ahead'
-        : 'no ticket is free to run');
+    if (!children.length) addReason('empty', [], 'nothing open to run');
+    else if (held.length === children.length) addReason('held', [], 'every open ticket is held for your go-ahead');
+    else addReason('none-free', [], 'no ticket is free to run');
   }
   for (const c of runnable) {
-    if (howToCheckText(byId.get(c.id)) === null) reasons.push(`${c.id} has no How to check it`);
+    if (howToCheckText(byId.get(c.id)) === null) addReason('no-check', [c.id], `${c.id} has no How to check it`);
   }
+  // Backlog tickets this epic's own "Move to To do" may promote: never a "later" bucket (PRO85).
+  const backlogIds = children.filter(c => c.section === 'backlog').map(c => c.id);
+  const promotable = !LATER_TITLE.test(String(epic.title || '')) && (parked.length > 0 || sectionId === 'backlog') ? backlogIds : [];
 
   return {
     id: epic.id,
@@ -167,7 +179,9 @@ function readinessIn(ix, epic) {
     lane: typeof epic.lane === 'string' && epic.lane.trim() ? epic.lane.trim() : null,
     ready: reasons.length === 0,
     reasons,
+    reasonDetails,
     parked,
+    promotable,
     auto: isAuto(epic),
     priority: autoPriorityOf(epic),
     autoRank: autoRankOf(epic),
@@ -283,19 +297,14 @@ export function foldReadiness(readiness) {
 
 const joinWords = items => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 
-/**
- * ONE plain sentence for a Not-ready epic: why it cannot start and what would make it ready
- * (PRO82). Uses the most important reason (the first one in `r.reasons`). Ready rows give ''.
- * @param {{ready?: boolean, reasons?: string[], parked?: string[]}} r  one epicReadiness result
- */
-export function plainReasonLine(r) {
-  if (!r || r.ready) return '';
-  const reason = String((r.reasons || [])[0] || '').trim();
+/** Plain sentence for ONE reason string (see `readinessIn`); `parked` names the backlog tickets of a parked epic. */
+export function plainReasonText(reason, parked = []) {
+  reason = String(reason || '').trim();
   let m;
   if (/^in backlog$/.test(reason) || reason === 'a later bucket') return 'Ideas waiting for your go: move one to To do to start';
   if ((m = /^in (\S+)$/.exec(reason))) return `Not started: it sits in ${m[1]}; move it to To do`;
   if ((m = /^waits on (.+) in backlog$/.exec(reason))) {
-    const ids = r.parked && r.parked.length ? r.parked : m[1].split(/,\s*/);
+    const ids = parked && parked.length ? parked : m[1].split(/,\s*/);
     return ids.length === 1
       ? `Not ready: its only ticket, ${ids[0]}, is in backlog; move it to To do`
       : `Not ready: its only tickets, ${joinWords(ids)}, are in backlog; move one to To do`;
@@ -307,6 +316,17 @@ export function plainReasonLine(r) {
   if (reason === 'nothing open to run') return 'Nothing open to run: add a ticket under it';
   if (reason === 'every open ticket is held for your go-ahead') return 'Every open ticket waits for your go-ahead: approve one to start';
   if (reason === 'no ticket is free to run') return 'No ticket is free to run: each one waits on something else';
-  if ((m = /^(\S+) has no How to check it$/.exec(reason))) return `No ticket says how to check it: add one to ${m[1]}`;
+  if ((m = /^(\S+) has no How to check it$/.exec(reason))) return `${m[1]} needs a 'How to check it' line (in its In plain words section)`;
   return reason ? `Not ready: ${reason}` : 'Not ready';
+}
+
+/**
+ * ONE plain sentence for a Not-ready epic: why it cannot start and what would make it ready
+ * (PRO82). Uses the most important reason (the first one). Ready rows give ''.
+ * @param {{ready?: boolean, reasons?: string[], reasonDetails?: {text: string}[], parked?: string[]}} r  one epicReadiness result
+ */
+export function plainReasonLine(r) {
+  if (!r || r.ready) return '';
+  if (r.reasonDetails && r.reasonDetails.length) return r.reasonDetails[0].text;
+  return plainReasonText((r.reasons || [])[0], r.parked);
 }

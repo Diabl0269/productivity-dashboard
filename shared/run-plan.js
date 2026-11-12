@@ -329,6 +329,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     isRest: false,
     openTickets: r.children.length,
     why: plainReasonLine(r),
+    reasons: r.reasonDetails,
+    promoteIds: r.promotable,
     command: null,
     model: modelOf(byId.get(r.id)),
     inProgress: false,
@@ -368,7 +370,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         now.push(card(id, 'partial', false, i.freeWork.length, `Stops at ${pickText}`));
         later.push(card(id, 'later', true, i.gatedWork.length, `Needs ${pickText}`));
       } else if (notReady) {
-        later.push(card(id, 'notready', false, i.work.length, plainReasonLine(readinessById.get(id))));
+        const rr = readinessById.get(id);
+        later.push({ ...card(id, 'notready', false, i.work.length, plainReasonLine(rr)), reasons: rr.reasonDetails, promoteIds: rr.promotable });
       } else {
         now.push(card(id, 'ready', false, i.work.length,
           sameLane.length ? `Runs after ${joinList(sameLane)}` : 'Nothing blocking it'));

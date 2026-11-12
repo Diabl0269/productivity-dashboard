@@ -9,6 +9,7 @@ import { computeRunPlan, UNASSIGNED_LANE } from '../../shared/run-plan.js';
 import { openEpicReadiness, plainReasonLine } from '../../shared/epic-ready.js';
 import { autoQueue } from '../../shared/auto-queue.js';
 import { computeNextStart } from '../../shared/next-start.js';
+import { textWithIdButtons } from '../../dashboard/js/run-plan-reason-text.js';
 
 const PLAIN = '## In plain words\n**What you\'ll notice:** x\n**Why it matters:** y\n**How to check it:** look at it\n\n## Technical detail (for Claude)\nz';
 const task = (id, extra = {}) => ({ id, title: `Task ${id}`, checked: false, priority: 'medium', type: 'task', subtasks: [], description: PLAIN, ...extra });
@@ -101,8 +102,40 @@ test('plainReasonLine: one plain sentence per reason kind', () => {
   assert.equal(line(['waits on your co-task C1']), 'Waits for your co-task C1');
   assert.equal(line(['waits on E9, E10']), 'Waits on E9 and E10 to finish');
   assert.match(line(['marked blocked']), /^Marked blocked/);
-  assert.equal(line(['T2 has no How to check it']), 'No ticket says how to check it: add one to T2');
+  assert.equal(line(['T2 has no How to check it']), "T2 needs a 'How to check it' line (in its In plain words section)");
   assert.match(line(['nothing open to run']), /^Nothing open to run/);
   assert.match(line(['no ticket is free to run']), /^No ticket is free to run/);
   assert.match(line(['every open ticket is held for your go-ahead']), /^Every open ticket waits for your go-ahead/);
 });
+
+// PRO85: a ticket named in a reason is a button; PRO84: the page proves it lists every open epic.
+class FakeNode {
+  constructor(tag) { this.tag = tag; this.children = []; this.className = ''; this._text = ''; }
+  appendChild(c) { this.children.push(c); return c; }
+  set textContent(t) { this._text = t; }
+  get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
+}
+const fakeDocument = { createElement: t => new FakeNode(t), createTextNode: t => Object.assign(new FakeNode('#text'), { _text: t }) };
+
+test('ticket ids inside a reason line are buttons; the rest stays text', () => {
+  globalThis.document = fakeDocument;
+  try {
+    const mkBtn = id => Object.assign(new FakeNode('button'), { _text: id, isId: true });
+    const node = textWithIdButtons("T1 needs a 'How to check it' line, T10 too", ['T1', 'T10'], mkBtn);
+    const buttons = node.children.filter(c => c.isId).map(c => c.textContent);
+    assert.deepEqual(buttons, ['T1', 'T10']);
+    assert.equal(node.textContent, "T1 needs a 'How to check it' line, T10 too");
+  } finally { delete globalThis.document; }
+});
+
+test('cards carry structured reasons with the blocking ticket ids', () => {
+  const plan = computeRunPlan(fixture());
+  const e2 = plan.lanes.flatMap(l => l.laterEpics).find(c => c.id === 'E2');
+  assert.deepEqual(e2.reasons.map(r => [r.kind, r.ids]), [['no-check', ['T2']]]);
+  assert.equal(e2.why, "T2 needs a 'How to check it' line (in its In plain words section)");
+  const e4 = plan.lanes.flatMap(l => l.laterEpics).find(c => c.id === 'E4');
+  assert.deepEqual(e4.promoteIds, ['T4', 'T4b']);
+  const e3 = plan.lanes.flatMap(l => l.laterEpics).find(c => c.id === 'E3');
+  assert.deepEqual(e3.promoteIds, [], 'a later bucket is never promoted');
+});
+
