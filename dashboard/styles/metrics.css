@@ -244,7 +244,7 @@
 .is-left { background: var(--text-tertiary); }
 .mc-splitlegend { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-2) var(--space-4); }
 .mc-splitkey { display: grid; grid-template-columns: auto 1fr auto; column-gap: var(--space-2); align-items: baseline; font-size: var(--text-sm); }
-.mc-splitdot { width: 10px; height: 10px; border-radius: 50%; align-self: center; }
+.mc-splitdot { width: 10px; height: 10px; border-radius: 50%; align-self: start; margin-top: 5px; }
 .mc-splitname { font-weight: var(--weight-semibold); }
 .mc-splitval { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .mc-verdict { margin: 0; font-size: var(--text-md); line-height: var(--leading-normal); color: var(--text-primary); }
@@ -264,3 +264,10 @@
 .mc-fold { display: flex; flex-direction: column; gap: var(--space-2); }
 .mc-fold-btn { align-self: flex-start; }
 .mc-stale b { color: var(--text-primary); }
+[id^="mcH-"], [id^="mcC-"] { scroll-margin-top: 64px; } /* keep a jumped-to section clear of the sticky contents row */
+/* The folded rest is a second table: fixed layout and equal widths keep its columns under the first one's */
+.mc-fold .mc-table { table-layout: fixed; width: 100%; }
+.mc-fold .mc-table th { width: 10%; }
+.mc-fold .mc-table th:nth-child(2) { width: auto; }
+.mc-fold .mc-table td.num, .mc-fold .mc-table th.num { white-space: nowrap; }
+.mc-fold .mc-table td:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
