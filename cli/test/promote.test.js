@@ -104,6 +104,9 @@ test('dashboard promoteBacklogTickets: moves only the named backlog tickets in o
     assert.equal(sel.promoteBacklogTickets(['NOPE']), 0);
 
     // Undo: the toast's action puts every one back in a single step.
+    // The autosave's routine "Saved" must not replace the Undo toast.
+    (await import('../../dashboard/js/state.js')).showSaved('Saved');
+    assert.equal(statusEl.children[0].textContent, 'Moved 2 to To do');
     const undo = statusEl.children.find(c => c.textContent === 'Undo');
     assert.ok(undo, 'an Undo button is offered');
     undo.listeners.click({ stopPropagation() {} });

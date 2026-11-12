@@ -62,9 +62,16 @@ const statusEl = document.getElementById('status');
 export const filePathEl = document.getElementById('filePath');
 
 let statusTimer = null;
+let actionUntil = 0; // while an Undo-style toast is up, a routine "Saved" must not replace it
 
 export function showStatus(msg) {
   showStatusAction(msg, { durationMs: 2000 });
+}
+
+/** The routine "Saved" note after an autosave: skipped while an Undo toast is still showing (PRO85). */
+export function showSaved(msg) {
+  if (Date.now() < actionUntil) return;
+  showStatus(msg);
 }
 
 /**
@@ -90,12 +97,14 @@ export function showStatusAction(msg, opts = {}) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (statusTimer) clearTimeout(statusTimer);
+      actionUntil = 0;
       statusEl.classList.remove('visible');
       onAction();
     });
     statusEl.appendChild(btn);
   }
 
+  actionUntil = actionLabel && onAction && durationMs > 0 ? Date.now() + durationMs : 0;
   statusEl.classList.add('visible');
   statusTimer = durationMs > 0 ? setTimeout(() => statusEl.classList.remove('visible'), durationMs) : null; // 0 = stays until replaced or its action is used
 }
