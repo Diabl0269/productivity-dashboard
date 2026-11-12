@@ -197,7 +197,7 @@ export function isRecurrenceFreq(freq) {
 /**
  * Append a history entry to a task (mutates). Caps at HISTORY_MAX.
  * @param {any} task
- * @param {{ event: string, from?: string, to?: string, note?: string, at?: string }} entry
+ * @param {{ event: string, from?: string, to?: string, note?: string, at?: string, estimateAtStart?: {median:number,p75:number,n:number,group:string} }} entry
  */
 export function appendHistory(task, entry) {
   if (!task || !entry || !entry.event) return;
@@ -209,6 +209,7 @@ export function appendHistory(task, entry) {
   if (entry.from != null && entry.from !== '') row.from = String(entry.from);
   if (entry.to != null && entry.to !== '') row.to = String(entry.to);
   if (entry.note != null && entry.note !== '') row.note = String(entry.note);
+  if (entry.estimateAtStart) row.estimateAtStart = entry.estimateAtStart;
   task.history.push(row);
   if (task.history.length > HISTORY_MAX) {
     task.history = task.history.slice(-HISTORY_MAX);
@@ -414,6 +415,10 @@ export function normalizeTask(task) {
         if (h.from != null && h.from !== '') row.from = String(h.from);
         if (h.to != null && h.to !== '') row.to = String(h.to);
         if (h.note != null && h.note !== '') row.note = String(h.note);
+        const ea = h.estimateAtStart;
+        if (ea && typeof ea === 'object' && Number.isFinite(ea.median) && Number.isFinite(ea.p75)) {
+          row.estimateAtStart = { median: ea.median, p75: ea.p75, n: Number(ea.n) || 0, group: String(ea.group ?? '') };
+        }
         return row;
       })
       .slice(-HISTORY_MAX);

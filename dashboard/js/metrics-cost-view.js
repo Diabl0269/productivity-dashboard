@@ -66,9 +66,9 @@ export function renderCost(d, h) {
   const tickets = c.byTicket.map((r) => [
     ticketLink(r.ticket), r.title || '', fmtUSD(r.costUSD), ...(cal ? [wk(r)] : []), pct(r.share), fmtTokens(r.tokens), String(r.toolCalls), String(r.sessions),
   ]);
-  s.appendChild(card('Cost per ticket', 'Usage while the ticket was current in a session (a session on an epic switches ticket when it moves a child to in-progress), plus its helpers. Top 30. "% wk" is the share of an estimated week\'s plan limit, shown once a weekly-limit hit calibrates it.',
+  s.appendChild(card('Cost per ticket', 'Actual cost, not an estimate: usage while the ticket was current in a session (a session on an epic switches ticket when it moves a child to in-progress), plus its helpers. Top 30. "% wk" is the share of an estimated week\'s plan limit, shown once a weekly-limit hit calibrates it.',
     table('Cost per ticket', [
-      { label: 'Ticket' }, { label: 'Title' }, { label: 'Cost', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Share', num: true },
+      { label: 'Ticket' }, { label: 'Title' }, { label: 'Cost (actual)', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Share', num: true },
       { label: 'Tokens', num: true }, { label: 'Tool calls', num: true }, { label: 'Sessions', num: true },
     ], tickets)));
 

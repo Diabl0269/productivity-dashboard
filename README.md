@@ -245,6 +245,7 @@ ch metrics flow    [--project P] [--lane L] [--since 30d] [--json]
 ch metrics report  [--project P] [--since 30d] [--json]
 ch metrics cost [<id>] [--project P] [--since 30d] [--json]
 ch metrics estimate [<id>] [--project P] [--json]
+ch metrics estimate --accuracy [--project P] [--json]   # backtest: how close Likely cost was to real cost
 ch metrics time <name> [--repo R] -- <command...>
 ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind gate|build|test|ci|other]
 ```

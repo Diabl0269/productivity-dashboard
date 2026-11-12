@@ -128,6 +128,16 @@ export function buildEstimator({ costs, byId, sectionOf = new Map(), minSamples 
     spentUSD: id => spent.get(id) ?? 0,
     stateOf: id => sectionOf.get(id) ?? null,
     estimate: id => (byId.get(id)?.type === 'epic' ? epicEstimate(id) : ticketEstimate(id)),
+    /** Leave-one-out backtest: each shipped sample's estimate (without itself) next to what it really cost. */
+    backtest() {
+      const rows = [];
+      for (const s of samples) {
+        const e = ticketEstimate(s.id);
+        if (!e) continue;
+        rows.push({ ticket: s.id, label: s.f.label, actualUSD: r2(s.usd), typicalUSD: e.typicalUSD, highUSD: e.highUSD, n: e.n, basis: e.basis });
+      }
+      return rows;
+    },
     /** Shipped samples by model label: n, median and p75 dollars. */
     summary() {
       const g = new Map();
@@ -168,4 +178,44 @@ export function estimatorFor({ doc, sessions = [], cfg = {}, nowMs = Date.now(),
 /** The `estimates` summary block of the metrics payload. */
 export function estimatesSummary(estimator) {
   return { sampleWindowDays: estimator.windowDays ?? ESTIMATE_WINDOW_DAYS, samples: estimator.samples, byLabel: estimator.summary() };
+}
+
+/** What a ticket gets recorded in its history when it starts: {median, p75, n, group}; null without an estimate. */
+export function estimateAtStartOf(estimator, id) {
+  const e = estimator ? estimator.estimate(id) : null;
+  if (!e || e.perChild) return null;
+  return { median: e.typicalUSD, p75: e.highUSD, n: e.n, group: e.basis };
+}
+
+export const JUDGE_MIN = 8;
+export const CLOSE_UNDER_HIGH = 0.7;
+export const CLOSE_RATIO = [0.7, 1.4];
+
+/**
+ * How close the estimates were: of backtest rows, the share at or under the high end (p75) and the median
+ * actual/typical, overall and per model label. A label is judged only with at least JUDGE_MIN tickets.
+ * "Close" = at least 70% at or under the high end and median actual/typical between 0.7 and 1.4;
+ * above 1.4 estimates run low, below 0.7 they run high.
+ */
+export function accuracyReport(rows) {
+  const stats = list => {
+    const ratios = list.filter(r => r.typicalUSD > 0).map(r => r.actualUSD / r.typicalUSD);
+    const under = list.filter(r => r.actualUSD <= r.highUSD).length;
+    const underShare = list.length ? under / list.length : null;
+    const medianRatio = ratios.length ? r2(median(ratios)) : null;
+    const missUSD = list.length ? r2(median(list.map(r => Math.abs(r.actualUSD - r.typicalUSD)))) : null;
+    let verdict;
+    if (list.length < JUDGE_MIN) verdict = `too few to judge (${list.length} of ${JUDGE_MIN} needed)`;
+    else if (medianRatio > CLOSE_RATIO[1]) verdict = 'estimates run low';
+    else if (medianRatio < CLOSE_RATIO[0]) verdict = 'estimates run high';
+    else if (underShare < CLOSE_UNDER_HIGH) verdict = 'typical is close, but the high end is too tight';
+    else verdict = 'close';
+    return { n: list.length, underHighShare: underShare === null ? null : r2(underShare), medianRatio, medianMissUSD: missUSD, verdict };
+  };
+  const labels = [...new Set(rows.map(r => r.label))].sort();
+  return {
+    overall: stats(rows),
+    byLabel: labels.map(label => ({ label, ...stats(rows.filter(r => r.label === label)) }))
+      .sort((a, b) => b.n - a.n || (a.label < b.label ? -1 : 1)),
+  };
 }

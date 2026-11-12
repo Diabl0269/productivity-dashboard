@@ -12,7 +12,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { estimatorFor, formatRange, usd } from '../../shared/cost-estimate.js';
+import { estimatorFor, formatRange, usd, accuracyReport, estimateAtStartOf } from '../../shared/cost-estimate.js';
 import { buildMetricsPayload } from '../../shared/metrics-payload.js';
 import { costLine } from '../../dashboard/js/ticket-cost-ui.js';
 
@@ -245,5 +245,74 @@ test('serve.js: /api/metrics/ticket-cost and /api/metrics/estimates', async () =
   } finally {
     child.kill();
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('accuracy: share at or under the high end, median actual/typical and a verdict per label (8 tickets to judge)', () => {
+  const row = (label, actual, typ = 10, high = 20) => ({ ticket: 'X', label, actualUSD: actual, typicalUSD: typ, highUSD: high, n: 6, basis: 'b' });
+  const close = [8, 9, 10, 11, 12, 13, 14, 15].map(a => row('model:a', a));
+  const low = [20, 25, 30, 35, 40, 45, 50, 55].map(a => row('model:b', a));
+  const high = [2, 3, 4, 5, 6, 3, 4, 5].map(a => row('model:c', a));
+  const few = [row('model:d', 50), row('model:d', 5)];
+  const rep = accuracyReport([...close, ...low, ...high, ...few]);
+  const by = Object.fromEntries(rep.byLabel.map(g => [g.label, g]));
+  assert.equal(by['model:a'].verdict, 'close');
+  assert.equal(by['model:a'].underHighShare, 1);
+  assert.equal(by['model:a'].medianRatio, 1.15);
+  assert.equal(by['model:b'].verdict, 'estimates run low');
+  assert.equal(by['model:b'].underHighShare, 0.13); // only the 20 is at or under 20
+  assert.equal(by['model:c'].verdict, 'estimates run high');
+  assert.equal(by['model:d'].verdict, 'too few to judge (2 of 8 needed)');
+  assert.equal(by['model:d'].underHighShare, 0.5);
+  assert.equal(rep.overall.n, 26);
+  assert.deepEqual(accuracyReport([]).overall, { n: 0, underHighShare: null, medianRatio: null, medianMissUSD: null, verdict: 'too few to judge (0 of 8 needed)' });
+});
+
+test('backtest: each shipped ticket is estimated without itself; estimateAtStartOf skips epics and no-estimate', () => {
+  const e = est();
+  const rows = e.backtest();
+  assert.equal(rows.length, 11);
+  const t11 = rows.find(r => r.ticket === 'T11');
+  assert.deepEqual([t11.actualUSD, t11.typicalUSD, t11.n], [1, 4, 5]); // sonnet pool without T11: 2..6
+  assert.deepEqual(estimateAtStartOf(e, 'T1'), { median: 3.5, p75: 4.75, n: 6, group: 'model:sonnet · task · pa · lane l' });
+  assert.equal(estimateAtStartOf(e, 'T5'), null); // epic
+  assert.equal(estimateAtStartOf(null, 'T1'), null);
+});
+
+test('ch metrics estimate --accuracy prints the backtest and json; no data says so', () => {
+  const dir = home();
+  const bare = home({ withSessions: false });
+  try {
+    const r = run(dir, 'metrics', 'estimate', '--accuracy');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /Likely cost backtest/);
+    assert.match(r.stdout, /^all\s+11\s+/m);
+    assert.match(r.stdout, /Close = at least 70%/);
+    const j = JSON.parse(run(dir, 'metrics', 'estimate', '--accuracy', '--json').stdout);
+    assert.equal(j.overall.n, j.rows.length);
+    assert.match(run(bare, 'metrics', 'estimate', '--accuracy').stdout, /no backtest/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('ch tasks move to in-progress records estimateAtStart in history (kept through a save); none without data or for other moves', () => {
+  const dir = home();
+  const bare = home({ withSessions: false });
+  try {
+    const hist = (d, id) => JSON.parse(run(d, 'tasks', 'get', id, '--json').stdout).history;
+    assert.equal(run(dir, 'tasks', 'move', 'T1', 'in-progress').status, 0);
+    const ev = hist(dir, 'T1').find(h => h.event === 'moved' && h.to === 'in-progress');
+    assert.deepEqual(ev.estimateAtStart, { median: 3.5, p75: 4.75, n: 6, group: 'model:sonnet · task · pa · lane l' });
+    assert.equal(run(dir, 'tasks', 'move', 'T1', 'review').status, 0);
+    const after = hist(dir, 'T1');
+    assert.ok(after.find(h => h.to === 'in-progress').estimateAtStart, 'survives later saves');
+    assert.equal(after.find(h => h.to === 'review').estimateAtStart, undefined);
+    assert.equal(run(bare, 'tasks', 'move', 'T1', 'in-progress').status, 0);
+    assert.equal(hist(bare, 'T1').find(h => h.to === 'in-progress').estimateAtStart, undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
   }
 });

@@ -96,6 +96,8 @@ import {
 } from '../lib/schema.js';
 import { normalizeModel } from '../../shared/model.js';
 import { parseEstimate, formatEstimate } from '../lib/estimate.js';
+import { estimatorForDoc } from '../lib/estimator.js';
+import { estimateAtStartOf } from '../../shared/cost-estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
 import { storeImageFile, attachmentAbsPath } from '../../shared/note-images.js';
@@ -134,6 +136,12 @@ function unpinFromPlan(doc, ids) {
 /** After `task` closed: unpin it if it is an epic, and its epic once nothing under it is open. */
 function autoUnpin(doc, task) {
   return unpinFromPlan(doc, epicsToUnpin(doc, task));
+}
+
+/** The likely cost recorded when a ticket starts (PRO60), so a later check can compare it with the real cost; never an error. */
+function estimateAtStartFor(doc, task) {
+  if (task.type === 'epic') return undefined;
+  try { return estimateAtStartOf(estimatorForDoc(doc), task.id) ?? undefined; } catch { return undefined; }
 }
 
 /** An epic pins itself only when it starts (moves to in-progress): pins mean this week's focus (PRO61). */
@@ -843,6 +851,8 @@ function cmdMove(argv) {
   const toSection = sectionById(doc, targetSectionId);
   if (!toSection) die(`section "${targetSectionId}" not found in document. Try 'ch tasks lint --fix'`);
 
+  // Estimate while the ticket is still in the document (the estimator reads its type, label and lane)
+  const startEstimate = targetSectionId === 'in-progress' ? estimateAtStartFor(doc, task) : undefined;
   // Remove from source
   fromSection.tasks = fromSection.tasks.filter(t => t.id !== id);
   // Update
@@ -853,7 +863,10 @@ function cmdMove(argv) {
     task.checked = false; // pulled back out of review (done keeps its flag, as before)
   }
   task.updated = today;
-  appendHistory(task, { event: 'moved', from: fromSection.id, to: targetSectionId });
+  appendHistory(task, {
+    event: 'moved', from: fromSection.id, to: targetSectionId,
+    estimateAtStart: startEstimate,
+  });
   // Add to target
   toSection.tasks.push(task);
 
