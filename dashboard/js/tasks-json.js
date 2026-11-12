@@ -295,6 +295,7 @@ export function loadTasksJson(text) {
       noChecksReason: (typeof t.noChecksReason === 'string' && t.noChecksReason.trim()) ? t.noChecksReason.trim() : null,
       reviewEvidence: Array.isArray(t.reviewEvidence) ? t.reviewEvidence.filter(x => typeof x === 'string' && x) : [],
       forcedReview: isPlainObject(t.forcedReview) ? t.forcedReview : null,
+      heldPr: isPlainObject(t.heldPr) ? t.heldPr : null,
       section: sec.id,
     }));
   }
@@ -337,6 +338,7 @@ export function serializeTasksJson(sections, tasks, ticketTypes, meta) {
         if (typeof t.noChecksReason === 'string' && t.noChecksReason.trim()) row.noChecksReason = t.noChecksReason.trim();
         if (Array.isArray(t.reviewEvidence) && t.reviewEvidence.length) row.reviewEvidence = t.reviewEvidence;
         if (isPlainObject(t.forcedReview)) row.forcedReview = t.forcedReview;
+        if (isPlainObject(t.heldPr)) row.heldPr = t.heldPr;
         const desc = (t.description || '').trim();
         if (desc) row.description = desc;
         if (t.parentId) row.parentId = t.parentId;

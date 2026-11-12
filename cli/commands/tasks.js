@@ -28,6 +28,7 @@
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
+ *              [--held-pr "<why>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr; adds the check 'Try on branch X, then say merge or not')
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *       needs at least one --check (or checks in --result-json, or checks already on the ticket) unless --no-checks "<reason>" says why
@@ -111,6 +112,7 @@ import {
 } from '../../shared/review-notes.js';
 import { planFiling, applyFiling } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
+import { openPrGate } from '../lib/open-pr-gate.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -539,6 +541,7 @@ function cmdGet(argv) {
   else if (task.waitingOn) print(`  waiting on: ${task.waitingOn}`);
   if (Array.isArray(task.labels) && task.labels.length) print(`  labels: ${task.labels.join(', ')}`);
   if (Array.isArray(task.reviewEvidence) && task.reviewEvidence.length) print(`  evidence: ${task.reviewEvidence.join(', ')}`);
+  if (task.heldPr?.reason) print(`  PR held open: ${task.heldPr.reason} (${task.heldPr.branch || task.heldPr.pr})`);
   if (task.forcedReview?.reason) print(`  forced review: ${task.forcedReview.reason} (${String(task.forcedReview.at || '').slice(0, 10)})`);
   if (Array.isArray(task.links) && task.links.length) {
     task.links.forEach((l, i) => {
@@ -1001,6 +1004,9 @@ function cmdReview(argv) {
     'force-reason': { type: 'string' },
     evidence:      { type: 'string', multiple: true },
     'allow-check-owner': { type: 'boolean' },
+    'held-pr':     { type: 'string' },
+    'add-link':    { type: 'string', multiple: true },
+    'link-label':  { type: 'string', multiple: true },
     'clear-unverified':   { type: 'boolean' },
     'resolve-unverified': { type: 'string' },
   });
@@ -1045,7 +1051,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force]');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--add-link URL]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -1116,6 +1122,15 @@ function cmdReview(argv) {
   if (proofProblem && !forceReason) {
     die(values.force && values['force-reason'] !== undefined ? `--force needs a reason: --force "<why>"\n${proofProblem}` : proofProblem);
   }
+
+  // PRO70: an open PR blocks review unless --held-pr says why (adds the "try on branch" check).
+  const newLinks = (values['add-link'] || []).map((url, i) => ({ url, ...((values['link-label'] || [])[i] ? { label: values['link-label'][i] } : {}) }));
+  const pr = openPrGate({ id, heldPr: values['held-pr'], links: [...(task.links || []), ...newLinks] });
+  if (pr.error) die(pr.error);
+  pr.warnings.forEach(w => printErr(`review: warning: ${w}`));
+  checkItems.push(...pr.checks.map(text => ({ text })));
+  if (pr.held) task.heldPr = pr.held;
+  if (newLinks.length) task.links = [...(task.links || []), ...newLinks];
 
   if (result) task.result = result;
   if (evidenceRels.length) task.reviewEvidence = [...new Set([...(task.reviewEvidence || []), ...evidenceRels])];
