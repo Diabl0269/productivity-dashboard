@@ -65,7 +65,7 @@ test('same-lane blocker: the blocked epic is Not ready (one rule with the Ready 
   assert.deepEqual(ids(l.now), ['E2']);
   assert.deepEqual(ids(l.later), ['E1']);
   assert.equal(l.later[0].state, 'notready');
-  assert.match(l.later[0].why, /^Not ready: waits on E2/);
+  assert.match(l.later[0].why, /^Waits on E2 to finish/);
 });
 
 test('cross-lane blocker -> later, and flips to now when it closes', () => {

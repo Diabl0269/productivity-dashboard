@@ -17,6 +17,7 @@ import { loadTasksJson } from './tasks-json.js';
 import { todayStr } from './tasks-parser.js';
 import { stateToDoc as toDoc, renderReadyState, buildAutoToggle } from './epic-ready-ui.js';
 import { renderAutoQueue } from './auto-queue-ui.js';
+import { renderLaterFold } from './run-plan-later.js';
 import { renderNextStartLine } from './next-start-line.js';
 import { renderAsksStrip } from './asks-strip.js';
 import { markChanged } from './tasks-io.js';
@@ -34,7 +35,7 @@ function el(tag, className, text) {
   return node;
 }
 
-const STATE_LABEL = { ready: 'Ready now', partial: 'Partly ready', later: 'Later', notready: 'Not ready', pick: 'Your pick' };
+const STATE_LABEL = { backlog: 'In backlog', ready: 'Ready now', partial: 'Partly ready', later: 'Later', notready: 'Not ready', pick: 'Your pick' };
 
 /** Open a ticket's detail in place (no navigation); toasts if the ticket is gone. */
 function openTicket(id) {
@@ -779,7 +780,7 @@ function renderLane(lane, index, picks) {
     const epics = new Set([...lane.now, ...lane.later].map(c => c.id)).size;
     const open = [...lane.now, ...lane.later].reduce((n, c) => n + (c.openTickets || 0), 0);
     head.appendChild(el('div', 'rp-note rp-count',
-      `${epics} ${epics === 1 ? 'epic' : 'epics'} · ${open} open ${open === 1 ? 'ticket' : 'tickets'}`));
+      `${epics} ${epics === 1 ? 'epic' : 'epics'} · ${open} open ${open === 1 ? 'ticket' : 'tickets'}${lane.laterEpics?.length ? ` · ${lane.laterEpics.length} later` : ''}`));
   }
   if (lane.lane !== 'design') {
     const epicIds = [...new Set([...lane.now, ...lane.later].map(c => c.id))];
@@ -801,7 +802,11 @@ function renderLane(lane, index, picks) {
     row.appendChild(renderDivider(lane.waitsOn));
     appendCards(row, lane.later, 'later');
   }
-  track.appendChild(row);
+  const body = el('div', 'rp-lane-body');
+  body.appendChild(row);
+  const laterFold = renderLaterFold(lane, id => idButton(id));
+  if (laterFold) body.appendChild(laterFold);
+  track.appendChild(body);
   const openCard = lane.lane === 'design' && lane.now.find(c => c.ticketIds && c.id === openDrawer);
   if (openCard) track.appendChild(renderDrawer(openCard, picks));
   return track;

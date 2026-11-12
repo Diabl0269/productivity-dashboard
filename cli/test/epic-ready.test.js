@@ -143,7 +143,10 @@ test('lanes hold in-progress and Ready epics even when nothing is pinned', () =>
     backlog: [epic('E4', { lane: 'w' }), task('T4', { parentId: 'E4' })],
   });
   const plan = computeRunPlan(doc);
-  assert.deepEqual(plan.lanes.map(l => l.lane).sort(), ['x', 'y']);
+  // PRO82: not-ready and backlog epics get their lane too, but only in its Later group (never in now).
+  assert.deepEqual(plan.lanes.map(l => l.lane).sort(), ['w', 'x', 'y', 'z']);
+  assert.deepEqual(plan.lanes.filter(l => l.now.length).map(l => l.lane).sort(), ['y']);
+  assert.deepEqual(plan.lanes.flatMap(l => l.laterEpics.map(c => c.id)).sort(), ['E3', 'E4']);
   assert.deepEqual(plan.readiness.map(r => [r.id, r.ready]), [['E1', false], ['E2', true], ['E3', false], ['E4', false]]);
   assert.deepEqual(plan.doneEpics, []);
 });

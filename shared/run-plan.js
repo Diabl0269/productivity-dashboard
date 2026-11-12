@@ -7,7 +7,7 @@
 
 import { checksOnOpenWork, reviewQueue } from './review.js';
 import { isDesignPick, isPickGate } from './pick-gate.js';
-import { openEpicReadiness, epicIdsForLanes } from './epic-ready.js';
+import { openEpicReadiness, epicIdsForLanes, plainReasonLine } from './epic-ready.js';
 
 export { isDesignPick, isPickGate };
 
@@ -197,12 +197,13 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   }
 
   const doneEpics = [];
+  const finishedIds = new Set();
   const live = [];
   const members = new Map();
   for (const id of pinned) {
     const kids = descendants(id);
     const done = isCheckedDone(byId.get(id), sectionOf.get(id)) || (kids.length > 0 && kids.every(k => !isOpen(k)));
-    if (done) { if (!extraLane.has(id)) doneEpics.push(id); continue; }
+    if (done) { finishedIds.add(id); if (!extraLane.has(id)) doneEpics.push(id); continue; }
     live.push(id);
     members.set(id, new Set(kids));
   }
@@ -313,8 +314,30 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     if (!laneNames.includes(l)) laneNames.push(l);
   }
 
+  // PRO82: every other open epic (backlog, a later bucket, not ready and not in progress) shows too,
+  // folded at the end of its lane as `laterEpics`. They are never in `now`, so nothing starts them.
+  const liveSet = new Set(live);
+  const laterEpicRows = readiness.filter(r => !liveSet.has(r.id) && !finishedIds.has(r.id) && !r.ready);
+  for (const r of laterEpicRows) {
+    const l = laneOf(r.id);
+    if (!laneNames.includes(l)) laneNames.push(l);
+  }
+  const laterEpicCard = r => ({
+    id: r.id,
+    title: byId.get(r.id).title || '',
+    state: r.section === 'backlog' ? 'backlog' : 'notready',
+    isRest: false,
+    openTickets: r.children.length,
+    why: plainReasonLine(r),
+    command: null,
+    model: modelOf(byId.get(r.id)),
+    inProgress: false,
+    step: 0,
+  });
+
   const lanes = laneNames.map(lane => {
     const ids = live.filter(id => laneOf(id) === lane);
+    const laterEpics = laterEpicRows.filter(r => laneOf(r.id) === lane).map(laterEpicCard);
     const ordered = stableTopo(ids, id => info.get(id).deps.filter(d => laneOf(d) === lane));
     const now = [];
     const later = [];
@@ -345,7 +368,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         now.push(card(id, 'partial', false, i.freeWork.length, `Stops at ${pickText}`));
         later.push(card(id, 'later', true, i.gatedWork.length, `Needs ${pickText}`));
       } else if (notReady) {
-        later.push(card(id, 'notready', false, i.work.length, `Not ready: ${readinessById.get(id).reasons.join('; ')}`));
+        later.push(card(id, 'notready', false, i.work.length, plainReasonLine(readinessById.get(id))));
       } else {
         now.push(card(id, 'ready', false, i.work.length,
           sameLane.length ? `Runs after ${joinList(sameLane)}` : 'Nothing blocking it'));
@@ -357,6 +380,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
       needsBuild: ids.some(id => needsBuildEpic(byId.get(id))),
       now: assignSteps(now, lane),
       later: assignSteps(later, lane),
+      laterEpics,
       waitsOn: { picks: [...waitPicks].sort(compareIds), epics: [...waitEpics].sort(compareIds) },
     };
   });
@@ -444,6 +468,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
       needsBuild: false,
       now,
       later: [],
+      laterEpics: [],
       waitsOn: { picks: [], epics: [] },
     });
   }
