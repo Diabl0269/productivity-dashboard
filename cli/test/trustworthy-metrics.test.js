@@ -91,7 +91,7 @@ test('reopened also counts a fix ticket opened from a shipped ticket within 14 d
   assert.equal(f.counts.reopenedMoves, 0);
   assert.equal(f.counts.reopenedFixes, 2);
   assert.equal(f.counts.reopened, 2);
-  assert.deepEqual(f.reopenedByLabel, [{ label: 'model:haiku', moves: 0, fixes: 2 }]);
+  assert.deepEqual(f.reopenedByLabel, [{ label: 'model:haiku', moves: 0, fixes: 2, shipped: 1 }, { label: 'model:opus', moves: 0, fixes: 0, shipped: 1 }]);
 });
 
 test('reopened adds moves back and fix tickets together', () => {

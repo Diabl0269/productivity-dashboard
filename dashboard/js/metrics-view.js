@@ -7,6 +7,8 @@ import {
 } from './metrics-charts.js';
 import { renderCost } from './metrics-cost-view.js';
 import { renderTimeSplit } from './metrics-time-view.js';
+import { renderHealth, renderBacklog } from './metrics-health-view.js';
+import { renderQuality } from './metrics-quality-view.js';
 import { safe } from './metrics-safe.js';
 import { openTicketById } from './routing.js';
 import { showStatus } from './state.js';
@@ -354,20 +356,19 @@ function renderHeadline(d) {
   const ss = d.sessions?.summary;
   const cw = f.cycleByWeek || [];
   const sw = d.sessions?.byWeek || [];
-  if (ss) {
-    const mw = ss.missedWakes || 0;
-    const o = ss.missedWakeOrigins || {};
-    const names = { 'task-notification': 'task notifications', human: 'you', peer: 'peers' };
-    const origin = Object.entries(o).filter(([, n]) => n).map(([k, n]) => `${n} from ${names[k] || k}`).join(', ');
-    let mwDelta = null;
-    if (sw.length > 1) {
-      const diff = (sw[sw.length - 1].missedWakes || 0) - (sw[sw.length - 2].missedWakes || 0);
-      mwDelta = { text: diff === 0 ? '≈ flat vs last week' : `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)} vs last week`, good: diff === 0 ? null : diff < 0 };
+  const hs = d.health;
+  if (hs && hs.n) {
+    // One session-health number: the stuck/silent/asked/clean split lives in the Session health section.
+    let stuckDelta = null;
+    const hw = hs.byWeek || [];
+    if (hw.length > 1) {
+      const diff = (hw[hw.length - 1].stuck || 0) - (hw[hw.length - 2].stuck || 0);
+      stuckDelta = { text: diff === 0 ? '≈ flat vs last week' : `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)} vs last week`, good: diff === 0 ? null : diff < 0 };
     }
-    grid.appendChild(tile('Missed wake-ups', fmtNum(mw),
-      mw ? `in ${ss.missedWakeSessions ?? '?'} sessions: a prompt arrived and the session never answered${origin ? ` (${origin})` : ''}` : 'no prompt went unanswered',
-      mwDelta, 'A prompt that opened a turn and got no assistant reply: the session was idle-stopped, queued or blocked. The stuck-session signal.',
-      `mc-tile-wide${mw ? ' is-alert' : ''}`));
+    grid.appendChild(tile('Stuck sessions', fmtNum(hs.status.stuck),
+      hs.status.stuck ? `of ${hs.n} sessions: a 20+ min silence nothing answered (see Session health)` : 'no session went stuck',
+      stuckDelta, 'A session with at least one missed wake-up: idle-stopped, queued or blocked.',
+      `mc-tile-wide${hs.status.stuck ? ' is-alert' : ''}`));
   }
   const cyc = f.cycle?.median;
   grid.appendChild(tile('Cycle time', cyc != null ? fmtHours(cyc) : '–', f.cycle?.n ? `median, ${f.cycle.n} tickets` : 'no finished tickets',
@@ -393,7 +394,7 @@ function renderHeadline(d) {
     const diff = Math.round((sw[sw.length - 1].autonomousShare - sw[sw.length - 2].autonomousShare) * 100);
     autoDelta = { text: diff === 0 ? '≈ flat vs last week' : `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)} pts vs last week`, good: diff === 0 ? null : diff > 0 };
   }
-  grid.appendChild(tile('Autonomy', ss ? fmtPct(ss.autonomousShare) : '–', ss ? `of ${ss.n} sessions ran without a stall or mid-run question` : 'no sessions collected', autoDelta, 'Sessions with no mid-run question and no stall'));
+  grid.appendChild(tile('Clean sessions', ss ? fmtPct(ss.autonomousShare) : '–', ss ? `of ${ss.n} sessions ran with no question, silence or stop` : 'no sessions collected', autoDelta, 'Sessions with no mid-run question, stall, long tool wait or missed wake-up (Session health)'));
   let qDelta = null;
   if (sw.length > 1) {
     const a = sw[sw.length - 1]; const b = sw[sw.length - 2];
@@ -700,31 +701,18 @@ function renderSessions(d) {
   const p = el('p', 'mc-counts');
   p.textContent = `${m.n} sessions (${m.withTicket} on a ticket) · median ${fmtMinutes(m.medianWallMin)} wall, ${fmtMinutes(m.medianActiveMin)} active · ` +
     (m.medianReplyMin != null ? `median reply ${fmtMinutes(m.medianReplyMin)} · ` : '') +
-    `${m.questions} questions (${m.questionsMidRun} mid-run) · ${m.missedWakes ?? 0} missed wake-ups · ${m.stalls} stalls · ${m.toolWaits ?? 0} tool waits` +
-    (m.helperWaits ? ` · ${m.helperWaits} waits on a running helper, not counted as stuck` : '') +
+    `${m.questions} questions (${m.questionsMidRun} mid-run) · stuck and silent counts are in Session health` +
     (m.sessionsWaitedOver1h != null ? ` · ${m.sessionsWaitedOver1h} sessions waited over 1 h` : '') + ' · ' +
     `${m.sessionsPerTicket?.median ?? '–'} per ticket (max ${m.sessionsPerTicket?.max ?? '–'}) · $${fmtNum(m.costUSD, 2)} over ${m.costSessions ?? m.n} sessions (same as the Cost section)`;
   s.appendChild(p);
 
   const bw = x.byWeek || [];
   const grid = el('div', 'mc-grid2');
-  grid.appendChild(card('Autonomy by week', 'Share of sessions with no stall and no mid-run question.',
+  grid.appendChild(card('Clean sessions by week', 'Share of sessions with no question, silence or stop (see Session health).',
     bw.length ? lineChart({
       title: 'Autonomous session share by week',
       series: [{ name: 'Autonomy', color: PALETTE[1], points: bw.map(w => ({ x: ms(w.week), y: w.autonomousShare })) }],
       yFormat: (n) => fmtPct(n), yMax: 1, area: true,
-    }) : empty('No weekly session data yet.')));
-  grid.appendChild(card('Where sessions stopped', 'Each one is a place where a session stopped and waited. Missed wake-ups are the stuck ones.',
-    bw.length ? barChart({
-      title: 'Missed wake-ups, stalls, tool waits and mid-run questions by week',
-      categories: bw.map(w => fmtDay(ms(w.week))),
-      series: [
-        { name: 'Missed wake-ups', color: 'var(--mc-bad)', values: bw.map(w => w.missedWakes || 0) },
-        { name: 'Stalls', color: PALETTE[2], values: bw.map(w => w.stalls || 0) },
-        { name: 'Tool waits', color: PALETTE[3], values: bw.map(w => w.toolWaits || 0) },
-        { name: 'Mid-run questions', color: PALETTE[0], values: bw.map(w => w.questionsMidRun || 0) },
-      ],
-      mode: 'stacked',
     }) : empty('No weekly session data yet.')));
   s.appendChild(grid);
 
@@ -939,6 +927,9 @@ function buildBody() {
     ['Headline numbers', () => renderHeadline(d)],
     ['Ticket flow', () => renderFlow(d)],
     ['Sessions', () => renderSessions(d)],
+    ['Session health', () => renderHealth(d, costHelpers)],
+    ['Backlog', () => renderBacklog(d, costHelpers)],
+    ['Quality', () => renderQuality(d, costHelpers)],
     ['Cost', () => renderCost(d, costHelpers)],
     ['Build and CI', () => renderBuild(d)],
     ['Next up', () => renderNext(d)],

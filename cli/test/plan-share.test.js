@@ -14,6 +14,7 @@ import { parseLimitText, parseResetsAt } from '../../shared/limit-hits.js';
 import { distinctHits, limitsBlock } from '../../shared/plan-share.js';
 import { buildMetricsPayload } from '../../shared/metrics-payload.js';
 import { buildInsights } from '../../shared/insights.js';
+import { healthBlock } from '../../shared/health-metrics.js';
 
 const CH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'ch');
 const T0 = Date.parse('2026-01-01T10:00:00.000Z');
@@ -206,8 +207,11 @@ test('insights: cost and limits insights survive a dozen other findings', () => 
 });
 
 test('insights: the stuck-session insight names the stop causes', () => {
-  const sessions = { summary: { n: 3, missedWakeSessions: 2, missedWakes: 3, missedWakeOrigins: { 'tool-result': 3 }, missedWakeCauses: { 'usage-limit': 2, unknown: 1 } }, byWeek: [] };
-  const i = buildInsights({ sessions }).find((x) => x.title.includes('got stuck'));
+  const sessions = { summary: { n: 3 }, byWeek: [] };
+  const list = [{ start: '2026-11-03T10:00:00Z', missedWakes: 2, missedWakeOrigins: { 'tool-result': 2 }, missedWakeCauses: { 'usage-limit': 2 } },
+    { start: '2026-11-03T10:00:00Z', missedWakes: 1, missedWakeOrigins: { 'tool-result': 1 }, missedWakeCauses: { unknown: 1 } }, { start: '2026-11-03T10:00:00Z' }];
+  const health = healthBlock(list, Date.parse('2026-11-02'), Date.parse('2026-11-08'));
+  const i = buildInsights({ sessions, health }).find((x) => x.title.includes('ran clean'));
   assert.match(i.detail, /3 mid-turn stops: 2 usage limit, 1 no cause found/);
 });
 

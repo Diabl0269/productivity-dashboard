@@ -475,7 +475,8 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
         missedWakes += 1;
         missedWakeMs += gap;
         missedWakeOrigins[origin] = (missedWakeOrigins[origin] || 0) + 1;
-        if (origin === 'tool-result') toolResultWakes.push([prevMs, ms]);
+        // What ended the silence: a human prompt, a notification or peer message, another system line, or the model itself.
+        if (origin === 'tool-result') toolResultWakes.push([prevMs, ms, type === 'user' ? (classifyUser(line) === 'human' ? 'human' : (line.origin && line.origin.kind) || 'other') : type]);
       } else {
         stalls += 1;
         stallTotal += gap;
@@ -583,9 +584,11 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
   if (ticket && !byTicket[ticket]) byTicket[ticket] = { costUSD: 0, tokens: 0, toolCalls: 0 };
   const missedWakeCauses = {};
   const events = stopCauses && stopCauses.length ? [...errEvents, ...recordedStopEvents(stopCauses, sessionId)] : errEvents;
-  for (const [a, b] of toolResultWakes) {
+  const missedWakeUnknownBy = {}; // stops with no cause found, by what ended the silence
+  for (const [a, b, by] of toolResultWakes) {
     const c = stopCause(a, b, events);
     missedWakeCauses[c] = (missedWakeCauses[c] || 0) + 1;
+    if (c === 'unknown') missedWakeUnknownBy[by] = (missedWakeUnknownBy[by] || 0) + 1;
   }
   // Minutes lost = from the hit to the next real assistant line, cut at the reset time; with no later
   // line, to the reset time; null when neither is known.
@@ -618,6 +621,7 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     missedWakeMin: r1(missedWakeMs / 60000),
     missedWakeOrigins,
     missedWakeCauses,
+    missedWakeUnknownBy,
     limitHits,
     helperWaits,
     helperWaitMin: r1(helperWaitMs / 60000),

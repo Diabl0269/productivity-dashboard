@@ -60,7 +60,7 @@ One JSON object per line. Every record has a stable `key`; collectors replace re
 {"key":"<sessionId>","sessionId":"…","project":"<transcript dir name>","title":"PRO40 - …","ticket":"PRO40",
  "start":"ISO","end":"ISO","wallMin":95.2,"activeMin":61.0,"waitUserMin":30.1,"turns":12,"userPrompts":3,
  "questions":2,"questionsMidRun":1,"stalls":1,"stallMin":34.0,
- "missedWakes":1,"missedWakeMin":45.0,"missedWakeOrigins":{"task-notification":1},"helperWaits":2,"helperWaitMin":61.0,
+ "missedWakes":1,"missedWakeMin":45.0,"missedWakeOrigins":{"task-notification":1},"missedWakeCauses":{"unknown":1},"missedWakeUnknownBy":{"human":1},"helperWaits":2,"helperWaitMin":61.0,
  "toolWaits":2,"toolWaitMin":55.0,"toolWaitTools":{"Bash":2},"questionWaits":1,"questionWaitMin":40.0,
  "replyWaits":[4.2,31.0],"stopBlocked":0,"compactions":1,
  "helpers":4,"prs":["owner/repo#12"],"branch":"pro40-dev-metrics",
@@ -162,7 +162,47 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   `medianReplyMin` is their median. **Stop blocked**: a Stop hook prevented the turn from ending.
 - **Ticket**: the id at the start of the session title (`PRO40 - …`), else in the branch name,
   else the first `/ship-task <id>`.
-- **Autonomous session**: a session with no mid-run question, no tool wait, no stall and no missed wake.
+- **Autonomous session** = a **clean** session (see Session health): no mid-run question, no tool wait, no stall and no missed wake.
+
+**Session health** (`health` in the payload; the Session health section of the tab and one insight; `shared/health-metrics.js`).
+The stuck, silent, autonomy and "silences" cards were four overlapping counts; this is the one definition. Every session in the
+window is exactly one status, first match wins, so the four add up to `health.n`:
+- **stuck**: at least one missed wake (a 20+ min silence nothing answered). `events.midTurnStops` counts the ones that
+  stopped right after a tool finished (origin `tool-result`); `events.unanswered` counts the rest by origin (`task-notification`,
+  `peer`, `human`).
+- **silent**: not stuck, but at least one model stall or tool wait (`events.stalls`, `events.toolWaits`, `toolWaitTools`).
+- **asked**: not stuck or silent, but at least one mid-run question.
+- **clean**: none of those (`cleanShare`, also `sessions.summary.autonomousShare`; `sessions.summary.silentSessions` is the silent status).
+  A helper wait is counted apart (`events.helperWaits`) and is none of these.
+- **Stops with no cause** (`health.unknown`): `total` of the `ofStops` mid-turn stops with cause `unknown` (see Stop causes), by
+  `byWake` (what ended the silence: `human` prompt, `task-notification`, `peer`, `assistant`, `system`, `other`; sessions store
+  it as `missedWakeUnknownBy`, records from before it count as `not recorded`) and `byWeek` (week of the session start). Causes are only
+  known for mid-turn stops, so "origin" here is what woke the session, not what stopped it.
+- **Actions** (`health.actions.stuck|unknown|silent|clean`): one line per card saying what to do (biggest known cause first;
+  record causes when most are unknown; give the most-waited tool a timeout; start with the stuck ones). The stuck kinds and their
+  guards are written in `docs/agent-notes/stuck-sessions.md` in the suite repo (named as text, it lives in another repo).
+- `health.byWeek`: sessions per status, `cleanShare`, mid-turn stops and unknown stops per week.
+
+**Backlog** (`flow.backlog`; the Backlog section; an insight): `openTodo` and `growthPerWeek` (created minus closed per week, as before),
+plus `byWeek` (`created`, `shipped` per week from `throughputByWeek`), their window totals, `closedWithoutWork` (moved to done without ever
+starting) and `weeksOver`: the number of most recent complete weeks in a row with created above shipped (the week still running is left
+out). `over` is true at 3 or more, then `action` says to stop opening small tickets and close the cheap ones first, and an insight appears.
+
+**Quality** (`quality` in the payload; the Quality section; `shared/quality-metrics.js`)
+- **Review notes** (`quality.notes`): every `reviewNotes` entry written in the window, by kind (`fix`, `idea`, `design`), state (`filed`, `dismissed`,
+  `new`), `perShipped` (notes per ticket shipped in the window) and by taste principle. The principle is the first match in the
+  filed ticket's `**Taste:**` line, else the note's `check` text: motion, keyboard, consistency, research, proof, layout, words,
+  looks, intuitive (keyword lists in `PRINCIPLES`); `other` when nothing matches. Rows are sorted by fix notes; 3 or more fix notes
+  flags the principle `high`. Hint: add a pre-ship check or a rule to the taste doc.
+- **Rework by model label** (`quality.rework`, `quality.byLabel`): reopened as defined in Ticket flow (`counts.reopened`, moves back plus
+  fix tickets, by `flow.reopenedByLabel`) divided by tickets shipped in the window with that label (`flow.reopenedByLabel[].shipped`).
+  Over 20% flags the label (`reworkHigh`). Hint: raise the tier for that kind of ticket.
+- **Red CI per PR** (`quality.ci`, and per label in `byLabel`): CI runs (`kind: ci`) in the window on a non-main branch, cancelled and
+  skipped runs left out. A PR is a branch with counted runs; the branch is joined to its ticket through the `branch` of a session (`sessions.jsonl`),
+  else through a ticket id in the branch name, and the ticket's `model:` label gives the split (`none` when unjoined).
+  `failedPerPr` = failed runs / PRs; `failedHours` = run time of failed runs; `rerunHours` = run time of runs with attempt above 1;
+  `topFailedJob` from `failedJobs`. Over 1.5 failed per PR flags it (`redHigh`). Hint: fix the repeat failing job first.
+- Each card carries its hint as a "When high" line that turns into "High now" when its threshold is crossed.
 
 **Cost** (`costs` in the payload; Cost section of the tab; `ch metrics cost`)
 - **Unit**: US dollars at API list prices, computed from token usage, with tokens as secondary detail.

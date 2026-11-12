@@ -10,6 +10,8 @@ import { costsBlock, windowedSessions } from './cost-metrics.js';
 import { limitsBlock } from './plan-share.js';
 import { estimatorFor, estimatesSummary } from './cost-estimate.js';
 import { splitInProgress } from './time-split.js';
+import { healthBlock, backlogBlock, isSilent, statusOf } from './health-metrics.js';
+import { qualityBlock } from './quality-metrics.js';
 
 const DAY = 24 * 3600 * 1000;
 const toMs = v => {
@@ -25,9 +27,9 @@ const mondayMs = ms => {
   const d = new Date(ms);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - ((d.getUTCDay() + 6) % 7) * DAY;
 };
-const autonomous = s => !(s.questionsMidRun > 0) && !(s.stalls > 0) && !(s.toolWaits > 0) && !(s.missedWakes > 0);
-const silent = s => (s.stalls > 0) || (s.toolWaits > 0);
-const share = list => (list.length ? Math.round((list.filter(autonomous).length / list.length) * 1000) / 1000 : null);
+// Session statuses (stuck / silent / asked / clean) have one definition: shared/health-metrics.js.
+const silent = isSilent;
+const share = list => (list.length ? Math.round((list.filter(s => statusOf(s) === 'clean').length / list.length) * 1000) / 1000 : null);
 const newest = (list, f) => {
   let best = null;
   for (const x of list) { const ms = toMs(f(x)); if (ms !== null && (best === null || ms > best)) best = ms; }
@@ -178,6 +180,7 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
   // Forgotten stays stay out of the bottleneck and review-vs-build numbers too.
   const flow = flowMetrics(doc, { now: nowMs, since: sinceMs, project, areas: cfg.areas, forgottenEpicDays: cfg.forgottenEpicDays, skipStays: new Set(split.forgottenStays) });
   flow.inProgressSplit = split;
+  flow.backlog = backlogBlock(flow.throughputByWeek, flow.backlog, { closedWithoutWork: flow.counts.closedWithoutWork, untilMs: nowMs });
 
   const sess = (sessions || []).filter(s => {
     if (!inRange(toMs(s.start))) return false;
@@ -205,6 +208,8 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     filters: { project: project || null, projects, lanes },
     flow,
     sessions: sessionsBlock(sess, sinceMs, nowMs, costWindow),
+    health: healthBlock(sess, sinceMs, nowMs),
+    quality: qualityBlock({ tasks: [...byId.values()], flow, timings: timingsWin, sessions: sessions || [], sinceMs, untilMs: nowMs, project }),
     costs: { ...costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit, windowed: costWindow, project, weekUSD: limits.weekUSD }), limits },
     estimates: estimatesSummary(estimator),
     timings: timingsBlock(timingsAll, timingsWin, nowMs),

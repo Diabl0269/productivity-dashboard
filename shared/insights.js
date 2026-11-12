@@ -7,6 +7,8 @@
 const MAX_INSIGHTS = 10;
 const STAGE_LABEL = { 'in-progress': 'Building', review: 'Review', todo: 'Waiting to start' };
 
+import { causeLabel } from './health-metrics.js';
+
 const round1 = n => Math.round(n * 10) / 10;
 const pct = x => Math.round(x * 100);
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -143,49 +145,47 @@ function flowRules(flow, out) {
   }
 }
 
-function sessionRules(sessions, out) {
+/** The one session-health finding (stuck, silent, asked, clean: shared/health-metrics.js) with its action line. */
+function healthRule(h, out) {
+  if (!h || !h.n) return;
+  const st = h.status;
+  const weeks = (h.byWeek || []).filter(w => w.n > 0 && w.cleanShare != null);
+  let change = '';
+  let dropped = false;
+  if (weeks.length >= 2) {
+    const [prev, last] = weeks.slice(-2);
+    const d = pct(last.cleanShare) - pct(prev.cleanShare);
+    if (d !== 0) change = ` Clean share ${d > 0 ? 'up' : 'down'} ${Math.abs(d)} points from the week before.`;
+    dropped = d <= -10;
+  }
+  const share = pct(h.cleanShare ?? 0);
+  const e = h.events;
+  const cz = Object.entries(h.causes || {}).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${causeLabel(k)}`);
+  const stops = e.midTurnStops ? ` The ${plural(e.midTurnStops, 'mid-turn stop')}: ${cz.join(', ')}.` : '';
+  const tools = Object.entries(e.toolWaitTools || {}).sort((a, b) => b[1] - a[1]);
+  out.push({
+    weight: st.stuck ? 95 : 75, kind: st.stuck || dropped || share < 50 ? 'warn' : share >= 70 ? 'good' : 'info', value: h.cleanShare,
+    title: `${st.clean} of ${plural(h.n, 'session')} ran clean; ${st.stuck} stuck, ${st.silent} silent`,
+    detail: `Stuck: ${plural(st.stuck, 'session')} with a 20+ min silence nothing answered (${e.midTurnStops} stopped right after a tool finished, ${e.unansweredTotal} notifications, peer messages or prompts unanswered). `
+      + `Silent: ${plural(st.silent, 'session')} with ${plural(e.stalls, 'model silence')} or ${plural(e.toolWaits, 'long tool or permission wait')}${tools.length ? `, mostly ${tools[0][0]}` : ''}. `
+      + `Asked you mid-run: ${st.asked}.${stops}${change}${e.helperWaits ? ` ${plural(e.helperWaits, 'wait')} on a running helper, not counted.` : ''} ${st.stuck ? h.actions.stuck : h.actions.clean}`,
+  });
+}
+
+/** Backlog growing: more tickets created than shipped for 3 weeks in a row. */
+function backlogRule(b, out) {
+  if (!b || !b.over) return;
+  out.push({
+    weight: 70, kind: 'warn', value: b.weeksOver,
+    title: `More tickets opened than shipped for ${b.weeksOver} weeks`,
+    detail: `${b.created} created against ${b.shipped} shipped in the window; ${b.openTodo} waiting in to do. ${b.action}`,
+  });
+}
+
+function sessionRules(sessions, health, out) {
   const s = sessions?.summary;
   if (!s || !s.n) return;
-  const silences = (s.stalls || 0) + (s.toolWaits || 0) + (s.missedWakes || 0);
-  if (s.autonomousShare != null) {
-    const weeks = (sessions.byWeek || []).filter(w => w.n > 0 && w.autonomousShare != null);
-    let change = '';
-    let dropped = false;
-    if (weeks.length >= 2) {
-      const [prev, last] = weeks.slice(-2);
-      const d = pct(last.autonomousShare) - pct(prev.autonomousShare);
-      if (d !== 0) change = ` ${d > 0 ? 'Up' : 'Down'} ${Math.abs(d)} points from the week before.`;
-      dropped = d <= -10;
-    }
-    const share = pct(s.autonomousShare);
-    out.push({
-      weight: 75, kind: dropped || share < 50 ? 'warn' : share >= 70 ? 'good' : 'info', value: s.autonomousShare,
-      title: `${share}% of sessions ran without asking or going silent`,
-      detail: `${plural(s.questionsMidRun, 'mid-run question')} (${round1(s.questionsMidRun / s.n)} per session) and ${plural(silences, 'silence')} (${round1(silences / s.n)} per session) across ${plural(s.n, 'session')}.${change}${s.helperWaits ? ` ${plural(s.helperWaits, 'wait')} on a running helper, not counted as stuck.` : ''}`,
-    });
-  }
-  if (s.missedWakeSessions > 0) {
-    const o = s.missedWakeOrigins || {};
-    const n = k => o[k] || 0;
-    const cz = s.missedWakeCauses || {};
-    const labels = { 'usage-limit': 'usage limit', 'idle-sweep': 'idle sweep', 'app-quit': 'app quit', 'app-update': 'app update', 'rate-limit': 'rate limit', network: 'network', keypress: 'Escape keypress', 'mac-sleep': 'Mac slept', auth: 'not logged in', archived: 'archived on purpose', 'api-error': 'API error', 'app-closed': 'app closed', interrupt: 'interrupted by you', unknown: 'no cause found' };
-    const causes = Object.keys(labels).filter(k => cz[k] > 0).map(k => `${cz[k]} ${labels[k]}`);
-    const why = causes.length ? ` The ${plural(n('tool-result'), 'mid-turn stop')}: ${causes.join(', ')}.` : '';
-    out.push({
-      weight: 95, kind: 'warn', value: s.missedWakeSessions,
-      title: `${plural(s.missedWakeSessions, 'session')} got stuck 20+ min (${n('tool-result')} stopped mid-turn, ${n('task-notification') + n('peer') + n('human')} unanswered)`,
-      detail: `${plural(n('tool-result'), 'time')} a session stopped right after a tool finished (a usage limit, an API error, the app closing, you interrupting it, or no sign of why; a tool still running when the silence ended is a tool wait, not this), and ${plural(n('task-notification'), 'notification')}, ${plural(n('peer'), 'peer message')} and ${plural(n('human'), 'prompt')} of yours went unanswered: each sat 20 minutes or more until something else woke the session. This is the stuck-session signal.${why}`,
-    });
-  }
-  if (s.silentSessions > 0) {
-    const tools = Object.entries(s.toolWaitTools || {}).sort((a, b) => b[1] - a[1]);
-    const mostly = tools.length ? `, mostly ${tools[0][0]}` : '';
-    out.push({
-      weight: 72, kind: 'warn', value: s.silentSessions,
-      title: `${plural(s.silentSessions, 'session')} went silent mid-turn (${s.stalls || 0} model, ${plural(s.toolWaits || 0, 'tool wait')}${mostly})`,
-      detail: `${plural(s.stalls || 0, 'model silence')} and ${plural(s.toolWaits || 0, 'long tool or permission wait')}${mostly}. A model silence is a quiet stretch with no tool call pending; a tool wait is a command or permission prompt left open for 20 minutes or more.`,
-    });
-  }
+  healthRule(health, out);
   if (s.medianReplyMin != null) {
     const over = s.sessionsWaitedOver1h || 0;
     out.push({
@@ -287,7 +287,8 @@ const MISSING = [
 export function buildInsights(p) {
   const out = [];
   flowRules(p?.flow, out);
-  sessionRules(p?.sessions, out);
+  sessionRules(p?.sessions, p?.health, out);
+  backlogRule(p?.flow?.backlog, out);
   costRules(p?.costs, out);
   timingRules(p?.timings, out);
   for (const [src, title, detail] of MISSING) {

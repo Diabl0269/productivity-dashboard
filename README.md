@@ -243,7 +243,11 @@ On the Metrics page: **Review wait** measures epic review cards (median, p90, ho
 **Ready to first look** is the distribution of time from moving to Review until the card moves again or gets a review note;
 **Reopened** counts moves back from Review/Done plus fix tickets opened from a shipped ticket within 14 days, by model label;
 **Per shipped ticket** includes archived tickets and says how many it covers (n of N), with a per-closed-epic cost beside it;
-the Sessions and Cost sections show one cost total and session count. The **Month at API prices** card needs
+the Sessions and Cost sections show one cost total and session count. **Session health** replaces the separate stuck, silent and
+autonomy cards: every session is stuck, silent, asked you, or clean, with the no-cause stops split by what woke the session and by week,
+and an action line per card. **Backlog** shows tickets created vs shipped per week, closed-without-work, and warns when created beats
+shipped for 3 weeks. **Quality** shows review notes by taste principle, rework by model label and red CI runs per PR, each with a
+"when high, do this" line. The **Month at API prices** card needs
 `metrics.planUSDPerMonth` in `config.json` (your monthly plan price, a number; left `null` in `config.example.json`). Without it the card says to set it.
 
 ```
