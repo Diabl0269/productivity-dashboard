@@ -10,6 +10,7 @@ import { renderTimeSplit } from './metrics-time-view.js';
 import { renderHealth, renderBacklog } from './metrics-health-view.js';
 import { renderQuality } from './metrics-quality-view.js';
 import { safe } from './metrics-safe.js';
+import { staleBanner } from './metrics-empty.js';
 import { openTicketById } from './routing.js';
 import { showStatus } from './state.js';
 
@@ -921,6 +922,7 @@ function buildBody() {
     frag.appendChild(e);
   }
   const d = view.data;
+  append(frag, staleBanner(d, el));
   const costHelpers = { el, append, section, tile, table, ticketLink, empty, card };
   const parts = [
     ['Insights', () => renderInsights(d)],

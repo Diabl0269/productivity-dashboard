@@ -11,6 +11,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { METRICS_SCHEMA } from '../../shared/metrics-schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../..');
@@ -41,7 +42,10 @@ test('serve.js: /api/metrics returns the payload; since and project are honoured
     const r = await request(port, 'GET', '/api/metrics?since=7d');
     assert.equal(r.status, 200, r.body);
     const p = JSON.parse(r.body);
-    assert.deepEqual(Object.keys(p), ['generatedAt', 'window', 'filters', 'flow', 'sessions', 'health', 'quality', 'costs', 'estimates', 'timings', 'next', 'insights', 'sources']);
+    assert.deepEqual(Object.keys(p), ['schema', 'serverStartedAt', 'generatedAt', 'window', 'filters', 'flow', 'sessions', 'health', 'quality', 'costs', 'estimates', 'timings', 'next', 'insights', 'sources']);
+    // PRO88: the payload names its shape and when the server's code was loaded, so a stale server is detectable.
+    assert.equal(p.schema, METRICS_SCHEMA);
+    assert.ok(Number.isFinite(Date.parse(p.serverStartedAt)));
     const days = (Date.parse(p.window.until) - Date.parse(p.window.since)) / 86400000;
     assert.ok(Math.abs(days - 7) < 0.01);
     const iso = await request(port, 'GET', '/api/metrics?since=2026-01-01T00:00:00Z');

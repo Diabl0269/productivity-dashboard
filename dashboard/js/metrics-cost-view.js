@@ -19,6 +19,7 @@ export function fmtTokens(n) {
 }
 
 import { limitsLine } from '../../shared/plan-share.js';
+import { emptyFor } from './metrics-empty.js';
 
 const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 const tokenSum = (t) => (t ? (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0) : 0);
@@ -32,7 +33,7 @@ export function renderCost(d, h) {
   const s = section('cost', 'Cost', 'What the Claude work cost, in dollars at API list prices computed from token usage (a plan is billed differently; this is the comparable size of the work). Helpers are included.');
   const c = d.costs;
   if (!c || !(c.total?.costUSD > 0)) {
-    s.appendChild(empty('No cost recorded in this range. Press Refresh data to read your Claude Code transcripts.'));
+    s.appendChild(emptyFor(c, 'No cost recorded in this range. Press Refresh data to read your Claude Code transcripts.', empty));
     return s;
   }
   const t = c.total;
