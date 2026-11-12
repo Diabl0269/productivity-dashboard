@@ -2,7 +2,7 @@
 
 import { todayStr } from './tasks-parser.js';
 import { serializeTasksJson, loadTasksJson } from './tasks-json.js';
-import { showStatus, showStatusAction } from './state.js';
+import { showStatus, showSaved, showStatusAction } from './state.js';
 import { httpSave, getLastTaskContent, setLastTaskContent } from './http-loader.js';
 import { mergeTasksDocs } from '../../shared/tasks-merge.js';
 
@@ -128,7 +128,7 @@ export async function autoSave() {
     if (changeSeq === seqAtStart) {
       state.hasChanges = false;
       document.getElementById('saveBtn').disabled = true;
-      showStatus(merged ? 'Saved (merged)' : 'Saved');
+      showSaved(merged ? 'Saved (merged)' : 'Saved');
     } else {
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(autoSave, 0);

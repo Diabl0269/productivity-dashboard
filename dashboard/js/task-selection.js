@@ -4,7 +4,7 @@ import { markChanged } from './tasks-io.js';
 import { moveTask } from './tasks-board.js';
 import { softDeleteTasks } from './task-undo.js';
 import { appendHistory, ensureTaskFieldDefaults } from './task-fields.js';
-import { showStatus } from './state.js';
+import { showStatus, showStatusAction } from './state.js';
 import { clearFiltersAndSearch } from './url-filters.js';
 
 let getState = null;
@@ -139,6 +139,28 @@ function bulkMove(sectionId) {
   markChanged();
   getRenderTasks && getRenderTasks()();
   showStatus(`Moved ${tasks.length} task(s)`);
+}
+
+/**
+ * PRO85: move the backlog tickets with these display ids (e.g. "T4") to To do in one go: one save, one redraw,
+ * one Undo toast that puts them all back. Returns how many moved.
+ */
+export function promoteBacklogTickets(taskIds) {
+  const want = new Set(taskIds);
+  const internal = (getState().tasks.backlog || []).filter(t => want.has(t.taskId)).map(t => t.id);
+  if (!internal.length) return 0;
+  const shift = (ids, to) => {
+    for (const id of ids) moveTask(id, to, -1, { skipRender: true, history: true });
+    markChanged();
+    getRenderTasks && getRenderTasks()();
+  };
+  shift(internal, 'todo');
+  showStatusAction(`Moved ${internal.length} to To do`, {
+    actionLabel: 'Undo',
+    durationMs: 7000,
+    onAction: () => { shift(internal, 'backlog'); showStatus(`Put ${internal.length} back in backlog`); },
+  });
+  return internal.length;
 }
 
 function bulkPriority(priority) {

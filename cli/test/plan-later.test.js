@@ -4,11 +4,17 @@
  * into their lane's Later group with one plain reason line; Auto never picks them. Synthetic data only.
  */
 import { test } from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { computeRunPlan, UNASSIGNED_LANE } from '../../shared/run-plan.js';
+import { computeRunPlan, totalsLine, UNASSIGNED_LANE } from '../../shared/run-plan.js';
 import { openEpicReadiness, plainReasonLine } from '../../shared/epic-ready.js';
 import { autoQueue } from '../../shared/auto-queue.js';
 import { computeNextStart } from '../../shared/next-start.js';
+import { textWithIdButtons } from '../../dashboard/js/run-plan-reason-text.js';
 
 const PLAIN = '## In plain words\n**What you\'ll notice:** x\n**Why it matters:** y\n**How to check it:** look at it\n\n## Technical detail (for Claude)\nz';
 const task = (id, extra = {}) => ({ id, title: `Task ${id}`, checked: false, priority: 'medium', type: 'task', subtasks: [], description: PLAIN, ...extra });
@@ -101,8 +107,84 @@ test('plainReasonLine: one plain sentence per reason kind', () => {
   assert.equal(line(['waits on your co-task C1']), 'Waits for your co-task C1');
   assert.equal(line(['waits on E9, E10']), 'Waits on E9 and E10 to finish');
   assert.match(line(['marked blocked']), /^Marked blocked/);
-  assert.equal(line(['T2 has no How to check it']), 'No ticket says how to check it: add one to T2');
+  assert.equal(line(['T2 has no How to check it']), "T2 needs a 'How to check it' line (in its In plain words section)");
   assert.match(line(['nothing open to run']), /^Nothing open to run/);
   assert.match(line(['no ticket is free to run']), /^No ticket is free to run/);
   assert.match(line(['every open ticket is held for your go-ahead']), /^Every open ticket waits for your go-ahead/);
+});
+
+// PRO85: a ticket named in a reason is a button; PRO84: the page proves it lists every open epic.
+class FakeNode {
+  constructor(tag) { this.tag = tag; this.children = []; this.className = ''; this._text = ''; }
+  appendChild(c) { this.children.push(c); return c; }
+  set textContent(t) { this._text = t; }
+  get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
+}
+const fakeDocument = { createElement: t => new FakeNode(t), createTextNode: t => Object.assign(new FakeNode('#text'), { _text: t }) };
+
+test('ticket ids inside a reason line are buttons; the rest stays text', () => {
+  globalThis.document = fakeDocument;
+  try {
+    const mkBtn = id => Object.assign(new FakeNode('button'), { _text: id, isId: true });
+    const node = textWithIdButtons("T1 needs a 'How to check it' line, T10 too", ['T1', 'T10'], mkBtn);
+    const buttons = node.children.filter(c => c.isId).map(c => c.textContent);
+    assert.deepEqual(buttons, ['T1', 'T10']);
+    assert.equal(node.textContent, "T1 needs a 'How to check it' line, T10 too");
+  } finally { delete globalThis.document; }
+});
+
+test('cards carry structured reasons with the blocking ticket ids', () => {
+  const plan = computeRunPlan(fixture());
+  const e2 = plan.lanes.flatMap(l => l.laterEpics).find(c => c.id === 'E2');
+  assert.deepEqual(e2.reasons.map(r => [r.kind, r.ids]), [['no-check', ['T2']]]);
+  assert.equal(e2.why, "T2 needs a 'How to check it' line (in its In plain words section)");
+  const e4 = plan.lanes.flatMap(l => l.laterEpics).find(c => c.id === 'E4');
+  assert.deepEqual(e4.promoteIds, ['T4', 'T4b']);
+  const e3 = plan.lanes.flatMap(l => l.laterEpics).find(c => c.id === 'E3');
+  assert.deepEqual(e3.promoteIds, [], 'a later bucket is never promoted');
+});
+
+const totalsFixture = () => mk({
+  inbox: [epic('T29', { lane: 'mixer' }), task('T9', { parentId: 'T29' })],                 // inbox epic
+  todo: [
+    epic('T21'), task('T1', { parentId: 'T21' }),
+    epic('T28', { lane: undefined }), task('T8', { parentId: 'T28' }),                       // no lane
+    epic('T27'), task('T7', { parentId: 'T27', checked: true }),                              // every ticket closed
+  ],
+  done: [epic('T26'), task('T6', { parentId: 'T26', checked: true })],
+  review: [epic('T25'), task('T5', { parentId: 'T25', checked: true })],
+  archive: [epic('T24')],
+});
+
+test('totals: every open epic is shown; finished ones are counted apart', () => {
+  const plan = computeRunPlan(totalsFixture());
+  assert.deepEqual(plan.totals, { openEpics: 4, shown: 4, hiddenFinished: 3, missing: [] });
+  assert.equal(plan.totals.shown, plan.totals.openEpics);
+  assert.deepEqual(totalsLine(plan.totals), { ok: true, text: 'All 4 open epics are shown (3 finished ones are not)' });
+  assert.equal(totalsLine({ openEpics: 1, shown: 1, hiddenFinished: 1, missing: [] }).text, 'All 1 open epic is shown (1 finished one is not)');
+});
+
+test('totals: an in-progress epic whose tickets are all closed counts as finished, not missing', () => {
+  const doc = mk({
+    todo: [epic('E1'), task('T1', { parentId: 'E1' })],
+    'in-progress': [epic('EX'), task('TX', { parentId: 'EX', checked: true })],
+  });
+  const plan = computeRunPlan(doc);
+  assert.deepEqual(plan.totals, { openEpics: 1, shown: 1, hiddenFinished: 1, missing: [] });
+  assert.equal(totalsLine(plan.totals).ok, true);
+});
+
+test('totals: a missing open epic turns the line into a warning naming it', () => {
+  const line = totalsLine({ openEpics: 2, shown: 1, hiddenFinished: 0, missing: ['EX'] });
+  assert.equal(line.ok, false);
+  assert.equal(line.text, 'Only 1 of 2 open epics shown; missing EX (0 finished ones are not)');
+});
+
+test('ch tasks runplan prints the same totals line, and --json carries totals', () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-totals-'));
+  fs.writeFileSync(path.join(h, 'tasks.json'), JSON.stringify(totalsFixture()));
+  const ch = (...a) => spawnSync(process.execPath, [path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../ch'), 'tasks', 'runplan', ...a], { env: { ...process.env, CH_HOME: h }, encoding: 'utf8' });
+  const out = (...a) => { const r = ch(...a); assert.equal(r.status, 0, r.stderr); return r.stdout; };
+  assert.equal(out().split('\n')[0], 'All 4 open epics are shown (3 finished ones are not)');
+  assert.deepEqual(JSON.parse(out('--json')).totals, { openEpics: 4, shown: 4, hiddenFinished: 3, missing: [] });
 });

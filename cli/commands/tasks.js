@@ -39,6 +39,7 @@
  *   asks [--ticket ID] [--refresh] [--json]                          open asks; --refresh closes merge asks whose PR merged
  *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint), a review ticket with unticked checks/unsent notes, and an epic with unticked checks, unless --force
  *   move <id> <section> [--force]  same refusal when moving to done
+ *   promote <epicId>               move that epic's own backlog tickets to todo (a parked or backlog epic; never a "later" bucket)
  *   (done / move done / update --parent|--clear-parent / ticking the last check also close the parent epic when nothing
  *    under it is open: to review if it has a result or checks, else to done)
  *   update <id> [--description "..."] [--add-description "..."] [--title "..."] [--priority P] [--type T] [--parent T1] [--clear-parent]
@@ -81,7 +82,7 @@ import cmdNext from './tasks-next.js';
 import cmdReady from './tasks-ready.js';
 import cmdNextStart from './tasks-next-start.js';
 import cmdSweepIdle from './tasks-sweep-idle.js';
-import { readinessLabel, parkedEpics, parkedAfterClosing } from '../../shared/epic-ready.js';
+import { readinessLabel, parkedEpics, parkedAfterClosing, openEpicReadiness } from '../../shared/epic-ready.js';
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
@@ -107,7 +108,7 @@ import { estimateAtStartOf } from '../../shared/cost-estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
 import { storeImageFile, attachmentAbsPath } from '../../shared/note-images.js';
-import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
+import { totalsLine, computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
@@ -893,6 +894,18 @@ function cmdMove(argv) {
     return;
   }
   ok(`moved ${id} ${fromSection.id} -> ${targetSectionId}${spawned ? ` (spawned ${spawned.id})` : ''}${unpinNote(unpinned)}${pinned ? ' (pinned)' : ''}${epicNote(rolled.epics)}`);
+}
+
+/** PRO85: `ch tasks promote <epicId>`: the CLI twin of the Plan page's "Move N backlog tickets to To do". Each ticket goes through `cmdMove`. */
+function cmdPromote(argv) {
+  const { positionals } = parse(argv, {});
+  const [epicId] = positionals;
+  if (!epicId) die('usage: ch tasks promote <epicId>');
+  const row = openEpicReadiness(load()).find(r => r.id === epicId);
+  if (!row) die(`${epicId} is not an open epic`);
+  if (!row.promotable.length) die(`${epicId} has no backlog tickets to move (only a backlog or parked epic, never a "later" bucket)`);
+  for (const id of row.promotable) cmdMove([id, 'todo']);
+  ok(`promoted ${row.promotable.length} ticket${row.promotable.length === 1 ? '' : 's'} of ${epicId} to todo: ${row.promotable.join(', ')}`);
 }
 
 /** Checks are for what only Tal can judge; refuse the ones the session should verify itself. */
@@ -2508,6 +2521,7 @@ function cmdRunPlan(argv) {
   const plan = computeRunPlan(load());
   if (values.json) return jsonOut(plan);
 
+  print(totalsLine(plan.totals).text);
   printReadyState(plan.readiness);
   if (plan.lanes.length === 0) {
     print('No epic is in progress or Ready, and none is pinned.');
@@ -2887,6 +2901,8 @@ Subcommands:
       [--label L] [--link URL] [--blocked-by T1] [--review-of T1]
       (--type epic also needs --lane and --label model:opus|sonnet|haiku|local: the model that orchestrates it)
   move <id> <section> [--force]   moving to done refuses unchecked subtasks unless --force
+  promote <epicId>                move that epic's own backlog tickets to todo, one 'ch tasks move' each (only an epic that is in backlog
+                                  or whose only open tickets are in backlog; never a "later" bucket)
   done <id> [--force]             refuses unchecked subtasks (lists them), a ticket in review with open checks/notes, and an epic with open checks, unless --force
                                   (done / move done / update --parent|--clear-parent / ticking the last check also close the
                                   parent epic when nothing under it is open: to review if it has a result or checks, else done)
@@ -2946,6 +2962,7 @@ const SUBCOMMANDS = {
   stale:         cmdStale,
   add:           cmdAdd,
   move:          cmdMove,
+  promote:       cmdPromote,
   review:        cmdReview,
   ask:           cmdAsk,
   answer:        cmdAnswer,
