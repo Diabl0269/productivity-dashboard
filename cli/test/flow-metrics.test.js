@@ -44,7 +44,7 @@ const a2 = () => task('A2', { created: at(3), history: [mv(at(3, 12), 'todo', 'i
 
 test('cycle and lead time, counts, stage dwell with an open stay', () => {
   const m = flowMetrics(docOf({ review: [a1()], done: [a2()] }), { now: NOW });
-  assert.deepEqual(m.counts, { started: 2, shipped: 2, reopened: 0, closedWithoutWork: 0 });
+  assert.deepEqual(m.counts, { started: 2, shipped: 2, reopened: 0, reopenedFixes: 0, closedWithoutWork: 0, reopenedMoves: 0 });
   assert.equal(m.cycle.n, 2);
   assert.equal(m.cycle.median, 36);
   assert.equal(m.lead.median, 54); // 72h and 36h
@@ -81,12 +81,12 @@ test('reopened and closedWithoutWork', () => {
   const c1 = task('C1', { history: [mv(at(5), 'todo', 'done')] });
   const doc = docOf({ review: [r1], done: [c1] });
   const all = flowMetrics(doc, { now: NOW });
-  assert.deepEqual(all.counts, { started: 1, shipped: 1, reopened: 1, closedWithoutWork: 1 });
+  assert.deepEqual(all.counts, { started: 1, shipped: 1, reopened: 1, reopenedFixes: 0, closedWithoutWork: 1, reopenedMoves: 1 });
   assert.equal(all.cycle.n, 1);
   assert.equal(all.cycle.median, 24);
   assert.equal(all.lead.n, 1); // the bookkeeping move is not lead time either
   const late = flowMetrics(doc, { now: NOW, since: at(5) });
-  assert.deepEqual(late.counts, { started: 0, shipped: 0, reopened: 1, closedWithoutWork: 1 });
+  assert.deepEqual(late.counts, { started: 0, shipped: 0, reopened: 1, reopenedFixes: 0, closedWithoutWork: 1, reopenedMoves: 1 });
 });
 
 test('bottleneck is the stage with the largest median closed stay, not the largest total; todo never is', () => {
@@ -120,7 +120,7 @@ test('review includes epic cards and ignores stays under a minute; epics stay ou
   assert.equal(m.stages['in-progress'].totalHours, 0); // epics are not in-progress dwell
   assert.equal(m.stages.todo.totalHours, 0);
   assert.equal(m.cycle.n, 0);
-  assert.deepEqual(m.counts, { started: 0, shipped: 0, reopened: 0, closedWithoutWork: 0 });
+  assert.deepEqual(m.counts, { started: 0, shipped: 0, reopened: 0, reopenedFixes: 0, closedWithoutWork: 0, reopenedMoves: 0 });
   assert.equal(m.bottleneck.stage, 'review');
 });
 
@@ -153,7 +153,7 @@ test('forgotten epics: idle epic and children, most idle first; epics skip cycle
   const m = flowMetrics(doc, { now: NOW });
   assert.deepEqual(m.forgottenEpics.map(e => [e.id, e.idleDays, e.lane]), [['E4', 6.5, 'mod'], ['E1', 5.5, 'timeline']]);
   assert.equal(flowMetrics(doc, { now: NOW, forgottenEpicDays: 7 }).forgottenEpics.length, 0);
-  assert.deepEqual(m.counts, { started: 0, shipped: 0, reopened: 0, closedWithoutWork: 0 });
+  assert.deepEqual(m.counts, { started: 0, shipped: 0, reopened: 0, reopenedFixes: 0, closedWithoutWork: 0, reopenedMoves: 0 });
 });
 
 test('wip: end-of-day in-progress per day, tickets and epics counted separately', () => {

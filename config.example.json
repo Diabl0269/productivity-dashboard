@@ -27,7 +27,7 @@
     "areas": { "lane-or-project-slug": "Area name" },
     "stallMinutes": 20,
     "forgottenEpicDays": 3,
-    "planUSDPerMonth": 200
+    "planUSDPerMonth": null
   },
   "wipLimit": 3,
   "wipLimits": {

@@ -56,11 +56,16 @@ test('backlog growth and shrink; small growth is silent', () => {
   assert.deepEqual(buildInsights({ ...full, flow: flow({ backlog: { openTodo: 3, growthPerWeek: 0.4 } }) }), []);
 });
 
-test('review wait median and oldest open card', () => {
-  const f = flow({ stages: { todo: stage(null, undefined, 0), 'in-progress': stage(null, undefined, 0), review: stage(6, { n: 2, oldestHours: 96 }) } });
-  const [i] = buildInsights({ ...full, flow: f });
+test('review: one finding about the first look, not a second copy of the review-stage median', () => {
+  const stages = { todo: stage(null, undefined, 0), 'in-progress': stage(null, undefined, 0), review: stage(6, { n: 2, oldestHours: 96 }) };
+  const rr = { n: 4, median: 30, p90: 80, waiting: 2, buckets: [] };
+  const list = buildInsights({ ...full, flow: flow({ stages, reviewWait: { readyToReviewed: rr } }) });
+  const [i] = list;
   assert.equal(i.kind, 'warn');
-  assert.equal(i.title, 'Review waits a median of 6.0 h; 2 cards open now, oldest 4.0 days');
+  assert.equal(i.title, 'First look at finished work: median 30.0 h, p90 3.3 days');
+  assert.match(i.detail, /2 cards still waiting/);
+  assert.match(i.detail, /When this is high/);
+  assert.equal(list.filter(x => /Review waits a median/.test(x.title)).length, 0);
 });
 
 test('forgotten epics', () => {

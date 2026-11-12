@@ -52,7 +52,9 @@ export function renderCost(d, h) {
     grid.appendChild(tile('Context per call', fmtTokens(t.context.median), `p90 ${fmtTokens(t.context.p90)} · ${t.context.calls.toLocaleString('en-US')} main-thread calls`, null, 'Median input + cache read + cache write tokens of one main-thread API call'));
   }
   if (c.plan) {
-    grid.appendChild(tile('Month at API prices', fmtUSD(c.plan.apiEquivalentPer30d), `${c.plan.multiple}x your ${fmtUSD(c.plan.usdPerMonth)} plan`, null, 'This range scaled to 30 days, against planUSDPerMonth in config.json'));
+    grid.appendChild(tile('Month at API prices', fmtUSD(c.plan.apiEquivalentPer30d), `${c.plan.multiple}x your ${fmtUSD(c.plan.usdPerMonth)} plan`, null, 'This range scaled to 30 days, against planUSDPerMonth in config.json. When high: the work is worth more than the plan costs; when under 1x, a cheaper plan may do.'));
+  } else if (c.planHint) {
+    grid.appendChild(tile('Month at API prices', '–', c.planHint, null, 'Your monthly plan price is yours to set: add planUSDPerMonth under metrics in config.json (see config.example.json) and this card shows the multiple.'));
   }
   s.appendChild(grid);
   if (c.limits) {
@@ -89,10 +91,18 @@ export function renderCost(d, h) {
 
   if (c.perShipped.length) {
     const shipped = c.perShipped.map((g) => [g.label, String(g.n), fmtUSD(g.medianUSD), fmtUSD(g.p75USD), fmtUSD(g.totalUSD)]);
-    s.appendChild(card('Per shipped ticket by model label', 'Tickets now in review or done that cost something, grouped by their model label.',
+    const cov = c.perShippedCoverage;
+    const covText = cov ? `Covers ${cov.withCost} of ${cov.shipped} shipped tickets (tickets that shipped in this range; the rest had no session in it). ` : '';
+    s.appendChild(card(`Per shipped ticket by model label${cov ? ` (${cov.withCost} of ${cov.shipped})` : ''}`, `${covText}Tickets now in review, done or archived that cost something, grouped by their model label. When a label's median is high: the tickets under it are too big or need a stronger first plan.`,
       table('Cost per shipped ticket by model label', [
         { label: 'Model label' }, { label: 'Tickets', num: true }, { label: 'Median', num: true }, { label: 'p75', num: true }, { label: 'Total', num: true },
       ], shipped)));
+  }
+  const ce = c.perClosedEpic;
+  if (ce && ce.n) {
+    s.appendChild(card(`Per closed epic (${ce.withCost} of ${ce.of} closed in this range)`, 'Epics now in review, done or archived: their own sessions plus every ticket under them. When high: the epic was split too coarsely or had many reopened tickets.',
+      table('Cost per closed epic', [{ label: 'Epics', num: true }, { label: 'Median', num: true }, { label: 'p75', num: true }, { label: 'Total', num: true }],
+        [[String(ce.n), fmtUSD(ce.medianUSD), fmtUSD(ce.p75USD), fmtUSD(ce.totalUSD)]])));
   }
   const est = d.estimates;
   if (est && est.byLabel?.length) {

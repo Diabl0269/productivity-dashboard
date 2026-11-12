@@ -113,17 +113,15 @@ function flowRules(flow, out) {
       detail: `${flow.backlog.openTodo} open in To do; tickets created minus tickets closed (shipped, closed without work or archived), averaged per week.`,
     });
   }
-  const rv = flow.stages?.review;
-  if (rv && (rv.n > 0 || rv.open?.n > 0)) {
-    const med = rv.median;
-    const oldest = rv.open?.oldestHours || 0;
-    const parts = [];
-    if (med != null) parts.push(`Review waits a median of ${fmtHours(med)}`);
-    if (rv.open?.n > 0) parts.push(`${plural(rv.open.n, 'card')} open now, oldest ${fmtHours(oldest)}`);
+  // Review wait is shown once on the Metrics tab (the "Review wait" tile: epic cards, median, p90, waiting now).
+  // The finding here is the other question: how long until finished work is first looked at.
+  const rr = flow.reviewWait?.readyToReviewed;
+  if (rr && rr.n > 0) {
+    const waiting = rr.waiting > 0 ? ` ${plural(rr.waiting, 'card')} still waiting for a first look.` : '';
     out.push({
-      weight: 90, kind: (med ?? 0) >= 24 || oldest >= 72 ? 'warn' : 'info', value: med ?? oldest,
-      title: parts.join('; '),
-      detail: 'Time cards sit in Review waiting for you, epics included.',
+      weight: 90, kind: (rr.median ?? 0) >= 24 || (rr.p90 ?? 0) >= 72 ? 'warn' : 'info', value: rr.median,
+      title: `First look at finished work: median ${fmtHours(rr.median)}, p90 ${fmtHours(rr.p90)}`,
+      detail: `From moving to Review until the card moves again or a review note is written, over ${plural(rr.n, 'card')}.${waiting} When this is high, review the oldest cards first or batch the checks.`,
     });
   }
   const fe = flow.forgottenEpics || [];

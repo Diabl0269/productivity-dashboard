@@ -239,6 +239,13 @@ To unload: `launchctl unload ~/Library/LaunchAgents/com.claude.daily-update.plis
 Where does work wait? `ch metrics` measures it locally from ticket history, Claude Code transcripts,
 GitHub Actions runs and local gate logs. Details, config and definitions: [docs/metrics.md](docs/metrics.md).
 
+On the Metrics page: **Review wait** measures epic review cards (median, p90, how many wait now and the oldest);
+**Ready to first look** is the distribution of time from moving to Review until the card moves again or gets a review note;
+**Reopened** counts moves back from Review/Done plus fix tickets opened from a shipped ticket within 14 days, by model label;
+**Per shipped ticket** includes archived tickets and says how many it covers (n of N), with a per-closed-epic cost beside it;
+the Sessions and Cost sections show one cost total and session count. The **Month at API prices** card needs
+`metrics.planUSDPerMonth` in `config.json` (your monthly plan price, a number; left `null` in `config.example.json`). Without it the card says to set it.
+
 ```
 ch metrics collect [--sessions] [--ci] [--gates] [--since 30d] [--json]
 ch metrics flow    [--project P] [--lane L] [--since 30d] [--json]
