@@ -354,8 +354,8 @@ function printSplit(sp) {
   if (!(t.hours > 0)) { print('In-progress time: none in the window'); return; }
   const p = x => `${Math.round((x || 0) * 100)}%`;
   const ty = sp.typical;
-  if (ty && ty.n) print(`Typical ticket (${ty.n} that left in progress, median ${hrs(ty.medianHours)}): working ${p(ty.shares.working)}, CI ${p(ty.shares.ci)}, waiting on you ${p(ty.shares.you)}, nothing running ${p(ty.shares.idle)}`);
-  print(`All in-progress time ${hrs(t.hours)} (forgotten tickets inflate it): working ${hrs(t.workingH)} (${p(t.shares.working)}), CI ${hrs(t.ciH)} (${p(t.shares.ci)}), waiting on you ${hrs(t.youH)} (${p(t.shares.you)}), nothing running ${hrs(t.idleH)} (${p(t.shares.idle)})`);
+  if (ty && ty.n) print(`Typical ticket (${ty.n} that left in progress, median ${hrs(ty.medianHours)}): working ${p(ty.shares.working)}, CI ${p(ty.shares.ci)}, waiting on you ${p(ty.shares.you)}, nobody working on it ${p(ty.shares.idle)}`);
+  print(`All in-progress time ${hrs(t.hours)} (forgotten tickets inflate it): working ${hrs(t.workingH)} (${p(t.shares.working)}), CI ${hrs(t.ciH)} (${p(t.shares.ci)}), waiting on you ${hrs(t.youH)} (${p(t.shares.you)}), nobody working on it ${hrs(t.idleH)} (${p(t.shares.idle)})`);
   if (!sp.sessionsWithIntervals) print('  (no session intervals yet: run ch metrics collect --sessions)');
   const rows = sp.byTicket.slice(0, 5);
   if (rows.length) print(`  ${pad('Ticket', 10)}${pad('total', 10)}${pad('working', 10)}${pad('CI', 10)}${pad('you', 10)}nothing`);

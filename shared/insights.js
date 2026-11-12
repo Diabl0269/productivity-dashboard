@@ -26,21 +26,21 @@ function fmtSecondsPair(a, b) {
 }
 const fmtMinutes = m => (m < 90 ? `${Math.round(m)} min` : fmtHours(m / 60));
 
-/** Where in-progress time went: skipped without session or CI data (everything would read as "nothing running"). */
+/** Where in-progress time went: skipped without session or CI data (everything would read as "nobody working on it"). */
 function splitRule(sp, out) {
   const t = sp?.total;
   if (!t || !(t.hours >= 1) || !(t.workingH + t.ciH + t.youH > 0)) return;
   const ty = sp.typical;
   if (ty && ty.n > 0) {
     const s = ty.shares;
-    const bits = [['working', s.working], ['CI', s.ci], ['waiting on you', s.you], ['nothing running', s.idle]]
+    const bits = [['working', s.working], ['CI', s.ci], ['waiting on you', s.you], ['nobody working on it', s.idle]]
       .map(([k, v]) => `${k} ${pct(v || 0)}%`).join(', ');
     const top = sp.byTicket?.[0];
     out.push({
       weight: 75, kind: (s.idle || 0) >= 0.5 ? 'warn' : 'info', value: s.idle,
-      title: `A typical ticket: nothing running ${pct(s.idle || 0)}% of its time in progress`,
+      title: `A typical ticket: nobody working on it ${pct(s.idle || 0)}% of its time in progress`,
       detail: `A typical ticket (average share over ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
-        + `All in-progress time together: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nothing running ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
+        + `All in-progress time together: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nobody working on it ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
         + `tickets forgotten in progress inflate that, see stale tickets.`
         + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
     });
@@ -58,8 +58,8 @@ function splitRule(sp, out) {
   const top = sp.byTicket?.[0];
   out.push({
     weight: 75, kind: sh.idle >= 0.5 ? 'warn' : 'info', value: sh.idle,
-    title: `Nothing was running for ${idle}% of in-progress time`,
-    detail: `Of ${fmtHours(t.hours)} tickets spent in progress: working ${fmtHours(t.workingH)}, waiting on CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nothing running ${fmtHours(t.idleH)} (${idle}%). ${notes.join(' ')}`
+    title: `Nobody was working on it for ${idle}% of in-progress time`,
+    detail: `Of ${fmtHours(t.hours)} tickets spent in progress: working ${fmtHours(t.workingH)}, waiting on CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nobody working on it ${fmtHours(t.idleH)} (${idle}%). ${notes.join(' ')}`
       + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
   });
 }

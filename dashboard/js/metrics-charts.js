@@ -20,6 +20,14 @@ export function fmtHours(h) {
   return `${trim(h / 24, 1)}\u00a0d`;
 }
 
+/** Hours for sums that can get huge: like fmtHours, but 3 weeks and more read as "766 wk" (a sum of many stays). */
+export function fmtTotalHours(h) {
+  if (h == null || !Number.isFinite(h)) return '–';
+  const weeks = Math.abs(h) / (24 * 7);
+  if (weeks < 3) return fmtHours(h);
+  return `${trim(h / (24 * 7), weeks < 10 ? 1 : 0)}\u00a0wk`;
+}
+
 /** Minutes -> "45 min", "1.8 h", "2.3 d". */
 export function fmtMinutes(m) {
   if (m == null || !Number.isFinite(m)) return '–';
