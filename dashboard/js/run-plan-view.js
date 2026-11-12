@@ -17,6 +17,7 @@ import { loadTasksJson } from './tasks-json.js';
 import { todayStr } from './tasks-parser.js';
 import { stateToDoc as toDoc, renderReadyState, buildAutoToggle } from './epic-ready-ui.js';
 import { renderAutoQueue } from './auto-queue-ui.js';
+import { renderNextStartLine } from './next-start-line.js';
 import { renderAsksStrip } from './asks-strip.js';
 import { markChanged } from './tasks-io.js';
 import { showStatus } from './state.js';
@@ -874,6 +875,7 @@ export function renderRunPlanView() {
   if (asks) root.appendChild(asks);
   root.appendChild(renderReview(plan.review || [], plan.openChecks || []));
   readinessById = new Map((plan.readiness || []).map(r => [r.id, r]));
+  root.appendChild(renderNextStartLine());
   root.appendChild(renderAutoQueue(plan.readiness || [], {
     idButton: id => idButton(id, 'rp-link rp-chip-id'),
     openTicket,
