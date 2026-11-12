@@ -35,7 +35,7 @@ async (page) => {
   ok((await page.locator('.mc-splitbar').first().locator('.mc-split').count()) === 4, 'typical bar has four segments');
   ok((await page.locator('.mc-splitkey').count()) === 4, 'split legend has four entries');
   const splitLabel = await page.locator('.mc-splitbar').last().getAttribute('aria-label');
-  ok(/nothing running 8\.7\sd/.test(splitLabel), `split bar label carries the hours, got "${splitLabel}"`); // fmtHours uses a no-break space
+  ok(/nobody working on it 8\.7\sd/.test(splitLabel), `split bar label carries the hours, got "${splitLabel}"`); // fmtHours uses a no-break space
   ok((await page.locator('[aria-label="Where in-progress time went"] tbody tr').count()) === 3, 'split table rows');
   ok((await page.locator('[aria-label="Where in-progress time went"] tbody tr').first().innerText()).includes('AGE12'), 'most idle ticket first');
   await page.waitForSelector('.mc-svg');

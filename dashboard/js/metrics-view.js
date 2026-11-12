@@ -3,10 +3,11 @@
 // Definitions of every number: docs/metrics.md. Charts: metrics-charts.js.
 
 import {
-  lineChart, barChart, SECOND_STEPS, HOUR_STEPS, fmtHours, fmtMinutes, fmtSeconds, fmtPct, fmtNum, fmtDay,
+  lineChart, barChart, SECOND_STEPS, HOUR_STEPS, fmtHours, fmtTotalHours, fmtMinutes, fmtSeconds, fmtPct, fmtNum, fmtDay,
 } from './metrics-charts.js';
 import { renderCost } from './metrics-cost-view.js';
 import { renderTimeSplit } from './metrics-time-view.js';
+import { safe } from './metrics-safe.js';
 import { openTicketById } from './routing.js';
 import { showStatus } from './state.js';
 
@@ -478,7 +479,8 @@ function renderStageBar(flow) {
     else if (k === 'todo') top.appendChild(el('span', 'mc-stage-queue', 'queue'));
     append(seg, top, el('div', 'mc-stage-median', fmtHours(s.median)), el('div', 'mc-stage-note', 'median'));
     const meta = el('div', 'mc-stage-meta');
-    meta.textContent = `p75 ${fmtHours(s.p75)} · total ${fmtHours(s.totalHours)} · ${s.n} stays`;
+    meta.textContent = `3 in 4 leave within ${fmtHours(s.p75)} · ${s.n} ${s.n === 1 ? 'visit' : 'visits'}, ${fmtTotalHours(s.totalHours)} added up`;
+    meta.title = 'A quarter of the tickets wait longer than this. A visit is one stay in this column (a ticket that comes back counts again). Added up is every visit end to end, tickets still waiting included, so it can be far more than the median.';
     seg.appendChild(meta);
     if (s.open?.n) seg.appendChild(el('div', 'mc-stage-open', `${s.open.n} waiting now, oldest ${fmtHours(s.open.oldestHours)}`));
     if (isBn && flow.bottleneck.share != null) seg.appendChild(el('div', 'mc-stage-share', `${fmtPct(flow.bottleneck.share)} of in-flight time`));
@@ -542,7 +544,8 @@ function renderFlow(d) {
   counts.textContent = `${c.started ?? 0} started · ${c.shipped ?? 0} shipped · ${c.reopened ?? 0} reopened · ${c.closedWithoutWork ?? 0} closed without work` +
     (f.backlog ? ` · ${f.backlog.openTodo} open in to do (${f.backlog.growthPerWeek >= 0 ? '+' : '−'}${Math.abs(f.backlog.growthPerWeek)} per week)` : '');
   s.appendChild(counts);
-  s.appendChild(card('Time in each column', 'Segment width roughly follows total time spent; to do is a queue, so it is never the bottleneck.', renderStageBar(f)));
+  const legend = el('p', 'mc-stage-legend', 'Median: the typical wait. 3 in 4 leave within: a quarter wait longer. A visit is one stay in a column; added up counts tickets still waiting too.');
+  s.appendChild(card('Time in each column', 'Segment width roughly follows total time spent; to do is a queue, so it is never the bottleneck.', renderStageBar(f), legend));
 
   s.appendChild(renderTimeSplit(f, { el, append, table, ticketLink, empty, card }));
 
@@ -864,25 +867,29 @@ function skeleton() {
   return w;
 }
 
-function render() {
-  const root = document.getElementById('metricsMain');
-  const body = root?.querySelector('#mcBody');
-  if (!body) return;
-  paintState();
-  body.textContent = '';
+function sectionError(label) {
+  const s = el('section', 'mc-section mc-section-error');
+  s.setAttribute('role', 'status');
+  s.appendChild(el('p', 'mc-empty', `${label} could not be drawn. The other sections are fine; reload if it stays.`));
+  return s;
+}
+
+/** Builds the whole body off-screen; one throwing section shows a short message in its place. */
+function buildBody() {
+  const frag = document.createDocumentFragment();
   const note = view.collectNote;
   if (note) {
     const n = el('div', `mc-note ${note.ok ? 'ok' : 'bad'}`);
     n.setAttribute('role', 'status');
     const lines = el('div', 'mc-note-lines');
     append(lines, el('b', null, note.ok ? 'Data refreshed' : 'Refresh failed'));
-    for (const l of note.lines) lines.appendChild(el('div', null, l));
+    for (const l of note.lines || []) lines.appendChild(el('div', null, l));
     const close = el('button', 'mc-note-close', '×');
     close.type = 'button';
     close.setAttribute('aria-label', 'Dismiss');
     close.addEventListener('click', () => { view.collectNote = null; render(); });
     append(n, lines, close);
-    body.appendChild(n);
+    frag.appendChild(n);
   }
   if (view.error && !view.data) {
     const e = el('div', 'mc-error');
@@ -892,17 +899,39 @@ function render() {
     retry.type = 'button';
     retry.addEventListener('click', load);
     e.appendChild(retry);
-    body.appendChild(e);
-    return;
+    frag.appendChild(e);
+    return frag;
   }
-  if (!view.data) { body.appendChild(skeleton()); return; }
+  if (!view.data) { frag.appendChild(skeleton()); return frag; }
   if (view.error) {
     const e = el('div', 'mc-note bad');
     e.textContent = `Showing the last good data. ${view.error}`;
-    body.appendChild(e);
+    frag.appendChild(e);
   }
   const d = view.data;
-  append(body, renderInsights(d), renderHeadline(d), renderFlow(d), renderSessions(d), renderCost(d, { el, append, section, tile, table, ticketLink, empty, card }), renderBuild(d), renderNext(d), renderSources(d));
+  const costHelpers = { el, append, section, tile, table, ticketLink, empty, card };
+  const parts = [
+    ['Insights', () => renderInsights(d)],
+    ['Headline numbers', () => renderHeadline(d)],
+    ['Ticket flow', () => renderFlow(d)],
+    ['Sessions', () => renderSessions(d)],
+    ['Cost', () => renderCost(d, costHelpers)],
+    ['Build and CI', () => renderBuild(d)],
+    ['Next up', () => renderNext(d)],
+    ['Data sources', () => renderSources(d)],
+  ];
+  for (const [label, fn] of parts) append(frag, safe(label, fn, sectionError));
+  return frag;
+}
+
+function render() {
+  const root = document.getElementById('metricsMain');
+  const body = root?.querySelector('#mcBody');
+  if (!body) return;
+  safe('Controls', paintState);
+  // Build first, swap last: if building itself fails the old content stays on screen.
+  const next = safe('Metrics page', buildBody);
+  if (next) body.replaceChildren(next);
 }
 
 // ---------- entry points ----------
