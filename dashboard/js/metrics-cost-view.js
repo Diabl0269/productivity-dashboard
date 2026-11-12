@@ -19,8 +19,16 @@ export function fmtTokens(n) {
 }
 
 import { limitsLine } from '../../shared/plan-share.js';
+import { emptyFor } from './metrics-empty.js';
+import { fmtPercentileLabel, percentileTip } from './metrics-charts.js';
+import { foldMore } from './metrics-fold.js';
+import { LIKELY_COST } from './metrics-nav.js';
 
 const pct = (x) => `${Math.round((x || 0) * 100)}%`;
+/** A percentile column header: plain words visible, the technical term in the tooltip. */
+const pcol = (key, kind = 'cost') => ({ label: fmtPercentileLabel(key, kind), title: percentileTip(key), num: true });
+const tells = (h, text) => h.el('p', 'mc-action', `What this tells you: ${text}`);
+const FOLD_AFTER = 5;
 const tokenSum = (t) => (t ? (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0) : 0);
 
 /**
@@ -32,7 +40,7 @@ export function renderCost(d, h) {
   const s = section('cost', 'Cost', 'What the Claude work cost, in dollars at API list prices computed from token usage (a plan is billed differently; this is the comparable size of the work). Helpers are included.');
   const c = d.costs;
   if (!c || !(c.total?.costUSD > 0)) {
-    s.appendChild(empty('No cost recorded in this range. Press Refresh data to read your Claude Code transcripts.'));
+    s.appendChild(emptyFor(c, 'No cost recorded in this range. Press Refresh data to read your Claude Code transcripts.', empty));
     return s;
   }
   const t = c.total;
@@ -49,7 +57,7 @@ export function renderCost(d, h) {
     grid.appendChild(tile('Cost by part', t.byPart.slice(0, 2).map(x => `cache ${nm[x.part]} ${pct(x.share)}`).join(' · '), t.byPart.slice(2).map(x => `${nm[x.part]} ${pct(x.share)}`).join(' · '), null, 'Share of the total by cache reads, cache writes, output and input tokens (main thread plus helpers; the split is in ch metrics cost)'));
   }
   if (t.context && t.context.calls > 0) {
-    grid.appendChild(tile('Context per call', fmtTokens(t.context.median), `p90 ${fmtTokens(t.context.p90)} · ${t.context.calls.toLocaleString('en-US')} main-thread calls`, null, 'Median input + cache read + cache write tokens of one main-thread API call'));
+    grid.appendChild(tile('Context per call', fmtTokens(t.context.median), `${fmtPercentileLabel('p90', 'use')} ${fmtTokens(t.context.p90)} · ${t.context.calls.toLocaleString('en-US')} main-thread calls`, null, 'Median input + cache read + cache write tokens of one main-thread API call'));
   }
   if (c.plan) {
     grid.appendChild(tile('Month at API prices', fmtUSD(c.plan.apiEquivalentPer30d), `${c.plan.multiple}x your ${fmtUSD(c.plan.usdPerMonth)} plan`, null, 'This range scaled to 30 days, against planUSDPerMonth in config.json. When high: the work is worth more than the plan costs; when under 1x, a cheaper plan may do.'));
@@ -65,14 +73,51 @@ export function renderCost(d, h) {
 
   const cal = !!(c.limits && c.limits.weekUSD > 0);
   const wk = (r) => (r.weekShare === undefined ? '' : `${(r.weekShare * 100).toFixed(1)}%`);
+
+  // 1. Likely cost per ticket: the cost estimate (it used to be the last card, below four tables).
+  const est = d.estimates;
+  if (est && est.byLabel?.length) {
+    const rows = est.byLabel.map((g) => [g.label, String(g.n), fmtUSD(g.medianUSD), fmtUSD(g.p75USD)]);
+    const likely = card(LIKELY_COST.label, `What a new ticket is expected to cost, from tickets now in review or done with cost in the last ${est.sampleWindowDays} days (${est.samples} samples). A ticket's range comes from the narrowest group of at least 5 similar tickets (model label, type, project, lane); the run plan, the ticket panel and ch tasks next show it.`,
+      table('Likely cost per ticket by model label', [
+        { label: 'Model label' }, { label: 'Samples', num: true }, pcol('median'), pcol('p75'),
+      ], rows),
+      tells(h, 'a ticket with this model label usually costs the typical amount, and 3 in 4 cost the second amount or less; plan around the second number, not the first.'));
+    likely.id = LIKELY_COST.id;
+    s.appendChild(likely);
+  }
+
+  // 2. Cost per shipped ticket (was "Per shipped ticket by model label").
+  if (c.perShipped.length) {
+    const shipped = c.perShipped.map((g) => [g.label, String(g.n), fmtUSD(g.medianUSD), fmtUSD(g.p75USD), fmtUSD(g.totalUSD)]);
+    const cov = c.perShippedCoverage;
+    const covText = cov ? `Covers ${cov.withCost} of ${cov.shipped} shipped tickets (tickets that shipped in this range; the rest had no session in it). ` : '';
+    s.appendChild(card(`Cost per shipped ticket${cov ? ` (${cov.withCost} of ${cov.shipped})` : ''}`, `${covText}Tickets now in review, done or archived that cost something, grouped by their model label. When a label's typical cost is high: the tickets under it are too big or need a stronger first plan.`,
+      table('Cost per shipped ticket by model label', [
+        { label: 'Model label' }, { label: 'Tickets', num: true }, pcol('median'), pcol('p75'), { label: 'Total', num: true },
+      ], shipped)));
+  }
+  const ce = c.perClosedEpic;
+  if (ce && ce.n) {
+    s.appendChild(card(`Per closed epic (${ce.withCost} of ${ce.of} closed in this range)`, 'Epics now in review, done or archived: their own sessions plus every ticket under them. When high: the epic was split too coarsely or had many reopened tickets.',
+      table('Cost per closed epic', [{ label: 'Epics', num: true }, pcol('median'), pcol('p75'), { label: 'Total', num: true }],
+        [[String(ce.n), fmtUSD(ce.medianUSD), fmtUSD(ce.p75USD), fmtUSD(ce.totalUSD)]])));
+  }
+
+  // 3. Detail tables.
+  const ticketCols = [
+    { label: 'Ticket' }, { label: 'Title' }, { label: 'Cost (actual)', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Share', num: true },
+    { label: 'Tokens', num: true }, { label: 'Tool calls', num: true }, { label: 'Sessions', num: true },
+  ];
   const tickets = c.byTicket.map((r) => [
     ticketLink(r.ticket), r.title || '', fmtUSD(r.costUSD), ...(cal ? [wk(r)] : []), pct(r.share), fmtTokens(r.tokens), String(r.toolCalls), String(r.sessions),
   ]);
+  const ticketTable = tickets.length > FOLD_AFTER
+    ? foldMore('cost-per-ticket', table('Cost per ticket', ticketCols, tickets.slice(0, FOLD_AFTER)), table('Cost per ticket, the rest', ticketCols, tickets.slice(FOLD_AFTER)), tickets.length, el)
+    : table('Cost per ticket', ticketCols, tickets);
   s.appendChild(card('Cost per ticket', 'Actual cost, not an estimate: usage while the ticket was current in a session (a session on an epic switches ticket when it moves a child to in-progress), plus its helpers. Top 30. "% wk" is the share of an estimated week\'s plan limit, shown once a weekly-limit hit calibrates it.',
-    table('Cost per ticket', [
-      { label: 'Ticket' }, { label: 'Title' }, { label: 'Cost (actual)', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Share', num: true },
-      { label: 'Tokens', num: true }, { label: 'Tool calls', num: true }, { label: 'Sessions', num: true },
-    ], tickets)));
+    ticketTable,
+    tells(h, 'the few tickets at the top took most of the money; open one to see whether it was big on purpose or went around in circles.')));
 
   if (c.byEpic.length) {
     const epics = c.byEpic.map((e) => {
@@ -86,31 +131,8 @@ export function renderCost(d, h) {
     s.appendChild(card('Epics', 'An epic\'s cost is its own sessions plus every ticket under it.',
       table('Cost per epic', [
         { label: 'Epic' }, { label: 'Title' }, { label: 'Cost', num: true }, ...(cal ? [{ label: '% wk', num: true }] : []), { label: 'Share', num: true }, { label: 'Children' },
-      ], epics)));
-  }
-
-  if (c.perShipped.length) {
-    const shipped = c.perShipped.map((g) => [g.label, String(g.n), fmtUSD(g.medianUSD), fmtUSD(g.p75USD), fmtUSD(g.totalUSD)]);
-    const cov = c.perShippedCoverage;
-    const covText = cov ? `Covers ${cov.withCost} of ${cov.shipped} shipped tickets (tickets that shipped in this range; the rest had no session in it). ` : '';
-    s.appendChild(card(`Per shipped ticket by model label${cov ? ` (${cov.withCost} of ${cov.shipped})` : ''}`, `${covText}Tickets now in review, done or archived that cost something, grouped by their model label. When a label's median is high: the tickets under it are too big or need a stronger first plan.`,
-      table('Cost per shipped ticket by model label', [
-        { label: 'Model label' }, { label: 'Tickets', num: true }, { label: 'Median', num: true }, { label: 'p75', num: true }, { label: 'Total', num: true },
-      ], shipped)));
-  }
-  const ce = c.perClosedEpic;
-  if (ce && ce.n) {
-    s.appendChild(card(`Per closed epic (${ce.withCost} of ${ce.of} closed in this range)`, 'Epics now in review, done or archived: their own sessions plus every ticket under them. When high: the epic was split too coarsely or had many reopened tickets.',
-      table('Cost per closed epic', [{ label: 'Epics', num: true }, { label: 'Median', num: true }, { label: 'p75', num: true }, { label: 'Total', num: true }],
-        [[String(ce.n), fmtUSD(ce.medianUSD), fmtUSD(ce.p75USD), fmtUSD(ce.totalUSD)]])));
-  }
-  const est = d.estimates;
-  if (est && est.byLabel?.length) {
-    const rows = est.byLabel.map((g) => [g.label, String(g.n), fmtUSD(g.medianUSD), fmtUSD(g.p75USD)]);
-    s.appendChild(card('Estimates', `What a ticket is expected to cost, from tickets now in review or done with cost in the last ${est.sampleWindowDays} days (${est.samples} samples). A ticket's range comes from the narrowest group of at least 5 similar tickets (model label, type, project, lane); the run plan, the ticket panel and ch tasks next show it.`,
-      table('Cost estimate samples by model label', [
-        { label: 'Model label' }, { label: 'Samples', num: true }, { label: 'Typical (median)', num: true }, { label: 'Up to (p75)', num: true },
-      ], rows)));
+      ], epics),
+      tells(h, 'which epic ate the budget, and whether one child ticket or many small ones did it.')));
   }
   return s;
 }

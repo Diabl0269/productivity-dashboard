@@ -12,6 +12,10 @@ import { estimatorFor, estimatesSummary } from './cost-estimate.js';
 import { splitInProgress } from './time-split.js';
 import { healthBlock, backlogBlock, isSilent, statusOf } from './health-metrics.js';
 import { qualityBlock } from './quality-metrics.js';
+import { METRICS_SCHEMA } from './metrics-schema.js';
+
+// When this module was loaded: a long-running server keeps old code until restarted, so this shows how old it is.
+const SERVER_STARTED_AT = new Date().toISOString();
 
 const DAY = 24 * 3600 * 1000;
 const toMs = v => {
@@ -203,6 +207,8 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
   const timingsWin = timingsAll.filter(r => inRange(toMs(r.at)));
 
   const payload = {
+    schema: METRICS_SCHEMA,
+    serverStartedAt: SERVER_STARTED_AT,
     generatedAt: iso(nowMs),
     window: { since: iso(sinceMs), until: iso(nowMs) },
     filters: { project: project || null, projects, lanes },

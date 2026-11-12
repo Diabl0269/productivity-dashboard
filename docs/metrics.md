@@ -332,7 +332,12 @@ out). `over` is true at 3 or more, then `action` says to stop opening small tick
 - **Batch runs**: the auto dispatcher starts one session per epic with a list of tickets (`autorun EPIC ID ID`, prompt
   `/ship-task EPIC auto ID ID`) and those tickets sit in progress from the start. Session records keep that list as `batch`
   (older records: parsed from the title); an interval tagged with any id in the batch counts as working time for every id in it.
-- **Output**: `typical` (the average ticket), `total` (all in-progress hours), `forgotten`, `forgottenStays`; `total` is (hours, `workingH`, `ciH`, `youH`, `idleH`, `shares`), `byTicket` (the 20 with the most
+- **Waiting its turn vs left in progress** (PRO87): "nobody working on it" (`idle`) is split in two. *Waiting its turn* (`waitingH`):
+  no session on this ticket, but a session was running on another ticket of the same epic (or on the epic card itself:
+  a coordinator session credits its children the way a dispatcher batch does). *Left in progress* (`leftH`): no session at
+  all. They add up to `idleH`; shares carry `waiting` and `left` next to `idle`. `idleTop.waiting` and `idleTop.left` list the
+  five tickets with the most hours in each bucket. The Metrics card opens with one sentence made from these numbers.
+- **Output**: `typical` (the average ticket), `total` (all in-progress hours), `forgotten`, `forgottenStays`, `idleTop`; `total` is (hours, `workingH`, `ciH`, `youH`, `idleH`, `waitingH`, `leftH`, `shares`), `byTicket` (the 20 with the most
   nobody-working-on-it hours), `byProject`, `byArea`, `sessionsWithIntervals`. Without sessions or CI collected everything
   reads as nobody working on it, so the insight is skipped then and the tab says so.
 - **Limits**: a ticket worked in a session that is not titled, branched or `/ship-task`ed with its id has no

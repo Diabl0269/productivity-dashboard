@@ -135,6 +135,8 @@ const server = http.createServer(async (req, res) => {
     data.generatedAt = new Date(Date.now() - 4 * 60 * 1000).toISOString();
     const project = url.searchParams.get('project');
     if (project) data.filters.project = project;
+    // METRICS_STALE=1 plays a server that runs older code than the page: no schema, no health or quality.
+    if (process.env.METRICS_STALE) { delete data.schema; delete data.health; delete data.quality; if (data.flow) delete data.flow.backlog; }
     res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(data));
     return;

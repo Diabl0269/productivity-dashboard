@@ -2,6 +2,7 @@
 // rework and red CI by model label. Data: payload.quality (shared/quality-metrics.js).
 // Definitions: docs/metrics.md "Quality". DOM helpers come from metrics-view.js (passed in, no import cycle).
 import { fmtPct } from './metrics-charts.js';
+import { emptyFor } from './metrics-empty.js';
 
 const pct = (x) => (x == null ? '–' : fmtPct(x));
 const LABEL = (l) => String(l).replace(/^model:/, '');
@@ -11,7 +12,7 @@ export function renderQuality(d, h) {
   const { el, section, table, ticketLink, empty, card } = h;
   const s = section('quality', 'Quality', 'Where shipped work needed a second look: review notes by taste principle, and rework and red CI runs by model label.');
   const q = d.quality;
-  if (!q) { s.appendChild(empty('No quality data in this payload.')); return s; }
+  if (!q) { s.appendChild(emptyFor(q, 'No quality data in this range.', empty)); return s; }
   const n = q.notes;
   // A card's "do this when high" line; the live flag makes it stand out when its threshold is crossed.
   const hint = (text, high) => el('p', `mc-action${high ? ' is-high' : ''}`, `${high ? 'High now. ' : 'When high: '}${text}`);

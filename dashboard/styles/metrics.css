@@ -240,12 +240,34 @@
 .is-working { background: var(--mc-s2); }
 .is-ci { background: var(--mc-s3); }
 .is-you { background: var(--mc-s4); }
-.is-idle { background: var(--text-tertiary); }
+.is-waiting { background: color-mix(in srgb, var(--text-tertiary) 55%, var(--mc-s3)); }
+.is-left { background: var(--text-tertiary); }
 .mc-splitlegend { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-2) var(--space-4); }
 .mc-splitkey { display: grid; grid-template-columns: auto 1fr auto; column-gap: var(--space-2); align-items: baseline; font-size: var(--text-sm); }
-.mc-splitdot { width: 10px; height: 10px; border-radius: 50%; align-self: center; }
+.mc-splitdot { width: 10px; height: 10px; border-radius: 50%; align-self: start; margin-top: 5px; }
 .mc-splitname { font-weight: var(--weight-semibold); }
 .mc-splitval { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.mc-verdict { margin: 0; font-size: var(--text-md); line-height: var(--leading-normal); color: var(--text-primary); }
+.mc-splittop { grid-column: 2 / 4; font-size: var(--text-xs); color: var(--text-secondary); }
 .mc-splitnote { grid-column: 2 / 4; font-size: var(--text-xs); color: var(--text-tertiary); }
 .mc-section-error { border: 1px dashed var(--border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-4); }
 .mc-stage-legend { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--text-secondary); line-height: var(--leading-normal); }
+
+/* Contents row (PRO87): sticky list of links to every section */
+.mc-nav { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); padding: var(--space-2) 0; background: var(--bg-base); border-bottom: 1px solid var(--border-subtle); }
+.mc-nav-link { font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--text-secondary); text-decoration: none; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface-2); }
+.mc-nav-link:hover { color: var(--text-primary); background: var(--surface-4); }
+.mc-nav-link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.mc-section-head h3:focus, .mc-card:focus { outline: none; }
+.mc-section-head h3:focus-visible, .mc-card:focus-visible { box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+/* "Show all (N)" fold under a long table: the fold itself reuses .rp-fold from run-plan.css */
+.mc-fold { display: flex; flex-direction: column; gap: var(--space-2); }
+.mc-fold-btn { align-self: flex-start; }
+.mc-stale b { color: var(--text-primary); }
+[id^="mcH-"], [id^="mcC-"] { scroll-margin-top: 64px; } /* keep a jumped-to section clear of the sticky contents row */
+/* The folded rest is a second table: fixed layout and equal widths keep its columns under the first one's */
+.mc-fold .mc-table { table-layout: fixed; width: 100%; }
+.mc-fold .mc-table th { width: 10%; }
+.mc-fold .mc-table th:nth-child(2) { width: auto; }
+.mc-fold .mc-table td.num, .mc-fold .mc-table th.num { white-space: nowrap; }
+.mc-fold .mc-table td:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

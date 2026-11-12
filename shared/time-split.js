@@ -4,6 +4,9 @@
  * intervals clipped to the stay; a moment counts once, by precedence:
  *   working (a session turn runs for the ticket) > waiting on CI (a CI run for its branch runs)
  *   > waiting on you (a session for it waits on your reply or a question) > nobody working on it.
+ * "Nobody working on it" (`idle`) is split in two (PRO87): `waiting` (its turn: no session on this ticket, but a
+ * session was running on another ticket of the same epic, or on the epic itself) and `left` (no session at all).
+ * waiting + left = idle, so the four-part totals are unchanged.
  */
 import { ticketStays, median } from './flow-metrics.js';
 import { ticketFrom, batchFrom } from './session-metrics.js';
@@ -56,6 +59,16 @@ export function splitStay(a, b, { work = [], ci = [], you = [] }) {
   return { working, ci: waitCi, you: waitYou, idle: b - a - length(wcu) };
 }
 
+/**
+ * How much of a stay's idle time was spent waiting its turn: the part of the idle time covered by `epic`
+ * intervals (sessions on this ticket's epic, its other tickets, or the epic card itself). Returns ms, at most idle.
+ */
+export function waitingTurn(a, b, { work = [], ci = [], you = [], epic = [] }) {
+  const wcu = clipUnion([...work, ...ci, ...you], a, b);
+  const withEpic = clipUnion([...wcu, ...clipUnion(epic, a, b)], a, b);
+  return length(withEpic) - length(wcu);
+}
+
 /** Ticket id of a CI run from its branch (`fix/fro1610-menus` -> FRO1610), or null. */
 export function ciTicket(record) {
   return record && record.branch ? ticketFrom({ branch: record.branch }) : null;
@@ -104,15 +117,21 @@ export function sessionIntervals(sessions, kind) {
   return out;
 }
 
-const empty = () => ({ workingMs: 0, ciMs: 0, youMs: 0, idleMs: 0 });
-const add = (acc, p) => { acc.workingMs += p.working; acc.ciMs += p.ci; acc.youMs += p.you; acc.idleMs += p.idle; };
+const empty = () => ({ workingMs: 0, ciMs: 0, youMs: 0, idleMs: 0, waitingMs: 0 });
+const add = (acc, p) => { acc.workingMs += p.working; acc.ciMs += p.ci; acc.youMs += p.you; acc.idleMs += p.idle; acc.waitingMs += p.waiting || 0; };
 const hoursOf = acc => {
   const total = acc.workingMs + acc.ciMs + acc.youMs + acc.idleMs;
   return {
     hours: r2(total / HOUR), workingH: r2(acc.workingMs / HOUR), ciH: r2(acc.ciMs / HOUR),
     youH: r2(acc.youMs / HOUR), idleH: r2(acc.idleMs / HOUR),
+    waitingH: r2(acc.waitingMs / HOUR), leftH: r2((acc.idleMs - acc.waitingMs) / HOUR),
   };
 };
+
+const TOP_BUCKET = 5;
+/** The few tickets with the most ms in one idle bucket: [{ticket, title, hours, open}]. */
+const topBy = (rows, key) => rows.filter(r => r[key] > 0).sort((x, y) => y[key] - x[key] || (x.ticket < y.ticket ? -1 : 1))
+  .slice(0, TOP_BUCKET).map(r => ({ ticket: r.ticket, title: r.title, hours: r2(r[key] / HOUR), open: r.open }));
 
 /**
  * @param {{doc:object, sessions?:object[], timings?:object[], now?:Date|string|number, since?:Date|string|number,
@@ -134,6 +153,21 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
     return 'unassigned';
   };
 
+  // Sessions per epic: every interval tagged with the epic or with any ticket under it (PRO87). A ticket whose
+  // own turn has not come reads as "waiting its turn" while one of these runs.
+  const epicOf = t => {
+    for (let cur = byId.get(t.parentId), i = 0; cur && i < 10; cur = byId.get(cur.parentId), i++) if (cur.type === 'epic') return cur.id;
+    return null;
+  };
+  const epicWork = new Map();
+  for (const [id, list] of work) {
+    const t = byId.get(id);
+    const e = t ? (t.type === 'epic' ? t.id : epicOf(t)) : null;
+    if (!e) continue;
+    if (!epicWork.has(e)) epicWork.set(e, []);
+    epicWork.get(e).push(...list.map(([x, y]) => [x, y]));
+  }
+
   const total = empty();
   const projects = new Map();
   const groupAreas = new Map();
@@ -154,6 +188,8 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
       const b = Math.min(Date.parse(s.to), nowMs);
       if (!(b > a)) continue;
       const p = splitStay(a, b, { work: work.get(t.id), ci: ci.get(t.id), you: you.get(t.id) });
+      const eid = epicOf(t);
+      p.waiting = p.idle > 0 && eid ? Math.min(p.idle, waitingTurn(a, b, { work: work.get(t.id), ci: ci.get(t.id), you: you.get(t.id), epic: epicWork.get(eid) })) : 0;
       // A long stay with no (or under 2% of it) session work: forgotten, apart from the totals.
       const stayMs = Date.parse(s.to) - Date.parse(s.from);
       if (stayMs > FORGOTTEN_MS && p.working < stayMs * FORGOTTEN_WORK_SHARE) {
@@ -169,17 +205,18 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
     }
     const closedSum = closed.workingMs + closed.ciMs + closed.youMs + closed.idleMs;
     if (closedSum > 0) {
-      typicalRows.push({ hours: closedSum / HOUR, working: closed.workingMs / closedSum, ci: closed.ciMs / closedSum, you: closed.youMs / closedSum, idle: closed.idleMs / closedSum });
+      typicalRows.push({ hours: closedSum / HOUR, working: closed.workingMs / closedSum, ci: closed.ciMs / closedSum, you: closed.youMs / closedSum, idle: closed.idleMs / closedSum,
+        waiting: closed.waitingMs / closedSum, left: (closed.idleMs - closed.waitingMs) / closedSum });
     }
     const sum = acc.workingMs + acc.ciMs + acc.youMs + acc.idleMs;
     if (!(sum > 0)) continue;
-    add(total, { working: acc.workingMs, ci: acc.ciMs, you: acc.youMs, idle: acc.idleMs });
+    add(total, { working: acc.workingMs, ci: acc.ciMs, you: acc.youMs, idle: acc.idleMs, waiting: acc.waitingMs });
     for (const [map, key] of [[projects, proj], [groupAreas, areas[laneOf(t)] || 'other']]) {
       const g = map.get(key) || empty();
-      add(g, { working: acc.workingMs, ci: acc.ciMs, you: acc.youMs, idle: acc.idleMs });
+      add(g, { working: acc.workingMs, ci: acc.ciMs, you: acc.youMs, idle: acc.idleMs, waiting: acc.waitingMs });
       map.set(key, g);
     }
-    rows.push({ ticket: t.id, title: t.title || '', open, idleMs: acc.idleMs, ...hoursOf(acc) });
+    rows.push({ ticket: t.id, title: t.title || '', open, idleMs: acc.idleMs, waitingMs: acc.waitingMs, leftMs: acc.idleMs - acc.waitingMs, ...hoursOf(acc) });
   }
   rows.sort((x, y) => y.idleMs - x.idleMs || (x.ticket < y.ticket ? -1 : 1));
   const sum = total.workingMs + total.ciMs + total.youMs + total.idleMs;
@@ -193,15 +230,20 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
     typical: {
       n: typicalRows.length,
       medianHours: typicalRows.length ? r2(median(typicalRows.map(r => r.hours))) : null,
-      shares: { working: avg('working'), ci: avg('ci'), you: avg('you'), idle: avg('idle') },
+      shares: { working: avg('working'), ci: avg('ci'), you: avg('you'), idle: avg('idle'), waiting: avg('waiting'), left: avg('left') },
     },
     total: {
       ...hoursOf(total),
-      shares: { working: share(total.workingMs, sum), ci: share(total.ciMs, sum), you: share(total.youMs, sum), idle: share(total.idleMs, sum) },
+      shares: { working: share(total.workingMs, sum), ci: share(total.ciMs, sum), you: share(total.youMs, sum), idle: share(total.idleMs, sum), waiting: share(total.waitingMs, sum), left: share(total.idleMs - total.waitingMs, sum) },
     },
     forgotten: { n: forgottenList.length, hours: r2(forgottenList.reduce((n, g) => n + g.hours, 0)), tickets: forgottenList },
     forgottenStays,
-    byTicket: rows.slice(0, TOP).map(({ idleMs, ...r }) => r),
+    // The tickets behind each idle bucket, biggest first, so a real stall stands out (PRO87).
+    idleTop: {
+      waiting: topBy(rows, 'waitingMs'),
+      left: topBy(rows, 'leftMs'),
+    },
+    byTicket: rows.slice(0, TOP).map(({ idleMs, waitingMs, leftMs, ...r }) => r),
     byProject: groupOut(projects),
     byArea: groupOut(groupAreas),
     sessionsWithIntervals: (sessions || []).filter(s => s && s.intervals).length,

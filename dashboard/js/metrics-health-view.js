@@ -3,6 +3,7 @@
 // stuck, silent, asked, clean (docs/metrics.md "Session health"). DOM helpers come from metrics-view.js.
 import { barChart, fmtDay, fmtPct } from './metrics-charts.js';
 import { causeLabel } from '../../shared/health-metrics.js';
+import { emptyFor } from './metrics-empty.js';
 
 const ms = (s) => new Date(s).getTime();
 const WAKE = { human: 'your prompt', 'task-notification': 'a task notification', peer: 'a peer message', assistant: 'the model itself', system: 'a system line', other: 'another line', 'not recorded': 'not recorded (older records)' };
@@ -12,7 +13,7 @@ export function renderHealth(d, h) {
   const { el, section, tile, table, empty, card } = h;
   const s = section('health', 'Session health', 'Every session is exactly one of: stuck (a 20+ min silence nothing answered), silent (a model stall or a long tool or permission wait), asked you mid-run, or clean.');
   const x = d.health;
-  if (!x || !x.n) { s.appendChild(empty('No sessions collected in this range. Press Refresh data to read your Claude Code transcripts.')); return s; }
+  if (!x || !x.n) { s.appendChild(emptyFor(x, 'No sessions collected in this range. Press Refresh data to read your Claude Code transcripts.', empty)); return s; }
   const action = (text) => el('p', 'mc-action', `Do this: ${text}`);
   const st = x.status;
   const e = x.events;
@@ -84,7 +85,11 @@ export function renderBacklog(d, h) {
   const { el, section, tile, empty, card } = h;
   const s = section('backlog', 'Backlog', 'Tickets opened against tickets shipped, so you can tell when to stop opening small ones.');
   const b = d.flow && d.flow.backlog;
-  if (!b || !Array.isArray(b.byWeek) || !b.byWeek.length) { s.appendChild(empty('No backlog data in this range.')); return s; }
+  if (!b || !Array.isArray(b.byWeek) || !b.byWeek.length) {
+    // An older server's backlog has no byWeek at all: that is a missing key, not zero weeks.
+    s.appendChild(emptyFor(b && Array.isArray(b.byWeek) ? b.byWeek : undefined, 'No backlog data in this range.', empty));
+    return s;
+  }
   const tiles = el('div', 'mc-tiles');
   tiles.appendChild(tile('Waiting in to do', String(b.openTodo), `${b.growthPerWeek > 0 ? '+' : ''}${b.growthPerWeek} a week (created minus closed)`, null, 'Tickets in the to do column now'));
   tiles.appendChild(tile('Created vs shipped', `${b.created} / ${b.shipped}`, 'in this range', null, 'Tickets created against tickets that reached review or done after real work'));
