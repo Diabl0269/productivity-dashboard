@@ -11,6 +11,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import { matchPr, matchTicketPr, freshnessLine, shortDay } from '../../shared/build-freshness.js';
+import { cardPrLinks, rollUpFreshness } from '../../shared/build-freshness-rollup.js';
 import {
   checkFreshness, findMergeCommit, readPlistKey, readBuildValue, readFreshnessRules, createFreshnessChecker,
 } from '../lib/build-freshness.js';
@@ -145,7 +146,68 @@ test('card text', () => {
     { text: 'needs a newer build (merged 7 Nov, your app is from 14 Sep)', command: 'make install' },
   );
   assert.deepEqual(freshnessLine({ state: 'stale' }), { text: 'needs a newer build' });
-  assert.equal(freshnessLine({ state: 'unknown' }), null);
+  assert.deepEqual(freshnessLine({ state: 'unknown' }), { text: 'No build info for this change', unknown: true });
+  assert.equal(freshnessLine({ state: 'bogus' }), null);
   assert.equal(freshnessLine(null), null);
   assert.equal(shortDay('nonsense'), '');
+});
+
+// ----- AGE35: an epic card rolls up its children's PRs -----
+
+const T = (taskId, parentId, ...urls) => ({ taskId, parentId, links: urls.map(url => ({ url })) });
+
+test('cardPrLinks: an epic gathers the PR links of its children and grandchildren, not other links', () => {
+  const tasks = [
+    T('E1', null, 'https://claude.ai/artifact/x'),
+    T('C1', 'E1', PR(1)),
+    T('C2', 'E1', PR(2), PR(2), 'https://example.com/doc'),
+    T('G1', 'C2', PR(3)),
+    T('X1', 'E2', PR(9)),
+  ];
+  const links = cardPrLinks(tasks[0], tasks);
+  assert.deepEqual(links.map(l => `${l.ticketId}:${l.url.split('/').pop()}`), ['C1:1', 'C2:2', 'G1:3']);
+  assert.deepEqual(cardPrLinks(tasks[1], tasks), [{ ticketId: 'C1', url: PR(1) }]);
+  assert.deepEqual(cardPrLinks(null, tasks), []);
+});
+
+test('rollUpFreshness: the worst state wins and names the stale tickets', () => {
+  const current = { state: 'current', mergedAt: '2026-01-10T12:00:00Z' };
+  const stale = (at) => ({ state: 'stale', mergedAt: at, buildAt: '2026-01-11T00:00:00Z', updateCommand: 'make install' });
+  const all = rollUpFreshness([{ ticketId: 'C1', result: current }, { ticketId: 'C2', result: current }], 'E1');
+  assert.deepEqual(all, { text: 'in your build', kind: 'current' });
+  const mixed = rollUpFreshness([
+    { ticketId: 'C1', result: current },
+    { ticketId: 'C2', result: stale('2026-03-05T12:00:00Z') },
+    { ticketId: 'C3', result: stale('2026-02-01T12:00:00Z') },
+    { ticketId: 'C4', result: { state: 'unknown' } },
+  ], 'E1');
+  assert.equal(mixed.kind, 'stale');
+  assert.deepEqual(mixed.staleIds, ['C2', 'C3']);
+  assert.equal(mixed.command, 'make install');
+  assert.match(mixed.text, /^needs a newer build \(merged 5 Mar/);
+  // A ticket's own stale PR carries no id label.
+  assert.equal(rollUpFreshness([{ ticketId: 'E1', result: stale('2026-03-05T12:00:00Z') }], 'E1').staleIds, undefined);
+});
+
+test('rollUpFreshness: unknown says so; no rule or still loading shows nothing', () => {
+  const unknown = rollUpFreshness([{ ticketId: 'C1', result: { state: 'current' } }, { ticketId: 'C2', result: { state: 'unknown' } }], 'E1');
+  assert.deepEqual(unknown, { text: 'No build info for this change', unknown: true, kind: 'unknown' });
+  assert.equal(rollUpFreshness([{ ticketId: 'C1', result: null }, { ticketId: 'C2', result: { state: null } }], 'E1'), null);
+  assert.equal(rollUpFreshness([{ ticketId: 'C1', result: undefined }, { ticketId: 'C2', result: { state: 'stale' } }], 'E1'), null);
+  assert.equal(rollUpFreshness([], 'E1'), null);
+});
+
+test('end to end: an epic of two children, one behind the installed build, rolls up to stale', () => {
+  const { dir, c1 } = makeRepo();
+  fs.writeFileSync(path.join(dir, 'build.txt'), c1);
+  const rules = [rule(dir, { file: path.join(dir, 'build.txt') })];
+  const tasks = [T('E1', null), T('C1', 'E1', PR(1)), T('C2', 'E1', PR(2))];
+  const entries = cardPrLinks(tasks[0], tasks).map(l => ({ ticketId: l.ticketId, result: checkFreshness(rules, l.url) }));
+  const line = rollUpFreshness(entries, 'E1');
+  assert.equal(line.kind, 'stale');
+  assert.deepEqual(line.staleIds, ['C2']);
+  // A build file that cannot be read: a rule exists but the state is unknown.
+  const broken = [rule(dir, { file: path.join(dir, 'missing.txt') })];
+  const lost = cardPrLinks(tasks[0], tasks).map(l => ({ ticketId: l.ticketId, result: checkFreshness(broken, l.url) }));
+  assert.equal(rollUpFreshness(lost, 'E1').text, 'No build info for this change');
 });

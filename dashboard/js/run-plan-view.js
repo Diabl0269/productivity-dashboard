@@ -3,7 +3,7 @@
 import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
-import { freshnessLine } from '../../shared/build-freshness.js';
+import { buildFreshnessNote } from './build-freshness-note.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
@@ -106,37 +106,6 @@ function reviewOfNote(reviewOf, className = 'rp-review-of') {
   const note = el('div', className, 'From review of ');
   note.appendChild(idButton(reviewOf, 'rp-link rp-review-id'));
   return note;
-}
-
-// Build freshness per PR link (api/build-freshness): url -> result, or null when nothing applies.
-const freshnessByUrl = new Map();
-const freshnessPending = new Set();
-
-/** The "in your build" / "needs a newer build" line of a review card, or null. Fetches lazily, then re-renders. */
-export function buildFreshnessNote(task) {
-  const links = (Array.isArray(task?.links) ? task.links : []).map(l => l?.url).filter(u => typeof u === 'string' && /\/pull\/\d+/.test(u));
-  for (const url of links) {
-    if (!freshnessByUrl.has(url)) {
-      if (!freshnessPending.has(url) && typeof fetch === 'function') {
-        freshnessPending.add(url);
-        fetch(`/api/build-freshness?url=${encodeURIComponent(url)}`).then(r => (r.ok ? r.json() : null)).catch(() => null).then((res) => {
-          freshnessPending.delete(url);
-          freshnessByUrl.set(url, res && res.state ? res : null);
-          if (res && res.state) renderRunPlanView();
-        });
-      }
-      continue;
-    }
-    const line = freshnessLine(freshnessByUrl.get(url));
-    if (!line) continue;
-    const note = el('div', `rp-build rp-build-${line.command ? 'stale' : 'current'}`, `Your app: ${line.text}`);
-    if (line.command) {
-      note.appendChild(document.createTextNode('. Update: '));
-      note.appendChild(el('code', null, line.command));
-    }
-    return note;
-  }
-  return null;
 }
 
 const SHIPPED_MAX = 120;
@@ -478,7 +447,7 @@ function renderReviewList(items) {
     li.appendChild(el('div', 'rp-title', item.title));
     const shipped = item.result?.shipped?.[0];
     if (shipped) li.appendChild(el('div', 'rp-why', truncate(shipped, SHIPPED_MAX)));
-    const build = buildFreshnessNote(task);
+    const build = buildFreshnessNote(task, Object.values(getState?.()?.tasks || {}).flat(), renderRunPlanView);
     if (build) li.appendChild(build);
     const from = reviewOfNote(item.reviewOf);
     if (from) li.appendChild(from);

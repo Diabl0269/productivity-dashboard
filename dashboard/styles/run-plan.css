@@ -161,6 +161,7 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
 .td-review-checks .ce-video { margin: 4px 0 6px 26px; }
 .rp-build { font-size: 12px; margin-top: 4px; color: var(--text-muted, inherit); }
 .rp-build-stale { color: var(--warning, #b45309); }
+.rp-build-unknown { font-style: italic; }
 .rp-build code { font-family: ui-monospace, monospace; user-select: all; }
 .ce-audio { display: block; width: 100%; max-width: 420px; height: 36px; margin-top: 6px; }
 .td-review-checks .ce-audio { margin: 4px 0 6px 26px; }
