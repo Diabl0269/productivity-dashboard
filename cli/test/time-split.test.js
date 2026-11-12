@@ -178,12 +178,12 @@ test('typical: average share over tickets whose stay closed; open stays (forgott
 
 test('insight leads with the typical ticket and points at stale tickets for the total', () => {
   const total = { hours: 100, workingH: 5, ciH: 10, youH: 23, idleH: 62, shares: { working: 0.05, ci: 0.1, you: 0.23, idle: 0.62 } };
-  const typical = { n: 12, medianHours: 4, shares: { working: 0.4, ci: 0.2, you: 0.1, idle: 0.3 } };
+  const typical = { n: 12, medianHours: 4, shares: { working: 0.4, ci: 0.2, you: 0.1, idle: 0.3, waiting: 0.1, left: 0.2 } };
   const f = { stages: {}, groups: {}, backlog: {}, inProgressSplit: { total, typical, byTicket: [{ ticket: 'A1', idleH: 30 }] } };
   const [i] = buildInsights({ flow: f, sources: {} }).filter(x => x.title.startsWith('Average ticket'));
-  assert.equal(i.title, 'Average ticket: nobody working on it 30% of its time in progress');
+  assert.equal(i.title, 'Average ticket: idle 30% of its time in progress');
   assert.equal(i.kind, 'info');
-  assert.match(i.detail, /working 40%, CI 20%, waiting on you 10%, nobody working on it 30%/);
+  assert.match(i.detail, /working 40%, CI 20%, waiting on you 10%, waiting its turn 10%, left in progress 20%/);
   assert.match(i.detail, /forgotten stays/);
 });
 
@@ -192,8 +192,8 @@ test('insight leads with the typical ticket and points at stale tickets for the 
 test('insight: names the idle share, the biggest other part and CI longer than working', () => {
   const total = { hours: 100, workingH: 5, ciH: 10, youH: 23, idleH: 62, shares: { working: 0.05, ci: 0.1, you: 0.23, idle: 0.62 } };
   const flow = { stages: {}, groups: {}, backlog: {}, inProgressSplit: { total, byTicket: [{ ticket: 'A1', idleH: 30 }] } };
-  const [i] = buildInsights({ flow, sources: {} }).filter(x => x.title.startsWith('Nobody was working on it'));
-  assert.equal(i.title, 'Nobody was working on it for 62% of in-progress time');
+  const [i] = buildInsights({ flow, sources: {} }).filter(x => x.title.startsWith('Idle '));
+  assert.equal(i.title, 'Idle 62% of in-progress time');
   assert.equal(i.kind, 'warn');
   assert.match(i.detail, /biggest part besides that is waiting on you: 23\.0 h \(23%\)/);
   assert.match(i.detail, /Waiting on CI is longer than the sessions spent working/);
@@ -203,7 +203,7 @@ test('insight: names the idle share, the biggest other part and CI longer than w
 test('insight: silent without any session or CI time (all idle would mislead)', () => {
   const total = { hours: 100, workingH: 0, ciH: 0, youH: 0, idleH: 100, shares: { working: 0, ci: 0, you: 0, idle: 1 } };
   const list = buildInsights({ flow: { stages: {}, groups: {}, backlog: {}, inProgressSplit: { total, byTicket: [] } }, sources: {} });
-  assert.equal(list.filter(x => x.title.startsWith('Nobody was working on it')).length, 0);
+  assert.equal(list.filter(x => x.title.startsWith('Idle ')).length, 0);
 });
 
 test('payload carries flow.inProgressSplit from sessions and CI records', () => {
@@ -213,7 +213,7 @@ test('payload carries flow.inProgressSplit from sessions and CI records', () => 
   const t = p.flow.inProgressSplit.total;
   assert.equal(t.workingH, 2);
   assert.equal(t.ciH, 0.5);
-  assert.ok(p.insights.some(i => i.title.startsWith('Nobody was working on it for')));
+  assert.ok(p.insights.some(i => i.title.startsWith('Idle ')));
 });
 
 // ---------- CLI ----------

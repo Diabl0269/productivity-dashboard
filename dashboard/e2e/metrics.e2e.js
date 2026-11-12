@@ -15,7 +15,7 @@ async (page) => {
   await page.waitForSelector('.mc-insight');
   ok(await page.getAttribute('#metricsTabBtn', 'aria-selected') === 'true', 'tab button selected');
   ok(page.url().endsWith('/dashboard/metrics'), `url is /metrics, got ${page.url()}`);
-  ok((await page.locator('.mc-tile').count()) === 13, '9 headline tiles + 4 cost tiles');
+  ok((await page.locator('.mc-tile').count()) === 12, '8 headline tiles + 4 cost tiles');
   // Cost section: tiles with $ at API prices, per-ticket / per-epic / per-shipped tables.
   ok((await page.locator('#mcH-cost').count()) === 1, 'Cost section heading');
   ok((await page.locator('.mc-tile:has-text("Total at API prices") .mc-tile-value').innerText()) === '$412.50', 'total cost tile');

@@ -35,14 +35,14 @@ function splitRule(sp, out) {
   const ty = sp.typical;
   if (ty && ty.n > 0) {
     const s = ty.shares;
-    const bits = [['working', s.working], ['CI', s.ci], ['waiting on you', s.you], ['nobody working on it', s.idle]]
+    const bits = [['working', s.working], ['CI', s.ci], ['waiting on you', s.you], ['waiting its turn', s.waiting], ['left in progress', s.left]].filter(([, v]) => v != null)
       .map(([k, v]) => `${k} ${pct(v || 0)}%`).join(', ');
     const top = sp.byTicket?.[0];
     out.push({
       weight: 75, kind: (s.idle || 0) >= 0.5 ? 'warn' : 'info', value: s.idle,
-      title: `Average ticket: nobody working on it ${pct(s.idle || 0)}% of its time in progress`,
+      title: `Average ticket: idle ${pct(s.idle || 0)}% of its time in progress`,
       detail: `Average ticket (average share over ${plural(ty.n, 'ticket')} that left in progress in the window): ${bits}. `
-        + `All in-progress hours: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nobody working on it ${fmtHours(t.idleH)} (${pct(t.shares?.idle || 0)}%); `
+        + `All in-progress hours: working ${fmtHours(t.workingH)}, CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, waiting its turn ${fmtHours(t.waitingH || 0)}, left in progress ${fmtHours(t.leftH || 0)} (idle ${pct(t.shares?.idle || 0)}% in all); `
         + `forgotten stays (in progress over 72 h, no session work) are left out.`
         + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
     });
@@ -60,8 +60,8 @@ function splitRule(sp, out) {
   const top = sp.byTicket?.[0];
   out.push({
     weight: 75, kind: sh.idle >= 0.5 ? 'warn' : 'info', value: sh.idle,
-    title: `Nobody was working on it for ${idle}% of in-progress time`,
-    detail: `Of ${fmtHours(t.hours)} tickets spent in progress: working ${fmtHours(t.workingH)}, waiting on CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, nobody working on it ${fmtHours(t.idleH)} (${idle}%). ${notes.join(' ')}`
+    title: `Idle ${idle}% of in-progress time`,
+    detail: `Of ${fmtHours(t.hours)} tickets spent in progress: working ${fmtHours(t.workingH)}, waiting on CI ${fmtHours(t.ciH)}, waiting on you ${fmtHours(t.youH)}, waiting its turn ${fmtHours(t.waitingH || 0)}, left in progress ${fmtHours(t.leftH || 0)} (idle ${idle}%). ${notes.join(' ')}`
       + (top && top.idleH > 0 ? ` Most idle: ${top.ticket} (${fmtHours(top.idleH)}).` : ''),
   });
 }
