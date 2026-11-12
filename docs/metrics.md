@@ -243,6 +243,17 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   label), Plan tab (estimated cost left per epic), ticket panel (likely cost for a ticket not started, cost so far
   after), Metrics tab Cost > Estimates. The panel and plan read `GET /api/metrics/ticket-cost?id=X` and
   `/api/metrics/estimates?ids=A,B`, lazily; no data shows nothing.
+- **Recorded at start** (PRO60): `ch tasks move <id> in-progress` stores `estimateAtStart` `{median, p75, n, group}` on that
+  `moved` history event (tickets only, none without an estimate). Moves made in the dashboard do not record it. A later
+  forward check compares it with the real cost, so it is not changed by new samples.
+- **Accuracy** (`ch metrics estimate --accuracy [--project P] [--json]`, `accuracyReport` in `shared/cost-estimate.js`):
+  a leave-one-out backtest, each shipped ticket estimated without itself against what it really cost. Per model label and
+  overall: tickets, share at or under the high end (p75), median actual/typical, median miss in dollars, and a verdict.
+  **Close** = at least 70% at or under the high end and median actual/typical between 0.7 and 1.4; above 1.4 the estimates run
+  low, below 0.7 high; a label needs 8 tickets to be judged. The Metrics tab's Cost per ticket column is the actual cost.
+- **Backtest 2026-11-12** (65 tickets, 90 days): overall 77% at or under the high end, actual/typical 0.86x, close. Sonnet
+  (48): 79%, 0.84x, close (estimates run a little high). Opus (15): 67%, 1.0x: typical is right, the high end is slightly too
+  tight. Haiku (2): too few. No retune: the bar is met overall; revisit opus's p75 once more opus tickets ship.
 
 **Where in-progress time goes** (`flow.inProgressSplit` in the payload; "Where in-progress time went" in the Ticket flow section; the end of `ch metrics flow`; one line in `ch metrics cost <id>`; `shared/time-split.js`)
 - **Stays**: every stay of a non-epic ticket in `in-progress` (open stays run to now), clipped to the window.

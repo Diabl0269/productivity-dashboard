@@ -7,6 +7,7 @@
  *   ch metrics report [--project P] [--since 30d] [--json]
  *   ch metrics cost [<ticket-id>] [--project P] [--since 30d] [--json]   cost at API prices per ticket / epic
  *   ch metrics estimate [<ticket-id>] [--project P] [--json]   likely cost from similar shipped tickets (no AI)
+ *   ch metrics estimate --accuracy [--project P] [--json]      backtest of those estimates against real cost
  *   ch metrics time <name> [--repo R] [--kind K] -- <command...>
  *   ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind K] [--at ISO]
  */
@@ -25,7 +26,7 @@ import { flowMetrics } from '../../shared/flow-metrics.js';
 import { buildMetricsPayload } from '../../shared/metrics-payload.js';
 import { fmtHours } from '../../shared/insights.js';
 import { limitsLine } from '../../shared/plan-share.js';
-import { formatRange, usd, MIN_SAMPLES, estimatesSummary } from '../../shared/cost-estimate.js';
+import { formatRange, usd, MIN_SAMPLES, estimatesSummary, accuracyReport } from '../../shared/cost-estimate.js';
 import { estimatorForDoc } from '../lib/estimator.js';
 import { splitInProgress } from '../../shared/time-split.js';
 
@@ -490,10 +491,26 @@ function costCmd(argv) {
   }
 }
 
+/** `ch metrics estimate --accuracy`: backtest of Likely cost against what shipped tickets really cost. */
+function accuracyCmd(est, values) {
+  const rows = est ? est.backtest() : [];
+  const rep = accuracyReport(rows);
+  if (values.json) { jsonOut({ ...rep, rows }); return; }
+  if (!rows.length) { print(`no backtest: needs ${MIN_SAMPLES} shipped tickets with cost in the last 90 days (run ch metrics collect --sessions)`); return; }
+  const pctOf = v => (v === null ? '-' : `${Math.round(v * 100)}%`);
+  const line = g => `${pad(g.label ?? 'all', 14)}${pad(g.n, 9)}${pad(pctOf(g.underHighShare), 14)}${pad(g.medianRatio === null ? '-' : `${g.medianRatio}x`, 12)}${pad(money(g.medianMissUSD ?? 0), 8)}${g.verdict}`;
+  print('Likely cost backtest: each shipped ticket estimated without itself, against what it really cost');
+  print(`${pad('Model label', 14)}${pad('Tickets', 9)}${pad('At/under high', 14)}${pad('Actual/typ', 12)}${pad('Miss', 8)}Verdict`);
+  print(line({ ...rep.overall, label: 'all' }));
+  for (const g of rep.byLabel) print(line(g));
+  print('Close = at least 70% at or under the high end and actual/typical between 0.7x and 1.4x; a label needs 8 tickets to be judged.');
+}
+
 /** `ch metrics estimate [<ticket-id>]`: likely cost of a ticket (an epic: per open child and the sum), or the sample summary. */
 function estimateCmd(argv) {
-  const { values, positionals } = parse(argv, { project: { type: 'string' }, json: { type: 'boolean' } });
+  const { values, positionals } = parse(argv, { project: { type: 'string' }, json: { type: 'boolean' }, accuracy: { type: 'boolean' } });
   const est = loadEstimator(values.project);
+  if (values.accuracy) { accuracyCmd(est, values); return; }
   const id = positionals[0] ? String(positionals[0]).toUpperCase() : null;
   const none = `no estimate: needs ${MIN_SAMPLES} shipped tickets with cost in the last 90 days (run ch metrics collect --sessions)`;
   if (!id) {
@@ -586,6 +603,7 @@ const USAGE = `ch metrics <subcommand>
   report  [--project P] [--since 30d] [--json]
   cost [<ticket-id>] [--project P] [--since 30d] [--json]
   estimate [<ticket-id>] [--project P] [--json]
+  estimate --accuracy [--project P] [--json]   backtest: how close Likely cost was to real cost
   time <name> [--repo R] [--kind K] -- <command...>
   record --name N --seconds S [--ok|--failed] [--repo R] [--kind K] [--at ISO]`;
 
