@@ -27,7 +27,7 @@ async (page) => {
   ok((await page.locator('[aria-label="Cost per ticket"] tbody tr').first().innerText()).includes('30.0%'), 'top ticket share of a week');
   ok((await page.locator('[aria-label="Cost per epic"] tbody tr').count()) === 1, 'epic row');
   ok((await page.locator('[aria-label="Cost per shipped ticket by model label"] tbody tr').count()) === 3, 'per-shipped rows by label');
-  ok((await page.locator('[aria-label="Cost estimate samples by model label"] tbody tr').count()) === 3, 'estimate samples rows by label');
+  ok((await page.locator('[aria-label="Likely cost per ticket by model label"] tbody tr').count()) === 3, 'likely cost rows by label');
   ok((await page.locator('.mc-stage.is-bottleneck').count()) === 1, 'one bottleneck stage highlighted');
   // Where in-progress time went: four-part bar with legend, and a per-ticket table.
   ok((await page.locator('.mc-splitbar').count()) === 2, 'typical bar and total bar');

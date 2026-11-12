@@ -59,6 +59,28 @@ export function fmtNum(n, digits = 0) {
   return Number(n.toFixed(digits)).toLocaleString('en-US');
 }
 
+/**
+ * Plain-words header for a percentile, so no table or tile says a bare "p75" or "p90" (PRO87).
+ * `key` is 'median' | 'p75' | 'p90'; `kind` picks the verb: 'cost' (cost this or less), 'leave'
+ * (leave within), 'take' (take this long or less), 'finish' (finish within), 'use' (use this or fewer).
+ * The statistical term stays available through percentileTip() for a hover tooltip.
+ */
+const PERCENTILE_TAIL = { cost: 'cost this or less', leave: 'leave within', take: 'take this long or less', finish: 'finish within', use: 'use this or fewer' };
+export function fmtPercentileLabel(key, kind = 'cost') {
+  if (key === 'median') return 'Typical (median)';
+  const lead = key === 'p75' ? '3 in 4' : key === 'p90' ? '9 in 10' : null;
+  if (!lead) return String(key);
+  return `${lead} ${PERCENTILE_TAIL[kind] || PERCENTILE_TAIL.cost}`;
+}
+
+/** Tooltip text that keeps the technical term for those who want it. */
+export function percentileTip(key) {
+  if (key === 'median') return 'Median: half are below this, half above.';
+  if (key === 'p75') return 'p75 (75th percentile): 3 in 4 are at or below this; a quarter are above it.';
+  if (key === 'p90') return 'p90 (90th percentile): 9 in 10 are at or below this; one in ten is above it.';
+  return '';
+}
+
 function trim(n, digits) {
   return String(Number(n.toFixed(digits)));
 }

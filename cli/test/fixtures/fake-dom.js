@@ -1,10 +1,13 @@
 // A tiny stand-in for the DOM helpers of the Metrics page (el/append/section/tile/table/card/empty),
 // so view code can be rendered and read back as text in a plain node test. Synthetic only.
 export function makeNode(tag, cls, text) {
-  const n = { tag, cls: cls || '', text: text == null ? '' : String(text), children: [], attrs: {}, title: '' };
+  const n = { tag, cls: cls || '', text: text == null ? '' : String(text), children: [], attrs: {}, title: '', dataset: {}, listeners: {}, _cls: new Set() };
+  n.classList = { toggle: (c, on) => { if (on) n._cls.add(c); else n._cls.delete(c); }, contains: (c) => n._cls.has(c) };
+  Object.defineProperty(n, 'textContent', { get: () => n.text, set: (v) => { n.text = String(v); } });
   n.appendChild = (k) => { n.children.push(k); return k; };
   n.setAttribute = (k, v) => { n.attrs[k] = v; };
-  n.addEventListener = () => {};
+  n.addEventListener = (ev, fn) => { n.listeners[ev] = fn; };
+  n.hasAttribute = (k) => k in n.attrs;
   return n;
 }
 export const textOf = (n) => (n == null ? '' : [n.text, ...(n.children || []).map(textOf)].join(' '));

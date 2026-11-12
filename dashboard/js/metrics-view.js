@@ -3,14 +3,16 @@
 // Definitions of every number: docs/metrics.md. Charts: metrics-charts.js.
 
 import {
-  lineChart, barChart, SECOND_STEPS, HOUR_STEPS, fmtHours, fmtTotalHours, fmtMinutes, fmtSeconds, fmtPct, fmtNum, fmtDay,
+  lineChart, barChart, fmtPercentileLabel, percentileTip, SECOND_STEPS, HOUR_STEPS, fmtHours, fmtTotalHours, fmtMinutes, fmtSeconds, fmtPct, fmtNum, fmtDay,
 } from './metrics-charts.js';
 import { renderCost } from './metrics-cost-view.js';
 import { renderTimeSplit } from './metrics-time-view.js';
 import { renderHealth, renderBacklog } from './metrics-health-view.js';
 import { renderQuality } from './metrics-quality-view.js';
 import { safe } from './metrics-safe.js';
+import { ms, pctDelta, gateStats, passingStats } from './metrics-stats.js';
 import { staleBanner } from './metrics-empty.js';
+import { buildNav } from './metrics-nav.js';
 import { openTicketById } from './routing.js';
 import { showStatus } from './state.js';
 
@@ -103,14 +105,6 @@ function ago(iso) {
   if (sec < 86400) return `${Math.round(sec / 3600)} h ago`;
   return `${Math.round(sec / 86400)} d ago`;
 }
-
-const ms = (s) => new Date(s).getTime();
-const median = (arr) => {
-  const a = arr.filter(Number.isFinite).sort((x, y) => x - y);
-  if (!a.length) return null;
-  const m = a.length >> 1;
-  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
-};
 
 function startStamp(iso) {
   const d = new Date(iso);
@@ -304,20 +298,6 @@ function renderInsights(d) {
 
 // ---------- headline numbers ----------
 
-function pctChange(now, prev) {
-  if (!Number.isFinite(now) || !Number.isFinite(prev) || prev === 0) return null;
-  return ((now - prev) / prev) * 100;
-}
-
-/** delta: { text, good: true|false|null } */
-function pctDelta(now, prev, lowerIsBetter, label = 'vs last week') {
-  const p = pctChange(now, prev);
-  if (p == null) return null;
-  const r = Math.round(p);
-  if (r === 0) return { text: `≈ flat ${label}`, good: null };
-  return { text: `${r > 0 ? '▲' : '▼'} ${Math.abs(r)}% ${label}`, good: (r < 0) === lowerIsBetter };
-}
-
 function tile(label, value, sub, delta, hint, cls = '') {
   const t = el('div', `mc-tile${cls ? ` ${cls}` : ''}`);
   if (hint) t.title = hint;
@@ -326,28 +306,6 @@ function tile(label, value, sub, delta, hint, cls = '') {
   const d = el('div', `mc-delta${delta ? (delta.good === true ? ' good' : delta.good === false ? ' bad' : '') : ''}`, delta ? delta.text : ' ');
   t.appendChild(d);
   return t;
-}
-
-/** Median of passing (ok) runs; last 7 days against the 7 before for the delta. */
-function passingStats(points) {
-  const ok = points.filter(p => p.ok);
-  const t = Date.now();
-  const recent = ok.filter(p => ms(p.at) >= t - 7 * 864e5).map(p => p.seconds);
-  const prior = ok.filter(p => ms(p.at) < t - 7 * 864e5 && ms(p.at) >= t - 14 * 864e5).map(p => p.seconds);
-  const value = median(ok.map(p => p.seconds));
-  const r = median(recent); const pr = median(prior);
-  return { value, n: ok.length, delta: recent.length >= 3 && prior.length >= 3 && r != null && pr != null ? pctDelta(r, pr, true, 'vs prior week') : null };
-}
-
-/** Local gate time: passing gate runs; builds when there are no gate runs. */
-function gateStats(d) {
-  const series = d.timings?.series || [];
-  for (const kind of ['gate', 'build']) {
-    const pts = series.filter(s => s.kind === kind && s.host !== 'ci').flatMap(s => s.points);
-    const st = passingStats(pts);
-    if (st.n) return { ...st, kind };
-  }
-  return { value: null, n: 0, delta: null, kind: 'gate' };
 }
 
 function renderHeadline(d) {
@@ -379,7 +337,7 @@ function renderHeadline(d) {
   grid.appendChild(tile('Wait before start', st.todo?.n ? fmtHours(st.todo.median) : '–', 'median time in to do', null, 'Queue time in the to do column; not a bottleneck, a backlog signal'));
   const rw = f.reviewWait?.epics;
   const rwOpen = rw?.open?.n ? `${rw.open.n} waiting now, oldest ${fmtHours(rw.open.oldestHours)}` : 'none waiting now';
-  grid.appendChild(tile('Review wait (epic cards)', rw?.n ? fmtHours(rw.median) : '–', rw?.n ? `median of ${rw.n} epic review cards · p90 ${fmtHours(rw.p90)} · ${rwOpen}` : rwOpen,
+  grid.appendChild(tile('Review wait (epic cards)', rw?.n ? fmtHours(rw.median) : '–', rw?.n ? `median of ${rw.n} epic review cards · ${fmtPercentileLabel('p90', 'leave')} ${fmtHours(rw.p90)} · ${rwOpen}` : rwOpen,
     null, 'How long an epic card sits in Review before it moves on (ticket cards are in the first-look distribution below). When high: review the oldest card first, or finish the epic check in one sitting.'));
   const wip = f.wip || [];
   const wipNow = wip.length ? wip[wip.length - 1].tickets : null;
@@ -433,6 +391,7 @@ function table(label, columns, rows, opts = {}) {
   for (const c of columns) {
     const th = el('th', c.num ? 'num' : '');
     th.scope = 'col';
+    if (c.title) th.title = c.title;
     if (opts.sort && c.key) {
       const active = opts.sort.key === c.key;
       th.setAttribute('aria-sort', active ? (opts.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
@@ -484,7 +443,7 @@ function renderStageBar(flow) {
     else if (k === 'todo') top.appendChild(el('span', 'mc-stage-queue', 'queue'));
     append(seg, top, el('div', 'mc-stage-median', fmtHours(s.median)), el('div', 'mc-stage-note', 'median'));
     const meta = el('div', 'mc-stage-meta');
-    meta.textContent = `3 in 4 leave within ${fmtHours(s.p75)} · ${s.n} ${s.n === 1 ? 'visit' : 'visits'}, ${fmtTotalHours(s.totalHours)} added up`;
+    meta.textContent = `${fmtPercentileLabel('p75', 'leave')} ${fmtHours(s.p75)} · ${s.n} ${s.n === 1 ? 'visit' : 'visits'}, ${fmtTotalHours(s.totalHours)} added up`;
     meta.title = 'A quarter of the tickets wait longer than this. A visit is one stay in this column (a ticket that comes back counts again). Added up is every visit end to end, tickets still waiting included, so it can be far more than the median.';
     seg.appendChild(meta);
     if (s.open?.n) seg.appendChild(el('div', 'mc-stage-open', `${s.open.n} waiting now, oldest ${fmtHours(s.open.oldestHours)}`));
@@ -547,7 +506,7 @@ function renderReviewFirstLook(f) {
   if (rr && (rr.n || rr.waiting)) {
     const rows = rr.buckets.map((b) => [b.label, String(b.n)]);
     wrap.appendChild(card('Ready to first look', sub,
-      el('p', 'mc-counts', `${rr.n} cards · median ${rr.median != null ? fmtHours(rr.median) : '–'} · p90 ${rr.p90 != null ? fmtHours(rr.p90) : '–'} · ${rr.waiting} still waiting`),
+      el('p', 'mc-counts', `${rr.n} cards · median ${rr.median != null ? fmtHours(rr.median) : '–'} · ${fmtPercentileLabel('p90', 'leave')} ${rr.p90 != null ? fmtHours(rr.p90) : '–'} · ${rr.waiting} still waiting`),
       table('Time from ready to first look', [{ label: 'Waited' }, { label: 'Cards', num: true }], rows)));
   } else {
     wrap.appendChild(card('Ready to first look', sub, empty('No cards moved to Review in this range.')));
@@ -804,7 +763,7 @@ function renderBuild(d) {
   else {
     rb = el('div');
     const chips = el('div', 'mc-chips');
-    for (const [l, v] of [['branches', fmtNum(rt.summary.branches)], ['median', fmtMinutes(rt.summary.medianMinutes)], ['p90', fmtMinutes(rt.summary.p90Minutes)], ['red right now', fmtNum(rt.summary.openNow)]]) {
+    for (const [l, v] of [['branches', fmtNum(rt.summary.branches)], ['median', fmtMinutes(rt.summary.medianMinutes)], [fmtPercentileLabel('p90', 'finish'), fmtMinutes(rt.summary.p90Minutes)], ['red right now', fmtNum(rt.summary.openNow)]]) {
       const c = el('div', `mc-chip${l === 'red right now' && rt.summary.openNow ? ' bad' : ''}`);
       append(c, el('b', null, v), el('span', null, l));
       chips.appendChild(c);
@@ -825,7 +784,7 @@ function renderBuild(d) {
   s.appendChild(card('GitHub Actions', 'Run time is start to finish; queue is time waiting for a runner.',
     ci.length ? table('CI by repo and workflow', [
       { label: 'Repo' }, { label: 'Workflow' }, { label: 'Runs', num: true }, { label: 'Median', num: true },
-      { label: 'p90', num: true }, { label: 'Fail rate', num: true }, { label: 'Queue', num: true },
+      { label: fmtPercentileLabel('p90', 'finish'), title: percentileTip('p90'), num: true }, { label: 'Fail rate', num: true }, { label: 'Queue', num: true },
     ], ci.map(r => [r.repo, r.workflow, fmtNum(r.runs), fmtSeconds(r.medianSeconds), fmtSeconds(r.p90Seconds),
       r.failRate > 0.1 ? el('span', 'mc-pill mc-pill-bad', fmtPct(r.failRate)) : fmtPct(r.failRate), fmtSeconds(r.medianQueueSeconds)]))
       : empty('No CI runs collected. Add repos under metrics.repos in config.json, then refresh.')));
@@ -863,6 +822,7 @@ function renderNext(d) {
 function renderSources(d) {
   const src = d.sources || {};
   const p = el('p', 'mc-sources');
+  p.id = 'mcH-sources'; // the contents row jumps here
   const parts = Object.entries(src).map(([k, v]) => `${k}: ${fmtNum(v.records)} records${v.newest ? `, newest ${ago(v.newest)}` : ''}`);
   p.textContent = parts.length ? `Data sources — ${parts.join(' · ')}` : '';
   return p;
@@ -937,6 +897,7 @@ function buildBody() {
     ['Next up', () => renderNext(d)],
     ['Data sources', () => renderSources(d)],
   ];
+  append(frag, buildNav(parts.map(([label]) => label), el));
   for (const [label, fn] of parts) append(frag, safe(label, fn, sectionError));
   return frag;
 }
