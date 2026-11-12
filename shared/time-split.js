@@ -3,7 +3,7 @@
  * "Where in-progress time goes". Each in-progress stay is split into four categories, each a union of
  * intervals clipped to the stay; a moment counts once, by precedence:
  *   working (a session turn runs for the ticket) > waiting on CI (a CI run for its branch runs)
- *   > waiting on you (a session for it waits on your reply or a question) > nothing running.
+ *   > waiting on you (a session for it waits on your reply or a question) > nobody working on it.
  */
 import { ticketStays, median } from './flow-metrics.js';
 import { ticketFrom } from './session-metrics.js';

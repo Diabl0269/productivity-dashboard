@@ -106,6 +106,11 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
 - **Stage dwell**: time from entering a column to leaving it. Stages: `todo` (waiting to start),
   `in-progress` (being built), `review` (waiting for your review). Open stays count up to now and
   are reported separately as "currently waiting".
+- **Reading a column on the Metrics tab**: the big number is the **median** stay (the typical wait). The meta line
+  `3 in 4 leave within 4.7 d · 658 visits, 766 wk added up` reads: the p75 (a quarter of the tickets wait longer),
+  the number of **visits** (one visit is one stay in the column; a ticket that comes back counts again) and the
+  **added up** time of all visits, open stays and forgotten tickets included, so it can be far larger than the
+  median. Added-up times of 3 weeks or more show in weeks (`wk`). The hover text and a one-line legend under the bar say the same.
 - **Cycle time**: first move into `in-progress` → first move into `review` or `done` after it.
   **Lead time**: created → first `review`/`done`. **Review wait**: dwell in `review`.
 - **Reopened**: moved from `review`/`done` back to `in-progress`/`todo`.
@@ -244,7 +249,7 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   Each is split into four categories, each a union of intervals clipped to the stay. A moment counts once,
   by precedence: **working** (a session turn is running for the ticket) > **waiting on CI** (a CI run for the
   ticket's branch is running) > **waiting on you** (a session for the ticket waits on your reply or on an
-  `AskUserQuestion`) > **nothing running** (the rest). The four add up to the stay.
+  `AskUserQuestion`) > **nobody working on it** (the rest; it can read high when a session does not name its ticket, since only sessions titled, branched or `/ship-task`ed with the ticket id are matched). The four add up to the stay.
 - **Session intervals** (`intervals` in `sessions.jsonl`, epoch-ms `[start, end, ticket]`): `work` is every open
   turn (prompt to turn end) minus the time an `AskUserQuestion` was pending; `waitUser` is a turn's end to your next
   prompt (the reply wait) plus those question waits. Each interval carries the ticket current then (same rule as
@@ -261,8 +266,8 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   so tickets forgotten in progress do not decide it. The insight and the dashboard lead with it; `total` is secondary
   and is inflated by forgotten tickets (they also show as stale tickets). Averages of shares add up to 100% (per-category medians would not).
 - **Output**: `typical`, `total` (hours, `workingH`, `ciH`, `youH`, `idleH`, `shares`), `byTicket` (the 20 with the most
-  nothing-running hours), `byProject`, `byArea`, `sessionsWithIntervals`. Without sessions or CI collected everything
-  reads as nothing running, so the insight is skipped then and the tab says so.
+  nobody-working-on-it hours), `byProject`, `byArea`, `sessionsWithIntervals`. Without sessions or CI collected everything
+  reads as nobody working on it, so the insight is skipped then and the tab says so.
 - **Limits**: a ticket worked in a session that is not titled, branched or `/ship-task`ed with its id has no
   working time; records collected before this field need `ch metrics collect --sessions` again.
 

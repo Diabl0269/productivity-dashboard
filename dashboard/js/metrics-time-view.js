@@ -7,7 +7,7 @@ const PARTS = [
   { key: 'working', hours: 'workingH', label: 'Working', spoken: 'working', cls: 'is-working', note: 'a session is running for the ticket' },
   { key: 'ci', hours: 'ciH', label: 'Waiting on CI', spoken: 'waiting on CI', cls: 'is-ci', note: 'a CI run for its branch is running' },
   { key: 'you', hours: 'youH', label: 'Waiting on you', spoken: 'waiting on you', cls: 'is-you', note: 'a session waits on your reply or a question' },
-  { key: 'idle', hours: 'idleH', label: 'Nothing running', spoken: 'nothing running', cls: 'is-idle', note: 'no session, no CI' },
+  { key: 'idle', hours: 'idleH', label: 'Nobody working on it', spoken: 'nobody working on it', cls: 'is-idle', note: 'no Claude session on the ticket, no CI run, nothing waiting on you; can read high when a session does not name the ticket' },
 ];
 
 /** @param {object} f the payload's flow; @param {object} h DOM helpers {el, append, table, ticketLink, empty, card} */
@@ -48,7 +48,7 @@ export function renderTimeSplit(f, h) {
   if (hasTypical) {
     kids.push(el('p', 'mc-card-sub', `A typical ticket (average share over ${ty.n} tickets that left in progress, median ${fmtHours(ty.medianHours)} there)`),
       makeBar('A typical ticket', ty.shares, null), legend,
-      el('p', 'mc-card-sub', `All in-progress time together: ${fmtHours(total.hours)}, working ${fmtPct(total.shares.working)}, CI ${fmtPct(total.shares.ci)}, waiting on you ${fmtPct(total.shares.you)}, nothing running ${fmtPct(total.shares.idle)}. Tickets forgotten in progress inflate this; they also show as stale tickets.`),
+      el('p', 'mc-card-sub', `All in-progress time together: ${fmtHours(total.hours)}, working ${fmtPct(total.shares.working)}, CI ${fmtPct(total.shares.ci)}, waiting on you ${fmtPct(total.shares.you)}, nobody working on it ${fmtPct(total.shares.idle)}. Tickets forgotten in progress inflate this; they also show as stale tickets.`),
       totalBar);
   } else {
     kids.push(totalBar, legend);
@@ -58,10 +58,10 @@ export function renderTimeSplit(f, h) {
   ]);
   const tbl = table('Where in-progress time went', [
     { label: 'Ticket' }, { label: 'Title' }, { label: 'In progress', num: true }, { label: 'Working', spoken: 'working', num: true },
-    { label: 'CI', num: true }, { label: 'You', num: true }, { label: 'Nothing', num: true },
+    { label: 'CI', num: true }, { label: 'You', num: true }, { label: 'Nobody', num: true },
   ], rows);
-  const note = sp.sessionsWithIntervals ? null : empty('No session timing yet, so everything reads as nothing running. Press Refresh data to read your Claude Code transcripts.');
+  const note = sp.sessionsWithIntervals ? null : empty('No session timing yet, so everything reads as nobody working on it. Press Refresh data to read your Claude Code transcripts.');
   return card('Where in-progress time went',
-    `${sp.tickets} tickets, ${fmtHours(total.hours)} in all. A moment counts once: working first, then CI, then waiting on you, the rest is nothing running. Top ${rows.length} by time with nothing running.`,
+    `${sp.tickets} tickets, ${fmtHours(total.hours)} in all. A moment counts once: working first, then CI, then waiting on you, the rest is nobody working on it. Top ${rows.length} by time with nobody working on it.`,
     ...kids, note, tbl);
 }

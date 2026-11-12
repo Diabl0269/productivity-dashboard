@@ -31,7 +31,7 @@ export function renderCost(d, h) {
   const { el, append, section, tile, table, ticketLink, empty, card } = h;
   const s = section('cost', 'Cost', 'What the Claude work cost, in dollars at API list prices computed from token usage (a plan is billed differently; this is the comparable size of the work). Helpers are included.');
   const c = d.costs;
-  if (!c || !(c.total.costUSD > 0)) {
+  if (!c || !(c.total?.costUSD > 0)) {
     s.appendChild(empty('No cost recorded in this range. Press Refresh data to read your Claude Code transcripts.'));
     return s;
   }

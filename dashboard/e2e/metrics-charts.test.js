@@ -1,7 +1,7 @@
 // Pure-helper tests for dashboard/js/metrics-charts.js (no DOM). Run: node --test dashboard/e2e/metrics-charts.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtHours, fmtMinutes, fmtSeconds, fmtPct, niceTicks, SECOND_STEPS, HOUR_STEPS } from '../js/metrics-charts.js';
+import { fmtHours, fmtTotalHours, fmtMinutes, fmtSeconds, fmtPct, niceTicks, SECOND_STEPS, HOUR_STEPS } from '../js/metrics-charts.js';
 
 const plain = (s) => s.replace(/ /g, ' ');
 
@@ -12,6 +12,13 @@ test('fmtHours picks min / h / d', () => {
   assert.equal(plain(fmtHours(96)), '4 d');
   assert.equal(fmtHours(0), '0');
   assert.equal(fmtHours(null), '–');
+});
+
+test('fmtTotalHours switches to weeks for large sums', () => {
+  assert.equal(plain(fmtTotalHours(96)), '4 d');
+  assert.equal(plain(fmtTotalHours(5362.9 * 24)), '766 wk');
+  assert.equal(plain(fmtTotalHours(21 * 24)), '3 wk');
+  assert.equal(fmtTotalHours(null), '–');
 });
 
 test('fmtMinutes and fmtSeconds', () => {
