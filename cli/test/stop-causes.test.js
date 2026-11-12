@@ -11,6 +11,7 @@ import path from 'node:path';
 import { summarizeSession } from '../../shared/session-metrics.js';
 import { recordedStopEvents, stopCause } from '../../shared/limit-hits.js';
 import { buildInsights } from '../../shared/insights.js';
+import { healthBlock } from '../../shared/health-metrics.js';
 import { collectSessions } from '../lib/session-files.js';
 
 const T0 = Date.parse('2026-01-01T10:00:00.000Z');
@@ -64,9 +65,10 @@ test('priority: usage-limit first, then a recorded cause, then api-error, app-cl
 });
 
 test('insights name the recorded causes', () => {
-  const summary = { n: 1, missedWakeSessions: 1, missedWakes: 1, missedWakeOrigins: { 'tool-result': 1 },
+  const s = { start: '2026-11-03T10:00:00Z', missedWakes: 9, missedWakeOrigins: { 'tool-result': 9 },
     missedWakeCauses: { 'idle-sweep': 1, 'app-quit': 1, 'app-update': 1, 'rate-limit': 1, network: 1, keypress: 1, 'mac-sleep': 1, auth: 1, archived: 1 } };
-  const text = JSON.stringify(buildInsights({ sessions: { summary } }));
+  const health = healthBlock([s], Date.parse('2026-11-02'), Date.parse('2026-11-08'));
+  const text = JSON.stringify(buildInsights({ sessions: { summary: { n: 1 } }, health }));
   for (const label of ['idle sweep', 'app quit', 'app update', 'rate limit', 'network', 'Escape keypress', 'Mac slept', 'not logged in', 'archived on purpose']) assert.ok(text.includes(label), label);
 });
 

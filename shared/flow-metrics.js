@@ -222,6 +222,7 @@ export function flowMetrics(doc, {
     const cycle = [];
     const lead = [];
     const stageVals = Object.fromEntries(STAGES.map(s => [s, { closed: [], total: 0, openN: 0, oldest: 0 }]));
+    const shippedBy = new Map();
     const revKind = { epics: { closed: [], openN: 0, oldest: 0 }, tickets: { closed: [], openN: 0, oldest: 0 } };
     for (const f of list) {
       if (!f.epic) {
@@ -230,6 +231,7 @@ export function flowMetrics(doc, {
         if (f.noWork) counts.closedWithoutWork++;
         else {
           counts.shipped++;
+          shippedBy.set(modelLabelOf(f.t), (shippedBy.get(modelLabelOf(f.t)) || 0) + 1);
           if (f.created !== null) lead.push(hours(f.finish - f.created));
         }
       }
@@ -282,11 +284,12 @@ export function flowMetrics(doc, {
     };
     // Reopened = moved back from review/done, plus a fix ticket opened from a shipped ticket within 14 days; by model label.
     const byLabel = new Map();
-    const bump = (t, key) => {
-      const l = modelLabelOf(t);
-      if (!byLabel.has(l)) byLabel.set(l, { label: l, moves: 0, fixes: 0 });
-      byLabel.get(l)[key]++;
+    const entry = l => {
+      if (!byLabel.has(l)) byLabel.set(l, { label: l, moves: 0, fixes: 0, shipped: 0 });
+      return byLabel.get(l);
     };
+    const bump = (t, key) => { entry(modelLabelOf(t))[key]++; };
+    for (const [l, n] of shippedBy) entry(l).shipped = n;
     for (const f of list) if (!f.epic) for (const at of f.reopened) if (inWindow(at)) bump(f.t, 'moves');
     const listIds = new Set(list.map(f => f.t.id));
     for (const src of fixesOfShipped(all, byId, inWindow)) if (listIds.has(src.id)) { counts.reopenedFixes++; bump(src, 'fixes'); }
