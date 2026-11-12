@@ -375,7 +375,10 @@ function renderHeadline(d) {
     'First move into in-progress to first move into review or done'));
   const st = f.stages || {};
   grid.appendChild(tile('Wait before start', st.todo?.n ? fmtHours(st.todo.median) : '–', 'median time in to do', null, 'Queue time in the to do column; not a bottleneck, a backlog signal'));
-  grid.appendChild(tile('Review wait', st.review?.n ? fmtHours(st.review.median) : '–', st.review?.open?.n ? `${st.review.open.n} waiting now` : 'median time in review', null, 'How long finished work waits for your look'));
+  const rw = f.reviewWait?.epics;
+  const rwOpen = rw?.open?.n ? `${rw.open.n} waiting now, oldest ${fmtHours(rw.open.oldestHours)}` : 'none waiting now';
+  grid.appendChild(tile('Review wait (epic cards)', rw?.n ? fmtHours(rw.median) : '–', rw?.n ? `median of ${rw.n} epic review cards · p90 ${fmtHours(rw.p90)} · ${rwOpen}` : rwOpen,
+    null, 'How long an epic card sits in Review before it moves on (ticket cards are in the first-look distribution below). When high: review the oldest card first, or finish the epic check in one sitting.'));
   const wip = f.wip || [];
   const wipNow = wip.length ? wip[wip.length - 1].tickets : null;
   const wipPrev = wip.length > 7 ? wip[wip.length - 8].tickets : null;
@@ -534,6 +537,26 @@ function renderGroupTable(flow) {
   return wrap;
 }
 
+/** Ready-to-reviewed distribution and reopened-by-model-label (flow.reviewWait, flow.reopenedByLabel). */
+function renderReviewFirstLook(f) {
+  const wrap = el('div', 'mc-grid2');
+  const rr = f.reviewWait?.readyToReviewed;
+  const sub = 'Time from moving to Review until the card moves again or you write a review note on it. When high: open the oldest Ready-for-review card first.';
+  if (rr && (rr.n || rr.waiting)) {
+    const rows = rr.buckets.map((b) => [b.label, String(b.n)]);
+    wrap.appendChild(card('Ready to first look', sub,
+      el('p', 'mc-counts', `${rr.n} cards · median ${rr.median != null ? fmtHours(rr.median) : '–'} · p90 ${rr.p90 != null ? fmtHours(rr.p90) : '–'} · ${rr.waiting} still waiting`),
+      table('Time from ready to first look', [{ label: 'Waited' }, { label: 'Cards', num: true }], rows)));
+  } else {
+    wrap.appendChild(card('Ready to first look', sub, empty('No cards moved to Review in this range.')));
+  }
+  const rl = f.reopenedByLabel || [];
+  const rrows = rl.map((g) => [g.label, String(g.moves + g.fixes), String(g.moves), String(g.fixes)]);
+  wrap.appendChild(card('Reopened by model label', 'Moved back from Review/Done, or a fix ticket opened from a shipped ticket within 14 days. When a label is high: check that label\'s tickets get clearer checks or a stronger model.',
+    rl.length ? table('Reopened by model label', [{ label: 'Model label' }, { label: 'Reopened', num: true }, { label: 'Moved back', num: true }, { label: 'Fix tickets', num: true }], rrows) : empty('Nothing reopened in this range.')));
+  return wrap;
+}
+
 function renderFlow(d) {
   const f = d.flow;
   const s = section('flow', 'Ticket flow', 'How long tickets sit in each column, and how many move through per week.');
@@ -541,12 +564,13 @@ function renderFlow(d) {
 
   const c = f.counts || {};
   const counts = el('p', 'mc-counts');
-  counts.textContent = `${c.started ?? 0} started · ${c.shipped ?? 0} shipped · ${c.reopened ?? 0} reopened · ${c.closedWithoutWork ?? 0} closed without work` +
+  counts.textContent = `${c.started ?? 0} started · ${c.shipped ?? 0} shipped · ${c.reopened ?? 0} reopened${c.reopenedFixes ? ` (${c.reopenedFixes} as a fix ticket within 14 days)` : ''} · ${c.closedWithoutWork ?? 0} closed without work` +
     (f.backlog ? ` · ${f.backlog.openTodo} open in to do (${f.backlog.growthPerWeek >= 0 ? '+' : '−'}${Math.abs(f.backlog.growthPerWeek)} per week)` : '');
   s.appendChild(counts);
   const legend = el('p', 'mc-stage-legend', 'Median: the typical wait. 3 in 4 leave within: a quarter wait longer. A visit is one stay in a column; added up counts tickets still waiting too.');
   s.appendChild(card('Time in each column', 'Segment width roughly follows total time spent; to do is a queue, so it is never the bottleneck.', renderStageBar(f), legend));
 
+  s.appendChild(renderReviewFirstLook(f));
   s.appendChild(renderTimeSplit(f, { el, append, table, ticketLink, empty, card }));
 
   const grid = el('div', 'mc-grid2');
@@ -679,7 +703,7 @@ function renderSessions(d) {
     `${m.questions} questions (${m.questionsMidRun} mid-run) · ${m.missedWakes ?? 0} missed wake-ups · ${m.stalls} stalls · ${m.toolWaits ?? 0} tool waits` +
     (m.helperWaits ? ` · ${m.helperWaits} waits on a running helper, not counted as stuck` : '') +
     (m.sessionsWaitedOver1h != null ? ` · ${m.sessionsWaitedOver1h} sessions waited over 1 h` : '') + ' · ' +
-    `${m.sessionsPerTicket?.median ?? '–'} per ticket (max ${m.sessionsPerTicket?.max ?? '–'}) · $${fmtNum(m.costUSD, 2)}`;
+    `${m.sessionsPerTicket?.median ?? '–'} per ticket (max ${m.sessionsPerTicket?.max ?? '–'}) · $${fmtNum(m.costUSD, 2)} over ${m.costSessions ?? m.n} sessions (same as the Cost section)`;
   s.appendChild(p);
 
   const bw = x.byWeek || [];

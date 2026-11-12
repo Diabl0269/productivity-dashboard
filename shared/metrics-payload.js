@@ -34,7 +34,7 @@ const newest = (list, f) => {
   return best === null ? null : iso(best);
 };
 
-function sessionsBlock(list, sinceMs, untilMs) {
+function sessionsBlock(list, sinceMs, untilMs, costList = list) {
   const withTicket = list.filter(s => s.ticket);
   const perTicket = new Map();
   for (const s of withTicket) {
@@ -72,7 +72,10 @@ function sessionsBlock(list, sinceMs, untilMs) {
     sessionsWaitedOver1h: list.filter(s => (s.waitUserMin || 0) > 60).length,
     autonomousShare: share(list),
     sessionsPerTicket: { median: r1(median(counts)), max: counts.length ? Math.max(...counts) : null },
-    costUSD: Math.round(sum(list, s => s.costUSD) * 100) / 100,
+    // One cost total everywhere: the same in-window list the Cost section uses (cost counted by when it was spent),
+    // so this line and the Cost cards agree; `n` above counts sessions that started in the window.
+    costUSD: Math.round(sum(costList, s => s.costUSD) * 100) / 100,
+    costSessions: costList.length,
   };
   const weeks = new Map();
   for (let w = mondayMs(sinceMs); w <= untilMs; w += 7 * DAY) weeks.set(w, []);
@@ -201,8 +204,8 @@ export function buildMetricsPayload({ doc, sessions = [], timings = [], cfg = {}
     window: { since: iso(sinceMs), until: iso(nowMs) },
     filters: { project: project || null, projects, lanes },
     flow,
-    sessions: sessionsBlock(sess, sinceMs, nowMs),
-    costs: { ...costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit, windowed: costWindow, weekUSD: limits.weekUSD }), limits },
+    sessions: sessionsBlock(sess, sinceMs, nowMs, costWindow),
+    costs: { ...costsBlock({ sessions: sess, byId, sectionOf, cfg, sinceMs, nowMs, limit: costLimit, windowed: costWindow, project, weekUSD: limits.weekUSD }), limits },
     estimates: estimatesSummary(estimator),
     timings: timingsBlock(timingsAll, timingsWin, nowMs),
     next,

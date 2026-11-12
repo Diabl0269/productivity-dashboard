@@ -14,6 +14,7 @@ const r3 = n => Math.round(n * 1000) / 1000;
 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const tokensTotal = t => (t ? num(t.input) + num(t.output) + num(t.cacheRead) + num(t.cacheWrite) : 0);
 const MODEL_LABEL_RE = /^model:\s*\S/i;
+const SHIPPED = new Set(['review', 'done', 'archive']);
 
 const PART_KEYS = ['cacheRead', 'cacheWrite', 'output', 'input'];
 
@@ -108,7 +109,7 @@ export function windowedSessions(all, inList, sinceMs, untilMs) {
  *   (windowedSessions) that the totals, parts, tokens, models and plan come from;
  *   `limit` caps byTicket (default 30) and byEpic (half of it); Infinity keeps every row.
  */
-export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs, limit = 30, weekUSD = null, windowed = sessions }) {
+export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs, limit = 30, weekUSD = null, windowed = sessions, project }) {
   // `weekShare`: cost as a share of a week's plan limit (shared/plan-share.js); only when calibrated.
   const wk = weekUSD > 0 ? raw => ({ weekShare: r3(raw / weekUSD) }) : () => ({});
   let totalUSD = 0;
@@ -217,7 +218,7 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
   for (const e of tickets.values()) {
     if (byId.get(e.ticket)?.type === 'epic') continue;
     const state = sectionOf.get(e.ticket);
-    if (state !== 'review' && state !== 'done') continue;
+    if (!SHIPPED.has(state)) continue;
     if (!(e.costUSD > 0)) continue;
     const label = (byId.get(e.ticket)?.labels || []).find(l => MODEL_LABEL_RE.test(String(l))) || 'none';
     const key = label === 'none' ? label : String(label).trim().toLowerCase().replace(/^model:\s*/, 'model:');
@@ -228,12 +229,35 @@ export function costsBlock({ sessions, byId, sectionOf, cfg = {}, sinceMs, nowMs
     label, n: v.length, medianUSD: r2(median(v)), p75USD: r2(percentile(v, 75)), totalUSD: r2(v.reduce((a, b) => a + b, 0)),
   })).sort((a, b) => b.totalUSD - a.totalUSD || (a.label < b.label ? -1 : 1));
 
-  const block = { total, byTicket, byEpic, perShipped };
+  // Coverage: of the tickets that shipped in this range (first move into review, done or archive), how many have cost.
+  const inProject = t => !project || t.project === project;
+  const shippedMs = t => {
+    const m = (t.history || []).filter(e => e && e.event === 'moved' && SHIPPED.has(e.to)).map(e => Date.parse(e.at)).filter(Number.isFinite);
+    return m.length ? Math.min(...m) : null;
+  };
+  const shippedIn = isEpic => [...byId.values()].filter(t => (t.type === 'epic') === isEpic && SHIPPED.has(sectionOf.get(t.id)) && inProject(t)
+    && shippedMs(t) !== null && shippedMs(t) >= sinceMs && shippedMs(t) <= nowMs);
+  const costOf = id => (tickets.get(id)?.costUSD || 0);
+  const shippedTickets = shippedIn(false);
+  const perShippedCoverage = { withCost: shippedTickets.filter(t => costOf(t.id) > 0).length, shipped: shippedTickets.length };
+  // Cost per closed epic (in review, done or archive): its own sessions plus everything under it.
+  const closedEpics = [...epics.values()].filter(ep => SHIPPED.has(sectionOf.get(ep.epic)) && ep._raw > 0).map(ep => ep._raw);
+  const shippedEpics = shippedIn(true);
+  const perClosedEpic = {
+    n: closedEpics.length,
+    withCost: shippedEpics.filter(t => (epics.get(t.id)?._raw || 0) > 0).length,
+    of: shippedEpics.length,
+    medianUSD: r2(median(closedEpics) ?? 0), p75USD: r2(percentile(closedEpics, 75) ?? 0), totalUSD: r2(closedEpics.reduce((a, b) => a + b, 0)),
+  };
+
+  const block = { total, byTicket, byEpic, perShipped, perShippedCoverage, perClosedEpic };
   const plan = Number(cfg.planUSDPerMonth);
   if (Number.isFinite(plan) && plan > 0) {
     const days = Math.max((nowMs - sinceMs) / DAY, 1 / 24);
     const per30 = (totalUSD * 30) / days;
     block.plan = { usdPerMonth: plan, apiEquivalentPer30d: r2(per30), multiple: Math.round((per30 / plan) * 10) / 10 };
+  } else {
+    block.planHint = 'set planUSDPerMonth in config.json';
   }
   return block;
 }

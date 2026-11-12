@@ -55,6 +55,67 @@ function moves(task) {
     .sort((a, b) => a.at - b.at);
 }
 
+const FIX_DAYS = 14;
+const MODEL_LABEL_RE = /^model:\s*\S/i;
+const modelLabelOf = t => {
+  const l = (t?.labels || []).find(x => MODEL_LABEL_RE.test(String(x)));
+  return l ? String(l).trim().toLowerCase().replace(/^model:\s*/, 'model:') : 'none';
+};
+const REVIEW_BUCKETS = [['under 1 h', 1], ['1-4 h', 4], ['4-12 h', 12], ['12-24 h', 24], ['1-3 days', 72], ['over 3 days', Infinity]];
+
+/** Counts of hour values per REVIEW_BUCKETS bucket: [{ label, n }]. */
+function bucketHours(values) {
+  const out = REVIEW_BUCKETS.map(([label]) => ({ label, n: 0 }));
+  for (const v of values) out[REVIEW_BUCKETS.findIndex(([, max]) => v < max)].n++;
+  return out;
+}
+
+/**
+ * Ready-to-reviewed: for each move INTO review, hours until the card's next move out of review or its first
+ * review note written after the move, whichever is first. Cards still waiting with neither are `waiting`.
+ * Roll-through moves (under MIN_REVIEW_MS) are skipped.
+ */
+function readyToReviewed(tasks, inWindow) {
+  const hrsList = [];
+  let waiting = 0;
+  for (const t of tasks) {
+    const mv = moves(t);
+    const notes = (t.reviewNotes || []).map(n => toMs(n?.at)).filter(x => x !== null);
+    for (let i = 0; i < mv.length; i++) {
+      if (mv[i].to !== 'review' || !inWindow(mv[i].at)) continue;
+      const a = mv[i].at;
+      const next = mv.slice(i + 1).find(m => m.from === 'review');
+      const note = notes.filter(n => n >= a).sort((x, y) => x - y)[0];
+      const ends = [next?.at, note].filter(x => x !== undefined);
+      if (!ends.length) { waiting++; continue; }
+      const end = Math.min(...ends);
+      if (end - a < MIN_REVIEW_MS) continue;
+      hrsList.push(hours(end - a));
+    }
+  }
+  return { ...summary(hrsList), waiting, buckets: bucketHours(hrsList) };
+}
+
+/**
+ * Shipped tickets that got a fix ticket within FIX_DAYS of shipping (the fix names it by reviewOf, by parent
+ * when the parent is a non-epic ticket, or by a link/links entry) and was created in the window: one entry per fix.
+ */
+function fixesOfShipped(all, byId, inWindow) {
+  const out = [];
+  for (const fix of all) {
+    const created = toMs(fix.created) ?? toMs((fix.history || []).find(e => e && e.event === 'created')?.at);
+    if (created === null || !inWindow(created)) continue;
+    const refs = [fix.reviewOf, fix.parentId, ...[].concat(fix.link || [], fix.links || []).map(l => (l && l.id) || l)];
+    for (const id of new Set(refs.filter(x => typeof x === 'string' && x && x !== fix.id))) {
+      const src = byId.get(id);
+      if (!src || src.type === 'epic') continue;
+      const done = moves(src).find(m => FINISH.has(m.to));
+      if (done && created >= done.at && created - done.at <= FIX_DAYS * DAY) { out.push(src); break; }
+    }
+  }
+  return out;
+}
+
 /**
  * The stays of one ticket in each section, derived from `created` and its `moved` events:
  * [{ stage, from, to, open }] (ISO strings; the current stay has open = true and ends at `now`).
@@ -157,10 +218,11 @@ export function flowMetrics(doc, {
 
   /** counts, cycle, lead, stages and bottleneck for a set of ticket facts. */
   function compute(list) {
-    const counts = { started: 0, shipped: 0, reopened: 0, closedWithoutWork: 0 };
+    const counts = { started: 0, shipped: 0, reopened: 0, reopenedFixes: 0, closedWithoutWork: 0 };
     const cycle = [];
     const lead = [];
     const stageVals = Object.fromEntries(STAGES.map(s => [s, { closed: [], total: 0, openN: 0, oldest: 0 }]));
+    const revKind = { epics: { closed: [], openN: 0, oldest: 0 }, tickets: { closed: [], openN: 0, oldest: 0 } };
     for (const f of list) {
       if (!f.epic) {
       if (inWindow(f.started)) counts.started++;
@@ -189,6 +251,10 @@ export function flowMetrics(doc, {
         const dwell = hours(Math.min(b, untilMs) - Math.max(a, sinceMs));
         v.total += dwell;
         if (s.open) { v.openN++; v.oldest = Math.max(v.oldest, hours(nowMs - a)); } else v.closed.push(dwell);
+        if (s.stage === 'review') {
+          const k = revKind[f.epic ? 'epics' : 'tickets'];
+          if (s.open) { k.openN++; k.oldest = Math.max(k.oldest, hours(nowMs - a)); } else k.closed.push(dwell);
+        }
       }
     }
     const stages = {};
@@ -209,7 +275,26 @@ export function flowMetrics(doc, {
       }
     }
     best = best || bestTotal;
+    const kindOut = k => ({ ...summary(k.closed), open: { n: k.openN, oldestHours: r1(k.oldest) } });
+    const reviewWait = {
+      epics: kindOut(revKind.epics), tickets: kindOut(revKind.tickets),
+      readyToReviewed: readyToReviewed(list.map(f => f.t), inWindow),
+    };
+    // Reopened = moved back from review/done, plus a fix ticket opened from a shipped ticket within 14 days; by model label.
+    const byLabel = new Map();
+    const bump = (t, key) => {
+      const l = modelLabelOf(t);
+      if (!byLabel.has(l)) byLabel.set(l, { label: l, moves: 0, fixes: 0 });
+      byLabel.get(l)[key]++;
+    };
+    for (const f of list) if (!f.epic) for (const at of f.reopened) if (inWindow(at)) bump(f.t, 'moves');
+    const listIds = new Set(list.map(f => f.t.id));
+    for (const src of fixesOfShipped(all, byId, inWindow)) if (listIds.has(src.id)) { counts.reopenedFixes++; bump(src, 'fixes'); }
+    counts.reopenedMoves = counts.reopened;
+    counts.reopened += counts.reopenedFixes;
     return {
+      reviewWait,
+      reopenedByLabel: [...byLabel.values()].sort((a, b) => (b.moves + b.fixes) - (a.moves + a.fixes) || (a.label < b.label ? -1 : 1)),
       counts, cycle: summary(cycle), lead: summary(lead), stages,
       bottleneck: best ? { stage: best.stage, medianHours: best.med, totalHours: r1(best.raw), share: Math.round((best.raw / grand) * 1000) / 1000 } : null,
     };
@@ -322,6 +407,8 @@ export function flowMetrics(doc, {
     cycle: top.cycle,
     lead: top.lead,
     stages: top.stages,
+    reviewWait: top.reviewWait,
+    reopenedByLabel: top.reopenedByLabel,
     bottleneck: top.bottleneck,
     groups: {
       project: groupBy(projectOf),

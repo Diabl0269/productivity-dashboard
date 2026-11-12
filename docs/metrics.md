@@ -39,12 +39,13 @@ ch tasks sweep-idle [--hours 24] [--dry-run] [--no-collect] [--json]      in-pro
   "areas": { "lane-or-project-slug": "Area name" },
   "stallMinutes": 20,
   "forgottenEpicDays": 3,
-  "planUSDPerMonth": 200
+  "planUSDPerMonth": null
 }
 ```
 
-`planUSDPerMonth` (optional) is what you pay a month for a plan; with it the Cost section and the report
-show the window's API-priced cost scaled to 30 days and its multiple of the plan.
+`planUSDPerMonth` (a number, or `null` / absent until you set it) is what you pay a month for a plan; with it the Cost
+section and the report show the window's API-priced cost scaled to 30 days and its multiple of the plan. The value is
+yours to set (no default is guessed); without it the card reads "set planUSDPerMonth in config.json".
 
 A `claudeProjects` entry ending in `*` matches every directory in that folder whose name starts with the
 text before it (one entry for a workspace and all its worktrees). `areas` groups lanes/projects into the areas the bottleneck view reports; without it, each project
@@ -113,8 +114,12 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   **added up** time of all visits, open stays and forgotten tickets included, so it can be far larger than the
   median. Added-up times of 3 weeks or more show in weeks (`wk`). The hover text and a one-line legend under the bar say the same.
 - **Cycle time**: first move into `in-progress` → first move into `review` or `done` after it.
-  **Lead time**: created → first `review`/`done`. **Review wait**: dwell in `review`.
-- **Reopened**: moved from `review`/`done` back to `in-progress`/`todo`.
+  **Lead time**: created → first `review`/`done`. **Review wait** (`flow.reviewWait.epics` / `.tickets`): dwell in `review`,
+  shown on the tab for epic cards (median, p90, waiting now, oldest). **Ready to first look** (`flow.reviewWait.readyToReviewed`):
+  from a move into `review` to the card's next move or its first review note, whichever is first, bucketed.
+- **Reopened**: moved from `review`/`done` back to `in-progress`/`todo` (`counts.reopenedMoves`), plus a fix ticket created in the
+  window within 14 days of a shipped ticket (it names the ticket by `reviewOf`, a non-epic `parentId`, or `link`/`links`:
+  `counts.reopenedFixes`). `counts.reopened` is the sum; `flow.reopenedByLabel` splits it by the shipped ticket's `model:` label.
 - **WIP**: tickets (not epics) in `in-progress` at each day's end; epics counted separately.
 - **Forgotten epic**: an epic in `in-progress` whose own history and every child's history show no
   event for `forgottenEpicDays` days.
@@ -192,8 +197,11 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
   (calls per 5,000-token bucket, last bucket open-ended); the window median and p90 come from the merged
   histograms, so they are accurate to about one bucket. Sessions collected before this existed are
   skipped for this line (`sessionsWithout`); `ch metrics collect --sessions` re-reads them.
-- **Per shipped ticket**: tickets now in review or done with any cost, by their `model:` label
-  (`none` without one): median, p75 and total dollars per ticket.
+- **Per shipped ticket**: tickets now in review, done or archived with any cost in the window, by their `model:` label
+  (`none` without one): median, p75 and total dollars per ticket. `perShippedCoverage` is `{withCost, shipped}`: of the tickets whose first move into
+  review/done/archive falls in the window, how many have cost (the card shows "n of N"); `perClosedEpic` is the same for epics in review/done/archive (own sessions plus everything under them).
+- **One cost total**: `sessions.summary.costUSD` and `costSessions` come from the same in-window list as `costs.total`
+  (cost counted by when it was spent), so the Sessions line and the Cost cards agree; `sessions.summary.n` counts sessions that started in the window.
 - **Plan comparison**: with `planUSDPerMonth`, the window's cost scaled to 30 days and divided by it.
 - **Limit hits** (`limitHits` per session; `costs.limits` in the payload; `shared/limit-hits.js`, `shared/plan-share.js`):
   an assistant line with `isApiErrorMessage` whose text says `You've hit your session|weekly limit · resets
