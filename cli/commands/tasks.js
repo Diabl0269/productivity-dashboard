@@ -108,7 +108,7 @@ import { estimateAtStartOf } from '../../shared/cost-estimate.js';
 import { createTasksBackup, listTasksBackups, restoreTasksBackup, ensureBackupDir, backupFileName } from '../lib/backup.js';
 import path from 'node:path';
 import { storeImageFile, attachmentAbsPath } from '../../shared/note-images.js';
-import { computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
+import { totalsLine, computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpicsWithoutLane, openEpicsWithoutModel } from '../../shared/run-plan.js';
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
@@ -2521,6 +2521,7 @@ function cmdRunPlan(argv) {
   const plan = computeRunPlan(load());
   if (values.json) return jsonOut(plan);
 
+  print(totalsLine(plan.totals).text);
   printReadyState(plan.readiness);
   if (plan.lanes.length === 0) {
     print('No epic is in progress or Ready, and none is pinned.');

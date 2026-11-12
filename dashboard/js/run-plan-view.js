@@ -1,6 +1,6 @@
 // run-plan-view.js — "Plan" tab: review, Auto queue, Ready state, then in-progress, Ready and pinned epics as lanes (rows); see shared/run-plan.js
 
-import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
+import { computeRunPlan, threadLink, laneDisplayName, totalsLine } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
@@ -897,6 +897,12 @@ export function renderRunPlanView() {
   }
   root.appendChild(renderRules(plan));
   root.appendChild(renderLegend());
+  if (plan.totals) {
+    const t = totalsLine(plan.totals);
+    const line = el('p', t.ok ? 'rp-totals' : 'rp-totals rp-totals-warn', t.text);
+    line.dataset.totals = t.ok ? 'ok' : 'missing';
+    root.appendChild(line);
+  }
   const tracks = el('div', 'rp-tracks');
   plan.lanes.forEach((lane, i) => tracks.appendChild(renderLane(lane, i, plan.picks || [])));
   root.appendChild(tracks);

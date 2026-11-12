@@ -4,8 +4,13 @@
  * into their lane's Later group with one plain reason line; Auto never picks them. Synthetic data only.
  */
 import { test } from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { computeRunPlan, UNASSIGNED_LANE } from '../../shared/run-plan.js';
+import { computeRunPlan, totalsLine, UNASSIGNED_LANE } from '../../shared/run-plan.js';
 import { openEpicReadiness, plainReasonLine } from '../../shared/epic-ready.js';
 import { autoQueue } from '../../shared/auto-queue.js';
 import { computeNextStart } from '../../shared/next-start.js';
@@ -139,3 +144,44 @@ test('cards carry structured reasons with the blocking ticket ids', () => {
   assert.deepEqual(e3.promoteIds, [], 'a later bucket is never promoted');
 });
 
+const totalsFixture = () => mk({
+  inbox: [epic('T29', { lane: 'mixer' }), task('T9', { parentId: 'T29' })],                 // inbox epic
+  todo: [
+    epic('T21'), task('T1', { parentId: 'T21' }),
+    epic('T28', { lane: undefined }), task('T8', { parentId: 'T28' }),                       // no lane
+    epic('T27'), task('T7', { parentId: 'T27', checked: true }),                              // every ticket closed
+  ],
+  done: [epic('T26'), task('T6', { parentId: 'T26', checked: true })],
+  review: [epic('T25'), task('T5', { parentId: 'T25', checked: true })],
+  archive: [epic('T24')],
+});
+
+test('totals: every open epic is shown; finished ones are counted apart', () => {
+  const plan = computeRunPlan(totalsFixture());
+  assert.deepEqual(plan.totals, { openEpics: 4, shown: 4, hiddenFinished: 3, missing: [] });
+  assert.equal(plan.totals.shown, plan.totals.openEpics);
+  assert.deepEqual(totalsLine(plan.totals), { ok: true, text: 'All 4 open epics are shown (3 finished ones are not)' });
+  assert.equal(totalsLine({ openEpics: 1, shown: 1, hiddenFinished: 1, missing: [] }).text, 'All 1 open epic is shown (1 finished one is not)');
+});
+
+test('totals: an open epic that no lane shows is listed as missing and the line turns into a warning', () => {
+  // An in-progress epic whose tickets are all closed gets no lane card and is not a pinned "done" note: the invariant must say so.
+  const doc = mk({
+    todo: [epic('E1'), task('T1', { parentId: 'E1' })],
+    'in-progress': [epic('EX'), task('TX', { parentId: 'EX', checked: true })],
+  });
+  const plan = computeRunPlan(doc);
+  assert.deepEqual(plan.totals, { openEpics: 2, shown: 1, hiddenFinished: 0, missing: ['EX'] });
+  const line = totalsLine(plan.totals);
+  assert.equal(line.ok, false);
+  assert.equal(line.text, 'Only 1 of 2 open epics shown; missing EX (0 finished ones are not)');
+});
+
+test('ch tasks runplan prints the same totals line, and --json carries totals', () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-totals-'));
+  fs.writeFileSync(path.join(h, 'tasks.json'), JSON.stringify(totalsFixture()));
+  const ch = (...a) => spawnSync(process.execPath, [path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../ch'), 'tasks', 'runplan', ...a], { env: { ...process.env, CH_HOME: h }, encoding: 'utf8' });
+  const out = (...a) => { const r = ch(...a); assert.equal(r.status, 0, r.stderr); return r.stdout; };
+  assert.equal(out().split('\n')[0], 'All 4 open epics are shown (3 finished ones are not)');
+  assert.deepEqual(JSON.parse(out('--json')).totals, { openEpics: 4, shown: 4, hiddenFinished: 3, missing: [] });
+});
