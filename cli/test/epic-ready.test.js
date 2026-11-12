@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { epicReadiness, openEpicReadiness, readinessLabel, howToCheckText } from '../../shared/epic-ready.js';
+import { epicReadiness, openEpicReadiness, readinessLabel, howToCheckText, plainReasonLine } from '../../shared/epic-ready.js';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { cleanupPins } from '../../shared/pin-rules.js';
 import { normalizeMeta } from '../lib/schema.js';
@@ -253,3 +253,52 @@ test('CLI: moving an epic to in-progress pins it; a todo epic stays unpinned', (
   assert.equal('handPinnedIds' in read(h).meta.dailyPlan, false, 'an auto pin is not a hand pin');
 });
 
+
+// PRO85: structured reasons {kind, ids, text} next to the strings.
+test('structured reasons: one {kind, ids, text} per reason string, in the same order', () => {
+  const doc = mk({ todo: [epic('E1', { title: 'Mixer: later' }), task('T1', { parentId: 'E1', description: 'raw prose' })] });
+  const r = ready(doc, 'E1');
+  assert.equal(r.reasonDetails.length, r.reasons.length);
+  assert.deepEqual(r.reasonDetails.map(d => d.kind), ['later-bucket', 'no-check']);
+  assert.deepEqual(r.reasonDetails[1].ids, ['T1']);
+  assert.deepEqual(ready(mk({ todo: [epic('E2')] }), 'E2').reasonDetails.map(d => [d.kind, d.ids]), [['empty', []]]);
+});
+
+test('plain wording names the one ticket and what to add, never "No ticket says"', () => {
+  const doc = mk({ todo: [epic('E1'), task('FRO1507', { parentId: 'E1', description: 'a raw description' })] });
+  const r = ready(doc, 'E1');
+  assert.equal(r.reasonDetails[0].text, "FRO1507 needs a 'How to check it' line (in its In plain words section)");
+  assert.equal(plainReasonLine(r), r.reasonDetails[0].text);
+  assert.ok(!/No ticket says/.test(plainReasonLine(r)));
+  assert.deepEqual(r.reasons, ['FRO1507 has no How to check it'], 'the short string stays for the CLI');
+});
+
+test('wording per kind: backlog, parked, pick, co-task, blocker, blocked, held', () => {
+  const kinds = doc => Object.fromEntries(ready(doc, 'E1').reasonDetails.map(d => [d.kind, d.text]));
+  assert.match(kinds(mk({ backlog: [epic('E1'), task('T1', { parentId: 'E1' })] })).backlog, /^Ideas waiting for your go/);
+  const parked = ready(mk({ todo: [epic('E1')], backlog: [task('T1', { parentId: 'E1' })] }), 'E1');
+  assert.equal(parked.reasonDetails[0].kind, 'parked');
+  assert.deepEqual(parked.reasonDetails[0].ids, ['T1']);
+  assert.equal(parked.reasonDetails[0].text, 'Not ready: its only ticket, T1, is in backlog; move it to To do');
+  assert.deepEqual(parked.promotable, ['T1']);
+  assert.match(kinds(mk({ todo: [epic('E1', { blocked: true }), task('T1', { parentId: 'E1' })] }))['blocked'], /^Marked blocked/);
+  assert.match(kinds(mk({ todo: [epic('E1', { blockedBy: ['E2'] }), task('T1', { parentId: 'E1' }), epic('E2')] }))['epic-blocker'], /^Waits on E2 to finish/);
+  assert.match(kinds(mk({ todo: [epic('E1'), task('T1', { parentId: 'E1', labels: ['deploy'] })] })).held, /^Every open ticket waits for your go-ahead/);
+});
+
+test('several reasons: one detail each, ids kept apart, the first one leads the card line', () => {
+  const doc = mk({ todo: [epic('E1', { blocked: true }), task('T1', { parentId: 'E1', description: 'x' }), task('T2', { parentId: 'E1', description: 'y' })] });
+  const r = ready(doc, 'E1');
+  assert.deepEqual(r.reasonDetails.map(d => [d.kind, d.ids]), [['blocked', []], ['no-check', ['T1']], ['no-check', ['T2']]]);
+  assert.equal(plainReasonLine(r), r.reasonDetails[0].text);
+});
+
+test('promotable: only a backlog or parked epic, only its own backlog tickets, never a later bucket', () => {
+  const doc = mk({
+    todo: [epic('E1'), task('T1', { parentId: 'E1' }), epic('E5'), task('T5', { parentId: 'E5' })],
+    backlog: [task('B1', { parentId: 'E1' }), epic('E2'), task('B2', { parentId: 'E2' }), task('B3', { parentId: 'E2' }), epic('E3', { title: 'Mixer: later' }), task('B4', { parentId: 'E3' })],
+  });
+  assert.deepEqual(ready(doc, 'E1').promotable, [], 'E1 has a runnable ticket: not parked');
+  assert.deepEqual(ready(doc, 'E2').promotable, ['B2', 'B3']);
+  assert.deepEqual(ready(doc, 'E3').promotable, []);
+});

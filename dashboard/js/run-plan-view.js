@@ -1,6 +1,6 @@
 // run-plan-view.js — "Plan" tab: review, Auto queue, Ready state, then in-progress, Ready and pinned epics as lanes (rows); see shared/run-plan.js
 
-import { computeRunPlan, threadLink, laneDisplayName } from '../../shared/run-plan.js';
+import { computeRunPlan, threadLink, laneDisplayName, totalsLine } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
@@ -18,6 +18,7 @@ import { todayStr } from './tasks-parser.js';
 import { stateToDoc as toDoc, renderReadyState, buildAutoToggle } from './epic-ready-ui.js';
 import { renderAutoQueue } from './auto-queue-ui.js';
 import { renderLaterFold } from './run-plan-later.js';
+import { renderReasonBlock } from './run-plan-reasons.js';
 import { renderNextStartLine } from './next-start-line.js';
 import { renderAsksStrip } from './asks-strip.js';
 import { markChanged } from './tasks-io.js';
@@ -645,7 +646,9 @@ function renderCard(card, phase) {
   }
   const fromReview = reviewOfNote(findTicket(card.id)?.reviewOf);
   if (fromReview) article.appendChild(fromReview);
-  if (card.why && !(card.ticketIds && /^(Picks|Co-tasks): /.test(card.why))) article.appendChild(el('div', 'rp-why', card.why));
+  if (card.state === 'notready' && card.reasons?.length) {
+    renderReasonBlock(card, id => idButton(id, 'rp-link rp-chip-id'), renderRunPlanView).forEach(n => article.appendChild(n));
+  } else if (card.why && !(card.ticketIds && /^(Picks|Co-tasks): /.test(card.why))) article.appendChild(el('div', 'rp-why', card.why));
 
   const actions = el('div', 'rp-actions');
   const autoR = !card.ticketIds && card.state !== 'pick' && !card.isPrompt ? readinessById.get(card.id) : null;
@@ -804,7 +807,7 @@ function renderLane(lane, index, picks) {
   }
   const body = el('div', 'rp-lane-body');
   body.appendChild(row);
-  const laterFold = renderLaterFold(lane, id => idButton(id));
+  const laterFold = renderLaterFold(lane, id => idButton(id), renderRunPlanView);
   if (laterFold) body.appendChild(laterFold);
   track.appendChild(body);
   const openCard = lane.lane === 'design' && lane.now.find(c => c.ticketIds && c.id === openDrawer);
@@ -894,6 +897,12 @@ export function renderRunPlanView() {
   }
   root.appendChild(renderRules(plan));
   root.appendChild(renderLegend());
+  if (plan.totals) {
+    const t = totalsLine(plan.totals);
+    const line = el('p', t.ok ? 'rp-totals' : 'rp-totals rp-totals-warn', t.text);
+    line.dataset.totals = t.ok ? 'ok' : 'missing';
+    root.appendChild(line);
+  }
   const tracks = el('div', 'rp-tracks');
   plan.lanes.forEach((lane, i) => tracks.appendChild(renderLane(lane, i, plan.picks || [])));
   root.appendChild(tracks);

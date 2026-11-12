@@ -18,6 +18,20 @@ export const DESIGN_LANE = 'design';
 /** Sections whose epics are finished and so need no lane. */
 const CLOSED_EPIC_SECTIONS = ['done', 'review', 'archive'];
 
+/**
+ * PRO84: the one line saying whether the Plan page lists every open epic.
+ * @param {{openEpics: number, shown: number, hiddenFinished: number, missing: string[]}} t  `plan.totals`
+ * @returns {{text: string, ok: boolean}}
+ */
+export function totalsLine(t) {
+  const fin = `${t.hiddenFinished} finished ${t.hiddenFinished === 1 ? 'one is' : 'ones are'} not`;
+  const open = `${t.openEpics} open ${t.openEpics === 1 ? 'epic' : 'epics'}`;
+  if (t.shown === t.openEpics && !t.missing.length) {
+    return { ok: true, text: `All ${open} ${t.openEpics === 1 ? 'is' : 'are'} shown (${fin})` };
+  }
+  return { ok: false, text: `Only ${t.shown} of ${open} shown; missing ${t.missing.join(', ') || 'some'} (${fin})` };
+}
+
 /** Open epics with no lane: the Plan page files them under "No lane yet". */
 export function openEpicsWithoutLane(doc) {
   const out = [];
@@ -329,6 +343,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     isRest: false,
     openTickets: r.children.length,
     why: plainReasonLine(r),
+    reasons: r.reasonDetails,
+    promoteIds: r.promotable,
     command: null,
     model: modelOf(byId.get(r.id)),
     inProgress: false,
@@ -368,7 +384,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         now.push(card(id, 'partial', false, i.freeWork.length, `Stops at ${pickText}`));
         later.push(card(id, 'later', true, i.gatedWork.length, `Needs ${pickText}`));
       } else if (notReady) {
-        later.push(card(id, 'notready', false, i.work.length, plainReasonLine(readinessById.get(id))));
+        const rr = readinessById.get(id);
+        later.push({ ...card(id, 'notready', false, i.work.length, plainReasonLine(rr)), reasons: rr.reasonDetails, promoteIds: rr.promotable });
       } else {
         now.push(card(id, 'ready', false, i.work.length,
           sameLane.length ? `Runs after ${joinList(sameLane)}` : 'Nothing blocking it'));
@@ -473,8 +490,31 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     });
   }
 
+  // PRO84: prove the page lists every open epic (a lane row, a Later fold or the "Done, still pinned" note).
+  const placed = new Set(doneEpics);
+  for (const l of lanes) {
+    for (const c of [...l.now, ...l.later]) if (!c.ticketIds && byId.get(c.id)?.type === 'epic') placed.add(c.id);
+    for (const c of l.laterEpics) placed.add(c.id);
+  }
+  const finishedEpicIds = new Set();
+  for (const sec of doc?.sections || []) {
+    if (!CLOSED_EPIC_SECTIONS.includes(sec.id)) continue;
+    for (const t of sec.tasks || []) if (t && t.type === 'epic') finishedEpicIds.add(t.id);
+  }
+  // An open epic whose tickets are all closed is finished by design (left off like a done one), not missing.
+  const allClosed = r => { const k = descendants(r.id); return k.length > 0 && k.every(x => !isOpen(x)); };
+  const offPage = readiness.filter(r => !placed.has(r.id));
+  for (const r of offPage) if (finishedIds.has(r.id) || allClosed(r)) finishedEpicIds.add(r.id);
+  const totals = {
+    openEpics: readiness.length - offPage.filter(r => finishedEpicIds.has(r.id)).length,
+    shown: readiness.filter(r => placed.has(r.id)).length,
+    hiddenFinished: finishedEpicIds.size,
+    missing: offPage.filter(r => !finishedEpicIds.has(r.id)).map(r => r.id),
+  };
+
   return {
     lanes,
+    totals,
     doneEpics,
     picks: pickList,
     // Ready / Not ready (with reasons) for every open epic, and whether Auto is on (shared/epic-ready.js).

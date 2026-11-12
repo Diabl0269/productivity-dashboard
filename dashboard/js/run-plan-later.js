@@ -3,6 +3,8 @@
 // one plain line saying why and what would make it ready. Cards come from shared/run-plan.js
 // (`lane.laterEpics`); nothing here can start them.
 
+import { renderReasonBlock } from './run-plan-reasons.js';
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -19,7 +21,7 @@ const writeOpen = (set) => {
 };
 
 /** One compact Later card: id (opens the ticket), state chip, title, ONE reason line. */
-function laterCard(card, idButton) {
+function laterCard(card, idButton, redraw) {
   const article = el('article', `rp-card rp-later-card rp-${card.state}`);
   article.setAttribute('aria-label', `${card.id} ${card.title}`);
   article.dataset.laterEpic = card.id;
@@ -28,7 +30,7 @@ function laterCard(card, idButton) {
   row.appendChild(el('span', `rp-chip rp-chip-${card.state}`, card.state === 'backlog' ? 'In backlog' : 'Not ready'));
   article.appendChild(row);
   article.appendChild(el('div', 'rp-title', card.title));
-  article.appendChild(el('div', 'rp-why', card.why));
+  renderReasonBlock(card, idButton, redraw).forEach(n => article.appendChild(n));
   return article;
 }
 
@@ -37,8 +39,9 @@ function laterCard(card, idButton) {
  * Return) toggles it with aria-expanded; the height animates like the Not-ready fold above.
  * @param {{lane: string, laterEpics?: object[]}} lane  a computeRunPlan lane
  * @param {(id: string) => HTMLElement} idButton  makes the epic id a button that opens the ticket
+ * @param {() => void} [redraw]  redraws the Plan page after backlog tickets move (PRO85)
  */
-export function renderLaterFold(lane, idButton) {
+export function renderLaterFold(lane, idButton, redraw = () => {}) {
   const cards = lane.laterEpics || [];
   if (!cards.length) return null;
   const wrap = el('div', 'rp-later');
@@ -51,7 +54,7 @@ export function renderLaterFold(lane, idButton) {
   btn.setAttribute('aria-controls', fold.id);
   const inner = el('div', 'rp-fold-inner');
   const list = el('div', 'rp-later-list');
-  cards.forEach(c => list.appendChild(laterCard(c, idButton)));
+  cards.forEach(c => list.appendChild(laterCard(c, idButton, redraw)));
   inner.appendChild(list);
   fold.appendChild(inner);
   const apply = () => {
