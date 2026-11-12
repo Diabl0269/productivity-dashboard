@@ -34,6 +34,26 @@ export function ticketFrom({ title, branch, firstPrompt } = {}) {
   return null;
 }
 
+const ID_RE = /[A-Za-z]{2,5}\d+/g;
+const RUN_TITLE_RE = /^\s*autorun\s+((?:[A-Za-z]{2,5}\d+)(?:\s+[A-Za-z]{2,5}\d+)*)/i;
+const BATCH_PROMPT_RE = /\/ship-task\s+(?:<[^>]*>\s*)?([A-Za-z]{2,5}\d+)\s+auto((?:\s+[A-Za-z]{2,5}\d+)+)/;
+
+/**
+ * Ticket ids an auto-dispatcher session was started for: the title `autorun EPIC ID ID` or the first prompt
+ * `/ship-task EPIC auto ID ID`. Returns [] for a session that is not a batch run (a single id is no batch).
+ */
+export function batchFrom({ title, firstPrompt } = {}) {
+  let ids = [];
+  const t = title ? RUN_TITLE_RE.exec(String(title)) : null;
+  if (t) ids = t[1].match(ID_RE) || [];
+  else if (firstPrompt) {
+    const m = BATCH_PROMPT_RE.exec(String(firstPrompt).slice(0, 4000));
+    if (m) ids = [m[1], ...(m[2].match(ID_RE) || [])];
+  }
+  const out = [...new Set(ids.map((x) => x.toUpperCase()))];
+  return out.length > 1 ? out : [];
+}
+
 const NON_PROMPT_PREFIX = ['<task-notification', '<system-reminder', '<local-command-caveat', '<local-command-stdout'];
 
 /** Text of a user line's content (string or text blocks), or null when it only carries tool results. */
@@ -582,6 +602,7 @@ export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15,
     project: project ?? null,
     title: title ?? null,
     ticket,
+    ...(batchFrom({ title, firstPrompt }).length ? { batch: batchFrom({ title, firstPrompt }) } : {}),
     start: new Date(firstMs).toISOString(),
     end: new Date(lastMs).toISOString(),
     wallMin: r1((lastMs - firstMs) / 60000),

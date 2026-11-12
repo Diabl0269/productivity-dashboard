@@ -6,11 +6,13 @@
  *   > waiting on you (a session for it waits on your reply or a question) > nobody working on it.
  */
 import { ticketStays, median } from './flow-metrics.js';
-import { ticketFrom } from './session-metrics.js';
+import { ticketFrom, batchFrom } from './session-metrics.js';
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 const TOP = 20;
+export const FORGOTTEN_MS = 72 * HOUR; // a stay longer than this with (almost) no session work is a forgotten stay
+export const FORGOTTEN_WORK_SHARE = 0.02; // 'almost none': under 2% of the stay worked in a session
 
 const toMs = v => {
   if (v === undefined || v === null || v === '') return null;
@@ -74,14 +76,29 @@ export function ciIntervals(timings) {
   return out;
 }
 
-/** Session intervals per ticket for one kind ('work' | 'waitUser'): Map ticket -> [[s, e]]. */
+/** Ticket ids a session's time is credited to: its batch list (auto dispatcher runs), else none. */
+export function sessionBatch(s) {
+  if (Array.isArray(s?.batch) && s.batch.length) return s.batch;
+  return batchFrom({ title: s?.title });
+}
+
+/**
+ * Session intervals per ticket for one kind ('work' | 'waitUser'): Map ticket -> [[s, e]].
+ * A session started by the auto dispatcher works a batch of tickets: an interval tagged with one of its ids
+ * counts for every id in the batch (the batch's tickets are moved to in-progress at the start, worked later).
+ */
 export function sessionIntervals(sessions, kind) {
   const out = new Map();
+  const put = (id, a, b) => {
+    if (!out.has(id)) out.set(id, []);
+    out.get(id).push([a, b]);
+  };
   for (const s of sessions || []) {
+    const batch = sessionBatch(s);
     for (const [a, b, id] of (s && s.intervals && s.intervals[kind]) || []) {
       if (!id) continue;
-      if (!out.has(id)) out.set(id, []);
-      out.get(id).push([a, b]);
+      if (batch.includes(id)) for (const x of batch) put(x, a, b);
+      else put(id, a, b);
     }
   }
   return out;
@@ -121,6 +138,8 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
   const projects = new Map();
   const groupAreas = new Map();
   const rows = [];
+  const forgotten = new Map(); // ticket -> {ticket, title, hours, open}
+  const forgottenStays = [];   // `${ticket}|${stay.from}`, so flow metrics can leave them out too
   const typicalRows = []; // one per ticket with a closed stay in the window
   for (const t of byId.values()) {
     if (t.type === 'epic' || (only && t.id !== only)) continue;
@@ -135,6 +154,16 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
       const b = Math.min(Date.parse(s.to), nowMs);
       if (!(b > a)) continue;
       const p = splitStay(a, b, { work: work.get(t.id), ci: ci.get(t.id), you: you.get(t.id) });
+      // A long stay with no (or under 2% of it) session work: forgotten, apart from the totals.
+      const stayMs = Date.parse(s.to) - Date.parse(s.from);
+      if (stayMs > FORGOTTEN_MS && p.working < stayMs * FORGOTTEN_WORK_SHARE) {
+        const g = forgotten.get(t.id) || { ticket: t.id, title: t.title || '', hours: 0, open: false };
+        g.hours = r2(g.hours + (b - a) / HOUR);
+        g.open = g.open || !!s.open;
+        forgotten.set(t.id, g);
+        forgottenStays.push(`${t.id}|${s.from}`);
+        continue;
+      }
       add(acc, p);
       if (s.open) open = true; else add(closed, p);
     }
@@ -157,8 +186,9 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
   const groupOut = map => Object.fromEntries([...map].sort((x, y) => (x[0] < y[0] ? -1 : 1)).map(([k, v]) => [k, hoursOf(v)]));
   // Mean, not median, per category: per-category medians do not add up to 100%, means of shares do.
   const avg = k => (typicalRows.length ? Math.round((typicalRows.reduce((n, r) => n + r[k], 0) / typicalRows.length) * 1000) / 1000 : null);
+  const forgottenList = [...forgotten.values()].sort((x, y) => y.hours - x.hours || (x.ticket < y.ticket ? -1 : 1));
   return {
-    // The typical ticket: average per-category share over tickets whose in-progress stay closed in the window
+    // The average ticket (key `typical`): average per-category share over tickets whose in-progress stay closed in the window
     // (open stays excluded, so tickets forgotten in progress do not decide it).
     typical: {
       n: typicalRows.length,
@@ -169,6 +199,8 @@ export function splitInProgress({ doc, sessions = [], timings = [], now = new Da
       ...hoursOf(total),
       shares: { working: share(total.workingMs, sum), ci: share(total.ciMs, sum), you: share(total.youMs, sum), idle: share(total.idleMs, sum) },
     },
+    forgotten: { n: forgottenList.length, hours: r2(forgottenList.reduce((n, g) => n + g.hours, 0)), tickets: forgottenList },
+    forgottenStays,
     byTicket: rows.slice(0, TOP).map(({ idleMs, ...r }) => r),
     byProject: groupOut(projects),
     byArea: groupOut(groupAreas),

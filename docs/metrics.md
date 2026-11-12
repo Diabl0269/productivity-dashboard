@@ -25,6 +25,7 @@ ch metrics cost    [<ticket-id>] [--project P] [--since 30d] [--json]      $ at 
 ch metrics time <name> [--repo R] -- <command...>                          run, time, record, pass the exit code through
 ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind gate|build|test|ci|other]
 ch tasks next [--n 5] [--project P] [--json]                                ready tickets, best first, with reasons
+ch tasks sweep-idle [--hours 24] [--dry-run] [--no-collect] [--json]      in-progress tickets with no session work for N hours go back to todo
 ```
 
 ## Config (`config.json`, all optional)
@@ -272,11 +273,18 @@ pr records have no `seconds`: they never show in timing series, trends, fail rat
 - **CI intervals**: a CI record (`kind: ci`) belongs to the ticket named in its branch (`fix/fro1610-menus` is
   FRO1610, same rule as the session ticket from a branch) and covers `[at, at + seconds]`. Cancelled runs count:
   CI was running. Runs on `main` or on a branch with no ticket id belong to no ticket.
-- **Typical ticket** (`typical`: `n`, `medianHours`, `shares`): the average of each ticket's share per category over
-  tickets whose in-progress stay closed in the window (open stays excluded, like the bottleneck's median closed stay),
-  so tickets forgotten in progress do not decide it. The insight and the dashboard lead with it; `total` is secondary
-  and is inflated by forgotten tickets (they also show as stale tickets). Averages of shares add up to 100% (per-category medians would not).
-- **Output**: `typical`, `total` (hours, `workingH`, `ciH`, `youH`, `idleH`, `shares`), `byTicket` (the 20 with the most
+- **Average ticket** (`typical`: `n`, `medianHours`, `shares`): the average of each ticket's share per category over
+  tickets whose in-progress stay closed in the window (open stays excluded, like the bottleneck's median closed stay).
+  Averages of shares add up to 100% (per-category medians would not). **All in-progress hours** (`total`): every hour of
+  every counted stay added up, so long stays weigh more.
+- **Forgotten stays** (`forgotten`: `n`, `hours`, `tickets`): a stay longer than 72 h in which a session worked on the ticket
+  for under 2% of it. They are listed apart (ticket, hours) and left out of `typical`, `total`, `byTicket`, the project and
+  area groups, and (through `skipStays`) of the in-progress numbers of `flowMetrics`: stage total, bottleneck share and the
+  review-vs-build comparison. `forgottenStays` carries the `ticket|from` keys for that.
+- **Batch runs**: the auto dispatcher starts one session per epic with a list of tickets (`autorun EPIC ID ID`, prompt
+  `/ship-task EPIC auto ID ID`) and those tickets sit in progress from the start. Session records keep that list as `batch`
+  (older records: parsed from the title); an interval tagged with any id in the batch counts as working time for every id in it.
+- **Output**: `typical` (the average ticket), `total` (all in-progress hours), `forgotten`, `forgottenStays`; `total` is (hours, `workingH`, `ciH`, `youH`, `idleH`, `shares`), `byTicket` (the 20 with the most
   nobody-working-on-it hours), `byProject`, `byArea`, `sessionsWithIntervals`. Without sessions or CI collected everything
   reads as nobody working on it, so the insight is skipped then and the tab says so.
 - **Limits**: a ticket worked in a session that is not titled, branched or `/ship-task`ed with its id has no
