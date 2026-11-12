@@ -164,15 +164,18 @@ test('totals: every open epic is shown; finished ones are counted apart', () => 
   assert.equal(totalsLine({ openEpics: 1, shown: 1, hiddenFinished: 1, missing: [] }).text, 'All 1 open epic is shown (1 finished one is not)');
 });
 
-test('totals: an open epic that no lane shows is listed as missing and the line turns into a warning', () => {
-  // An in-progress epic whose tickets are all closed gets no lane card and is not a pinned "done" note: the invariant must say so.
+test('totals: an in-progress epic whose tickets are all closed counts as finished, not missing', () => {
   const doc = mk({
     todo: [epic('E1'), task('T1', { parentId: 'E1' })],
     'in-progress': [epic('EX'), task('TX', { parentId: 'EX', checked: true })],
   });
   const plan = computeRunPlan(doc);
-  assert.deepEqual(plan.totals, { openEpics: 2, shown: 1, hiddenFinished: 0, missing: ['EX'] });
-  const line = totalsLine(plan.totals);
+  assert.deepEqual(plan.totals, { openEpics: 1, shown: 1, hiddenFinished: 1, missing: [] });
+  assert.equal(totalsLine(plan.totals).ok, true);
+});
+
+test('totals: a missing open epic turns the line into a warning naming it', () => {
+  const line = totalsLine({ openEpics: 2, shown: 1, hiddenFinished: 0, missing: ['EX'] });
   assert.equal(line.ok, false);
   assert.equal(line.text, 'Only 1 of 2 open epics shown; missing EX (0 finished ones are not)');
 });

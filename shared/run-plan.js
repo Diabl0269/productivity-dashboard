@@ -501,11 +501,15 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     if (!CLOSED_EPIC_SECTIONS.includes(sec.id)) continue;
     for (const t of sec.tasks || []) if (t && t.type === 'epic') finishedEpicIds.add(t.id);
   }
+  // An open epic whose tickets are all closed is finished by design (left off like a done one), not missing.
+  const allClosed = r => { const k = descendants(r.id); return k.length > 0 && k.every(x => !isOpen(x)); };
+  const offPage = readiness.filter(r => !placed.has(r.id));
+  for (const r of offPage) if (finishedIds.has(r.id) || allClosed(r)) finishedEpicIds.add(r.id);
   const totals = {
-    openEpics: readiness.length,
+    openEpics: readiness.length - offPage.filter(r => finishedEpicIds.has(r.id)).length,
     shown: readiness.filter(r => placed.has(r.id)).length,
     hiddenFinished: finishedEpicIds.size,
-    missing: readiness.filter(r => !placed.has(r.id)).map(r => r.id),
+    missing: offPage.filter(r => !finishedEpicIds.has(r.id)).map(r => r.id),
   };
 
   return {
