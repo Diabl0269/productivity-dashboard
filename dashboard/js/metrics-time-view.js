@@ -29,12 +29,12 @@ export function timeVerdict(total) {
   if (!t || !(t.hours > 0)) return '';
   const w = t.shares.waiting || 0;
   const l = t.shares.left || 0;
-  const head = `Of the ${fmtDaysHours(t.hours)} tickets sat in progress`;
-  if (!(w > 0) && !(l > 0)) return `${head}, every hour had a session, CI or a question on it.`;
+  const head = `Tickets sat in progress for ${fmtDaysHours(t.hours)} in all`;
+  if (!(w > 0) && !(l > 0)) return `${head}, and every hour had a session, CI or a question on it.`;
   const bits = [];
-  if (w > 0) bits.push(`${fmtPct(w)} they waited their turn behind another ticket of the same run`);
-  if (l > 0) bits.push(`${fmtPct(l)} nobody had them open`);
-  return `${head}, ${bits.join(' and ')}.`;
+  if (w > 0) bits.push(`${fmtPct(w)} of it they waited their turn behind another ticket of the same run`);
+  if (l > 0) bits.push(`${fmtPct(l)} of it nobody had them open`);
+  return `${head}: ${bits.join(', and ')}.`;
 }
 
 /** @param {object} f the payload's flow; @param {object} h DOM helpers {el, append, table, ticketLink, empty, card} */

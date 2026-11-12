@@ -116,7 +116,7 @@ test('fmtDaysHours reads as days and hours, never "609 h"', () => {
 
 test('time card: opens with one plain verdict made from the numbers, two idle buckets, each with its top tickets', () => {
   const total = { hours: 100, workingH: 10, ciH: 5, youH: 5, idleH: 80, waitingH: 55, leftH: 25, shares: { working: 0.1, ci: 0.05, you: 0.05, idle: 0.8, waiting: 0.55, left: 0.25 } };
-  assert.equal(timeVerdict(total), 'Of the 4\u00a0d 4\u00a0h tickets sat in progress, 55% they waited their turn behind another ticket of the same run and 25% nobody had them open.');
+  assert.equal(timeVerdict(total), 'Tickets sat in progress for 4\u00a0d 4\u00a0h in all: 55% of it they waited their turn behind another ticket of the same run, and 25% of it nobody had them open.');
   const h = makeHelpers();
   const card = renderTimeSplit({ inProgressSplit: {
     total, typical: { n: 4, medianHours: 6, shares: { working: 0.2, ci: 0.1, you: 0.1, idle: 0.6, waiting: 0.4, left: 0.2 } },
@@ -139,5 +139,5 @@ test('time card: opens with one plain verdict made from the numbers, two idle bu
 
 test('time card from an older server (one idle number) still adds up: idle reads as left', () => {
   const total = { hours: 10, workingH: 2, ciH: 0, youH: 0, idleH: 8, shares: { working: 0.2, ci: 0, you: 0, idle: 0.8 } };
-  assert.match(timeVerdict(total), /80% nobody had them open/);
+  assert.match(timeVerdict(total), /80% of it nobody had them open/);
 });
