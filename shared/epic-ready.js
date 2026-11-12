@@ -280,3 +280,33 @@ export function foldReadiness(readiness) {
   const notReady = list.filter(r => !r.ready);
   return { ready, notReady, buttonLabel: `${notReady.length} not ready` };
 }
+
+const joinWords = items => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
+
+/**
+ * ONE plain sentence for a Not-ready epic: why it cannot start and what would make it ready
+ * (PRO82). Uses the most important reason (the first one in `r.reasons`). Ready rows give ''.
+ * @param {{ready?: boolean, reasons?: string[], parked?: string[]}} r  one epicReadiness result
+ */
+export function plainReasonLine(r) {
+  if (!r || r.ready) return '';
+  const reason = String((r.reasons || [])[0] || '').trim();
+  let m;
+  if (/^in backlog$/.test(reason) || reason === 'a later bucket') return 'Ideas waiting for your go: move one to To do to start';
+  if ((m = /^in (\S+)$/.exec(reason))) return `Not started: it sits in ${m[1]}; move it to To do`;
+  if ((m = /^waits on (.+) in backlog$/.exec(reason))) {
+    const ids = r.parked && r.parked.length ? r.parked : m[1].split(/,\s*/);
+    return ids.length === 1
+      ? `Not ready: its only ticket, ${ids[0]}, is in backlog; move it to To do`
+      : `Not ready: its only tickets, ${joinWords(ids)}, are in backlog; move one to To do`;
+  }
+  if ((m = /^waits on your pick (\S+)$/.exec(reason))) return `Waits for your design pick on ${m[1]}`;
+  if ((m = /^waits on your co-task (\S+)$/.exec(reason))) return `Waits for your co-task ${m[1]}`;
+  if ((m = /^waits on (.+)$/.exec(reason))) return `Waits on ${joinWords(m[1].split(/,\s*/))} to finish`;
+  if (reason === 'marked blocked') return 'Marked blocked: clear the blocked flag once it can go';
+  if (reason === 'nothing open to run') return 'Nothing open to run: add a ticket under it';
+  if (reason === 'every open ticket is held for your go-ahead') return 'Every open ticket waits for your go-ahead: approve one to start';
+  if (reason === 'no ticket is free to run') return 'No ticket is free to run: each one waits on something else';
+  if ((m = /^(\S+) has no How to check it$/.exec(reason))) return `No ticket says how to check it: add one to ${m[1]}`;
+  return reason ? `Not ready: ${reason}` : 'Not ready';
+}

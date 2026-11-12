@@ -51,7 +51,7 @@ test('card: a backlog-parked epic says Not ready and names the parked child, nev
   const plan = computeRunPlan(doc);
   const c = cards(plan).find(x => x.id === 'T1');
   assert.equal(c.state, 'notready');
-  assert.equal(c.why, 'Not ready: waits on T4 in backlog');
+  assert.equal(c.why, 'Not ready: its only ticket, T4, is in backlog; move it to To do');
   assert.equal(plan.lanes.find(l => l.lane === 'a').now.some(x => x.id === 'T1'), false);
   assert.equal(cards(plan).find(x => x.id === 'T2').state, 'ready');
 });
@@ -60,7 +60,7 @@ test('card: an epic whose children are all blocked shows the readiness reason', 
   const doc = mk({ 'in-progress': [epic('T1')], todo: [task('T4', { parentId: 'T1', blocked: true })] });
   const c = cards(computeRunPlan(doc)).find(x => x.id === 'T1');
   assert.equal(c.state, 'notready');
-  assert.equal(c.why, 'Not ready: no ticket is free to run');
+  assert.equal(c.why, 'No ticket is free to run: each one waits on something else');
 });
 
 test('property: no card in the now list or in state ready belongs to an epic readiness calls Not ready', () => {

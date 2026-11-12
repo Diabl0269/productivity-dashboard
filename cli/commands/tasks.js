@@ -2534,6 +2534,10 @@ function cmdRunPlan(argv) {
       print(`  -- ${words === 'later' ? 'later' : `after ${words}`} --`);
       lane.later.forEach((c, i) => print(line(c, lane.later[i - 1])));
     }
+    if ((lane.laterEpics || []).length) {
+      print(`  -- Later (${lane.laterEpics.length}): cannot start yet --`);
+      for (const c of lane.laterEpics) print(`  ${c.state === 'backlog' ? '[backlog] ' : '[not rdy]'} ${c.id}  ${c.title}  - ${c.why}`);
+    }
   }
   if (plan.review && plan.review.length) {
     print(`Ready for review (${plan.review.length}), oldest first:`);
