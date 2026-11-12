@@ -32,7 +32,7 @@ function el(tag, className, text) {
   return node;
 }
 
-const STATE_LABEL = { ready: 'Ready now', partial: 'Partly ready', later: 'Later', pick: 'Your pick' };
+const STATE_LABEL = { ready: 'Ready now', partial: 'Partly ready', later: 'Later', notready: 'Not ready', pick: 'Your pick' };
 
 /** Open a ticket's detail in place (no navigation); toasts if the ticket is gone. */
 function openTicket(id) {
@@ -832,7 +832,7 @@ function renderRules(plan) {
 
 function renderLegend() {
   const legend = el('div', 'rp-legend');
-  for (const [cls, text] of [['running', 'In progress'], ['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['pick', 'Your picks and co-tasks']]) {
+  for (const [cls, text] of [['running', 'In progress'], ['ready', 'Ready now'], ['partial', 'Partly ready'], ['later', 'Later'], ['notready', 'Not ready'], ['pick', 'Your picks and co-tasks']]) {
     const item = el('span');
     item.appendChild(el('span', `rp-dot rp-dot-${cls}`));
     item.appendChild(document.createTextNode(text));

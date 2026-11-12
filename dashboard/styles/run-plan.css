@@ -27,7 +27,7 @@
 .rp-dot-running { background: var(--rp-c-running); }
 .rp-dot-ready { background: var(--rp-c-ready); }
 .rp-dot-partial { background: var(--rp-c-partial); }
-.rp-dot-later { background: var(--rp-c-later); }
+.rp-dot-later, .rp-dot-notready { background: var(--rp-c-later); }
 .rp-dot-pick { background: var(--rp-cpick); }
 
 /* Ready for review: shipped tickets waiting for a look, oldest first, above the lanes */
@@ -73,7 +73,7 @@ button.rp-link:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .rp-chip-running { color: var(--rp-c-running); background: color-mix(in srgb, var(--rp-c-running) 14%, transparent); }
 .rp-chip-ready { color: var(--rp-c-ready); }
 .rp-chip-partial { color: var(--rp-c-partial); }
-.rp-chip-later { color: var(--rp-c-later); }
+.rp-chip-later, .rp-chip-notready { color: var(--rp-c-later); }
 .rp-chip-pick { color: var(--rp-cpick); }
 
 .rp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; padding-top: 2px; }

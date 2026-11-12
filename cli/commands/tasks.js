@@ -75,7 +75,7 @@
 import { parse } from '../lib/args.js';
 import cmdNext from './tasks-next.js';
 import cmdReady from './tasks-ready.js';
-import { readinessLabel } from '../../shared/epic-ready.js';
+import { readinessLabel, parkedEpics, parkedAfterClosing } from '../../shared/epic-ready.js';
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
@@ -1017,6 +1017,7 @@ function cmdReview(argv) {
     'force-reason': { type: 'string' },
     evidence:      { type: 'string', multiple: true },
     'allow-check-owner': { type: 'boolean' },
+    'allow-parked': { type: 'string' },
     'held-pr':     { type: 'string' },
     'add-link':    { type: 'string', multiple: true },
     'link-label':  { type: 'string', multiple: true },
@@ -1104,6 +1105,17 @@ function cmdReview(argv) {
   if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
 
   assertNoOpenSubtasks(task, values.force);
+  // PRO72: closing the last runnable child must not leave the live epic with only backlog tickets open.
+  const liveEpic = epicOf(doc, task)?.task;
+  if (liveEpic) {
+    const parkedLeft = parkedAfterClosing(doc, liveEpic, task.id);
+    const allowParked = values['allow-parked'] === undefined ? null : values['allow-parked'].trim();
+    if (values['allow-parked'] !== undefined && !allowParked) die('--allow-parked needs a reason: --allow-parked "<why the epic may sit with only backlog tickets>"');
+    if (parkedLeft.length && !allowParked) {
+      die(`reviewing ${task.id} would leave epic ${liveEpic.id} with only backlog tickets open (${parkedLeft.join(', ')}), so it could never start. Move ${parkedLeft.join(', ')} to a "(later)" epic or to todo first. (--allow-parked "<why>" overrides.)`);
+    }
+    if (parkedLeft.length) printErr(`review: warning: ${liveEpic.id} is left with only backlog tickets (${parkedLeft.join(', ')}): ${allowParked}`);
+  }
   // PRO34: a review needs something to check (children of an epic too, their checks roll up).
   const noChecksReason = values['no-checks'] === undefined ? null : values['no-checks'].trim();
   if (values['no-checks'] !== undefined && !noChecksReason) die('--no-checks needs a reason: --no-checks "<why there is nothing to check>"');
@@ -2295,6 +2307,10 @@ function cmdLint(argv) {
   for (const t of noLane) printErr(`lint: warning: epic ${t.id} has no lane (ch tasks update ${t.id} --lane <slug>)`);
   for (const t of openEpicsWithoutModel(doc)) printErr(`lint: warning: epic ${t.id} has no model label (ch tasks update ${t.id} --add-label model:opus|sonnet)`);
 
+  // PRO72: an open epic whose only open tickets are in backlog can never start.
+  const parked = parkedEpics(doc);
+  for (const r of parked) printErr(`lint: warning: epic ${r.id} is in ${r.section} but its only open tickets are in backlog (${r.parked.join(', ')}); move them to todo or to a "(later)" epic`);
+
   // Reviews are Tal's: a ticket that went review -> done within minutes was probably closed by a session.
   for (const t of doc.sections.filter(s => s.id === 'done').flatMap(s => s.tasks)) {
     if (reviewClosedTooFast(t)) printErr(`lint: warning: ${t.id} went review -> done within ${REVIEW_DONE_FAST_MS / 60000} minutes; Tal may not have reviewed it`);
@@ -2321,7 +2337,7 @@ function cmdLint(argv) {
       return;
     }
     if (values.json) {
-      jsonOut({ valid: true, errors: [], duplicateIds: [], epicsWithoutLane: noLane.map(t => t.id), epicsWithoutModel: openEpicsWithoutModel(doc).map(t => t.id) });
+      jsonOut({ valid: true, errors: [], duplicateIds: [], epicsWithoutLane: noLane.map(t => t.id), epicsWithoutModel: openEpicsWithoutModel(doc).map(t => t.id), parkedEpics: parked.map(r => r.id) });
       return;
     }
     ok('lint: valid (no errors)');
@@ -2474,7 +2490,7 @@ function cmdRunPlan(argv) {
   const line = (c, prev) => {
     const mark = c.inProgress && (c.state === 'ready' || c.state === 'partial')
       ? '[running]'
-      : { ready: '[ready]  ', partial: '[partial]', later: '[later]  ', pick: '[you]    ' }[c.state] || c.state;
+      : { ready: '[ready]  ', partial: '[partial]', later: '[later]  ', notready: '[not rdy]', pick: '[you]    ' }[c.state] || c.state;
     const rest = c.isRest ? ' (rest)' : '';
     const alongside = prev && prev.step === c.step ? '\u2016' : ' '; // ‖ = runs alongside the card above
     return ` ${alongside}${mark} ${c.id}  ${c.title}${rest}${c.why ? `  - ${c.why}` : ''}`;
@@ -2809,7 +2825,7 @@ Subcommands:
          ui/audio tickets (label on the ticket or its epic): each --unverified line starts with taste: / hardware: /
          outside: / consent:, and the review needs --evidence (or a check with a file attached) or a tagged
          --unverified line; --force "<why>" overrides and records the reason on the ticket
-         [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--json]
+         [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--allow-parked "<why>"] [--json]
          --check-project / --check-video / --check-audio attach a saved .agsproj / short .mp4 / .wav (or .mp3 .m4a .ogg .flac) to the Nth --check of this call; --check-no-video N=<reason> (3-200 chars) says why a check has no video (not with a video on the same check) (Open project / Play video / audio player
          on the Plan page); the path is absolute or relative to $CH_HOME/evidence, must lie inside it and exist; --result-json checks may be
          {"text","project","video","audio","noVideo"} objects

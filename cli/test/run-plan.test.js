@@ -16,8 +16,10 @@ import { computeRunPlan, isPickGate, modelOf, laneDisplayName, threadLink } from
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 
+// Tickets say how to check them, so an epic over them is Ready (PRO72: cards follow shared/epic-ready.js).
+const PLAIN = '## In plain words\n**How to check it:** look at the title\n';
 function task(id, extra = {}) {
-  return { id, title: `Task ${id}`, checked: false, priority: 'medium', type: 'task', subtasks: [], ...extra };
+  return { id, title: `Task ${id}`, checked: false, priority: 'medium', type: 'task', subtasks: [], description: PLAIN, ...extra };
 }
 function epic(id, extra = {}) { return task(id, { type: 'epic', title: `Epic ${id}`, ...extra }); }
 function mkDoc(tasks, pinned) {
@@ -54,15 +56,16 @@ test('ready epic: now card with ticket count and command', () => {
   assert.equal(lane(plan, 'a').later.length, 0);
 });
 
-test('same-lane blocker is ordering, not waiting', () => {
+test('same-lane blocker: the blocked epic is Not ready (one rule with the Ready strip), E2 runs first', () => {
   const doc = mkDoc([
     epic('E1', { lane: 'a', blockedBy: ['E2'] }), task('T11', { parentId: 'E1' }),
     epic('E2', { lane: 'a' }), task('T12', { parentId: 'E2' }),
   ], ['E1', 'E2']);
   const l = lane(computeRunPlan(doc), 'a');
-  assert.deepEqual(ids(l.now), ['E2', 'E1']);
-  assert.equal(l.later.length, 0);
-  assert.match(l.now[1].why, /Runs after E2/);
+  assert.deepEqual(ids(l.now), ['E2']);
+  assert.deepEqual(ids(l.later), ['E1']);
+  assert.equal(l.later[0].state, 'notready');
+  assert.match(l.later[0].why, /^Not ready: waits on E2/);
 });
 
 test('cross-lane blocker -> later, and flips to now when it closes', () => {
@@ -74,8 +77,11 @@ test('cross-lane blocker -> later, and flips to now when it closes', () => {
   assert.deepEqual(ids(lane(plan, 'b').later), ['E3']);
   assert.equal(lane(plan, 'b').later[0].state, 'later');
   assert.match(lane(plan, 'b').later[0].why, /Needs E1/);
-  tasks[1].checked = true;
-  const after = computeRunPlan(mkDoc(tasks, ['E1', 'E3']));
+  // E1 ships: its child is done and the epic leaves the open sections.
+  const after = computeRunPlan(mkSectionDoc({
+    todo: [tasks[2], tasks[3]],
+    done: [{ ...tasks[0], checked: true }, { ...tasks[1], checked: true }],
+  }, ['E1', 'E3']));
   assert.deepEqual(ids(lane(after, 'b').now), ['E3']);
   assert.deepEqual(after.doneEpics, ['E1']);
 });
@@ -126,7 +132,9 @@ test('in-lane blocker that is later makes the dependant later', () => {
   ];
   const pins = ['E1', 'E3', 'E5'];
   const l = lane(computeRunPlan(mkDoc(base, pins)), 'b');
-  assert.deepEqual(ids(l.now), ['E3', 'E5']);
+  assert.deepEqual(ids(l.now), ['E3']);
+  assert.deepEqual(ids(l.later), ['E5']);
+  assert.equal(l.later[0].state, 'notready');
   const blocked = base.map(t => (t.id === 'E3' ? { ...t, blockedBy: ['E1'] } : t));
   const l2 = lane(computeRunPlan(mkDoc(blocked, pins)), 'b');
   assert.deepEqual(ids(l2.later), ['E3', 'E5']);
@@ -348,7 +356,8 @@ test('step: unrelated epics without a lane all start together; a dependant is st
     epic('E1', { blockedBy: ['E3'] }), task('T2', { parentId: 'E1' }), epic('E3'), task('T4', { parentId: 'E3' }),
     epic('E5'), task('T6', { parentId: 'E5' }),
   ], ['E1', 'E3', 'E5'])), 'unassigned');
-  assert.deepEqual(chained.now.map(c => [c.id, c.step]), [['E3', 0], ['E5', 0], ['E1', 1]]);
+  assert.deepEqual(chained.now.map(c => [c.id, c.step]), [['E3', 0], ['E5', 0]]);
+  assert.deepEqual(chained.later.map(c => [c.id, c.state]), [['E1', 'notready']]);
 });
 
 test('step: named lanes keep position order', () => {

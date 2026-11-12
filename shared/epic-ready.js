@@ -139,6 +139,8 @@ function readinessIn(ix, epic) {
   });
 
   const runnable = children.filter(c => c.runnable);
+  // Parked: the only open tickets under the epic sit in backlog (PRO72).
+  const parked = children.length > 0 && children.every(c => c.section === 'backlog') ? children.map(c => c.id) : [];
   const reasons = [];
   if (!['todo', 'in-progress'].includes(sectionId)) reasons.push(`in ${sectionId === 'backlog' ? 'backlog' : sectionId}`);
   if (LATER_TITLE.test(String(epic.title || ''))) reasons.push('a later bucket');
@@ -146,7 +148,9 @@ function readinessIn(ix, epic) {
   if (epicBlockers.length) reasons.push(`waits on ${epicBlockers.join(', ')}`);
   if (epic.blocked) reasons.push('marked blocked');
   for (const p of gatePicks) reasons.push(`waits on your ${isDesignPick(p) ? 'pick' : 'co-task'} ${p.id}`);
-  if (!runnable.length && !reasons.length) {
+  if (!runnable.length && !reasons.length && parked.length) {
+    reasons.push(`waits on ${parked.join(', ')} in backlog`);
+  } else if (!runnable.length && !reasons.length) {
     const held = children.filter(c => /^held:/.test(c.why || ''));
     reasons.push(!children.length ? 'nothing open to run'
       : held.length === children.length ? 'every open ticket is held for your go-ahead'
@@ -163,6 +167,7 @@ function readinessIn(ix, epic) {
     lane: typeof epic.lane === 'string' && epic.lane.trim() ? epic.lane.trim() : null,
     ready: reasons.length === 0,
     reasons,
+    parked,
     auto: isAuto(epic),
     priority: autoPriorityOf(epic),
     autoRank: autoRankOf(epic),
@@ -174,6 +179,29 @@ function readinessIn(ix, epic) {
 /** Readiness of one epic: { id, title, section, lane, ready, reasons, auto, priority, autoRank, model, children }. */
 export function epicReadiness(doc, epic) {
   return readinessIn(indexDoc(doc), epic);
+}
+
+/** True for an open epic (todo or in-progress, not a later bucket) whose only open tickets are in backlog. */
+export function isParkedEpic(r) {
+  return !!r && (r.parked || []).length > 0 && ['todo', 'in-progress'].includes(r.section) && !LATER_TITLE.test(String(r.title || ''));
+}
+
+/** Readiness rows of open epics whose only open tickets are in backlog (they can never start). */
+export function parkedEpics(doc) {
+  return openEpicReadiness(doc).filter(isParkedEpic);
+}
+
+/**
+ * Would closing `closingId` leave `epic` with open work only in backlog? Returns those backlog
+ * ids (non-empty) when so, else []. Used by `ch tasks review` (PRO72).
+ */
+export function parkedAfterClosing(doc, epic, closingId) {
+  const ix = indexDoc(doc);
+  if (!['todo', 'in-progress'].includes(ix.sectionOf.get(epic.id)) || LATER_TITLE.test(String(epic.title || ''))) return [];
+  const open = descendantIds(epic.id, ix.childrenOf)
+    .map(id => ix.byId.get(id))
+    .filter(t => t.id !== closingId && t.type !== 'epic' && !FINISHED.has(ix.sectionOf.get(t.id)) && !t.checked);
+  return open.length && open.every(t => ix.sectionOf.get(t.id) === 'backlog') ? open.map(t => t.id) : [];
 }
 
 /** Readiness of every open epic (any section but done, review, archive), in document order. */

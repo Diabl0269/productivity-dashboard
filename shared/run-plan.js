@@ -170,6 +170,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
   }
   // Pins mean this week's focus, not "show on the plan": every in-progress or Ready epic gets a lane too.
   const readiness = openEpicReadiness(doc);
+  const readinessById = new Map(readiness.map(r => [r.id, r]));
   const extraLane = new Set();
   for (const id of epicIdsForLanes(readiness, doc)) {
     if (!pinned.includes(id)) { pinned.push(id); extraLane.add(id); }
@@ -330,7 +331,9 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         ? `your ${joinList(pickList)} ${pickList.length > 1 ? 'picks' : 'pick'}` : '';
       let phase = i.phase;
       if (crossLane.length || laterSameLane.length) phase = 'later';
-      resolved.set(id, phase);
+      // One rule (shared/epic-ready.js): an epic the Ready strip calls Not ready never shows Ready now.
+      const notReady = phase === 'now' && readinessById.get(id) && !readinessById.get(id).ready;
+      resolved.set(id, phase === 'now' && !notReady ? phase : 'later');
 
       if (phase === 'later' || phase === 'partial') pickList.forEach(p => waitPicks.add(p));
       if (phase === 'later') [...crossLane, ...laterSameLane].forEach(e => waitEpics.add(e));
@@ -341,6 +344,8 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
       } else if (phase === 'partial') {
         now.push(card(id, 'partial', false, i.freeWork.length, `Stops at ${pickText}`));
         later.push(card(id, 'later', true, i.gatedWork.length, `Needs ${pickText}`));
+      } else if (notReady) {
+        later.push(card(id, 'notready', false, i.work.length, `Not ready: ${readinessById.get(id).reasons.join('; ')}`));
       } else {
         now.push(card(id, 'ready', false, i.work.length,
           sameLane.length ? `Runs after ${joinList(sameLane)}` : 'Nothing blocking it'));
