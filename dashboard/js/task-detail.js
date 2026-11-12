@@ -87,6 +87,7 @@ import {
 } from './task-field-layout.js';
 import { promoteSubtaskInState } from '../../shared/subtasks.js';
 import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines, groupChecksByProject } from '../../shared/review.js';
+import { askLines } from '../../shared/asks.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { unsentNotes } from '../../shared/review-notes.js';
 import { reviewNoteAddRow, reviewNoteRow } from './review-notes-ui.js';
@@ -2826,7 +2827,7 @@ function reviewRelationRow(label, ids) {
 function buildReviewPanel(task, body) {
   const inReview = task.section === REVIEW_SECTION;
   const followUps = reviewFollowUps(task.taskId);
-  const lines = resultLines(task.result);
+  const lines = [...resultLines(task.result), ...askLines(task)];
   if (!inReview && !lines.length && !task.reviewOf && !followUps.length) return;
 
   const box = document.createElement('div');

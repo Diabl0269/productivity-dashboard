@@ -69,6 +69,22 @@ function loadTasksFilesLib() {
   return tasksFilesLibPromise;
 }
 
+// PRO73: PR states for merge asks, asked of `gh` without blocking the server; 5-minute cache.
+const PR_STATE_TTL_MS = 5 * 60 * 1000;
+const prStateCache = new Map();
+function prStateCached(prUrl) {
+  const hit = prStateCache.get(prUrl);
+  if (hit && Date.now() - hit.at < PR_STATE_TTL_MS) return hit.promise;
+  const promise = new Promise((resolve) => {
+    require('child_process').execFile('gh', ['pr', 'view', prUrl, '--json', 'state'], { timeout: 15000 }, (err, stdout) => {
+      if (err) { resolve({ state: null, error: err.code === 'ENOENT' ? 'gh not installed' : 'gh failed' }); return; }
+      try { resolve({ state: String(JSON.parse(stdout).state || '').toUpperCase() || null }); } catch { resolve({ state: null, error: 'gh returned unreadable output' }); }
+    });
+  });
+  prStateCache.set(prUrl, { at: Date.now(), promise });
+  return promise;
+}
+
 /** Same document, ignoring formatting: what a save conflict check should compare. */
 function sameTasksDoc(a, b) {
   try {
@@ -744,6 +760,23 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
+    return;
+  }
+
+  // Asks strip (PRO73): GET /api/pr-state?url=<GitHub PR URL> -> { state } ('OPEN', 'MERGED', 'CLOSED') or
+  // { state: null, error } when gh is missing or fails. Read-only: the page closes a merged merge ask through
+  // its own save. Only github.com pull URLs reach gh (as one argument, no shell).
+  if (url.pathname === '/api/pr-state' && req.method === 'GET') {
+    const prUrl = url.searchParams.get('url') || '';
+    const { mergePrError } = await import('./shared/asks.js');
+    if (mergePrError(prUrl)) {
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'url must be a GitHub pull request URL' }));
+      return;
+    }
+    const result = await prStateCached(prUrl);
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(result));
     return;
   }
 
