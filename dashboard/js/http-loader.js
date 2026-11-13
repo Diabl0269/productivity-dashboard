@@ -38,7 +38,8 @@ export async function loadTasksViaHttp() {
  * Ignores in-flight responses that race with a local save (stale body after
  * lastTaskContent was updated), and never applies while shouldSkip() is true.
  */
-export function startHttpTaskWatching(onUpdate, { shouldSkip } = {}) {
+// Every poll makes the server rebuild and send the whole tasks doc (~0.6 s, 9 MB), so poll gently.
+export function startHttpTaskWatching(onUpdate, { shouldSkip, intervalMs = 5000 } = {}) {
   if (httpWatchInterval) clearInterval(httpWatchInterval);
   let polling = false; // a slow poll (a big tasks file) must not stack another behind it
   httpWatchInterval = setInterval(async () => {
@@ -60,7 +61,7 @@ export function startHttpTaskWatching(onUpdate, { shouldSkip } = {}) {
       lastTaskContent = content;
       onUpdate(loadTasksJson(content));
     } catch (e) { /* silent */ } finally { polling = false; }
-  }, 2000);
+  }, intervalMs);
 }
 
 /** Stop the tasks.json poll started by startHttpTaskWatching. */

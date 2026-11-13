@@ -17,15 +17,16 @@ test('a skipped poll still reads the body, and polls never overlap', async () =>
   globalThis.fetch = async () => {
     started++;
     editing = true; // the user starts an edit while the response is on its way
-    await sleep(2500); // a slow, big response: longer than one poll interval
+    await sleep(500); // a slow, big response: longer than one poll interval
     return { ok: true, text: async () => { bodiesRead++; return '{}'; } };
   };
   let applied = 0;
-  http.startHttpTaskWatching(() => { applied++; }, { shouldSkip: () => editing });
-  await sleep(2300);
+  http.startHttpTaskWatching(() => { applied++; }, { shouldSkip: () => editing, intervalMs: 200 });
+  await sleep(350);
   assert.equal(started, 1, 'first poll started');
-  await sleep(2600); // second interval fires while the first poll is still running, then the first ends
+  await sleep(300); // an interval fires while the first poll is still running
   assert.equal(started, 1, 'no second poll while one is in flight');
+  await sleep(200);
   assert.equal(bodiesRead, 1, 'skipped poll still read its body');
   assert.equal(applied, 0, 'and did not apply it');
   http.stopHttpTaskWatching();
