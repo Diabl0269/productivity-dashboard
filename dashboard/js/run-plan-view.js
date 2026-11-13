@@ -20,7 +20,7 @@ import { renderAutoQueue } from './auto-queue-ui.js';
 import { renderLaterFold } from './run-plan-later.js';
 import { renderReasonBlock } from './run-plan-reasons.js';
 import { renderNextStartLine } from './next-start-line.js';
-import { renderAsksStrip } from './asks-strip.js';
+import { asksFromState, renderAskCard, checkMergedPrs, updateAsksBadge, setAskFiler } from './asks-strip.js';
 import { markChanged } from './tasks-io.js';
 import { showStatus } from './state.js';
 
@@ -354,6 +354,13 @@ function fileReview(plan) {
   showToast(`Filed ${created} ticket${created === 1 ? '' : 's'} into ${areas} area${areas === 1 ? '' : 's'}`);
 }
 
+/** PRO86: an answer on a done ticket became a review note: file it as a follow-up now (File review's path). */
+function fileNotesOf(id) {
+  const plan = planFiling(toDoc(getState()), { ticket: id });
+  if (plan.groups.length) fileReview(plan);
+  else showToast(`${id}: the answer is a review note that needs an area before it can be filed (Notes above)`);
+}
+
 /** Every unsent note, grouped by ticket, with the ticket it came from. Works when the cards are collapsed. */
 function renderNotesList() {
   const panel = el('div', 'rp-file-preview rp-notes-list');
@@ -407,15 +414,20 @@ function renderFileBar() {
   return wrap;
 }
 
-/** "Ready for review" block above the lanes: shipped tickets waiting for Tal's look, oldest first. */
-function renderReview(review, openChecks) {
-  const block = el('section', 'rp-review');
-  block.setAttribute('aria-label', 'Ready for review');
-  block.appendChild(el('h2', 'rp-review-title', 'Ready for review'));
+/**
+ * PRO86: the "For you" block above the lanes, one list oldest first with two kinds of item:
+ * epics (and standalone tickets) ready for review, their checks inside, and decisions (asks-strip.js
+ * cards with option buttons). Every item carries its media.
+ */
+function renderReview(review, openChecks, asks) {
+  const block = el('section', 'rp-review rp-for-you');
+  const total = review.length + asks.length;
+  block.setAttribute('aria-label', `For you (${total})`);
+  block.appendChild(el('h2', 'rp-review-title', total ? `For you (${total})` : 'For you'));
   const fileBar = renderFileBar();
   if (fileBar) block.appendChild(fileBar);
-  if (review.length) block.appendChild(renderReviewList(review));
-  else block.appendChild(el('p', 'rp-review-empty', 'Nothing waiting for review.'));
+  if (total) block.appendChild(renderReviewList(review, asks));
+  else block.appendChild(el('p', 'rp-review-empty', 'Nothing waits on you: no epic to review, no decision to make.'));
   if (openChecks.length) {
     const total = openChecks.reduce((sum, item) => sum + item.checks.total - item.checks.done, 0);
     block.appendChild(el('h3', 'rp-review-subtitle', `Checks on epics still in progress (${total})`));
@@ -425,9 +437,15 @@ function renderReview(review, openChecks) {
   return block;
 }
 
-function renderReviewList(items) {
+/** Review items and decision cards in one list, oldest first (a review by when it entered review, a decision by when it was asked). */
+function renderReviewList(items, asks = []) {
   const list = el('ol', 'rp-review-list');
-  for (const item of items) {
+  const when = x => String(x.kind === 'ask' ? x.card.at || '' : x.item.enteredAt || '') || '9999';
+  const all = [...items.map(item => ({ kind: 'review', item })), ...asks.map(card => ({ kind: 'ask', card }))];
+  if (asks.length) all.sort((a, b) => (when(a) < when(b) ? -1 : when(a) > when(b) ? 1 : 0));
+  for (const entry of all) {
+    if (entry.kind === 'ask') { list.appendChild(renderAskCard(getState(), entry.card, renderRunPlanView)); continue; }
+    const { item } = entry;
     const task = findTicket(item.id);
     const open = openReview.has(item.id);
     const li = el('li', 'rp-review-item' + (open ? ' rp-open' : ''));
@@ -879,9 +897,11 @@ export function renderRunPlanView() {
   currentDoc = toDoc(state);
   const plan = computeRunPlan(currentDoc);
 
-  const asks = renderAsksStrip(state, { redraw: renderRunPlanView });
-  if (asks) root.appendChild(asks);
-  root.appendChild(renderReview(plan.review || [], plan.openChecks || []));
+  setAskFiler(fileNotesOf); // here, not at import time: the modules import each other
+  const asks = asksFromState(state);
+  updateAsksBadge(asks.length);
+  checkMergedPrs(state, asks, renderRunPlanView);
+  root.appendChild(renderReview(plan.review || [], plan.openChecks || [], asks));
   readinessById = new Map((plan.readiness || []).map(r => [r.id, r]));
   root.appendChild(renderNextStartLine());
   root.appendChild(renderAutoQueue(plan.readiness || [], {

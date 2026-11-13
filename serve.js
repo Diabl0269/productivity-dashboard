@@ -741,7 +741,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Review videos: GET/HEAD /evidence/<rel>.mp4 (Range supported so the player can seek)
+  // Review evidence: GET/HEAD /evidence/<rel> for a video, sound or (PRO86) screenshot (Range supported so the player can seek)
   if (url.pathname.startsWith('/evidence/') && (req.method === 'GET' || req.method === 'HEAD')) {
     try {
       const lib = await loadEvidenceLib();

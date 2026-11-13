@@ -29,7 +29,7 @@ export function unverifiedTag(line) {
 // `needs-tal:` at the start, after an optional "<id>: " an epic adds when it rolls a child's line up.
 const NEEDS_TAL_RE = /^\s*(?:[A-Za-z]{1,8}\d+:\s*)?needs-tal\s*:/i;
 
-/** Is this Unverified line one only Tal can judge (`needs-tal: ...`)? Read by the Asks strip (PRO73). */
+/** Is this Unverified line one only Tal can judge (`needs-tal: ...`)? (PRO86: never an ask; a taste line becomes a check, cli/lib/taste-checks.js.) */
 export function isNeedsTalLine(line) {
   return NEEDS_TAL_RE.test(String(line ?? ''));
 }

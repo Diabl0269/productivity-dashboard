@@ -31,11 +31,11 @@
  *              [--held-pr "<why>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr; adds the check 'Try on branch X, then say merge or not')
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
- *              [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   (PRO73: each --ask shows in the Plan page's Asks for you strip)
+ *              [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   (PRO73: each --ask shows in the Plan page's For you list; PRO86: a needs-tal: taste: line becomes a check)
  *       needs at least one --check (or checks in --result-json, or checks already on the ticket) unless --no-checks "<reason>" says why
  *       there is nothing to check (stored as noChecksReason). Refuses a ticket with unchecked subtasks unless --force.
- *   ask <id> "<question>" [--ask-by YYYY-MM-DD] [--merge-pr URL]   leave a question for Tal (Plan page: Asks for you)
- *   answer <id> <key> ["<reply>"] [--done | --dismiss]               resolve it (answer and done record a decision)
+ *   ask <id> "<question>" [--ask-by YYYY-MM-DD] [--merge-pr URL]   leave a decision for Tal (Plan page: For you; options, media, details: tasks-asks.js)
+ *   answer <id> [<key>] <A|reply> [--done | --dismiss | --park]     resolve it; the answer drives the work (decision, follow-up, park)
  *   asks [--ticket ID] [--refresh] [--json]                          open asks; --refresh closes merge asks whose PR merged
  *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint), a review ticket with unticked checks/unsent notes, and an epic with unticked checks, unless --force
  *   move <id> <section> [--force]  same refusal when moving to done
@@ -87,6 +87,7 @@ import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
+import { tasteLinesToChecks, foldTasteChecks } from '../lib/taste-checks.js';
 import { readTasksDoc, layoutWarnings, migrateToSplit, splitDir } from '../../shared/tasks-files.js';
 import {
   isValidTaskId,
@@ -1123,9 +1124,23 @@ function cmdReview(argv) {
       die(`invalid result: ${e.message}`);
     }
   }
+  // PRO86: each "needs-tal: taste: ..." Unverified line becomes a check (with its media), never an ask.
+  let tasteChecks = [];
+  if (result?.unverified?.length) {
+    try {
+      const t = tasteLinesToChecks(result.unverified, evidenceRelOrDie);
+      result.unverified = t.unverified;
+      tasteChecks = t.checks;
+    } catch (e) { die(`review: ${e.message}`); }
+  }
 
   const doc = load();
   const { task, section: fromSection } = resolveTask(doc, id, values.section);
+  if (tasteChecks.length) {
+    const added = foldTasteChecks(tasteChecks, [...checkItems, ...(task.checks || []), ...(epicOf(doc, task)?.task.checks || [])]);
+    checkItems.push(...added);
+    checkTexts.push(...added.map(c => c.text));
+  }
   ensureSections(doc); // documents from before "Ready for review" lack the section
   const toSection = sectionById(doc, REVIEW_SECTION);
   if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
@@ -2883,14 +2898,20 @@ Subcommands:
          ship a ticket to "Ready for review": records the result and the checks to tick;
          --file-left files each left/unverified line as a follow-up ticket (same epic, review-of)
          a design ticket (label design) needs a design-board link: --design-link URL or an existing artifact link
-         [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   each --ask becomes an ask on the ticket (Plan page: Asks for you)
-  ask <id> "<question>" [--ask-by YYYY-MM-DD] [--merge-pr URL] [--json]
-         leave a question for Tal; it shows in the Plan page's "Asks for you" strip until answered, even after the ticket
-         is done; --merge-pr makes it a merge ask that closes itself once that PR merges (ch tasks asks --refresh, or the page)
-  answer <id> <key> ["<reply>"] [--done | --dismiss] [--json]
-         resolve an ask (keys from ch tasks asks: the ask's number, L<i> for an older Left line ending in '?' or saying
-         'Merge it', T for a ticket's needs-tal Unverified lines); a reply or --done records a decision on the ticket
-  asks [--ticket ID] [--refresh] [--json]   every open ask; --refresh first closes merge asks whose PR merged (needs gh)
+         [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   each --ask becomes a decision on the ticket (Plan page: For you)
+         an --unverified "needs-tal: taste: <what to judge> | video=<path> project=<path> audio=<path>" line becomes a check
+         (folded into an existing check on the same project); one with no media is refused (a taste question is never an ask)
+  ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] [--details "..."]
+      [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--json]
+         leave a decision for Tal and set the ticket's waitingOn; it shows in the Plan page's "For you" list while the
+         ticket or its epic is open, with option buttons (Park is always offered), the media and a Details fold;
+         --same-as shows it as one card with another ticket's ask; --merge-pr closes it once that PR merges
+  answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
+         resolve an ask and its same-question twins (keys from ch tasks asks: the ask's number, L<i> for an older Left
+         line ending in '?' or saying 'Merge it', W for a ticket whose waitingOn names Tal; the key may be left out when
+         the ticket has one). Records the decision and clears waitingOn; on a done ticket it files a follow-up ticket
+         instead; --park moves the ticket to backlog with the reason
+  asks [--ticket ID] [--refresh] [--json]   every decision on open work; --refresh first closes merge asks whose PR merged (needs gh)
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
       (--project slug | --no-project; a --parent/--review-of child inherits its parent's project) [--energy deep|shallow|errands|creative] [--lane slug]

@@ -59,7 +59,7 @@ export function renderTasks() {
   refreshOverviewTaskWidgets({ tasks: taskState.tasks, meta: taskState.meta });
   refreshProjectsView();
   refreshRunPlanView();
-  refreshAsks(taskState); // Overview "Asks for you" widget + tab title / favicon count (PRO73)
+  refreshAsks(taskState); // Overview "Decisions for you" widget + tab title / favicon count (PRO73)
   syncTaskDetailAfterReload(taskState.tasks);
 }
 

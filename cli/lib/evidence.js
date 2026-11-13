@@ -11,13 +11,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { projectPathError, videoPathError, audioPathError, evidencePathError, tidyEvidencePath } from '../../shared/review.js';
+import { imagePathError } from '../../shared/asks.js';
 
 export const EVIDENCE_DIR = 'evidence';
 
 // 'file' (PRO37 `review --evidence`): any saved proof file (screenshot, AX dump, render, run log).
 const anyFilePathError = (v, label = 'evidence') => evidencePathError(v, '', label);
-const pathErrorFor = (kind) => (kind === 'project' ? projectPathError : kind === 'audio' ? audioPathError : kind === 'file' ? anyFilePathError : videoPathError);
+// 'image' (PRO86): a screenshot on a decision for Tal (ch tasks ask --image).
+const pathErrorFor = (kind) => (kind === 'project' ? projectPathError : kind === 'audio' ? audioPathError : kind === 'image' ? imagePathError
+  : kind === 'file' ? anyFilePathError : videoPathError);
 const AUDIO_TYPES = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac' };
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
 
 function fail(status, message) {
   return Object.assign(new Error(message), { status });
@@ -91,13 +95,15 @@ export function parseRange(header, size) {
  */
 export function evidenceVideoResponse({ dataRoot, relPath, method = 'GET', range }) {
   let abs;
-  const audioType = AUDIO_TYPES[path.extname(String(relPath || '')).toLowerCase()];
-  try { abs = resolveEvidence(dataRoot, relPath, audioType ? 'audio' : 'video'); } catch (e) {
+  const ext = path.extname(String(relPath || '')).toLowerCase();
+  const audioType = AUDIO_TYPES[ext];
+  const imageType = IMAGE_TYPES[ext];
+  try { abs = resolveEvidence(dataRoot, relPath, audioType ? 'audio' : imageType ? 'image' : 'video'); } catch (e) {
     return { status: e.status || 400, headers: {}, error: e.message };
   }
   const st = fs.statSync(abs);
   if (!st.isFile()) return { status: 404, headers: {}, error: 'not found' };
-  const base = { 'Content-Type': audioType || 'video/mp4', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
+  const base = { 'Content-Type': audioType || imageType || 'video/mp4', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
   const r = parseRange(range, st.size);
   if (r === 'invalid') return { status: 416, headers: { ...base, 'Content-Range': `bytes */${st.size}` }, error: 'range not satisfiable' };
   const start = r ? r.start : 0;
