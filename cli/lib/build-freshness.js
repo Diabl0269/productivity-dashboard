@@ -110,8 +110,11 @@ export function checkFreshness(rules, url, run = defaultRun) {
   return unknown;
 }
 
-/** checkFreshness with a short cache (default 30 s), so the Plan page can poll without spawning git each time. */
-export function createFreshnessChecker({ run = defaultRun, ttlMs = 30000, now = Date.now } = {}) {
+/**
+ * checkFreshness with a cache (default 2 min), so the Plan page does not spawn git for ~75 PR links on
+ * every load: those blocking calls (~0.2 s each) held up the server and the save after an edit.
+ */
+export function createFreshnessChecker({ run = defaultRun, ttlMs = 120000, now = Date.now } = {}) {
   const cache = new Map();
   return (rules, url) => {
     const key = `${url}`;

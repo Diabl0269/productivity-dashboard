@@ -833,7 +833,12 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/next-start' && req.method === 'GET') {
     try {
       const lib = await import('./cli/lib/next-start-inputs.js');
-      const out = await lib.nextStartNow();
+      // Each call reads the whole tasks doc and a week of metrics (~1 s, blocking): the Plan page asks on
+      // every render, which starved saves. One answer is shared for 15 s.
+      if (!globalThis.__nextStartCache || Date.now() - globalThis.__nextStartCache.at > 15000) {
+        globalThis.__nextStartCache = { at: Date.now(), out: await lib.nextStartNow() };
+      }
+      const out = globalThis.__nextStartCache.out;
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify(out));
     } catch (e) {
