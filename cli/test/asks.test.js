@@ -1,7 +1,7 @@
 /**
  * cli/test/asks.test.js
- * PRO73 "Asks for you": shared/asks.js, the ask / answer / asks commands, review --ask, and
- * older tickets' questions read from their result with no migration (synthetic data only).
+ * PRO73 / PRO86 decisions for Tal: shared/asks.js, the ask / answer / asks commands, review --ask and
+ * needs-tal taste lines turned into checks, scope (open work only), answers that drive work (synthetic data only).
  */
 
 import { test } from 'node:test';
@@ -13,9 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import {
-  openAsks, taskAsks, addAsk, resolveAsk, closeMergedAsks, isLegacyQuestion, askErrors, askLines, asksNotice,
+  openAsks, addAsk, resolveAsk, closeMergedAsks, askErrors, askLines, asksNotice, answerAsk, groupAsks, countAsks, taskAsks,
 } from '../../shared/asks.js';
-import { isNeedsTalLine } from '../../shared/proof-gate.js';
 import { mergeTasksDocs } from '../../shared/tasks-merge.js';
 import { loadTasksJson, serializeTasksJson } from '../../dashboard/js/tasks-json.js';
 
@@ -91,53 +90,59 @@ function writeTask(dir, id, patch) {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy detection (read-time, no migration)
+// Scope (PRO86): only asks on open work show; needs-tal lines are checks, never asks
 // ---------------------------------------------------------------------------
 
-test('every Left line ending in "?" (or saying Merge it) appears in the asks list, done tickets included', () => {
+test('legacy Left questions on done tickets are dropped; an open ticket\'s still show (epic copy once)', () => {
+  const rows = openAsks(legacyDoc());
+  assert.deepEqual(rows.map(r => [r.id, r.key, r.text]), [['E1', 'L3', 'Own question on the epic?']]);
+  assert.ok(!rows.some(r => r.id === 'T11' || r.id === 'C1'), 'done tickets C1 / T11 carry no asks any more');
+});
+
+test('needs-tal Unverified lines are never asks, on open or done work', () => {
   const doc = legacyDoc();
+  doc.sections[0].tasks[0].result = result({ unverified: ['needs-tal: taste: the hues'] });
   const rows = openAsks(doc);
-  const lefts = doc.sections.flatMap(s => s.tasks).flatMap(t => (t.result?.left || []).map(l => ({ id: t.id, l })));
-  for (const { id, l } of lefts.filter(x => isLegacyQuestion(x.l))) {
-    const shown = rows.some(r => r.text === l.trim() && r.id === id)
-      // an epic's rolled-up copy of a child's line shows once, on the child
-      || (/^C1: /.test(l) && rows.some(r => r.id === 'C1' && r.text === l.slice(4)));
-    assert.ok(shown, `missing ask for ${id}: ${l}`);
-  }
-  assert.ok(!rows.some(r => /plain leftover|nothing to ask/.test(r.text)), 'plain Left lines are not asks');
-  assert.equal(rows.filter(r => r.text === 'Should the strip go with the track?').length, 1, 'epic copy deduped');
-  assert.equal(rows.find(r => r.id === 'T11' && r.key === 'L1').kind, 'merge');
-  assert.equal(rows.find(r => r.id === 'E1').text, 'Own question on the epic?');
+  assert.ok(!rows.some(r => /hues|glide|to judge/.test(r.text)), JSON.stringify(rows));
+  assert.ok(!rows.some(r => r.kind === 'taste'));
 });
 
-test('needs-tal Unverified lines are one row per ticket, others are not asks', () => {
-  const rows = openAsks(legacyDoc()).filter(r => r.kind === 'taste');
-  assert.deepEqual(rows.map(r => r.id).sort(), ['C1', 'T11']);
-  const t11 = rows.find(r => r.id === 'T11');
-  assert.equal(t11.key, 'T');
-  assert.equal(t11.text, '2 things to judge');
-  assert.deepEqual(t11.lines, ['needs-tal: taste: the hues', 'needs-tal: the wording reads clearly']);
-  assert.equal(rows.find(r => r.id === 'C1').text, '1 thing to judge');
-  assert.equal(isNeedsTalLine('E1: needs-tal: taste: x'), true);
-  assert.equal(isNeedsTalLine('taste: x'), false);
-});
-
-test('resolving a legacy ask persists in resolvedAsks and leaves the result alone', () => {
+test('an ask on a done ticket shows while its epic is open, and leaves once the epic closes', () => {
   const doc = legacyDoc();
-  const t11 = doc.sections[2].tasks[1];
-  const before = JSON.stringify(t11.result);
-  const out = resolveAsk(t11, 'l2', { action: 'answer', reply: 'Yes', now: AT });
+  const c1 = doc.sections[2].tasks[0];
+  addAsk(c1, { text: 'Keep the glide?', options: ['A: keep', 'B: drop'], now: AT });
+  assert.deepEqual(openAsks(doc).filter(r => r.id === 'C1').map(r => r.key), ['1']);
+  const epic = doc.sections[1].tasks.pop();
+  doc.sections[2].tasks.push(epic); // the epic is reviewed and closed
+  assert.deepEqual(openAsks(doc).filter(r => r.id === 'C1'), []);
+});
+
+test('an open ticket whose waitingOn names Tal is listed (W); done ones and other people are not', () => {
+  const doc = legacyDoc();
+  doc.sections[0].tasks.push(
+    { id: 'T12', title: 'Warp', waitingOn: 'Tal: pick A (live warp) or B (re-render)', updated: '2026-03-02' },
+    { id: 'T13', title: 'Vendor', waitingOn: 'vendor reply' },
+  );
+  doc.sections[2].tasks.push({ id: 'T14', title: 'Old', waitingOn: 'Tal: something old' });
+  const w = openAsks(doc).filter(r => r.key === 'W');
+  assert.deepEqual(w.map(r => [r.id, r.text]), [['T12', 'pick A (live warp) or B (re-render)']]);
+  const t12 = doc.sections[0].tasks.find(t => t.id === 'T12');
+  const out = resolveAsk(t12, 'W', { action: 'answer', reply: 'A', section: 'todo', now: AT });
+  assert.equal(t12.waitingOn, undefined, 'answering clears waitingOn');
+  assert.match(out.decision.text, /asked "pick A \(live warp\) or B \(re-render\)": A$/);
+  assert.equal(openAsks(doc).filter(r => r.id === 'T12').length, 0);
+});
+
+test('resolving a legacy Left question persists in resolvedAsks and leaves the result alone', () => {
+  const doc = legacyDoc();
+  const e1 = doc.sections[1].tasks[0];
+  const before = JSON.stringify(e1.result);
+  const out = resolveAsk(e1, 'l3', { action: 'answer', reply: 'Yes', section: 'review', now: AT });
   assert.equal(out.state, 'answered');
-  assert.match(t11.decisions[0].text, /asked "Is the copy right\?": Yes$/);
-  resolveAsk(t11, 'T', { action: 'dismiss', now: AT });
-  assert.equal(JSON.stringify(t11.result), before);
-  assert.equal(t11.resolvedAsks.length, 3);
-  assert.equal(t11.decisions.length, 1, 'dismiss writes no decision');
-  assert.deepEqual(taskAsks(t11).map(a => a.key), ['L1']);
-  assert.throws(() => resolveAsk(t11, 'T', { action: 'done' }), /no open ask "T"/);
-  // A needs-tal line added later shows again, alone.
-  t11.result.unverified.push('needs-tal: taste: a new one');
-  assert.deepEqual(taskAsks(t11).find(a => a.key === 'T').lines, ['needs-tal: taste: a new one']);
+  assert.match(e1.decisions[0].text, /asked "Own question on the epic\?": Yes$/);
+  assert.equal(JSON.stringify(e1.result), before);
+  assert.deepEqual(e1.resolvedAsks.map(r => r.text), ['Own question on the epic?']);
+  assert.throws(() => resolveAsk(e1, 'L3', { action: 'done' }), /no open ask "L3"/);
 });
 
 // ---------------------------------------------------------------------------
@@ -222,23 +227,6 @@ test('CLI: ask -> asks -> answer / dismiss round-trip, decision on the ticket', 
   assert.equal(runCli(['tasks', 'lint'], dir).status, 0);
 });
 
-test('CLI: a legacy Left question is answered once and stays answered (resolvedAsks)', () => {
-  const dir = makeTmpDir();
-  writeTask(dir, 'T5', { result: result({ left: ['Should it also animate?'], unverified: ['needs-tal: taste: speed'] }) });
-  let rows = JSON.parse(runCli(['tasks', 'asks', '--json'], dir).stdout).asks;
-  assert.deepEqual(rows.map(x => [x.id, x.key]), [['T5', 'L1'], ['T5', 'T']]);
-  let r = runCli(['tasks', 'answer', 'T5', 'L1', 'No'], dir);
-  assert.equal(r.status, 0, r.stderr);
-  r = runCli(['tasks', 'answer', 'T5', 'T', '--done'], dir);
-  assert.equal(r.status, 0, r.stderr);
-  rows = JSON.parse(runCli(['tasks', 'asks', '--json'], dir).stdout).asks;
-  assert.deepEqual(rows, []);
-  const t5 = readTask(dir, 'T5');
-  assert.deepEqual(t5.result.left, ['Should it also animate?'], 'the result is left as it was');
-  assert.equal(t5.resolvedAsks.length, 2);
-  assert.equal(t5.decisions.length, 2);
-});
-
 test('CLI: review --ask carries asks (repeatable) and prints the Plan page count; done prints it too', () => {
   const dir = makeTmpDir();
   let r = runCli(['tasks', 'review', 'T3', '--shipped', 'added A', '--check', 'Look at A',
@@ -291,4 +279,187 @@ test('save conflict: an answer made on the page and an ask added by a session bo
   const merged = mergeTasksDocs(base, local, current).sections[0].tasks[0];
   assert.deepEqual(merged.asks.map(a => [a.n, a.state]), [[1, 'answered'], [2, 'open']]);
   assert.equal(merged.decisions.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// PRO86: answers drive work, short questions with media, one card per question
+// ---------------------------------------------------------------------------
+
+/** An open epic (lane "ui") with a done child and an open child, plus backlog. */
+function workDoc() {
+  return {
+    meta: {},
+    sections: [
+      { id: 'backlog', tasks: [] },
+      { id: 'todo', tasks: [
+        { id: 'P2', title: 'Open child', parentId: 'P1', checked: false },
+        { id: 'P3', title: 'Width twin', checked: false },
+      ] },
+      { id: 'in-progress', tasks: [{ id: 'P1', title: 'Epic', type: 'epic', lane: 'ui', checked: false }] },
+      { id: 'done', tasks: [{ id: 'P4', title: 'Done child', parentId: 'P1', checked: true }] },
+    ],
+  };
+}
+const byId = (doc, id) => doc.sections.flatMap(s => s.tasks.map(t => ({ t, s: s.id }))).find(x => x.t.id === id);
+const counter = (doc) => () => `P${doc.sections.flatMap(s => s.tasks).length + 10}`;
+
+test('addAsk sets waitingOn to Tal; answering by option records it and clears waitingOn', () => {
+  const doc = workDoc();
+  const p2 = byId(doc, 'P2').t;
+  addAsk(p2, { text: 'Rework the wiring or drop Width?', options: ['A: rework', 'B: drop'], recommend: 'a', now: AT });
+  assert.match(p2.waitingOn, /^Tal: Rework the wiring/);
+  assert.deepEqual(openAsks(doc).map(r => [r.id, r.key]), [['P2', '1']], 'no extra W row for the ask-set waitingOn');
+  const out = answerAsk(doc, 'P2', '1', { action: 'answer', reply: 'b', now: AT });
+  assert.equal(out.state, 'answered');
+  assert.equal(p2.waitingOn, undefined);
+  assert.equal(p2.asks[0].answer, 'B: drop');
+  assert.match(p2.decisions.at(-1).text, /: B: drop$/);
+});
+
+test('an answer on a done ticket files a follow-up through review filing, not a dead decision', () => {
+  const doc = workDoc();
+  const p4 = byId(doc, 'P4').t;
+  addAsk(p4, { text: 'Gain makeup: A or B?', options: ['A: fixed makeup', 'B: quieter'], now: AT });
+  assert.equal(openAsks(doc).length, 1, 'listed: its epic is still open');
+  const out = answerAsk(doc, 'P4', '1', { action: 'answer', reply: 'A', newId: counter(doc), now: AT });
+  assert.equal((p4.decisions || []).length, 0, 'no decision on the done ticket');
+  assert.equal(out.filed.length, 1);
+  const filed = byId(doc, out.filed[0].id);
+  assert.equal(filed.s, 'todo');
+  assert.equal(filed.t.reviewOf, 'P4');
+  assert.match(filed.t.title, /Tal answered "Gain makeup: A or B\?": A: fixed makeup/);
+  assert.equal(p4.reviewNotes[0].state, 'filed');
+});
+
+test('Park moves the ticket to backlog with the reason as a decision', () => {
+  const doc = workDoc();
+  addAsk(byId(doc, 'P2').t, { text: 'Sleep/wake experiment now?', now: AT });
+  const out = answerAsk(doc, 'P2', '1', { action: 'park', reply: 'after v1', now: AT });
+  assert.deepEqual(out.parked, ['P2']);
+  const p2 = byId(doc, 'P2');
+  assert.equal(p2.s, 'backlog');
+  assert.match(p2.t.decisions.at(-1).text, /parked "Sleep\/wake experiment now\?": after v1$/);
+  assert.equal(p2.t.waitingOn, undefined);
+  assert.deepEqual(p2.t.history.at(-1), { at: AT, event: 'moved', from: 'todo', to: 'backlog' });
+});
+
+test('question length, taste and media gates', () => {
+  const t = { id: 'X1' };
+  assert.throws(() => addAsk(t, { text: 'x'.repeat(141) }), /141 characters; keep it to 140.*--details/);
+  assert.doesNotThrow(() => addAsk(t, { text: 'y'.repeat(140), details: 'z'.repeat(2000) }));
+  assert.throws(() => addAsk(t, { text: 'taste: does the glow look right?' }), /taste question is a check, not an ask/);
+  assert.throws(() => addAsk(t, { text: 'Q?', media: { video: 'a.mov' } }), /must end with \.mp4/);
+  assert.throws(() => addAsk(t, { text: 'Q?', media: { image: '../x.png' } }), /\.\./);
+  assert.throws(() => addAsk(t, { text: 'Q?', options: ['A: one'], recommend: 'C' }), /not one of the options/);
+  const ask = addAsk(t, { text: 'Q?', media: { image: 'X1/shot.png', project: 'X1/p.agsproj' } });
+  assert.deepEqual(ask.media, { image: 'X1/shot.png', project: 'X1/p.agsproj' });
+  assert.deepEqual(askErrors(t, 'x'), []);
+});
+
+test('the same question on two tickets (text or --same-as) is one card, and one answer answers both', () => {
+  const doc = workDoc();
+  addAsk(byId(doc, 'P2').t, { text: 'Width on one cable: rework stereo?', options: ['A: rework', 'B: drop'], now: AT });
+  addAsk(byId(doc, 'P3').t, { text: 'width on one cable:  rework stereo', now: AT });
+  let cards = groupAsks(openAsks(doc));
+  assert.equal(cards.length, 1);
+  assert.deepEqual(cards[0].ids.sort(), ['P2', 'P3']);
+  answerAsk(doc, 'P3', '1', { action: 'answer', reply: 'a', now: AT });
+  assert.deepEqual(openAsks(doc), []);
+  assert.equal(byId(doc, 'P2').t.asks[0].answer, 'A: rework');
+  assert.equal(byId(doc, 'P3').t.asks[0].answer, 'A: rework', 'the twin without options records the card option too');
+  // --same-as joins differently worded asks; a waitingOn row joins too.
+  const d2 = workDoc();
+  byId(d2, 'P3').t.waitingOn = 'Tal: Width with joined jacks, A or B';
+  addAsk(byId(d2, 'P2').t, { text: 'Mono Width needs both legs: rework?', sameAs: 'P3', now: AT });
+  cards = groupAsks(openAsks(d2));
+  assert.equal(cards.length, 1);
+  assert.equal(countAsks(d2), 1);
+  answerAsk(d2, 'P2', '1', { action: 'answer', reply: 'rework', now: AT });
+  assert.equal(byId(d2, 'P3').t.waitingOn, undefined);
+});
+
+test('a legacy "Merge it" line closes once the PR on the ticket\'s links has merged', () => {
+  const task = { id: 'M1', links: [{ url: 'https://github.com/acme/site/pull/235', label: 'PR' }], result: result({ left: ['Catalog PR is ready. Merge it?'] }) };
+  const doc = { sections: [{ id: 'review', tasks: [task] }] };
+  assert.equal(openAsks(doc)[0].mergePr, 'https://github.com/acme/site/pull/235');
+  assert.equal(closeMergedAsks(task, () => ({ state: 'OPEN' })).length, 0);
+  assert.equal(closeMergedAsks(task, url => (url.endsWith('/235') ? { state: 'MERGED' } : {}), { now: AT }).length, 1);
+  assert.deepEqual(openAsks(doc), []);
+});
+
+/** A tmp home with evidence files under evidence/<rel>. */
+function homeWithEvidence(files) {
+  const dir = makeTmpDir();
+  for (const rel of files) {
+    const abs = path.join(dir, 'evidence', rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, 'x');
+  }
+  return dir;
+}
+
+test('CLI: ask with options + media, answer by letter (key optional), refusals for long / taste / missing media', () => {
+  const dir = homeWithEvidence(['T1/shot.png', 'T1/clip.mp4']);
+  let r = runCli(['tasks', 'ask', 'T1', 'Keep it or drop it?', '--option', 'A: keep', '--option', 'B: drop', '--recommend', 'A',
+    '--image', 'T1/shot.png', '--video', path.join(dir, 'evidence/T1/clip.mp4'), '--details', 'Long context here.'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  let t1 = readTask(dir, 'T1');
+  assert.deepEqual(t1.asks[0].media, { video: 'T1/clip.mp4', image: 'T1/shot.png' });
+  assert.match(t1.waitingOn, /^Tal: /);
+  r = runCli(['tasks', 'asks'], dir);
+  assert.match(r.stdout, /A: keep \(recommended\)/);
+  assert.equal(runCli(['tasks', 'lint'], dir).status, 0);
+  r = runCli(['tasks', 'answer', 'T1', 'B'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  t1 = readTask(dir, 'T1');
+  assert.equal(t1.asks[0].answer, 'B: drop');
+  assert.equal(t1.waitingOn, undefined);
+
+  r = runCli(['tasks', 'ask', 'T2', 'q'.repeat(150)], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--details/);
+  r = runCli(['tasks', 'ask', 'T2', 'taste: is the glow right?', '--video', 'T1/clip.mp4'], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /taste question is a check/);
+  r = runCli(['tasks', 'ask', 'T2', 'Which one?', '--image', 'T2/missing.png'], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /not found/);
+  r = runCli(['tasks', 'ask', 'T2', 'Ship now?'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  r = runCli(['tasks', 'answer', 'T2', '--park', 'later'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  const doc = JSON.parse(fs.readFileSync(path.join(dir, 'tasks.json'), 'utf8'));
+  assert.ok(doc.sections.find(s => s.id === 'backlog').tasks.some(t => t.id === 'T2'), 'parked to backlog');
+});
+
+test('CLI: asks --refresh closes a legacy Merge it line once the linked PR merged (fake gh)', () => {
+  const dir = makeTmpDir();
+  writeTask(dir, 'T3', { links: [{ url: 'https://github.com/acme/site/pull/9', label: 'PR' }], result: result({ left: ['PR ready. Merge it?'] }) });
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-fake-gh-'));
+  fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\necho \'{"state":"MERGED","headRefName":"x"}\'\n', { mode: 0o755 });
+  const r = spawnSync(process.execPath, [CH_SCRIPT, 'tasks', 'asks', '--refresh', '--json'], { env: { ...process.env, CH_HOME: dir, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.closed.map(c => [c.id, c.key]), [['T3', 'L1']]);
+  assert.deepEqual(out.asks, []);
+});
+
+test('CLI: review turns a needs-tal taste line into a check (folded on the same project); no media is refused', () => {
+  const dir = homeWithEvidence(['T3/a.agsproj', 'T3/a.mp4', 'T4/b.mp4']);
+  let r = runCli(['tasks', 'review', 'T3', '--shipped', 'glow', '--check', 'Open the glow project', '--check-project', '1=T3/a.agsproj',
+    '--unverified', 'needs-tal: taste: does the glow feel right | project=T3/a.agsproj video=T3/a.mp4'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  const t3 = readTask(dir, 'T3');
+  assert.equal(t3.checks.length, 1, 'folded into the check on the same project');
+  assert.match(t3.checks[0].text, /Also judge: does the glow feel right/);
+  assert.equal(t3.checks[0].video, 'T3/a.mp4');
+  assert.ok(!(t3.result.unverified || []).some(l => /needs-tal/.test(l)), 'the line left the result');
+
+  r = runCli(['tasks', 'review', 'T4', '--shipped', 'x', '--check', 'Look at it', '--unverified', 'needs-tal: taste: caption colour | video=T4/b.mp4'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(readTask(dir, 'T4').checks.map(c => [c.text, c.video]), [['Look at it', undefined], ['caption colour', 'T4/b.mp4']]);
+
+  r = runCli(['tasks', 'review', 'T1', '--shipped', 'x', '--check', 'y', '--unverified', 'needs-tal: taste: the hues'], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /needs the thing to judge/);
 });

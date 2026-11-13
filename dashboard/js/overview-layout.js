@@ -11,7 +11,7 @@ function corporateHiddenPref() {
 
 /** Canonical widget definitions (DOM must use matching data-widget-id). */
 export const OVERVIEW_WIDGETS = [
-  { id: 'asks', title: 'Asks for you', wide: true, top: true },
+  { id: 'asks', title: 'Decisions for you', wide: true, top: true },
   { id: 'sprint', title: 'Sprint Info', wide: false, sprint: true },
   { id: 'today-plan', title: 'Today Plan', wide: false },
   { id: 'autorun', title: 'Autorun', wide: false },
@@ -72,7 +72,7 @@ export function loadOverviewLayout() {
       seen.add(id);
       deduped.push(id);
     }
-    // A widget added since the layout was saved: at the top when it is a `top` widget (Asks for you), else at the end.
+    // A widget added since the layout was saved: at the top when it is a `top` widget (Decisions for you), else at the end.
     for (const id of base.order) {
       if (deduped.includes(id)) continue;
       if (OVERVIEW_WIDGETS.find(w => w.id === id)?.top) deduped.unshift(id); else deduped.push(id);

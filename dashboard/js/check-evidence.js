@@ -80,9 +80,8 @@ export function openProjectButton(project, label) {
   return btn;
 }
 
-/** The inline player for a check's video; pressing the button again removes it. */
-export function playVideoButton(check, number, host) {
-  const label = `check ${number}`;
+/** The inline player for a check's (or a decision's) video; pressing the button again removes it. */
+export function playVideoButton(check, number, host, label = `check ${number}`) {
   const btn = button('Play video', `Play video for ${label}`);
   btn.setAttribute('aria-pressed', 'false');
   btn.title = `Play ${check.video}`;
@@ -116,12 +115,12 @@ export function playVideoButton(check, number, host) {
 }
 
 /** An inline <audio controls> player for a check's audio (always shown, no button; the same place Play video sits). */
-export function audioPlayer(check, number) {
+export function audioPlayer(check, number, label = `check ${number}`) {
   const audio = document.createElement('audio');
   audio.className = 'ce-audio';
   audio.controls = true;
   audio.preload = 'metadata';
-  audio.setAttribute('aria-label', `Audio for check ${number}`);
+  audio.setAttribute('aria-label', `Audio for ${label}`);
   audio.title = check.audio;
   audio.src = evidenceUrl(check.audio);
   return audio;
