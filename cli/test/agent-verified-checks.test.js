@@ -126,3 +126,20 @@ test('normalizeChecks keeps agentVerified and drops a malformed one', async () =
   assert.deepEqual(out[0].agentVerified, av);
   assert.equal(out[1].agentVerified, undefined);
 });
+
+test('reviewing a child keeps the agent-verified marker on the epic copy of its check', () => {
+  const h = home();
+  const doc = read(h);
+  const sec = (id) => doc.sections.find(s => s.id === id);
+  const verified = { at: '2026-01-02T03:04:05.000Z', by: 'agent', result: 'pass', note: NOTE };
+  const base = { priority: 'medium', checked: false, subtasks: [], created: '2026-01-01', updated: '2026-01-01' };
+  sec('in-progress').tasks.push({ ...base, id: 'T96', title: 'Synthetic epic', type: 'epic', lane: 'x' });
+  sec('in-progress').tasks.push({ ...base, id: 'T97', title: 'Synthetic child', parentId: 'T96', checks: [{ text: 'see the thing', checked: false, agentVerified: verified }] });
+  fs.writeFileSync(path.join(h, 'tasks.json'), JSON.stringify(doc, null, 2));
+  const r = run(['tasks', 'review', 'T97', '--shipped', 'did it', '--tests', 't', '--ci', 'ok', '--check', 'see the thing'], h);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const epicCheck = taskOf(h, 'T96').checks.find(c => c.text === 'T97: see the thing');
+  assert.ok(epicCheck, 'epic got the check');
+  assert.deepEqual(epicCheck.agentVerified, verified);
+  assert.equal(epicCheck.checked, false);
+});
