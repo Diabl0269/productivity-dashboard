@@ -36,6 +36,7 @@
  *       there is nothing to check (stored as noChecksReason). Refuses a ticket with unchecked subtasks unless --force.
  *   ask <id> "<question>" [--ask-by YYYY-MM-DD] [--merge-pr URL]   leave a decision for Tal (Plan page: For you; options, media, details: tasks-asks.js)
  *   answer <id> [<key>] <A|reply> [--done | --dismiss | --park]     resolve it; the answer drives the work (decision, follow-up, park)
+ *   interpret <id> "<reading>"   record an Interpretation: line; Plan page card OK / Not this, never blocks (tasks-interpret.js)
  *   asks [--ticket ID] [--refresh] [--json]                          open asks; --refresh closes merge asks whose PR merged
  *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint), a review ticket with unticked checks/unsent notes, and an epic with unticked checks, unless --force
  *   move <id> <section> [--force]  same refusal when moving to done
@@ -129,6 +130,7 @@ import { openPrGate } from '../lib/open-pr-gate.js';
 import { reviewOverlap, applyLinks, ticketAndEpic } from '../lib/ask-overlap.js';
 import { addAsk, askByError, askLines, countAsks, asksNotice } from '../../shared/asks.js';
 import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
+import { cmdInterpret } from './tasks-interpret.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -3001,6 +3003,8 @@ Subcommands:
          line ending in '?' or saying 'Merge it', W for a ticket whose waitingOn names Tal; the key may be left out when
          the ticket has one). Records the decision and clears waitingOn; on a done ticket it files a follow-up ticket
          instead; --park moves the ticket to backlog with the reason
+  interpret <id> "<reading>" [--json]   record how you read a vague ticket (an 'Interpretation:' line in its description); the Plan page's
+         "For you" list shows it with OK / Not this + text (a review note, newest on the ticket). Never blocks: no ask, no waitingOn
   asks [--ticket ID] [--refresh] [--json]   every decision on open work; --refresh first closes merge asks whose PR merged (needs gh)
   add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
@@ -3077,6 +3081,7 @@ const SUBCOMMANDS = {
   promote:       cmdPromote,
   review:        cmdReview,
   ask:           cmdAsk,
+  interpret:     cmdInterpret,
   answer:        cmdAnswer,
   asks:          cmdAsks,
   notes:         cmdNotes,

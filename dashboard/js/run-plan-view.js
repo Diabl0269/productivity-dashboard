@@ -23,6 +23,7 @@ import { renderLaterFold } from './run-plan-later.js';
 import { renderReasonBlock } from './run-plan-reasons.js';
 import { renderNextStartLine } from './next-start-line.js';
 import { asksFromState, renderAskCard, checkMergedPrs, updateAsksBadge, setAskFiler } from './asks-strip.js';
+import { interpretationsFromState, renderInterpretationCard } from './interpretation-card.js';
 import { markChanged } from './tasks-io.js';
 import { showStatus } from './state.js';
 
@@ -446,14 +447,14 @@ function renderFileBar() {
  * epics (and standalone tickets) ready for review, their checks inside, and decisions (asks-strip.js
  * cards with option buttons). Every item carries its media.
  */
-function renderReview(review, openChecks, asks) {
+function renderReview(review, openChecks, asks, interps = []) {
   const block = el('section', 'rp-review rp-for-you');
-  const total = review.length + asks.length;
+  const total = review.length + asks.length + interps.length;
   block.setAttribute('aria-label', `For you (${total})`);
   block.appendChild(el('h2', 'rp-review-title', total ? `For you (${total})` : 'For you'));
   const fileBar = renderFileBar();
   if (fileBar) block.appendChild(fileBar);
-  if (total) block.appendChild(renderReviewList(review, asks));
+  if (total) block.appendChild(renderReviewList(review, asks, interps));
   else block.appendChild(el('p', 'rp-review-empty', 'Nothing waits on you: no epic to review, no decision to make.'));
   if (openChecks.length) {
     const total = openChecks.reduce((sum, item) => sum + item.checks.total - item.checks.done, 0);
@@ -465,13 +466,14 @@ function renderReview(review, openChecks, asks) {
 }
 
 /** Review items and decision cards in one list, oldest first (a review by when it entered review, a decision by when it was asked). */
-function renderReviewList(items, asks = []) {
+function renderReviewList(items, asks = [], interps = []) {
   const list = el('ol', 'rp-review-list');
-  const when = x => String(x.kind === 'ask' ? x.card.at || '' : x.item.enteredAt || '') || '9999';
-  const all = [...items.map(item => ({ kind: 'review', item })), ...asks.map(card => ({ kind: 'ask', card }))];
-  if (asks.length) all.sort((a, b) => (when(a) < when(b) ? -1 : when(a) > when(b) ? 1 : 0));
+  const when = x => String(x.kind === 'ask' || x.kind === 'interp' ? x.card.at || '' : x.item.enteredAt || '') || '9999';
+  const all = [...items.map(item => ({ kind: 'review', item })), ...asks.map(card => ({ kind: 'ask', card })), ...interps.map(card => ({ kind: 'interp', card }))];
+  if (asks.length || interps.length) all.sort((a, b) => (when(a) < when(b) ? -1 : when(a) > when(b) ? 1 : 0));
   for (const entry of all) {
     if (entry.kind === 'ask') { list.appendChild(renderAskCard(getState(), entry.card, renderRunPlanView)); continue; }
+    if (entry.kind === 'interp') { list.appendChild(renderInterpretationCard(getState(), entry.card, renderRunPlanView)); continue; }
     const { item } = entry;
     const task = findTicket(item.id);
     const open = openReview.has(item.id);
@@ -928,7 +930,7 @@ export function renderRunPlanView() {
   const asks = asksFromState(state);
   updateAsksBadge(asks.length);
   checkMergedPrs(state, asks, renderRunPlanView);
-  root.appendChild(renderReview(plan.review || [], plan.openChecks || [], asks));
+  root.appendChild(renderReview(plan.review || [], plan.openChecks || [], asks, interpretationsFromState(state)));
   readinessById = new Map((plan.readiness || []).map(r => [r.id, r]));
   root.appendChild(renderNextStartLine());
   root.appendChild(renderAutoQueue(plan.readiness || [], {
