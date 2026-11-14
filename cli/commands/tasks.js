@@ -126,6 +126,7 @@ import {
 import { planFiling, applyFiling } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
 import { openPrGate } from '../lib/open-pr-gate.js';
+import { reviewOverlap, applyLinks, ticketAndEpic } from '../lib/ask-overlap.js';
 import { addAsk, askByError, askLines, countAsks, asksNotice } from '../../shared/asks.js';
 import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
 
@@ -642,7 +643,7 @@ function cmdGet(argv) {
   if (Array.isArray(task.checks) && task.checks.length > 0) {
     print(`  Checks (${task.checks.filter(c => c.checked).length}/${task.checks.length}):`);
     task.checks.forEach((c, i) => {
-      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}${c.noVideo ? ` (no video: ${c.noVideo})` : ''}${c.agentVerified ? ` (agent ${c.agentVerified.result === 'pass' ? 'verified' : 'failed'}: ${c.agentVerified.note})` : ''}`);
+      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}${c.noVideo ? ` (no video: ${c.noVideo})` : ''}${c.agentVerified ? ` (agent ${c.agentVerified.result === 'pass' ? 'verified' : 'failed'}: ${c.agentVerified.note})` : ''}${c.checkedNote ? ` (${c.checkedNote})` : ''}${c.heldPr ? ` (on branch ${c.heldPr.branch || c.heldPr.pr}, not merged)` : ''}`);
     });
   }
   print(`  created: ${task.created || 'n/a'}  updated: ${task.updated || 'n/a'}`);
@@ -1050,7 +1051,10 @@ function cmdReview(argv) {
     'clear-unverified':   { type: 'boolean' },
     'resolve-unverified': { type: 'string' },
     ask:           { type: 'string', multiple: true },
+    'ask-details': { type: 'string', multiple: true },
     'ask-by':      { type: 'string' },
+    'same-judgement': { type: 'boolean' },
+    'not-same':    { type: 'string' },
   });
   // `review --force T1 ...`: the id came right after a bare --force.
   if (!positionals.length && values['force-reason'] !== undefined) {
@@ -1068,7 +1072,7 @@ function cmdReview(argv) {
     const today = todayStr();
     const moved = [];
     for (const child of children) {
-      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo, agentVerified: c.agentVerified }));
+      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo, agentVerified: c.agentVerified, heldPr: c.heldPr }));
       assertChecksAreTals(checkItems, values['allow-check-owner']);
       const rolled = rollUpIntoEpic(doc, child, checkItems);
       reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
@@ -1093,7 +1097,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--add-link URL]');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--ask "<question>" --ask-details "<at least 60 chars>"]... [--same-judgement | --not-same "<why>"] [--add-link URL]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -1106,6 +1110,7 @@ function cmdReview(argv) {
   }
   if (values['ask-by'] !== undefined && askByError(values['ask-by'])) die(askByError(values['ask-by']));
   if (values['ask-by'] !== undefined && !(values.ask || []).length) die('--ask-by needs an --ask "<question>"');
+  if ((values['ask-details'] || []).length > (values.ask || []).length) die('--ask-details pairs with --ask by position: give one --ask-details after each --ask "<question>"');
   const asList = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
   const checkItems = reviewCheckItems(base, values);
   const checkTexts = checkItems.map(c => c.text);
@@ -1198,17 +1203,35 @@ function cmdReview(argv) {
   if (pr.error) die(pr.error);
   pr.warnings.forEach(w => printErr(`review: warning: ${w}`));
   checkItems.push(...pr.checks.map(text => ({ text })));
-  if (pr.held) task.heldPr = pr.held;
+  if (pr.held) {
+    task.heldPr = pr.held;
+    // PRO92: every check of this review is about a build of the unmerged PR's branch.
+    for (const item of checkItems) item.heldPr = { pr: pr.held.pr, branch: pr.held.branch || '' };
+  }
   if (newLinks.length) task.links = [...(task.links || []), ...newLinks];
+
+  // PRO90: one judgement, one card: a new check that repeats an open question (or a --ask that repeats a check) links or says it differs.
+  if (values['same-judgement'] && values['not-same'] !== undefined) die('review: pass --same-judgement or --not-same, not both');
+  if (values['not-same'] !== undefined && !values['not-same'].trim()) die('review: --not-same needs a reason: --not-same "<why these are different judgements>"');
+  const overlap = reviewOverlap(doc, task, checkItems, { askTexts: values.ask || [], sameJudgement: !!values['same-judgement'], notSame: values['not-same'] });
+  if (overlap.error) die(`review: ${overlap.error}`);
+  applyLinks(overlap.links);
 
   if (result) task.result = result;
   if (evidenceRels.length) task.reviewEvidence = [...new Set([...(task.reviewEvidence || []), ...evidenceRels])];
   if (proofProblem && forceReason) task.forcedReview = { reason: forceReason, at: new Date().toISOString() };
   if (noChecksReason && !checkTexts.length && !(task.checks || []).length) task.noChecksReason = noChecksReason;
   applyUnverifiedEdits(task, values);
-  for (const text of values.ask || []) {
-    try { addAsk(task, { text, by: values['ask-by'] }); } catch (e) { die(`--ask: ${e.message}`); }
-  }
+  (values.ask || []).forEach((text, i) => {
+    try {
+      addAsk(task, {
+        text, by: values['ask-by'], checkRefs: overlap.askRefs[i], notSame: values['not-same'],
+        details: (values['ask-details'] || [])[i], labels: ticketAndEpic(doc, task).flatMap(t => t.labels || []),
+      });
+    } catch (e) {
+      die(`--ask: ${e.message}${/seen or heard/.test(e.message) ? `. review --ask has no media flags: use ch tasks ask ${task.id} "<question>" --details "..." with --video/--audio/--image/--project` : ''}`);
+    }
+  });
   const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
   const today = todayStr();
 

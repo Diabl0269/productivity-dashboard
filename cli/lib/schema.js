@@ -22,6 +22,7 @@ import { normalizeModel } from '../../shared/model.js';
 import { resultErrors, checkEvidenceErrors } from '../../shared/review.js';
 import { reviewNoteErrors } from '../../shared/review-notes.js';
 import { askErrors } from '../../shared/asks.js';
+import { heldPrError } from '../../shared/held-pr.js';
 
 /** Canonical section definitions (order = board column order). */
 export const SECTIONS = [
@@ -798,6 +799,12 @@ export function validateTasksDoc(doc) {
                 if (typeof av.note !== 'string' || !av.note.trim()) errors.push(`${r}.note must be a non-empty string`);
               }
             }
+            if (c.heldPr !== undefined) {
+              const e = heldPrError(c.heldPr, `${ref}.checks[${ci}].heldPr`);
+              if (e) errors.push(e);
+            }
+            if (c.checkedNote !== undefined && typeof c.checkedNote !== 'string') errors.push(`${ref}.checks[${ci}].checkedNote must be a string`);
+            if (c.checkedAt !== undefined && typeof c.checkedAt !== 'string') errors.push(`${ref}.checks[${ci}].checkedAt must be an ISO string`);
             errors.push(...checkEvidenceErrors(c, `${ref}.checks[${ci}]`));
           }
         }

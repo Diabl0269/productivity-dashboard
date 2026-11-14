@@ -5,10 +5,13 @@
  * project=<path> audio=<path>` out of the result and makes it a check (paths under
  * $CH_HOME/evidence, at least one). A line without media is refused. When the ticket, its epic or
  * this call already has a check on the same project, the line folds into that check instead of
- * adding a second one (FRO1033 duplicated FRO1257's check this way).
+ * adding a second one (FRO1033 duplicated FRO1257's check this way). Without a project hit, a check
+ * that says the same judgement (shared/ask-check-overlap.js) takes it too (PRO90).
  *
  * Pure apart from `relOrDie(value, kind, flag)`, which the caller passes to validate a path on disk.
  */
+
+import { sameJudgement } from '../../shared/ask-check-overlap.js';
 
 const TASTE_LINE = /^\s*needs-tal\s*:\s*taste\s*:\s*/i;
 const MEDIA_RE = /\b(project|video|audio)\s*=\s*(\S+)/gi;
@@ -54,14 +57,16 @@ export function tasteLinesToChecks(unverified, relOrDie) {
 
 /**
  * Fold taste checks into `targets` (existing checks: the ticket's, its epic's, this call's) that
- * use the same project. Mutates the targets; returns the taste checks still to add.
+ * use the same project, else (PRO90) say the same judgement. Mutates the targets; returns the taste checks still to add.
  */
 export function foldTasteChecks(tasteChecks, targets) {
   const rest = [];
   for (const c of tasteChecks) {
-    const hit = c.project ? targets.find(t => t && t !== c && t.project === c.project) : null;
+    const byProject = c.project ? targets.find(t => t && t !== c && t.project === c.project) : null;
+    // PRO90: with no project hit, a target that says the same judgement takes it (near-duplicates no longer stand side by side).
+    const hit = byProject || targets.find(t => t && t !== c && !t.checked && !t.handedTo && sameJudgement(t.text, c.text));
     if (!hit) { const { taste: _t, ...plain } = c; rest.push(plain); continue; }
-    if (!String(hit.text).toLowerCase().includes(c.text.toLowerCase())) hit.text = `${hit.text}. Also judge: ${c.text}`;
+    if (byProject && !String(hit.text).toLowerCase().includes(c.text.toLowerCase())) hit.text = `${hit.text}. Also judge: ${c.text}`;
     for (const kind of ['video', 'audio']) if (c[kind] && !hit[kind]) { hit[kind] = c[kind]; if (kind === 'video') delete hit.noVideo; }
   }
   return rest;

@@ -8,7 +8,7 @@
 // through commitReviewChange: decision + waitingOn cleared, Park moves it to backlog, an answer on a
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
-import { openAsks, groupAsks, resolveAsk, closeMergedAsks } from '../../shared/asks.js';
+import { openAsks, groupAsks, resolveAsk, closeMergedAsks, tickLinkedChecks } from '../../shared/asks.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
@@ -75,6 +75,13 @@ function applyAnswer(state, card, action, reply, redraw) {
     if (!found) continue;
     try {
       const r = resolveAsk(found.task, m.key, { action, reply, section: found.section, options: card.options });
+      // PRO90: an answer / done ticks the checks the question links (dismiss and park do not).
+      if (action === 'answer' || action === 'done') {
+        for (const t of tickLinkedChecks(id => findTicket(state, id)?.task, r, { now: new Date().toISOString() })) {
+          const owner = findTicket(state, t.id)?.task;
+          if (owner && !touched.includes(owner)) touched.push(owner);
+        }
+      }
       if (r.park) park.push(found.task);
       if (r.file) file.push(m.id);
     } catch (e) {
@@ -158,9 +165,27 @@ function mediaBlock(card) {
   return wrap;
 }
 
-/** The Details fold (rp-fold, animated): the ask's details, else the ticket description. */
+/** PRO90: the checks this question also settles ("Also settles: <check>"), with their video / project when they have one. */
+function settlesBlock(state, card) {
+  if (!card.checkRefs?.length) return null;
+  const shown = new Set(card.media?.project ? [card.media.project] : []); // one Open project per path
+  const wrap = el('ul', 'rp-ask-settles');
+  for (const ref of card.checkRefs) {
+    const check = (findTicket(state, ref.id)?.task.checks || []).find(c => c.text === ref.text);
+    const item = el('li', 'rp-ask-settle');
+    item.appendChild(el('span', 'rp-check-muted', 'Also settles: '));
+    item.appendChild(el('span', null, ref.text));
+    if (check?.project && !shown.has(check.project)) { shown.add(check.project); item.appendChild(document.createTextNode(' ')); item.appendChild(openProjectButton(check.project)); }
+    if (check?.video) { item.appendChild(document.createTextNode(' ')); item.appendChild(playVideoButton(check, 1, item, `${ref.id} check`)); }
+    wrap.appendChild(item);
+  }
+  return wrap;
+}
+
+/** The Details fold (rp-fold, animated): the ticket description, for a card with no details of its own. */
 function detailsFold(state, card) {
-  const text = card.details || findTicket(state, card.ids[0])?.task.description || '';
+  if (card.details) return { button: null, fold: null }; // PRO91: the ask's own details show inline, not behind a fold
+  const text = findTicket(state, card.ids[0])?.task.description || '';
   if (!text.trim()) return { button: null, fold: null };
   const handle = handleOf(card);
   let open = detailsOpen.has(handle);
@@ -211,6 +236,9 @@ export function renderAskCard(state, card, redraw, surface = 'plan') {
   const titles = [...new Set(card.members.map(m => m.title).filter(Boolean))];
   li.appendChild(el('div', 'rp-ask-ticket', titles.join(' / ')));
   li.appendChild(el('div', 'rp-title rp-ask-q', card.text));
+  if (card.details) li.appendChild(el('div', 'rp-ask-details rp-ask-details-inline', card.details.trim()));
+  const settles = settlesBlock(state, card);
+  if (settles) li.appendChild(settles);
   const media = mediaBlock(card);
   if (media) li.appendChild(media);
   if (card.mergePr) {

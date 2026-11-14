@@ -4,9 +4,14 @@
  * An ask is a choice between options, never a thing to look at (those are checks on the epic's
  * review card). It lives on the ticket as `asks`:
  *   asks: [{ n, at, text, by?, mergePr?, options?: [{ key, text }], recommend?, details?,
- *            media?: { video?, audio?, image?, project? }, sameAs?, state, answer?, resolvedAt? }]
+ *            media?: { video?, audio?, image?, project? }, sameAs?, checkRefs?: [{ id, text }], notSame?,
+ *            state, answer?, resolvedAt? }]
+ *   checkRefs (PRO90): checks (ticket id + exact text) that put the same judgement; they hide while the ask
+ *   is open and tick themselves when it is answered or done (tickLinkedChecks); notSame says why a check
+ *   that looks alike is a different judgement.
  *   state: 'open' | 'answered' | 'done' | 'dismissed' | 'parked'
- * A new ask's text is at most 140 characters (the rest goes in `details`); media paths are
+ * A new ask's text is at most 140 characters (the rest goes in `details`, which is required: at least
+ * ASK_DETAILS_MIN characters; a question about something seen or heard also needs media); media paths are
  * relative to $CH_HOME/evidence, like review evidence. A taste question ("taste: ...") is never
  * an ask: it is a check on the epic (`ch tasks review`, cli/lib/taste-checks.js). Adding an ask
  * sets the ticket's `waitingOn` to Tal; resolving it clears that.
@@ -44,6 +49,11 @@ export const ASK_TEXT_MAX = 140;
 const STORED_TEXT_MAX = 1000; // older asks were longer; the schema still accepts them
 const OPTION_MAX = 200;
 const DETAILS_MAX = 4000;
+/** A new question's --details must be at least this long: which screen or card, what to try, why it matters. */
+export const ASK_DETAILS_MIN = 60;
+// A question about something seen or heard needs the thing to judge (PRO91).
+const SEEN_HEARD_RE = /\b(sound|sounds|hear|heard|listen|look|looks|see|seen|feel|feels|colou?r|visual|loud|mix)\b/i;
+const MEDIA_LABELS = ['ui', 'audio'];
 export const MEDIA_KINDS = ['video', 'audio', 'image', 'project'];
 export const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -120,7 +130,7 @@ export function parseOption(input, i = 0) {
  * empty question, a bad date, PR URL, option, recommendation or media path, or a taste question.
  */
 export function addAsk(task, {
-  text, by, mergePr, options, recommend, details, media, sameAs, now = new Date().toISOString(),
+  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, now = new Date().toISOString(),
 } = {}) {
   if (isTasteText(text)) {
     throw new Error('a taste question is a check, not an ask: put it on the review as --check "<what to judge>" with --check-video / --check-audio / --check-project, or as an Unverified "needs-tal: taste: <text> | video=<path>" line');
@@ -149,6 +159,20 @@ export function addAsk(task, {
     m[kind] = tidyEvidencePath(v);
   }
   if (sameAs != null && sameAs !== '' && !ID_RE.test(String(sameAs).trim())) throw new Error(`--same-as must be a ticket id: ${sameAs}`);
+  const refs = (checkRefs || []).map(r => ({ id: String(r?.id ?? '').trim(), text: String(r?.text ?? '') }));
+  if (refs.some(r => !ID_RE.test(r.id) || !r.text.trim())) throw new Error('checkRefs must be [{ id: ticket id, text: the check text }]');
+  const why = notSame != null ? String(notSame).trim() : '';
+  if (notSame != null && !why) throw new Error('--not-same needs a reason: --not-same "<why these are different judgements>"');
+  // PRO91: a question carries its context. A merge ask linked to its check card is exempt (that card holds the context).
+  const exempt = !!mergePr && refs.length > 0;
+  if (!exempt && det.length < ASK_DETAILS_MIN) {
+    throw new Error(`a question needs --details (at least ${ASK_DETAILS_MIN} characters): which screen or card it is about, what to try, and why the choice matters`);
+  }
+  const seenHeard = SEEN_HEARD_RE.test(text) || opts.some(o => SEEN_HEARD_RE.test(o.text))
+    || (labels || []).some(l => MEDIA_LABELS.includes(String(l).toLowerCase()));
+  if (!exempt && seenHeard && !Object.keys(m).length) {
+    throw new Error('a question about something seen or heard needs the thing to judge: --video, --audio, --image or --project');
+  }
   if (!Array.isArray(task.asks)) task.asks = [];
   const n = task.asks.reduce((mx, a) => Math.max(mx, Number(a?.n) || 0), 0) + 1;
   const ask = { n, at: now, text: text.trim(), state: 'open' };
@@ -159,6 +183,8 @@ export function addAsk(task, {
   if (det) ask.details = det;
   if (Object.keys(m).length) ask.media = m;
   if (sameAs) ask.sameAs = String(sameAs).trim();
+  if (refs.length) ask.checkRefs = refs;
+  if (why) ask.notSame = why;
   task.asks.push(ask);
   task.waitingOn = `Tal: ${ask.text}`;
   return ask;
@@ -190,6 +216,7 @@ export function taskAsks(task, { skipLine = () => false } = {}) {
     if (!a || a.state !== 'open') continue;
     const row = { key: String(a.n), kind: a.mergePr ? 'merge' : 'ask', text: a.text, at: a.at || '', legacy: false };
     for (const k of ['by', 'mergePr', 'recommend', 'details', 'sameAs']) if (a[k]) row[k] = a[k];
+    if (a.checkRefs?.length) row.checkRefs = a.checkRefs.map(r => ({ id: r.id, text: r.text }));
     if (a.options?.length) row.options = a.options.map(o => ({ key: o.key, text: o.text }));
     if (a.media && Object.keys(a.media).length) row.media = { ...a.media };
     out.push(row);
@@ -310,6 +337,10 @@ export function groupAsks(rows) {
     card.members.push(r);
     if (!card.ids.includes(r.id)) card.ids.push(r.id);
     for (const k of ['options', 'recommend', 'details', 'media', 'mergePr', 'by']) if (card[k] == null && r[k] != null) card[k] = r[k];
+    for (const ref of r.checkRefs || []) {
+      if (!card.checkRefs) card.checkRefs = [];
+      if (!card.checkRefs.some(x => x.id === ref.id && x.text === ref.text)) card.checkRefs.push(ref);
+    }
   });
   return [...cards.values()];
 }
@@ -369,6 +400,7 @@ export function resolveAsk(task, key, {
     throw new Error(`${task?.id || task?.taskId || 'ticket'} has no open ask "${key}"${keys ? ` (open: ${keys})` : ' (none open)'}`);
   }
   const question = ask.text;
+  const linked = ask.checkRefs || [];
   // `options`: the card's options, for a twin ask on another ticket that has none of its own.
   const opt = (ask.options || options || []).find(o => o.key === text.toUpperCase());
   const said = opt ? `${opt.key}: ${opt.text}` : text;
@@ -384,7 +416,7 @@ export function resolveAsk(task, key, {
     if (said) own.answer = said;
   }
   if (waitsOnTal(task)) delete task.waitingOn;
-  const out = { question, state, said, decision: null, note: null, park: false, file: false };
+  const out = { question, state, said, decision: null, note: null, park: false, file: false, n: ask.key, checkRefs: linked };
   if (action === 'dismiss') return out;
   const day = now.slice(0, 10);
   if (action === 'park') {
@@ -400,6 +432,25 @@ export function resolveAsk(task, key, {
   if (!Array.isArray(task.decisions)) task.decisions = [];
   task.decisions.push(out.decision);
   return out;
+}
+
+/**
+ * Tick the checks an answered / done ask links (PRO90): each `checkRefs` entry { id, text } found through
+ * `findTask(id)` (the doc or the dashboard state) and not yet ticked gets checked = true, checkedAt and
+ * checkedNote "answered on question <n>: <said>". `resolved` is resolveAsk's result ({ n, checkRefs, said }).
+ * Mutates the tickets; returns [{ id, text }] for the checks it ticked.
+ */
+export function tickLinkedChecks(findTask, resolved, { now = new Date().toISOString() } = {}) {
+  const ticked = [];
+  for (const ref of resolved?.checkRefs || []) {
+    const check = (findTask(ref.id)?.checks || []).find(c => c && c.text === ref.text);
+    if (!check || check.checked) continue;
+    check.checked = true;
+    check.checkedAt = now;
+    check.checkedNote = `answered on question ${resolved.n}: ${resolved.said || 'done'}`;
+    ticked.push({ id: ref.id, text: ref.text });
+  }
+  return ticked;
 }
 
 /** Move `id` to backlog inside `doc` (Park). Returns true when it moved. */
@@ -427,17 +478,21 @@ function moveToBacklog(doc, id, now) {
  * Answer ticket `id`'s ask `key` and every ask on the same card, inside `doc` (the CLI path; the
  * dashboard does the same on its own state). Parks move to backlog; answers on done tickets are
  * filed as follow-ups through review filing (`newId(project)` allocates ids).
- * @returns {{ question, state, resolved: [{ id, key, decision, note }], parked: [ids], filed: [{ handle, id }], unrouted: [handles] }}
+ * An answered / done ask ticks the checks it links (tickLinkedChecks); dismiss and park never do.
+ * @returns {{ question, state, resolved: [{ id, key, decision, note }], parked: [ids], filed: [{ handle, id }], unrouted: [handles], ticked: [{ id, text }] }}
  */
 export function answerAsk(doc, id, key, { action, reply = '', newId, now = new Date().toISOString(), by = 'Tal' } = {}) {
   const { members, options } = askCardOf(doc, id, key);
-  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [] };
+  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [] };
   const toFile = [];
   for (const m of members) {
     const row = flat(doc).find(r => r.task.id === m.id);
     if (!row) throw new Error(`task ${m.id} not found`);
     const r = resolveAsk(row.task, m.key, { action, reply, now, by, section: row.section, options });
     row.task.updated = now.slice(0, 10);
+    if (action === 'answer' || action === 'done') {
+      for (const t of tickLinkedChecks(id => flat(doc).find(x => x.task.id === id)?.task, r, { now })) out.ticked.push(t);
+    }
     if (!out.question) { out.question = r.question; out.state = r.state; }
     out.resolved.push({ id: m.id, key: m.key, decision: r.decision, note: r.note });
     if (r.park && moveToBacklog(doc, m.id, now)) out.parked.push(m.id);
@@ -495,6 +550,12 @@ function askExtraErrors(a, r) {
     else for (const [k, v] of Object.entries(a.media)) { const e = mediaPathError(k, v); if (e) errors.push(`${r}.media.${e}`); }
   }
   if (a.sameAs !== undefined && !ID_RE.test(String(a.sameAs))) errors.push(`${r}.sameAs must be a ticket id`);
+  if (a.checkRefs !== undefined) {
+    if (!Array.isArray(a.checkRefs) || a.checkRefs.some(x => !x || typeof x !== 'object' || !ID_RE.test(String(x.id)) || typeof x.text !== 'string' || !x.text.trim())) {
+      errors.push(`${r}.checkRefs must be an array of { id: ticket id, text: non-empty string }`);
+    }
+  }
+  if (a.notSame !== undefined && typeof a.notSame !== 'string') errors.push(`${r}.notSame must be a string`);
   return errors;
 }
 
@@ -539,7 +600,11 @@ export function cleanAsks(task) {
     ? task.asks.filter(a => a && typeof a === 'object' && Number.isInteger(a.n) && a.n > 0 && !askTextError(a.text)
       && typeof a.at === 'string' && ASK_STATES.includes(a.state)).map((a) => {
       const e = { n: a.n, at: a.at, text: a.text, state: a.state };
-      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
+      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs', 'notSame']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
+      if (Array.isArray(a.checkRefs)) {
+        const refs = a.checkRefs.filter(x => x && ID_RE.test(String(x.id)) && typeof x.text === 'string' && x.text.trim()).map(x => ({ id: x.id, text: x.text }));
+        if (refs.length) e.checkRefs = refs;
+      }
       if (Array.isArray(a.options)) {
         const opts = a.options.filter(o => o && typeof o.key === 'string' && typeof o.text === 'string' && o.text).map(o => ({ key: o.key, text: o.text }));
         if (opts.length) e.options = opts;

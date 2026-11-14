@@ -1,8 +1,9 @@
 /**
  * cli/commands/tasks-asks.js
  * Decisions a session leaves for Tal, shown in the Plan page's "For you" list (PRO73, PRO86):
- *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] [--details "..."]
- *       [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--json]
+ *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
+ *       [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
+ *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
  *   asks [--ticket ID] [--refresh] [--json]
  * Keys come from `ch tasks asks`: the ask's number, L<i> for an older Left question, W for a
@@ -17,8 +18,16 @@ import {
   addAsk, openAsks, groupAsks, answerAsk, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
 } from '../../shared/asks.js';
 import { ghPrState } from '../lib/open-pr-gate.js';
+import { clearMergedHeldPrs } from '../../shared/held-pr.js';
+import { overlapsForAsk } from '../../shared/ask-check-overlap.js';
+import { checkEntries, askOverlapMessage, ticketAndEpic } from '../lib/ask-overlap.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
 import { dataRoot } from '../lib/io.js';
+
+/** The ticket's labels plus its epic's (a ui / audio ticket's questions need media). */
+function labelsOf(doc, task) {
+  return ticketAndEpic(doc, task).flatMap(t => t.labels || []);
+}
 
 function ticketOrDie(doc, id) {
   const found = findTask(doc, id);
@@ -37,7 +46,7 @@ function mediaRelOrDie(value, kind) {
   return rel;
 }
 
-const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] [--details "..."] [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--json]';
+const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]';
 
 /** `ch tasks ask <id> "<question>"`: leave a decision for Tal on the ticket (sets its waitingOn). */
 export async function cmdAsk(argv) {
@@ -52,6 +61,9 @@ export async function cmdAsk(argv) {
     image: { type: 'string' },
     project: { type: 'string' },
     'same-as': { type: 'string' },
+    'same-judgement': { type: 'boolean' },
+    'not-same': { type: 'string' },
+    'link-check': { type: 'string', multiple: true },
     json: { type: 'boolean', short: 'j' },
   });
   const [id, text] = positionals;
@@ -61,17 +73,39 @@ export async function cmdAsk(argv) {
   if (values['same-as']) ticketOrDie(doc, values['same-as']);
   const media = {};
   for (const kind of MEDIA_KINDS) if (values[kind]) media[kind] = mediaRelOrDie(values[kind], kind);
+  // PRO90: one judgement, one card: a question that repeats an unticked check on the ticket or its epic links to it or says it differs.
+  if (values['same-judgement'] && values['not-same'] !== undefined) die('ask: pass --same-judgement or --not-same, not both');
+  if (values['not-same'] !== undefined && !values['not-same'].trim()) die('ask: --not-same needs a reason: --not-same "<why these are different judgements>"');
+  const entries = checkEntries(doc, task);
+  const overlaps = overlapsForAsk({ text, details: values.details, mergePr: values['merge-pr'] }, entries);
+  const linked = (values['link-check'] || []).map((spec) => {
+    const m = /^([A-Za-z]{1,8}\d+):(\d+)$/.exec(String(spec).trim());
+    if (!m) die(`ask: --link-check needs <ticket>:<n> (n as ch tasks get lists the check), got "${spec}"`);
+    const e = entries.find(x => x.id === m[1] && x.n === Number(m[2]));
+    if (!e) die(`ask: --link-check ${spec}: no check ${m[2]} on ${m[1]} (only ${task.id}${entries.some(x => x.id !== task.id) ? ' and its epic' : ''} are searched)`);
+    if (e.check.checked || e.check.handedTo) die(`ask: --link-check ${spec}: that check is already ticked or handed on`);
+    return e;
+  });
+  if (values['same-judgement'] && !overlaps.length && !linked.length) {
+    const open = entries.filter(e => !e.check.checked && !e.check.handedTo).slice(0, 10).map(e => `${e.id} ${e.n}: ${e.check.text}`);
+    die(`ask: --same-judgement found no open check that repeats this question; link one by number with --link-check <ticket>:<n> (open checks: ${open.join('; ') || 'none'})`);
+  }
+  if (overlaps.length && !values['same-judgement'] && !linked.length && values['not-same'] === undefined) die(`ask: ${askOverlapMessage(overlaps)}`);
+  const refSet = values['same-judgement'] ? [...overlaps, ...linked] : linked;
+  const checkRefs = refSet.length ? [...new Map(refSet.map(o => [`${o.id}\0${o.check.text}`, { id: o.id, text: o.check.text }])).values()] : undefined;
   let ask;
   try {
     ask = addAsk(task, {
       text, by: values['ask-by'], mergePr: values['merge-pr'], options: values.option, recommend: values.recommend,
-      details: values.details, media, sameAs: values['same-as'],
+      details: values.details, media, sameAs: values['same-as'], checkRefs, notSame: values['not-same'],
+      labels: labelsOf(doc, task),
     });
   } catch (e) { die(`ask: ${e.message}`); }
   task.updated = todayStr();
   save(doc);
   if (values.json) { jsonOut({ id: task.id, ask, asksForTal: countAsks(doc) }); return; }
   ok(`ask ${task.id} #${ask.n}: ${ask.text}${ask.mergePr ? ' (closes when the PR merges)' : ''} (waiting on Tal)`);
+  if (ask.checkRefs) print(`linked ${ask.checkRefs.length} check(s): they hide while the question is open and tick when it is answered`);
   print(asksNotice(countAsks(doc)));
 }
 
@@ -114,6 +148,7 @@ export async function cmdAnswer(argv) {
   const ids = out.resolved.map(r => r.id).join(', ');
   ok(`${ids} ask ${out.state}${out.resolved.some(r => r.decision) ? ' (decision recorded)' : ''}; no longer waiting on Tal`);
   for (const pid of out.parked) print(`parked ${pid}: moved to backlog`);
+  for (const t of out.ticked) print(`ticked ${t.id} check: ${t.text}`);
   for (const f of out.filed) print(`filed follow-up ${f.id} from ${f.handle} (the ticket was done)`);
   if (out.unrouted.length) printErr(`answer: ${out.unrouted.join(', ')} needs an area before it can be filed (Plan page Notes, or ch tasks notes send)`);
   if (left) print(asksNotice(left));
@@ -128,6 +163,7 @@ export async function cmdAsks(argv) {
   });
   const doc = load();
   const closed = [];
+  const cleared = [];
   if (values.refresh) {
     const cache = new Map();
     const state = (url) => {
@@ -140,15 +176,19 @@ export async function cmdAsks(argv) {
       for (const task of section.tasks || []) {
         const done = closeMergedAsks(task, state);
         if (done.length) { task.updated = todayStr(); closed.push(...done.map(a => ({ id: task.id, key: a.key, mergePr: a.mergePr }))); }
+        // PRO92: a check labelled "on branch X" loses the label once its PR has merged.
+        const gone = clearMergedHeldPrs(task, state);
+        if (gone.length) { task.updated = todayStr(); cleared.push(...gone.map(g => ({ id: task.id, ...g }))); }
       }
     }
   }
-  if (closed.length) save(doc);
+  if (closed.length || cleared.length) save(doc);
   let rows = openAsks(doc);
   if (values.ticket) rows = rows.filter(r => r.id === values.ticket);
   const cards = groupAsks(rows);
-  if (values.json) { jsonOut({ asks: rows, cards: cards.length, closed }); return; }
+  if (values.json) { jsonOut({ asks: rows, cards: cards.length, closed, cleared }); return; }
   closed.forEach(c => print(`closed ${c.id} ask ${c.key}: ${c.mergePr} merged`));
+  cleared.forEach(c => print(`cleared branch label on ${c.id} (${c.pr} merged)`));
   if (!cards.length) { print('No asks for Tal.'); return; }
   print(`Decisions for you (${cards.length})`);
   for (const c of cards) {
