@@ -465,6 +465,21 @@ function renderReview(review, openChecks, asks, interps = []) {
   return block;
 }
 
+/** PRO97: needs-tal Unverified lines of done children, shown under the epic's checks while it is still in progress. */
+function renderNeedsTalLines(lines) {
+  const box = el('div', 'rp-needs-tal');
+  box.appendChild(el('div', 'rp-review-empty', 'Only you can judge these (from finished tickets):'));
+  const ul = el('ul', 'rp-needs-tal-list');
+  for (const l of lines) {
+    const li = el('li', null);
+    li.appendChild(idButton(l.from, 'rp-link rp-review-id'));
+    li.appendChild(document.createTextNode(` ${l.text}`));
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  return box;
+}
+
 /** Review items and decision cards in one list, oldest first (a review by when it entered review, a decision by when it was asked). */
 function renderReviewList(items, asks = [], interps = []) {
   const list = el('ol', 'rp-review-list');
@@ -508,7 +523,8 @@ function renderReviewList(items, asks = [], interps = []) {
       line.appendChild(document.createTextNode(` (${fu.section})`));
       li.appendChild(line);
     }
-    if (open && task) li.appendChild(renderCheckGrid(task));
+    if (open && task && (task.checks || []).length) li.appendChild(renderCheckGrid(task));
+    if (open && item.lines?.length) li.appendChild(renderNeedsTalLines(item.lines));
     list.appendChild(li);
   }
   return list;
