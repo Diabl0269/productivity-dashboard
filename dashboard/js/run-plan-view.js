@@ -5,6 +5,7 @@ import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
+import { heldPrChip } from './held-pr-ui.js';
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
@@ -159,7 +160,7 @@ function renderCheckGrid(task) {
   grid.appendChild(head);
   const checks = task.checks || [];
   const unsent = unsentNotes(task);
-  const addRow = (c, i) => {
+  const addRow = (c, i, projectButtons = []) => {
     const row = el('div', 'rp-check-row');
     const pass = el('div', 'rp-check-pass');
     const cb = el('input');
@@ -191,6 +192,11 @@ function renderCheckGrid(task) {
       badge.title = av.note;
       what.appendChild(badge);
     }
+    const branchChip = heldPrChip(c, projectButtons);
+    if (branchChip) {
+      what.appendChild(document.createTextNode(' '));
+      what.appendChild(branchChip);
+    }
     if (c.video) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(playVideoButton(c, i + 1, what));
@@ -208,8 +214,10 @@ function renderCheckGrid(task) {
   };
   // Checks sharing a saved project sit together under one header; the rest keep their order after.
   for (const group of groupChecksByProject(checks)) {
-    if (group.project) grid.appendChild(projectGroupHeader(group.project, 'rp-check-row ce-group-head'));
-    group.items.forEach(({ check, index }) => addRow(check, index));
+    let header = null;
+    if (group.project) { header = projectGroupHeader(group.project, 'rp-check-row ce-group-head'); grid.appendChild(header); }
+    const buttons = header ? [...header.querySelectorAll('button')] : [];
+    group.items.forEach(({ check, index }) => addRow(check, index, check.project ? buttons : []));
   }
   const texts = new Set(checks.map(c => c.text));
   const general = el('div', 'rp-check-row rp-check-general');

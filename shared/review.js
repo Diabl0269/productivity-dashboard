@@ -355,7 +355,7 @@ export function groupChecksByProject(checks) {
 }
 
 /**
- * Add checks (strings or { text, project?, video?, audio?, noVideo? }), skipping texts already on the ticket.
+ * Add checks (strings or { text, project?, video?, audio?, noVideo?, agentVerified?, heldPr? }), skipping texts already on the ticket.
  * A text already present keeps its tick but gains a project/video it lacked. Returns how many were added.
  */
 export function addChecks(task, texts, { now = new Date().toISOString() } = {}) {
@@ -372,12 +372,14 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
       if (input.noVideo && !have.noVideo && !have.video) have.noVideo = input.noVideo;
       if (input.video && have.noVideo) delete have.noVideo;
       if (input.agentVerified && !have.agentVerified) have.agentVerified = input.agentVerified;
+      if (input.heldPr && !have.heldPr) have.heldPr = { ...input.heldPr };
       continue;
     }
     const check = { text, checked: false, addedAt: now };
     for (const key of ['project', 'video', 'audio']) if (input[key]) check[key] = input[key];
     if (input.noVideo && !check.video) check.noVideo = input.noVideo;
     if (input.agentVerified) check.agentVerified = input.agentVerified;
+    if (input.heldPr) check.heldPr = { ...input.heldPr };
     task.checks.push(check);
     byText.set(text, check);
     added++;

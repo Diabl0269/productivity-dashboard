@@ -11,6 +11,7 @@ import { normalizeProjectRow } from '../../shared/projects.js';
 import { normalizeModel } from '../../shared/model.js';
 import { NOTE_KINDS, NOTE_STATES } from '../../shared/review-notes.js';
 import { cleanAsks } from '../../shared/asks.js';
+import { cleanHeldPr } from '../../shared/held-pr.js';
 import { readCustomFromJson, serializeCustomToJson } from './custom-fields.js';
 
 const ENERGY_VALUES = new Set(['deep', 'shallow', 'errands', 'creative']);
@@ -154,6 +155,11 @@ export function normalizeChecks(raw) {
         && (av.result === 'pass' || av.result === 'fail')) {
       e.agentVerified = { at: av.at, by: typeof av.by === 'string' && av.by ? av.by : 'agent', result: av.result, note: av.note };
     }
+    // PRO92: the check is about a build of an unmerged PR's branch; PRO90: how a linked question ticked it.
+    const held = cleanHeldPr(c.heldPr);
+    if (held) e.heldPr = held;
+    if (typeof c.checkedNote === 'string' && c.checkedNote) e.checkedNote = c.checkedNote;
+    if (typeof c.checkedAt === 'string' && c.checkedAt) e.checkedAt = c.checkedAt;
     out.push(e);
   }
   return out;

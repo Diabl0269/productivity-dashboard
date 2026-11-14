@@ -1068,7 +1068,7 @@ function cmdReview(argv) {
     const today = todayStr();
     const moved = [];
     for (const child of children) {
-      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo, agentVerified: c.agentVerified }));
+      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo, agentVerified: c.agentVerified, heldPr: c.heldPr }));
       assertChecksAreTals(checkItems, values['allow-check-owner']);
       const rolled = rollUpIntoEpic(doc, child, checkItems);
       reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
@@ -1198,7 +1198,11 @@ function cmdReview(argv) {
   if (pr.error) die(pr.error);
   pr.warnings.forEach(w => printErr(`review: warning: ${w}`));
   checkItems.push(...pr.checks.map(text => ({ text })));
-  if (pr.held) task.heldPr = pr.held;
+  if (pr.held) {
+    task.heldPr = pr.held;
+    // PRO92: every check of this review is about a build of the unmerged PR's branch.
+    for (const item of checkItems) item.heldPr = { pr: pr.held.pr, branch: pr.held.branch || '' };
+  }
   if (newLinks.length) task.links = [...(task.links || []), ...newLinks];
 
   if (result) task.result = result;

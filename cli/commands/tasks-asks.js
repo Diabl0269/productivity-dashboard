@@ -17,6 +17,7 @@ import {
   addAsk, openAsks, groupAsks, answerAsk, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
 } from '../../shared/asks.js';
 import { ghPrState } from '../lib/open-pr-gate.js';
+import { clearMergedHeldPrs } from '../../shared/held-pr.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
 import { dataRoot } from '../lib/io.js';
 
@@ -128,6 +129,7 @@ export async function cmdAsks(argv) {
   });
   const doc = load();
   const closed = [];
+  const cleared = [];
   if (values.refresh) {
     const cache = new Map();
     const state = (url) => {
@@ -140,15 +142,19 @@ export async function cmdAsks(argv) {
       for (const task of section.tasks || []) {
         const done = closeMergedAsks(task, state);
         if (done.length) { task.updated = todayStr(); closed.push(...done.map(a => ({ id: task.id, key: a.key, mergePr: a.mergePr }))); }
+        // PRO92: a check labelled "on branch X" loses the label once its PR has merged.
+        const gone = clearMergedHeldPrs(task, state);
+        if (gone.length) { task.updated = todayStr(); cleared.push(...gone.map(g => ({ id: task.id, ...g }))); }
       }
     }
   }
-  if (closed.length) save(doc);
+  if (closed.length || cleared.length) save(doc);
   let rows = openAsks(doc);
   if (values.ticket) rows = rows.filter(r => r.id === values.ticket);
   const cards = groupAsks(rows);
-  if (values.json) { jsonOut({ asks: rows, cards: cards.length, closed }); return; }
+  if (values.json) { jsonOut({ asks: rows, cards: cards.length, closed, cleared }); return; }
   closed.forEach(c => print(`closed ${c.id} ask ${c.key}: ${c.mergePr} merged`));
+  cleared.forEach(c => print(`cleared branch label on ${c.id} (${c.pr} merged)`));
   if (!cards.length) { print('No asks for Tal.'); return; }
   print(`Decisions for you (${cards.length})`);
   for (const c of cards) {
