@@ -371,11 +371,13 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
       for (const key of ['project', 'video', 'audio']) if (input[key] && !have[key]) have[key] = input[key];
       if (input.noVideo && !have.noVideo && !have.video) have.noVideo = input.noVideo;
       if (input.video && have.noVideo) delete have.noVideo;
+      if (input.agentVerified && !have.agentVerified) have.agentVerified = input.agentVerified;
       continue;
     }
     const check = { text, checked: false, addedAt: now };
     for (const key of ['project', 'video', 'audio']) if (input[key]) check[key] = input[key];
     if (input.noVideo && !check.video) check.noVideo = input.noVideo;
+    if (input.agentVerified) check.agentVerified = input.agentVerified;
     task.checks.push(check);
     byText.set(text, check);
     added++;

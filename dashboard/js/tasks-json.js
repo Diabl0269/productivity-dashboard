@@ -149,6 +149,11 @@ export function normalizeChecks(raw) {
     if (typeof c.video === 'string' && c.video) e.video = c.video;
     if (typeof c.audio === 'string' && c.audio) e.audio = c.audio;
     if (typeof c.noVideo === 'string' && c.noVideo && !e.video) e.noVideo = c.noVideo;
+    const av = c.agentVerified;
+    if (av && typeof av === 'object' && typeof av.at === 'string' && av.at && typeof av.note === 'string' && av.note.trim()
+        && (av.result === 'pass' || av.result === 'fail')) {
+      e.agentVerified = { at: av.at, by: typeof av.by === 'string' && av.by ? av.by : 'agent', result: av.result, note: av.note };
+    }
     out.push(e);
   }
   return out;

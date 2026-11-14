@@ -181,6 +181,16 @@ function renderCheckGrid(task) {
       what.appendChild(document.createTextNode(' → '));
       what.appendChild(idButton(c.handedTo, 'rp-link rp-review-id'));
     }
+    if (c.agentVerified) {
+      const av = c.agentVerified;
+      const failed = av.result === 'fail';
+      const when = new Date(av.at);
+      const short = isNaN(when) ? '' : ' ' + when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      what.appendChild(document.createTextNode(' '));
+      const badge = el('span', 'rp-check-agent' + (failed ? ' rp-check-agent-fail' : ''), failed ? 'Agent: failed' : `Agent verified${short}`);
+      badge.title = av.note;
+      what.appendChild(badge);
+    }
     if (c.video) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(playVideoButton(c, i + 1, what));
