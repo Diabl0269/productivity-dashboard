@@ -6,6 +6,7 @@ import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { heldPrChip } from './held-pr-ui.js';
+import { linkedCheckKeys } from '../../shared/ask-check-overlap.js';
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
@@ -160,6 +161,9 @@ function renderCheckGrid(task) {
   grid.appendChild(head);
   const checks = task.checks || [];
   const unsent = unsentNotes(task);
+  // PRO90: a check an open question links shows on that question's card, not as its own row.
+  const settledByAsk = linkedCheckKeys(asksFromState(getState?.()));
+  const hidden = (c) => !c.checked && settledByAsk.has(`${task.taskId}\0${c.text}`);
   const addRow = (c, i, projectButtons = []) => {
     const row = el('div', 'rp-check-row');
     const pass = el('div', 'rp-check-pass');
@@ -206,6 +210,10 @@ function renderCheckGrid(task) {
       what.appendChild(el('span', 'rp-check-muted', `No video: ${c.noVideo}`));
     }
     if (c.audio) what.appendChild(audioPlayer(c, i + 1));
+    if (c.checkedNote) {
+      what.appendChild(document.createTextNode(' '));
+      what.appendChild(el('span', 'rp-check-muted', c.checkedNote));
+    }
     row.appendChild(what);
     row.appendChild(noteCell(task, unsent.filter(n => n.check === c.text), {
       check: c.text, key: i, placeholder: 'What did you see? Enter saves', label: `Note on check ${i + 1}`,
@@ -214,10 +222,11 @@ function renderCheckGrid(task) {
   };
   // Checks sharing a saved project sit together under one header; the rest keep their order after.
   for (const group of groupChecksByProject(checks)) {
+    if (group.items.every(({ check }) => hidden(check))) continue;
     let header = null;
     if (group.project) { header = projectGroupHeader(group.project, 'rp-check-row ce-group-head'); grid.appendChild(header); }
     const buttons = header ? [...header.querySelectorAll('button')] : [];
-    group.items.forEach(({ check, index }) => addRow(check, index, check.project ? buttons : []));
+    group.items.forEach(({ check, index }) => { if (!hidden(check)) addRow(check, index, check.project ? buttons : []); });
   }
   const texts = new Set(checks.map(c => c.text));
   const general = el('div', 'rp-check-row rp-check-general');

@@ -126,6 +126,7 @@ import {
 import { planFiling, applyFiling } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
 import { openPrGate } from '../lib/open-pr-gate.js';
+import { reviewOverlap, applyLinks } from '../lib/ask-overlap.js';
 import { addAsk, askByError, askLines, countAsks, asksNotice } from '../../shared/asks.js';
 import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
 
@@ -1051,6 +1052,8 @@ function cmdReview(argv) {
     'resolve-unverified': { type: 'string' },
     ask:           { type: 'string', multiple: true },
     'ask-by':      { type: 'string' },
+    'same-judgement': { type: 'boolean' },
+    'not-same':    { type: 'string' },
   });
   // `review --force T1 ...`: the id came right after a bare --force.
   if (!positionals.length && values['force-reason'] !== undefined) {
@@ -1093,7 +1096,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--add-link URL]');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--ask "<question>"]... [--same-judgement | --not-same "<why>"] [--add-link URL]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -1205,14 +1208,21 @@ function cmdReview(argv) {
   }
   if (newLinks.length) task.links = [...(task.links || []), ...newLinks];
 
+  // PRO90: one judgement, one card: a new check that repeats an open question (or a --ask that repeats a check) links or says it differs.
+  if (values['same-judgement'] && values['not-same'] !== undefined) die('review: pass --same-judgement or --not-same, not both');
+  if (values['not-same'] !== undefined && !values['not-same'].trim()) die('review: --not-same needs a reason: --not-same "<why these are different judgements>"');
+  const overlap = reviewOverlap(doc, task, checkItems, { askTexts: values.ask || [], sameJudgement: !!values['same-judgement'], notSame: values['not-same'] });
+  if (overlap.error) die(`review: ${overlap.error}`);
+  applyLinks(overlap.links);
+
   if (result) task.result = result;
   if (evidenceRels.length) task.reviewEvidence = [...new Set([...(task.reviewEvidence || []), ...evidenceRels])];
   if (proofProblem && forceReason) task.forcedReview = { reason: forceReason, at: new Date().toISOString() };
   if (noChecksReason && !checkTexts.length && !(task.checks || []).length) task.noChecksReason = noChecksReason;
   applyUnverifiedEdits(task, values);
-  for (const text of values.ask || []) {
-    try { addAsk(task, { text, by: values['ask-by'] }); } catch (e) { die(`--ask: ${e.message}`); }
-  }
+  (values.ask || []).forEach((text, i) => {
+    try { addAsk(task, { text, by: values['ask-by'], checkRefs: overlap.askRefs[i], notSame: values['not-same'] }); } catch (e) { die(`--ask: ${e.message}`); }
+  });
   const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
   const today = todayStr();
 

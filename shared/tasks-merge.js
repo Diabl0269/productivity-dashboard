@@ -59,6 +59,8 @@ function mergeChecks(b, l, c) {
       if (lChanged && cChanged) m.checked = !!(li.checked || ci.checked);
       else if (lChanged) m.checked = !!li.checked;
       else m.checked = !!ci.checked;
+      // PRO90: a tick a linked question made keeps its note when the other side ticked it first.
+      if (m.checked && !m.checkedNote && li.checkedNote) { m.checkedNote = li.checkedNote; if (li.checkedAt) m.checkedAt = li.checkedAt; }
       out.push(m);
     } else if (li) {
       // Gone from current: drop it only when the other side removed it and we did not touch it.
