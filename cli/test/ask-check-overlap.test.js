@@ -215,3 +215,23 @@ test('foldTasteChecks: a project-less near-duplicate folds into the same-judgeme
   assert.equal(targets[0].video, 'T1/a.mp4');
   assert.equal(targets[0].text, 'Reverb Mix at 30% sounds right', 'text untouched');
 });
+
+test('CLI: --same-judgement with no match is refused; --link-check links a check by number (ticket or epic)', () => {
+  const dir = makeHome({ epic: true });
+  run(['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'In the Synth editor, the Width knob: one cable gives full width'], dir);
+  const ASK2 = ['tasks', 'ask', 'T1', 'Keep one-cable Width?', '--details', DETAILS];
+  let r = run([...ASK2, '--same-judgement'], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /found no open check that repeats this question; link one by number with --link-check <ticket>:<n> \(open checks: T9 1: T1: In the Synth editor/);
+  r = run([...ASK2, '--link-check', 'T9:5'], dir);
+  assert.match(r.stderr, /no check 5 on T9/);
+  r = run([...ASK2, '--link-check', 'bad'], dir);
+  assert.match(r.stderr, /needs <ticket>:<n>/);
+  r = run([...ASK2, '--link-check', 'T9:1'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(taskOf(dir, 'T1').asks[0].checkRefs, [{ id: 'T9', text: 'T1: In the Synth editor, the Width knob: one cable gives full width' }]);
+  assert.equal(run(['tasks', 'answer', 'T1', 'yes'], dir).status, 0);
+  assert.equal(taskOf(dir, 'T9').checks[0].checked, true);
+  r = run([...ASK2, '--link-check', 'T9:1'], dir);
+  assert.match(r.stderr, /already ticked/);
+});

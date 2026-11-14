@@ -168,13 +168,14 @@ function mediaBlock(card) {
 /** PRO90: the checks this question also settles ("Also settles: <check>"), with their video / project when they have one. */
 function settlesBlock(state, card) {
   if (!card.checkRefs?.length) return null;
+  const shown = new Set(card.media?.project ? [card.media.project] : []); // one Open project per path
   const wrap = el('ul', 'rp-ask-settles');
   for (const ref of card.checkRefs) {
     const check = (findTicket(state, ref.id)?.task.checks || []).find(c => c.text === ref.text);
     const item = el('li', 'rp-ask-settle');
     item.appendChild(el('span', 'rp-check-muted', 'Also settles: '));
     item.appendChild(el('span', null, ref.text));
-    if (check?.project) { item.appendChild(document.createTextNode(' ')); item.appendChild(openProjectButton(check.project)); }
+    if (check?.project && !shown.has(check.project)) { shown.add(check.project); item.appendChild(document.createTextNode(' ')); item.appendChild(openProjectButton(check.project)); }
     if (check?.video) { item.appendChild(document.createTextNode(' ')); item.appendChild(playVideoButton(check, 1, item, `${ref.id} check`)); }
     wrap.appendChild(item);
   }

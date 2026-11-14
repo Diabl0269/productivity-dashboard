@@ -3,7 +3,7 @@
  * Decisions a session leaves for Tal, shown in the Plan page's "For you" list (PRO73, PRO86):
  *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
  *       [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
- *       [--same-judgement | --not-same "<why>"] [--json]
+ *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
  *   asks [--ticket ID] [--refresh] [--json]
  * Keys come from `ch tasks asks`: the ask's number, L<i> for an older Left question, W for a
@@ -46,7 +46,7 @@ function mediaRelOrDie(value, kind) {
   return rel;
 }
 
-const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--json]';
+const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]';
 
 /** `ch tasks ask <id> "<question>"`: leave a decision for Tal on the ticket (sets its waitingOn). */
 export async function cmdAsk(argv) {
@@ -63,6 +63,7 @@ export async function cmdAsk(argv) {
     'same-as': { type: 'string' },
     'same-judgement': { type: 'boolean' },
     'not-same': { type: 'string' },
+    'link-check': { type: 'string', multiple: true },
     json: { type: 'boolean', short: 'j' },
   });
   const [id, text] = positionals;
@@ -75,9 +76,23 @@ export async function cmdAsk(argv) {
   // PRO90: one judgement, one card: a question that repeats an unticked check on the ticket or its epic links to it or says it differs.
   if (values['same-judgement'] && values['not-same'] !== undefined) die('ask: pass --same-judgement or --not-same, not both');
   if (values['not-same'] !== undefined && !values['not-same'].trim()) die('ask: --not-same needs a reason: --not-same "<why these are different judgements>"');
-  const overlaps = overlapsForAsk({ text, details: values.details, mergePr: values['merge-pr'] }, checkEntries(doc, task));
-  if (overlaps.length && !values['same-judgement'] && values['not-same'] === undefined) die(`ask: ${askOverlapMessage(overlaps)}`);
-  const checkRefs = values['same-judgement'] ? overlaps.map(o => ({ id: o.id, text: o.check.text })) : undefined;
+  const entries = checkEntries(doc, task);
+  const overlaps = overlapsForAsk({ text, details: values.details, mergePr: values['merge-pr'] }, entries);
+  const linked = (values['link-check'] || []).map((spec) => {
+    const m = /^([A-Za-z]{1,8}\d+):(\d+)$/.exec(String(spec).trim());
+    if (!m) die(`ask: --link-check needs <ticket>:<n> (n as ch tasks get lists the check), got "${spec}"`);
+    const e = entries.find(x => x.id === m[1] && x.n === Number(m[2]));
+    if (!e) die(`ask: --link-check ${spec}: no check ${m[2]} on ${m[1]} (only ${task.id}${entries.some(x => x.id !== task.id) ? ' and its epic' : ''} are searched)`);
+    if (e.check.checked || e.check.handedTo) die(`ask: --link-check ${spec}: that check is already ticked or handed on`);
+    return e;
+  });
+  if (values['same-judgement'] && !overlaps.length && !linked.length) {
+    const open = entries.filter(e => !e.check.checked && !e.check.handedTo).slice(0, 10).map(e => `${e.id} ${e.n}: ${e.check.text}`);
+    die(`ask: --same-judgement found no open check that repeats this question; link one by number with --link-check <ticket>:<n> (open checks: ${open.join('; ') || 'none'})`);
+  }
+  if (overlaps.length && !values['same-judgement'] && !linked.length && values['not-same'] === undefined) die(`ask: ${askOverlapMessage(overlaps)}`);
+  const refSet = values['same-judgement'] ? [...overlaps, ...linked] : linked;
+  const checkRefs = refSet.length ? [...new Map(refSet.map(o => [`${o.id}\0${o.check.text}`, { id: o.id, text: o.check.text }])).values()] : undefined;
   let ask;
   try {
     ask = addAsk(task, {
