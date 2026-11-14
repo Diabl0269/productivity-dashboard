@@ -181,9 +181,10 @@ function settlesBlock(state, card) {
   return wrap;
 }
 
-/** The Details fold (rp-fold, animated): the ask's details, else the ticket description. */
+/** The Details fold (rp-fold, animated): the ticket description, for a card with no details of its own. */
 function detailsFold(state, card) {
-  const text = card.details || findTicket(state, card.ids[0])?.task.description || '';
+  if (card.details) return { button: null, fold: null }; // PRO91: the ask's own details show inline, not behind a fold
+  const text = findTicket(state, card.ids[0])?.task.description || '';
   if (!text.trim()) return { button: null, fold: null };
   const handle = handleOf(card);
   let open = detailsOpen.has(handle);
@@ -234,6 +235,7 @@ export function renderAskCard(state, card, redraw, surface = 'plan') {
   const titles = [...new Set(card.members.map(m => m.title).filter(Boolean))];
   li.appendChild(el('div', 'rp-ask-ticket', titles.join(' / ')));
   li.appendChild(el('div', 'rp-title rp-ask-q', card.text));
+  if (card.details) li.appendChild(el('div', 'rp-ask-details rp-ask-details-inline', card.details.trim()));
   const settles = settlesBlock(state, card);
   if (settles) li.appendChild(settles);
   const media = mediaBlock(card);

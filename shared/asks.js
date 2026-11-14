@@ -10,7 +10,8 @@
  *   is open and tick themselves when it is answered or done (tickLinkedChecks); notSame says why a check
  *   that looks alike is a different judgement.
  *   state: 'open' | 'answered' | 'done' | 'dismissed' | 'parked'
- * A new ask's text is at most 140 characters (the rest goes in `details`); media paths are
+ * A new ask's text is at most 140 characters (the rest goes in `details`, which is required: at least
+ * ASK_DETAILS_MIN characters; a question about something seen or heard also needs media); media paths are
  * relative to $CH_HOME/evidence, like review evidence. A taste question ("taste: ...") is never
  * an ask: it is a check on the epic (`ch tasks review`, cli/lib/taste-checks.js). Adding an ask
  * sets the ticket's `waitingOn` to Tal; resolving it clears that.
@@ -48,6 +49,11 @@ export const ASK_TEXT_MAX = 140;
 const STORED_TEXT_MAX = 1000; // older asks were longer; the schema still accepts them
 const OPTION_MAX = 200;
 const DETAILS_MAX = 4000;
+/** A new question's --details must be at least this long: which screen or card, what to try, why it matters. */
+export const ASK_DETAILS_MIN = 60;
+// A question about something seen or heard needs the thing to judge (PRO91).
+const SEEN_HEARD_RE = /\b(sound|sounds|hear|heard|listen|look|looks|see|seen|feel|feels|colou?r|visual|loud|mix)\b/i;
+const MEDIA_LABELS = ['ui', 'audio'];
 export const MEDIA_KINDS = ['video', 'audio', 'image', 'project'];
 export const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -124,7 +130,7 @@ export function parseOption(input, i = 0) {
  * empty question, a bad date, PR URL, option, recommendation or media path, or a taste question.
  */
 export function addAsk(task, {
-  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, now = new Date().toISOString(),
+  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, now = new Date().toISOString(),
 } = {}) {
   if (isTasteText(text)) {
     throw new Error('a taste question is a check, not an ask: put it on the review as --check "<what to judge>" with --check-video / --check-audio / --check-project, or as an Unverified "needs-tal: taste: <text> | video=<path>" line');
@@ -157,6 +163,16 @@ export function addAsk(task, {
   if (refs.some(r => !ID_RE.test(r.id) || !r.text.trim())) throw new Error('checkRefs must be [{ id: ticket id, text: the check text }]');
   const why = notSame != null ? String(notSame).trim() : '';
   if (notSame != null && !why) throw new Error('--not-same needs a reason: --not-same "<why these are different judgements>"');
+  // PRO91: a question carries its context. A merge ask linked to its check card is exempt (that card holds the context).
+  const exempt = !!mergePr && refs.length > 0;
+  if (!exempt && det.length < ASK_DETAILS_MIN) {
+    throw new Error(`a question needs --details (at least ${ASK_DETAILS_MIN} characters): which screen or card it is about, what to try, and why the choice matters`);
+  }
+  const seenHeard = SEEN_HEARD_RE.test(text) || opts.some(o => SEEN_HEARD_RE.test(o.text))
+    || (labels || []).some(l => MEDIA_LABELS.includes(String(l).toLowerCase()));
+  if (!exempt && seenHeard && !Object.keys(m).length) {
+    throw new Error('a question about something seen or heard needs the thing to judge: --video, --audio, --image or --project');
+  }
   if (!Array.isArray(task.asks)) task.asks = [];
   const n = task.asks.reduce((mx, a) => Math.max(mx, Number(a?.n) || 0), 0) + 1;
   const ask = { n, at: now, text: text.trim(), state: 'open' };

@@ -1,7 +1,7 @@
 /**
  * cli/commands/tasks-asks.js
  * Decisions a session leaves for Tal, shown in the Plan page's "For you" list (PRO73, PRO86):
- *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] [--details "..."]
+ *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
  *       [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
  *       [--same-judgement | --not-same "<why>"] [--json]
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
@@ -20,9 +20,14 @@ import {
 import { ghPrState } from '../lib/open-pr-gate.js';
 import { clearMergedHeldPrs } from '../../shared/held-pr.js';
 import { overlapsForAsk } from '../../shared/ask-check-overlap.js';
-import { checkEntries, askOverlapMessage } from '../lib/ask-overlap.js';
+import { checkEntries, askOverlapMessage, ticketAndEpic } from '../lib/ask-overlap.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
 import { dataRoot } from '../lib/io.js';
+
+/** The ticket's labels plus its epic's (a ui / audio ticket's questions need media). */
+function labelsOf(doc, task) {
+  return ticketAndEpic(doc, task).flatMap(t => t.labels || []);
+}
 
 function ticketOrDie(doc, id) {
   const found = findTask(doc, id);
@@ -41,7 +46,7 @@ function mediaRelOrDie(value, kind) {
   return rel;
 }
 
-const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] [--details "..."] [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--json]';
+const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--json]';
 
 /** `ch tasks ask <id> "<question>"`: leave a decision for Tal on the ticket (sets its waitingOn). */
 export async function cmdAsk(argv) {
@@ -78,6 +83,7 @@ export async function cmdAsk(argv) {
     ask = addAsk(task, {
       text, by: values['ask-by'], mergePr: values['merge-pr'], options: values.option, recommend: values.recommend,
       details: values.details, media, sameAs: values['same-as'], checkRefs, notSame: values['not-same'],
+      labels: labelsOf(doc, task),
     });
   } catch (e) { die(`ask: ${e.message}`); }
   task.updated = todayStr();

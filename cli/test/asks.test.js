@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import {
-  openAsks, addAsk, resolveAsk, closeMergedAsks, askErrors, askLines, asksNotice, answerAsk, groupAsks, countAsks, taskAsks,
+  cleanAsks, openAsks, addAsk, resolveAsk, closeMergedAsks, askErrors, askLines, asksNotice, answerAsk, groupAsks, countAsks, taskAsks,
 } from '../../shared/asks.js';
 import { mergeTasksDocs } from '../../shared/tasks-merge.js';
 import { loadTasksJson, serializeTasksJson } from '../../dashboard/js/tasks-json.js';
@@ -23,6 +23,7 @@ const FIXTURE_SAMPLE = path.join(__dirname, 'fixtures/tasks.sample.json');
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 
 const AT = '2026-03-01T10:00:00.000Z';
+const D = 'Open the Reverb panel on the master bus and compare the setting before and after; it decides the default.';
 const result = (extra) => ({ at: AT, shipped: ['did it'], ci: 'all passed', ...extra });
 
 /** A small doc: an epic in review whose child is done, plus standalone tickets. */
@@ -110,7 +111,7 @@ test('needs-tal Unverified lines are never asks, on open or done work', () => {
 test('an ask on a done ticket shows while its epic is open, and leaves once the epic closes', () => {
   const doc = legacyDoc();
   const c1 = doc.sections[2].tasks[0];
-  addAsk(c1, { text: 'Keep the glide?', options: ['A: keep', 'B: drop'], now: AT });
+  addAsk(c1, { details: D, text: 'Keep the glide?', options: ['A: keep', 'B: drop'], now: AT });
   assert.deepEqual(openAsks(doc).filter(r => r.id === 'C1').map(r => r.key), ['1']);
   const epic = doc.sections[1].tasks.pop();
   doc.sections[2].tasks.push(epic); // the epic is reviewed and closed
@@ -151,8 +152,8 @@ test('resolving a legacy Left question persists in resolvedAsks and leaves the r
 
 test('addAsk / resolveAsk / askLines; bad input refused', () => {
   const task = { id: 'T1' };
-  addAsk(task, { text: 'Pick A or B?', by: '2026-03-05', now: AT });
-  addAsk(task, { text: 'Merge it?', mergePr: 'https://github.com/acme/widgets/pull/7', now: AT });
+  addAsk(task, { details: D, text: 'Pick A or B?', by: '2026-03-05', now: AT });
+  addAsk(task, { details: D, text: 'Merge it?', mergePr: 'https://github.com/acme/widgets/pull/7', now: AT });
   assert.throws(() => addAsk(task, { text: '  ' }), /non-empty/);
   assert.throws(() => addAsk(task, { text: 'x', by: 'soon' }), /YYYY-MM-DD/);
   assert.throws(() => addAsk(task, { text: 'x', mergePr: 'https://example.com/x' }), /pull request URL/);
@@ -175,7 +176,7 @@ test('asks with a date come first, soonest first, then oldest', () => {
 
 test('a merge ask closes itself once its PR merges, and only then', () => {
   const task = { id: 'T1' };
-  addAsk(task, { text: 'Merge it?', mergePr: 'https://github.com/acme/widgets/pull/7', now: AT });
+  addAsk(task, { details: D, text: 'Merge it?', mergePr: 'https://github.com/acme/widgets/pull/7', now: AT });
   assert.equal(closeMergedAsks(task, () => ({ state: 'OPEN' })).length, 0);
   assert.equal(closeMergedAsks(task, () => ({ error: 'gh not installed' })).length, 0);
   assert.equal(closeMergedAsks(task, () => ({ state: 'MERGED' }), { now: AT }).length, 1);
@@ -196,10 +197,10 @@ test('asksNotice wording', () => {
 
 test('CLI: ask -> asks -> answer / dismiss round-trip, decision on the ticket', () => {
   const dir = makeTmpDir();
-  let r = runCli(['tasks', 'ask', 'T1', 'Keep the old layout?', '--ask-by', '2026-03-10'], dir);
+  let r = runCli(['tasks', 'ask', 'T1', 'Keep the old layout?', '--details', D, '--ask-by', '2026-03-10'], dir);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /1 ask for Tal is on the Plan page/);
-  r = runCli(['tasks', 'ask', 'T2', 'Second question?'], dir);
+  r = runCli(['tasks', 'ask', 'T2', 'Second question?', '--details', D], dir);
   assert.equal(r.status, 0, r.stderr);
 
   r = runCli(['tasks', 'asks', '--json'], dir);
@@ -230,7 +231,7 @@ test('CLI: ask -> asks -> answer / dismiss round-trip, decision on the ticket', 
 test('CLI: review --ask carries asks (repeatable) and prints the Plan page count; done prints it too', () => {
   const dir = makeTmpDir();
   let r = runCli(['tasks', 'review', 'T3', '--shipped', 'added A', '--check', 'Look at A',
-    '--ask', 'Ship it to everyone?', '--ask', 'Rename the button?', '--ask-by', '2026-03-09'], dir);
+    '--ask', 'Ship it to everyone?', '--ask-details', D, '--ask', 'Rename the button?', '--ask-details', D, '--ask-by', '2026-03-09'], dir);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /2 asks for Tal are on the Plan page/);
   const t3 = readTask(dir, 'T3');
@@ -306,7 +307,7 @@ const counter = (doc) => () => `P${doc.sections.flatMap(s => s.tasks).length + 1
 test('addAsk sets waitingOn to Tal; answering by option records it and clears waitingOn', () => {
   const doc = workDoc();
   const p2 = byId(doc, 'P2').t;
-  addAsk(p2, { text: 'Rework the wiring or drop Width?', options: ['A: rework', 'B: drop'], recommend: 'a', now: AT });
+  addAsk(p2, { details: D, text: 'Rework the wiring or drop Width?', options: ['A: rework', 'B: drop'], recommend: 'a', now: AT });
   assert.match(p2.waitingOn, /^Tal: Rework the wiring/);
   assert.deepEqual(openAsks(doc).map(r => [r.id, r.key]), [['P2', '1']], 'no extra W row for the ask-set waitingOn');
   const out = answerAsk(doc, 'P2', '1', { action: 'answer', reply: 'b', now: AT });
@@ -319,7 +320,7 @@ test('addAsk sets waitingOn to Tal; answering by option records it and clears wa
 test('an answer on a done ticket files a follow-up through review filing, not a dead decision', () => {
   const doc = workDoc();
   const p4 = byId(doc, 'P4').t;
-  addAsk(p4, { text: 'Gain makeup: A or B?', options: ['A: fixed makeup', 'B: quieter'], now: AT });
+  addAsk(p4, { details: D, text: 'Gain makeup: A or B?', options: ['A: fixed makeup', 'B: quieter'], now: AT });
   assert.equal(openAsks(doc).length, 1, 'listed: its epic is still open');
   const out = answerAsk(doc, 'P4', '1', { action: 'answer', reply: 'A', newId: counter(doc), now: AT });
   assert.equal((p4.decisions || []).length, 0, 'no decision on the done ticket');
@@ -333,7 +334,7 @@ test('an answer on a done ticket files a follow-up through review filing, not a 
 
 test('Park moves the ticket to backlog with the reason as a decision', () => {
   const doc = workDoc();
-  addAsk(byId(doc, 'P2').t, { text: 'Sleep/wake experiment now?', now: AT });
+  addAsk(byId(doc, 'P2').t, { details: D, text: 'Sleep/wake experiment now?', now: AT });
   const out = answerAsk(doc, 'P2', '1', { action: 'park', reply: 'after v1', now: AT });
   assert.deepEqual(out.parked, ['P2']);
   const p2 = byId(doc, 'P2');
@@ -348,18 +349,18 @@ test('question length, taste and media gates', () => {
   assert.throws(() => addAsk(t, { text: 'x'.repeat(141) }), /141 characters; keep it to 140.*--details/);
   assert.doesNotThrow(() => addAsk(t, { text: 'y'.repeat(140), details: 'z'.repeat(2000) }));
   assert.throws(() => addAsk(t, { text: 'taste: does the glow look right?' }), /taste question is a check, not an ask/);
-  assert.throws(() => addAsk(t, { text: 'Q?', media: { video: 'a.mov' } }), /must end with \.mp4/);
-  assert.throws(() => addAsk(t, { text: 'Q?', media: { image: '../x.png' } }), /\.\./);
-  assert.throws(() => addAsk(t, { text: 'Q?', options: ['A: one'], recommend: 'C' }), /not one of the options/);
-  const ask = addAsk(t, { text: 'Q?', media: { image: 'X1/shot.png', project: 'X1/p.agsproj' } });
+  assert.throws(() => addAsk(t, { details: D, text: 'Q?', media: { video: 'a.mov' } }), /must end with \.mp4/);
+  assert.throws(() => addAsk(t, { details: D, text: 'Q?', media: { image: '../x.png' } }), /\.\./);
+  assert.throws(() => addAsk(t, { details: D, text: 'Q?', options: ['A: one'], recommend: 'C' }), /not one of the options/);
+  const ask = addAsk(t, { details: D, text: 'Q?', media: { image: 'X1/shot.png', project: 'X1/p.agsproj' } });
   assert.deepEqual(ask.media, { image: 'X1/shot.png', project: 'X1/p.agsproj' });
   assert.deepEqual(askErrors(t, 'x'), []);
 });
 
 test('the same question on two tickets (text or --same-as) is one card, and one answer answers both', () => {
   const doc = workDoc();
-  addAsk(byId(doc, 'P2').t, { text: 'Width on one cable: rework stereo?', options: ['A: rework', 'B: drop'], now: AT });
-  addAsk(byId(doc, 'P3').t, { text: 'width on one cable:  rework stereo', now: AT });
+  addAsk(byId(doc, 'P2').t, { details: D, text: 'Width on one cable: rework stereo?', options: ['A: rework', 'B: drop'], now: AT });
+  addAsk(byId(doc, 'P3').t, { details: D, text: 'width on one cable:  rework stereo', now: AT });
   let cards = groupAsks(openAsks(doc));
   assert.equal(cards.length, 1);
   assert.deepEqual(cards[0].ids.sort(), ['P2', 'P3']);
@@ -370,7 +371,7 @@ test('the same question on two tickets (text or --same-as) is one card, and one 
   // --same-as joins differently worded asks; a waitingOn row joins too.
   const d2 = workDoc();
   byId(d2, 'P3').t.waitingOn = 'Tal: Width with joined jacks, A or B';
-  addAsk(byId(d2, 'P2').t, { text: 'Mono Width needs both legs: rework?', sameAs: 'P3', now: AT });
+  addAsk(byId(d2, 'P2').t, { details: D, text: 'Mono Width needs both legs: rework?', sameAs: 'P3', now: AT });
   cards = groupAsks(openAsks(d2));
   assert.equal(cards.length, 1);
   assert.equal(countAsks(d2), 1);
@@ -401,7 +402,7 @@ function homeWithEvidence(files) {
 test('CLI: ask with options + media, answer by letter (key optional), refusals for long / taste / missing media', () => {
   const dir = homeWithEvidence(['T1/shot.png', 'T1/clip.mp4']);
   let r = runCli(['tasks', 'ask', 'T1', 'Keep it or drop it?', '--option', 'A: keep', '--option', 'B: drop', '--recommend', 'A',
-    '--image', 'T1/shot.png', '--video', path.join(dir, 'evidence/T1/clip.mp4'), '--details', 'Long context here.'], dir);
+    '--image', 'T1/shot.png', '--video', path.join(dir, 'evidence/T1/clip.mp4'), '--details', D], dir);
   assert.equal(r.status, 0, r.stderr);
   let t1 = readTask(dir, 'T1');
   assert.deepEqual(t1.asks[0].media, { video: 'T1/clip.mp4', image: 'T1/shot.png' });
@@ -424,7 +425,7 @@ test('CLI: ask with options + media, answer by letter (key optional), refusals f
   r = runCli(['tasks', 'ask', 'T2', 'Which one?', '--image', 'T2/missing.png'], dir);
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /not found/);
-  r = runCli(['tasks', 'ask', 'T2', 'Ship now?'], dir);
+  r = runCli(['tasks', 'ask', 'T2', 'Ship now?', '--details', D], dir);
   assert.equal(r.status, 0, r.stderr);
   r = runCli(['tasks', 'answer', 'T2', '--park', 'later'], dir);
   assert.equal(r.status, 0, r.stderr);
@@ -462,4 +463,80 @@ test('CLI: review turns a needs-tal taste line into a check (folded on the same 
   r = runCli(['tasks', 'review', 'T1', '--shipped', 'x', '--check', 'y', '--unverified', 'needs-tal: taste: the hues'], dir);
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /needs the thing to judge/);
+});
+
+// ---------------------------------------------------------------------------
+// PRO91: questions carry their context (details, and media for something seen or heard)
+// ---------------------------------------------------------------------------
+
+test('addAsk: details are required (60+ characters) and say what to include', () => {
+  const t = { id: 'X1' };
+  assert.throws(() => addAsk(t, { text: 'Pick A or B?' }), /needs --details \(at least 60 characters\): which screen or card it is about, what to try, and why the choice matters/);
+  assert.throws(() => addAsk(t, { text: 'Pick A or B?', details: 'too short to help' }), /at least 60 characters/);
+  assert.throws(() => addAsk(t, { text: 'Pick A or B?', details: ' '.repeat(80) }), /at least 60 characters/, 'spaces do not count');
+  assert.equal(addAsk(t, { text: 'Pick A or B?', details: D }).details, D);
+});
+
+test('addAsk: a question about something seen or heard needs media; ui / audio labels always do', () => {
+  const t = { id: 'X1' };
+  const need = /needs the thing to judge: --video, --audio, --image or --project/;
+  assert.throws(() => addAsk(t, { text: 'Does the glow look right?', details: D }), need);
+  assert.throws(() => addAsk(t, { text: 'Which one?', options: ['A: louder', 'B: it sounds thin'], details: D }), need, 'an option can carry the word');
+  assert.throws(() => addAsk(t, { text: 'Which one?', details: D, labels: ['ui'] }), need);
+  assert.throws(() => addAsk(t, { text: 'Which one?', details: D, labels: ['Audio'] }), need);
+  assert.doesNotThrow(() => addAsk(t, { text: 'Which one?', details: D, labels: ['backend'] }));
+  assert.ok(addAsk(t, { text: 'Does the glow look right?', details: D, media: { project: 'X1/a.agsproj' } }).media.project);
+  assert.ok(addAsk(t, { text: 'Which one?', details: D, labels: ['ui'], media: { image: 'X1/a.png' } }));
+});
+
+test('addAsk: a merge ask linked to its check card needs neither details nor media', () => {
+  const t = { id: 'X1' };
+  const pr = 'https://github.com/acme/widgets/pull/7';
+  const refs = [{ id: 'X1', text: 'Try on branch b, then say merge or not' }];
+  assert.ok(addAsk(t, { text: 'Merge it, does it look right?', mergePr: pr, checkRefs: refs, labels: ['ui'] }));
+  assert.throws(() => addAsk(t, { text: 'Merge it?', mergePr: pr }), /needs --details/, 'without the link it is not exempt');
+});
+
+test('CLI: ask refused without details or media, accepted with them; a ui ticket needs media', () => {
+  const dir = homeWithEvidence(['T1/a.agsproj']);
+  let r = runCli(['tasks', 'ask', 'T1', 'Ship it?'], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /needs --details \(at least 60 characters\)/);
+  r = runCli(['tasks', 'ask', 'T1', 'Ship it?', '--details', 'short'], dir);
+  assert.match(r.stderr, /at least 60 characters/);
+  r = runCli(['tasks', 'ask', 'T1', 'Does the glow look right?', '--details', D], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--video, --audio, --image or --project/);
+  r = runCli(['tasks', 'ask', 'T1', 'Does the glow look right?', '--details', D, '--project', 'T1/a.agsproj'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readTask(dir, 'T1').asks[0].details, D);
+  writeTask(dir, 'T2', { labels: ['ui'] });
+  r = runCli(['tasks', 'ask', 'T2', 'Ship it?', '--details', D], dir);
+  assert.match(r.stderr, /--video, --audio, --image or --project/, 'ui label');
+  r = runCli(['tasks', 'ask', 'T2', 'Ship it?', '--details', D, '--project', 'T1/a.agsproj'], dir);
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test('CLI: review --ask pairs --ask-details by position and follows the same rule', () => {
+  const dir = makeTmpDir();
+  const base = ['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'Open the panel: the label reads Gain'];
+  let r = runCli([...base, '--ask', 'Ship it to everyone?'], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--ask: a question needs --details/);
+  r = runCli([...base, '--ask', 'Ship it to everyone?', '--ask-details', 'short'], dir);
+  assert.match(r.stderr, /at least 60 characters/);
+  r = runCli([...base, '--ask-details', D], dir);
+  assert.match(r.stderr, /--ask-details pairs with --ask/);
+  r = runCli([...base, '--ask', 'Does it look right?', '--ask-details', D], dir);
+  assert.match(r.stderr, /seen or heard/);
+  assert.match(r.stderr, /ch tasks ask T1/);
+  r = runCli([...base, '--ask', 'Ship it to everyone?', '--ask-details', D, '--ask', 'Rename the button?', '--ask-details', `${D} Second.`], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(readTask(dir, 'T1').asks.map(a => a.details), [D, `${D} Second.`]);
+});
+
+test('older stored asks without details stay valid', () => {
+  const t = { id: 'X1', asks: [{ n: 1, at: AT, text: 'Old question?', state: 'open' }] };
+  assert.deepEqual(askErrors(t, 'X1'), []);
+  assert.equal(cleanAsks(t).asks.length, 1);
 });
