@@ -76,9 +76,9 @@ function prStateCached(prUrl) {
   const hit = prStateCache.get(prUrl);
   if (hit && Date.now() - hit.at < PR_STATE_TTL_MS) return hit.promise;
   const promise = new Promise((resolve) => {
-    require('child_process').execFile('gh', ['pr', 'view', prUrl, '--json', 'state'], { timeout: 15000 }, (err, stdout) => {
+    require('child_process').execFile('gh', ['pr', 'view', prUrl, '--json', 'state,headRefName'], { timeout: 15000 }, (err, stdout) => {
       if (err) { resolve({ state: null, error: err.code === 'ENOENT' ? 'gh not installed' : 'gh failed' }); return; }
-      try { resolve({ state: String(JSON.parse(stdout).state || '').toUpperCase() || null }); } catch { resolve({ state: null, error: 'gh returned unreadable output' }); }
+      try { const j = JSON.parse(stdout); resolve({ state: String(j.state || '').toUpperCase() || null, branch: String(j.headRefName || '') }); } catch { resolve({ state: null, error: 'gh returned unreadable output' }); }
     });
   });
   prStateCache.set(prUrl, { at: Date.now(), promise });
@@ -909,6 +909,7 @@ const server = http.createServer(async (req, res) => {
       const lib = await loadEvidenceLib();
       const out = await lib.handleOpenProject({
         origin: req.headers.origin, host: req.headers.host, bodyText: await readBody(req, 64 * 1024), dataRoot: DATA_ROOT,
+        branchOf: async (pr) => (await prStateCached(pr)).branch,
       });
       res.writeHead(out.status, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify(out.json));

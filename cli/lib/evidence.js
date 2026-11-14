@@ -132,8 +132,28 @@ export function readReviewApps(dataRoot) {
   } catch { return []; }
 }
 
-/** The configured app that exists and was built last (newest mtime under Contents/MacOS), or null. */
-export function pickReviewApp(apps) {
+/** Path spellings a build of `branch` may sit under: the branch, slashes as - or _, and its last segment. */
+function branchSlugs(branch) {
+  const b = String(branch || '').trim().toLowerCase();
+  if (!b) return [];
+  return [...new Set([b, b.replace(/\//g, '-'), b.replace(/\//g, '_'), b.split('/').pop()])].filter(Boolean);
+}
+
+/**
+ * The configured app that exists and was built last (newest mtime under Contents/MacOS), or null.
+ * PRO101: with `branch`, only apps whose path names that branch count (a worktree build such as
+ * `.../pro95-plan-cards/build/Agent Synth.app`); the result then has `branch`. With no such app the
+ * newest build is returned with `branchMissing: <branch>` so the caller can say it fell back.
+ */
+export function pickReviewApp(apps, branch) {
+  const slugs = branchSlugs(branch);
+  if (slugs.length) {
+    const named = (apps || []).filter(a => slugs.some(s => String(a).toLowerCase().includes(s)));
+    const hit = pickReviewApp(named);
+    if (hit) return { ...hit, branch };
+    const any = pickReviewApp(apps);
+    return any ? { ...any, branchMissing: branch } : null;
+  }
   let best = null;
   for (const app of apps || []) {
     const dir = path.join(app, 'Contents', 'MacOS');
@@ -160,24 +180,30 @@ function defaultLaunch(cmd, args) {
  * configured or found. `launch(cmd, args)` is injectable. Throws { status } on a bad path.
  * @returns {Promise<{ ok: true, app: string|null, builtAt: string|null }>}
  */
-export async function openProject({ dataRoot, relPath, apps = [], launch = defaultLaunch }) {
+export async function openProject({ dataRoot, relPath, apps = [], branch, launch = defaultLaunch }) {
   const bundle = resolveEvidence(dataRoot, relPath, 'project');
-  const picked = pickReviewApp(apps);
+  const picked = pickReviewApp(apps, branch);
   await launch('open', picked ? ['-a', picked.app, bundle] : [bundle]);
-  return { ok: true, app: picked ? picked.app : null, builtAt: picked ? picked.builtAt : null };
+  const out = { ok: true, app: picked ? picked.app : null, builtAt: picked ? picked.builtAt : null };
+  if (picked?.branch) out.branch = picked.branch;
+  if (branch && (!picked || picked.branchMissing)) out.branchMissing = branch;
+  return out;
 }
 
 /**
  * POST /api/open-project: { status, json } from the request's headers and raw body text.
  * Refuses a foreign Origin (403), because this launches an app.
  */
-export async function handleOpenProject({ origin, host, bodyText, dataRoot, apps, launch }) {
+export async function handleOpenProject({ origin, host, bodyText, dataRoot, apps, launch, branchOf }) {
   if (!originAllowed(origin, host)) return { status: 403, json: { error: 'cross-origin request refused' } };
   let body;
   try { body = JSON.parse(bodyText || '{}'); } catch { return { status: 400, json: { error: 'invalid JSON' } }; }
   if (!body || typeof body.path !== 'string') return { status: 400, json: { error: 'path is required' } };
   try {
-    const out = await openProject({ dataRoot, relPath: body.path, apps: apps ?? readReviewApps(dataRoot), launch });
+    // PRO101: an unmerged PR's branch ({ branch }, or { pr } resolved by `branchOf`) picks that branch's build.
+    let branch = typeof body.branch === 'string' ? body.branch.trim() : '';
+    if (!branch && typeof body.pr === 'string' && body.pr && branchOf) branch = String((await branchOf(body.pr)) || '').trim();
+    const out = await openProject({ dataRoot, relPath: body.path, apps: apps ?? readReviewApps(dataRoot), branch, launch });
     return { status: 200, json: out };
   } catch (e) {
     return { status: e.status || 500, json: { error: e.message } };

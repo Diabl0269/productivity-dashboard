@@ -6,23 +6,22 @@
 
 import { prNumber } from '../../shared/held-pr.js';
 
-const lookups = new Map(); // PR url -> Promise<state string | ''>
+const lookups = new Map(); // PR url -> Promise<{ state, branch }>
 
-/** The PR's state ('OPEN', 'MERGED', ...) or '' when it cannot be read; asked once per page load. */
-function prStateOnce(url) {
+/** The PR's { state, branch } ('OPEN', 'MERGED', ...; '' when it cannot be read); asked once per page load. */
+function prInfoOnce(url) {
   if (!lookups.has(url)) {
-    const none = Promise.resolve('');
+    const none = Promise.resolve({ state: '', branch: '' });
     if (typeof fetch !== 'function' || (typeof location !== 'undefined' && location.protocol === 'file:')) lookups.set(url, none);
     else {
       lookups.set(url, fetch(`/api/pr-state?url=${encodeURIComponent(url)}`)
         .then(r => (r.ok ? r.json() : null))
-        .then(res => String(res?.state || '').toUpperCase())
-        .catch(() => ''));
+        .then(res => ({ state: String(res?.state || '').toUpperCase(), branch: String(res?.branch || '') }))
+        .catch(() => ({ state: '', branch: '' })));
     }
   }
   return lookups.get(url);
 }
-
 /** The chip text for a heldPr. */
 export function heldPrText(held) {
   const n = prNumber(held.pr);
@@ -40,18 +39,38 @@ export function heldPrProjectTitle(held) {
  * group header's) whose tooltip is replaced while the PR is unmerged.
  */
 export function heldPrChip(check, buttons = []) {
-  const held = check?.heldPr;
+  return heldChip(check?.heldPr, buttons);
+}
+
+/**
+ * PRO101: the same chip for an ask with a `mergePr` (its branch comes from the PR lookup).
+ * `buttons` are the ask's Open project buttons.
+ */
+export function askHeldPrChip(ask, buttons = []) {
+  return ask?.mergePr ? heldChip({ pr: ask.mergePr, branch: '' }, buttons) : null;
+}
+
+function heldChip(held, buttons) {
   if (!held?.pr) return null;
   const chip = document.createElement('span');
   chip.className = 'rp-check-branch';
   chip.textContent = heldPrText(held);
   chip.title = held.pr;
   const was = new Map();
-  for (const b of buttons) { was.set(b, b.title); b.title = heldPrProjectTitle(held); }
-  prStateOnce(held.pr).then((state) => {
-    if (state !== 'MERGED') return;
-    chip.remove();
-    for (const [b, title] of was) b.title = title;
+  // PRO101: while unmerged, Open project asks for the PR's branch build; MERGED clears it (newest main build again).
+  const live = { pr: held.pr, branch: held.branch };
+  for (const b of buttons) { was.set(b, b.title); b.title = heldPrProjectTitle(held); b.held = live; }
+  prInfoOnce(held.pr).then(({ state, branch }) => {
+    if (state === 'MERGED') {
+      chip.remove();
+      for (const [b, title] of was) { b.title = title; b.held = null; }
+      return;
+    }
+    if (!live.branch && branch) {
+      live.branch = branch;
+      chip.textContent = heldPrText(live);
+      for (const b of was.keys()) b.title = heldPrProjectTitle(live);
+    }
   });
   return chip;
 }

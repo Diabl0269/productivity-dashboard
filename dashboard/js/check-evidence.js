@@ -41,19 +41,22 @@ export function ageText(iso, now = Date.now()) {
 
 /** The toast text for a successful open-project response. */
 export function openedMessage(res, now = Date.now()) {
-  if (!res || !res.app) return 'Opened with the default app';
+  const miss = res?.branchMissing ? `No build of branch ${res.branchMissing} found; ` : '';
+  if (!res || !res.app) return `${miss}Opened with the default app`;
   const name = String(res.app).split('/').filter(Boolean).pop();
+  if (res.branch) return `Opened in the build of branch ${res.branch} (${name})`;
   const age = ageText(res.builtAt, now);
+  if (miss) return `${miss}opened the newest build${age ? ` from ${age}` : ''} (${name})`;
   return age ? `Opened in the build from ${age} (${name})` : `Opened in ${name}`;
 }
 
 /** Ask the server to open a saved project; toasts the build used, or the error text. */
-export async function openProject(project, { toast = showEvidenceToast, fetchFn = fetch } = {}) {
+export async function openProject(project, { toast = showEvidenceToast, fetchFn = fetch, held = null } = {}) {
   try {
     const resp = await fetchFn('/api/open-project', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: project }),
+      body: JSON.stringify(held?.pr || held?.branch ? { path: project, branch: held.branch || '', pr: held.pr || '' } : { path: project }),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(data.error || `Could not open the project (HTTP ${resp.status})`);
@@ -76,7 +79,8 @@ function button(text, label, className = 'rp-btn ce-btn') {
 export function openProjectButton(project, label) {
   const btn = button('Open project', label || `Open project ${projectName(project)}`);
   btn.title = `Open ${project} in the newest build`;
-  btn.addEventListener('click', () => openProject(project));
+  // PRO101: held-pr-ui sets `btn.held` ({ pr, branch }) while the PR is unmerged and clears it on MERGED.
+  btn.addEventListener('click', () => openProject(project, { held: btn.held }));
   return btn;
 }
 
