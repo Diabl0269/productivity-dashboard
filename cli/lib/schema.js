@@ -787,6 +787,17 @@ export function validateTasksDoc(doc) {
             if (c.handedTo !== undefined && typeof c.handedTo !== 'string') {
               errors.push(`${ref}.checks[${ci}].handedTo must be a ticket id string`);
             }
+            if (c.agentVerified !== undefined) {
+              const av = c.agentVerified;
+              const r = `${ref}.checks[${ci}].agentVerified`;
+              if (!av || typeof av !== 'object' || Array.isArray(av)) errors.push(`${r} must be an object`);
+              else {
+                if (typeof av.at !== 'string' || !av.at || isNaN(Date.parse(av.at))) errors.push(`${r}.at must be an ISO string`);
+                if (typeof av.by !== 'string' || !av.by) errors.push(`${r}.by must be a non-empty string`);
+                if (av.result !== 'pass' && av.result !== 'fail') errors.push(`${r}.result must be "pass" or "fail"`);
+                if (typeof av.note !== 'string' || !av.note.trim()) errors.push(`${r}.note must be a non-empty string`);
+              }
+            }
             errors.push(...checkEvidenceErrors(c, `${ref}.checks[${ci}]`));
           }
         }

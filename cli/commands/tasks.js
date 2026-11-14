@@ -60,6 +60,8 @@
  *              [--remove-subtask N] [--clear-subtasks]
  *              [--edit-subtask N --subtask-text "..."]
  *              [--add-check "text"] [--check-check N] [--uncheck-check N]
+             [--verify-check N --verify-note "<how it was run>" [--verify-result pass|fail] [--verify-by name]] [--unverify-check N]
+                 record that an AGENT ran check N (never ticks it; the tick stays Tal's); --unverify-check removes the marker
  *              [--remove-check N] [--clear-checks] [--check-all-checks]
              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...
                  attach (or replace) evidence on the Nth EXISTING check as `ch tasks get` lists it; same rules as review; text and tick unchanged
@@ -70,6 +72,7 @@
  *                  --promote-subtask, --parent/--promote-parent name the NEW task's parent, the ticket's own parent is not changed)
  *              [--force]   (finish a review ticket by ticking its last check even with open subtasks)
  *   set-priority <id> <low|medium|high>
+ *   checks [--json]
  *   next-id
  *   dump [--active] [--json]
  *   export [--md]
@@ -639,7 +642,7 @@ function cmdGet(argv) {
   if (Array.isArray(task.checks) && task.checks.length > 0) {
     print(`  Checks (${task.checks.filter(c => c.checked).length}/${task.checks.length}):`);
     task.checks.forEach((c, i) => {
-      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}${c.noVideo ? ` (no video: ${c.noVideo})` : ''}`);
+      print(`  ${i + 1}. [${c.checked ? 'x' : ' '}] ${c.text}${c.noVideo ? ` (no video: ${c.noVideo})` : ''}${c.agentVerified ? ` (agent ${c.agentVerified.result === 'pass' ? 'verified' : 'failed'}: ${c.agentVerified.note})` : ''}`);
     });
   }
   print(`  created: ${task.created || 'n/a'}  updated: ${task.updated || 'n/a'}`);
@@ -1065,7 +1068,7 @@ function cmdReview(argv) {
     const today = todayStr();
     const moved = [];
     for (const child of children) {
-      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo }));
+      const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo, agentVerified: c.agentVerified }));
       assertChecksAreTals(checkItems, values['allow-check-owner']);
       const rolled = rollUpIntoEpic(doc, child, checkItems);
       reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
@@ -1475,6 +1478,11 @@ function cmdUpdate(argv) {
     'add-check':     { type: 'string', multiple: true },
     'check-check':   { type: 'string' },  // N (1-based) as string
     'uncheck-check': { type: 'string' },
+    'verify-check':  { type: 'string' },   // N (1-based): record an agent verification (never ticks)
+    'verify-note':   { type: 'string' },
+    'verify-result': { type: 'string' },
+    'verify-by':     { type: 'string' },
+    'unverify-check': { type: 'string' },
     'check-project': { type: 'string', multiple: true },   // N=<path>: attach to the Nth existing check
     'check-video':   { type: 'string', multiple: true },
     'check-audio':   { type: 'string', multiple: true },
@@ -2011,6 +2019,7 @@ function cmdUpdate(argv) {
     if (state) ticked = true;
     changed = true;
   }
+  if (applyAgentVerification(task, values)) changed = true;
   if (applyCheckEvidence(task, values)) changed = true;
   if (values['check-all-checks']) {
     for (const c of task.checks || []) c.checked = true;
@@ -2235,6 +2244,59 @@ function cmdSetPriority(argv) {
     return;
   }
   ok(`${id} priority ${prev} -> ${priority}`);
+}
+
+/** --verify-check N --verify-note "..." [--verify-result pass|fail] [--verify-by name] / --unverify-check N. Never touches `checked`. */
+function applyAgentVerification(task, values) {
+  const n_ = (flag) => {
+    const n = parseInt(values[flag], 10);
+    if (isNaN(n) || n < 1 || n > (task.checks || []).length) die(`--${flag} N must be between 1 and ${(task.checks || []).length}`);
+    return n;
+  };
+  let changed = false;
+  if (values['verify-check'] === undefined) {
+    for (const f of ['verify-note', 'verify-result', 'verify-by']) if (values[f] !== undefined) die(`--${f} needs --verify-check N`);
+  } else {
+    const n = n_('verify-check');
+    const note = (values['verify-note'] || '').trim();
+    if (note.length < 10) die('--verify-check needs --verify-note "<how it was run>" (at least 10 characters)');
+    const result = values['verify-result'] ?? 'pass';
+    if (result !== 'pass' && result !== 'fail') die('--verify-result must be pass or fail');
+    const by = (values['verify-by'] ?? 'agent').trim();
+    if (!by) die('--verify-by must not be empty');
+    task.checks[n - 1].agentVerified = { at: new Date().toISOString(), by, result, note };
+    changed = true;
+  }
+  if (values['unverify-check'] !== undefined) {
+    const n = n_('unverify-check');
+    delete task.checks[n - 1].agentVerified;
+    changed = true;
+  }
+  return changed;
+}
+
+/** ch tasks checks [--json]: unticked, not handed-off, agent-unverified checks on open epics and in-progress/review tickets. */
+function cmdChecks(argv) {
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const doc = load();
+  const rows = [];
+  for (const section of doc.sections || []) {
+    if (section.id === 'done' || section.id === 'archive') continue;
+    for (const t of section.tasks || []) {
+      if (t.type !== 'epic' && section.id !== 'in-progress' && section.id !== REVIEW_SECTION) continue;
+      const checks = [];
+      (t.checks || []).forEach((c, i) => {
+        if (c && !c.checked && !c.handedTo && !c.agentVerified) checks.push({ n: i + 1, text: c.text });
+      });
+      if (checks.length) rows.push({ id: t.id, title: t.title, section: section.id, checks });
+    }
+  }
+  if (values.json) { jsonOut(rows); return; }
+  if (!rows.length) { print('No unverified checks.'); return; }
+  for (const r of rows) {
+    print(`${r.id} ${r.title} [${r.section}]`);
+    for (const c of r.checks) print(`  ${r.id}#${c.n} ${c.text}`);
+  }
 }
 
 function cmdNextId(argv) {
@@ -2960,6 +3022,7 @@ Subcommands:
                  (default: the ticket's epic) and the ticket's own parent is left alone
              [--force]   finish a review ticket by ticking its last check even with open subtasks
   set-priority <id> <low|medium|high>
+  checks [--json]   unticked, not handed-off checks no agent has verified, on open epics and in-progress/review tickets
   next-id
   dump [--active]
   export [--md]
@@ -2992,6 +3055,7 @@ const SUBCOMMANDS = {
   done:          cmdDone,
   update:        cmdUpdate,
   'set-priority': cmdSetPriority,
+  checks:        cmdChecks,
   'next-id':     cmdNextId,
   dump:          cmdDump,
   export:        cmdExport,
