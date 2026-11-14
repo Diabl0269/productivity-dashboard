@@ -1214,6 +1214,11 @@ function cmdReview(argv) {
 
   // A ticket under an epic hands its result and checks to the epic and goes to Done, so
   // "Ready for review" only ever holds epics (and standalone tickets).
+  // PRO94: a check the agent already verified on the child keeps its marker on the epic's copy.
+  for (const item of checkItems) {
+    const own = (task.checks || []).find(c => c.text === item.text && c.agentVerified);
+    if (own && !item.agentVerified) item.agentVerified = own.agentVerified;
+  }
   const rolled = epicOf(doc, task) ? rollUpIntoEpic(doc, task, checkItems) : null;
   if (rolled) {
     const doneSection = sectionById(doc, 'done');
