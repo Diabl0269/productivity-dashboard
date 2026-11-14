@@ -295,7 +295,35 @@ export function normalizeCheckInput(item) {
     if (out.video) throw new Error('a check cannot carry both video and noVideo (attach the video or give the reason, not both)');
     out.noVideo = obj.noVideo.trim();
   }
+  if (obj.noProject !== undefined && obj.noProject !== null && obj.noProject !== '') {
+    const err = noProjectReasonError(obj.noProject, 'check noProject');
+    if (err) throw new Error(err);
+    if (out.project) throw new Error('a check cannot carry both a project and a noProject reason (attach the project or give the reason, not both)');
+    out.noProject = obj.noProject.trim();
+  }
   return out;
+}
+
+/** A check's `noProject` reason: why there is no project to open for it (3-200 chars after trim); '' when fine. */
+export const noProjectReasonError = (v, label = 'noProject') => {
+  if (typeof v !== 'string') return `${label} must be a string (the reason there is no project to open)`;
+  const n = v.trim().length;
+  return n < 3 || n > 200 ? `${label} must be 3-200 characters (why there is no project to open), got ${n}` : '';
+};
+
+/**
+ * PRO100: every check a review files carries a project to open or says why it has none.
+ * `items` are normalized checks ({ text, project?, noProject? }); returns the refusal text, or null.
+ */
+export function checkProjectGateProblem(items) {
+  const bare = [];
+  (items || []).forEach((c, i) => { if (c && !c.project && !c.noProject) bare.push({ n: i + 1, text: c.text }); });
+  if (!bare.length) return null;
+  return `${bare.length} check(s) have neither a project nor a reason, and Tal opens every check from the Plan page:\n`
+    + bare.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
+    + '\nAttach the saved project the check was rendered from (--check-project N=<path>, N = the check number above), '
+    + 'or say why there is none (--check-no-project N=<reason>, 3-200 chars, e.g. "reads a setting, no project involved"). '
+    + '(--force "<why>" overrides and is recorded on the ticket.)';
 }
 
 /** A check's `noVideo` reason: why this check has no video (3-200 chars after trim); '' when fine. */
@@ -324,6 +352,10 @@ export function checkEvidenceErrors(check, ref) {
     const e = noVideoReasonError(check.noVideo, `${ref}.noVideo`);
     if (e) errors.push(e);
     if (check.video !== undefined) errors.push(`${ref} cannot carry both video and noVideo`);
+  }
+  if (check?.noProject !== undefined) {
+    const e = noProjectReasonError(check.noProject, `${ref}.noProject`);
+    if (e) errors.push(e);
   }
   return errors;
 }
@@ -371,6 +403,8 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
       for (const key of ['project', 'video', 'audio']) if (input[key] && !have[key]) have[key] = input[key];
       if (input.noVideo && !have.noVideo && !have.video) have.noVideo = input.noVideo;
       if (input.video && have.noVideo) delete have.noVideo;
+      if (input.noProject && !have.noProject && !have.project) have.noProject = input.noProject;
+      if (input.project && have.noProject) delete have.noProject;
       if (input.agentVerified && !have.agentVerified) have.agentVerified = input.agentVerified;
       if (input.heldPr && !have.heldPr) have.heldPr = { ...input.heldPr };
       continue;
@@ -378,6 +412,7 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
     const check = { text, checked: false, addedAt: now };
     for (const key of ['project', 'video', 'audio']) if (input[key]) check[key] = input[key];
     if (input.noVideo && !check.video) check.noVideo = input.noVideo;
+    if (input.noProject && !check.project) check.noProject = input.noProject;
     if (input.agentVerified) check.agentVerified = input.agentVerified;
     if (input.heldPr) check.heldPr = { ...input.heldPr };
     task.checks.push(check);
@@ -444,24 +479,28 @@ export function reviewQueue(doc) {
  * epic the day it ships, but the epic only reaches Ready for review with its last child, so the
  * queue above never shows these until then.
  */
-export function checksOnOpenWork(doc) {
+export function checksOnOpenWork(doc, { lines = new Map() } = {}) {
   const untickedOf = (task) => (task.checks || []).filter(c => c && !c.checked && !c.handedTo);
+  // PRO97: `lines` (shared/needs-tal-lines.js) are needs-tal Unverified lines of done children; they count as unticked checks.
   return flat(doc)
-    .filter(({ task, section }) => !CLOSED_SECTIONS.has(section) && untickedOf(task).length)
+    .filter(({ task, section }) => !CLOSED_SECTIONS.has(section) && (untickedOf(task).length || (lines.get(task.id) || []).length))
     .map(({ task }) => ({
       id: task.id,
       title: task.title,
       project: task.project || null,
       parentId: task.parentId || null,
       reviewOf: task.reviewOf || null,
-      enteredAt: untickedOf(task).map(c => c.addedAt || '').sort()[0] || '',
-      checks: checkProgress(task),
+      enteredAt: untickedOf(task).map(c => c.addedAt || '').sort()[0] || task.result?.at || '',
+      checks: addLines(checkProgress(task), lines.get(task.id)),
+      lines: lines.get(task.id) || [],
       notes: unsentNotes(task).length,
       result: task.result || null,
       followUps: followUpsOf(doc, task.id),
     }))
     .sort((a, b) => (a.enteredAt < b.enteredAt ? -1 : a.enteredAt > b.enteredAt ? 1 : 0));
 }
+
+const addLines = (progress, lines) => ({ done: progress.done, total: progress.total + (lines || []).length });
 
 function findRow(doc, id) {
   return flat(doc).find(({ task }) => task.id === id) || null;

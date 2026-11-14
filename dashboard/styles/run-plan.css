@@ -136,6 +136,9 @@ button.rp-chip-toggle:focus-visible { outline: 2px solid var(--accent); outline-
 .rp-check-agent.rp-check-agent-fail { color: var(--danger, #d64545); font-weight: 600; }
 .rp-check-branch { color: var(--text-secondary); font-size: 12px; border: 1px solid var(--border, currentColor); border-radius: 10px; padding: 0 6px; white-space: nowrap; }
 .rp-check-muted { color: var(--text-secondary); font-style: italic; }
+.rp-check-build { color: var(--text-secondary); font-size: 0.85em; overflow-wrap: anywhere; }
+.rp-check-build-current { color: var(--success, #2e7d32); }
+.rp-check-build-stale { color: var(--warning, #b26a00); font-weight: 600; }
 .rp-check-notes { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .rp-checks .td-review-note, .rp-checks .td-review-note-add { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .rp-checks .td-review-note-input { flex: 1; min-width: 0; }

@@ -40,7 +40,7 @@ import { planFiling, applyFiling } from './review-filing.js';
 
 export const ASK_STATES = ['open', 'answered', 'done', 'dismissed', 'parked'];
 const RESOLVED_STATES = ['answered', 'done', 'dismissed', 'parked'];
-const RESOLVED_KINDS = ['left', 'needs-tal'];
+const RESOLVED_KINDS = ['left', 'needs-tal', 'interpretation']; // interpretation: shared/interpretations.js (PRO96)
 /** Sections where work is still open: an ask outside them is stale. */
 export const ASK_OPEN_SECTIONS = ['inbox', 'todo', 'in-progress', 'review'];
 const CLOSED_SECTIONS = ['done', 'archive'];
@@ -586,7 +586,7 @@ export function askErrors(task, ref) {
     else task.resolvedAsks.forEach((x, i) => {
       const r = `${ref}.resolvedAsks[${i}]`;
       if (!x || typeof x !== 'object') { errors.push(`${r} must be an object`); return; }
-      if (!RESOLVED_KINDS.includes(x.kind)) errors.push(`${r}.kind must be left or needs-tal`);
+      if (!RESOLVED_KINDS.includes(x.kind)) errors.push(`${r}.kind must be left, needs-tal or interpretation`);
       if (typeof x.text !== 'string' || !x.text) errors.push(`${r}.text must be a non-empty string`);
       if (!RESOLVED_STATES.includes(x.state)) errors.push(`${r}.state must be one of ${RESOLVED_STATES.join(', ')}`);
     });

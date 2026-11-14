@@ -4,6 +4,7 @@ import { computeRunPlan, threadLink, laneDisplayName, totalsLine } from '../../s
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
+import { checkBuildChip, noProjectNote } from './check-build-ui.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { heldPrChip } from './held-pr-ui.js';
 import { linkedCheckKeys } from '../../shared/ask-check-overlap.js';
@@ -23,6 +24,7 @@ import { renderLaterFold } from './run-plan-later.js';
 import { renderReasonBlock } from './run-plan-reasons.js';
 import { renderNextStartLine } from './next-start-line.js';
 import { asksFromState, renderAskCard, checkMergedPrs, updateAsksBadge, setAskFiler } from './asks-strip.js';
+import { interpretationsFromState, renderInterpretationCard } from './interpretation-card.js';
 import { markChanged } from './tasks-io.js';
 import { showStatus } from './state.js';
 
@@ -208,6 +210,10 @@ function renderCheckGrid(task) {
     if (c.noVideo) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(el('span', 'rp-check-muted', `No video: ${c.noVideo}`));
+    }
+    // PRO100: the exact build the project opens in (and whether it has the change), or why there is no project.
+    for (const extra of [checkBuildChip(task, c, Object.values(getState?.()?.tasks || {}).flat(), renderRunPlanView), noProjectNote(c)]) {
+      if (extra) { what.appendChild(document.createTextNode(' ')); what.appendChild(extra); }
     }
     if (c.audio) what.appendChild(audioPlayer(c, i + 1));
     if (c.checkedNote) {
@@ -446,14 +452,14 @@ function renderFileBar() {
  * epics (and standalone tickets) ready for review, their checks inside, and decisions (asks-strip.js
  * cards with option buttons). Every item carries its media.
  */
-function renderReview(review, openChecks, asks) {
+function renderReview(review, openChecks, asks, interps = []) {
   const block = el('section', 'rp-review rp-for-you');
-  const total = review.length + asks.length;
+  const total = review.length + asks.length + interps.length;
   block.setAttribute('aria-label', `For you (${total})`);
   block.appendChild(el('h2', 'rp-review-title', total ? `For you (${total})` : 'For you'));
   const fileBar = renderFileBar();
   if (fileBar) block.appendChild(fileBar);
-  if (total) block.appendChild(renderReviewList(review, asks));
+  if (total) block.appendChild(renderReviewList(review, asks, interps));
   else block.appendChild(el('p', 'rp-review-empty', 'Nothing waits on you: no epic to review, no decision to make.'));
   if (openChecks.length) {
     const total = openChecks.reduce((sum, item) => sum + item.checks.total - item.checks.done, 0);
@@ -464,14 +470,30 @@ function renderReview(review, openChecks, asks) {
   return block;
 }
 
+/** PRO97: needs-tal Unverified lines of done children, shown under the epic's checks while it is still in progress. */
+function renderNeedsTalLines(lines) {
+  const box = el('div', 'rp-needs-tal');
+  box.appendChild(el('div', 'rp-review-empty', 'Only you can judge these (from finished tickets):'));
+  const ul = el('ul', 'rp-needs-tal-list');
+  for (const l of lines) {
+    const li = el('li', null);
+    li.appendChild(idButton(l.from, 'rp-link rp-review-id'));
+    li.appendChild(document.createTextNode(` ${l.text}`));
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  return box;
+}
+
 /** Review items and decision cards in one list, oldest first (a review by when it entered review, a decision by when it was asked). */
-function renderReviewList(items, asks = []) {
+function renderReviewList(items, asks = [], interps = []) {
   const list = el('ol', 'rp-review-list');
-  const when = x => String(x.kind === 'ask' ? x.card.at || '' : x.item.enteredAt || '') || '9999';
-  const all = [...items.map(item => ({ kind: 'review', item })), ...asks.map(card => ({ kind: 'ask', card }))];
-  if (asks.length) all.sort((a, b) => (when(a) < when(b) ? -1 : when(a) > when(b) ? 1 : 0));
+  const when = x => String(x.kind === 'ask' || x.kind === 'interp' ? x.card.at || '' : x.item.enteredAt || '') || '9999';
+  const all = [...items.map(item => ({ kind: 'review', item })), ...asks.map(card => ({ kind: 'ask', card })), ...interps.map(card => ({ kind: 'interp', card }))];
+  if (asks.length || interps.length) all.sort((a, b) => (when(a) < when(b) ? -1 : when(a) > when(b) ? 1 : 0));
   for (const entry of all) {
     if (entry.kind === 'ask') { list.appendChild(renderAskCard(getState(), entry.card, renderRunPlanView)); continue; }
+    if (entry.kind === 'interp') { list.appendChild(renderInterpretationCard(getState(), entry.card, renderRunPlanView)); continue; }
     const { item } = entry;
     const task = findTicket(item.id);
     const open = openReview.has(item.id);
@@ -506,7 +528,8 @@ function renderReviewList(items, asks = []) {
       line.appendChild(document.createTextNode(` (${fu.section})`));
       li.appendChild(line);
     }
-    if (open && task) li.appendChild(renderCheckGrid(task));
+    if (open && task && (task.checks || []).length) li.appendChild(renderCheckGrid(task));
+    if (open && item.lines?.length) li.appendChild(renderNeedsTalLines(item.lines));
     list.appendChild(li);
   }
   return list;
@@ -928,7 +951,7 @@ export function renderRunPlanView() {
   const asks = asksFromState(state);
   updateAsksBadge(asks.length);
   checkMergedPrs(state, asks, renderRunPlanView);
-  root.appendChild(renderReview(plan.review || [], plan.openChecks || [], asks));
+  root.appendChild(renderReview(plan.review || [], plan.openChecks || [], asks, interpretationsFromState(state)));
   readinessById = new Map((plan.readiness || []).map(r => [r.id, r]));
   root.appendChild(renderNextStartLine());
   root.appendChild(renderAutoQueue(plan.readiness || [], {

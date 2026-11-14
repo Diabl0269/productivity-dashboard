@@ -13,6 +13,7 @@ import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
 import { todayStr } from './tasks-parser.js';
+import { askHeldPrChip } from './held-pr-ui.js';
 import { openProjectButton, playVideoButton, audioPlayer, evidenceUrl, showEvidenceToast } from './check-evidence.js';
 
 // The text box that is open per surface: { handle, mode: 'answer' | 'park' }; drafts survive re-renders.
@@ -139,14 +140,18 @@ function textBox(state, card, mode, redraw, surface) {
 
 /** The card's video / sound / screenshot / project, with the review card's evidence controls. */
 function mediaBlock(card) {
-  const m = card.media;
-  if (!m) return null;
+  const m = card.media || {};
+  if (!card.media && !card.mergePr) return null;
   const wrap = el('div', 'rp-ask-media');
   const label = `${card.ids[0]} decision`;
   const row = el('div', 'rp-actions');
   wrap.appendChild(row);
-  if (m.project) row.appendChild(openProjectButton(m.project));
+  const projectBtn = m.project ? openProjectButton(m.project) : null;
+  if (projectBtn) row.appendChild(projectBtn);
   if (m.video) row.appendChild(playVideoButton({ video: m.video }, 1, wrap, label));
+  // PRO101: an ask about an unmerged PR says so, and its project opens in that branch's build.
+  const chip = askHeldPrChip(card, projectBtn ? [projectBtn] : []);
+  if (chip) row.appendChild(chip);
   if (!row.childNodes.length) row.remove();
   if (m.image) {
     const a = el('a', 'rp-ask-image-link');

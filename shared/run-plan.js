@@ -6,6 +6,7 @@
  */
 
 import { checksOnOpenWork, reviewQueue } from './review.js';
+import { needsTalLinesByEpic } from './needs-tal-lines.js';
 import { isDesignPick, isPickGate } from './pick-gate.js';
 import { openEpicReadiness, epicIdsForLanes, plainReasonLine } from './epic-ready.js';
 
@@ -525,6 +526,6 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     // Shipped work waiting for Tal's own look, oldest first (shared/review.js).
     review: reviewQueue(doc),
     // Checks on work that has shipped in part: its epic is still open.
-    openChecks: checksOnOpenWork(doc),
+    openChecks: checksOnOpenWork(doc, { lines: needsTalLinesByEpic(doc) }),
   };
 }
