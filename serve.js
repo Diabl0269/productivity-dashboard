@@ -889,6 +889,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // PRO100: GET /api/review-app -> { app, builtAt } (the newest configured reviewProjectApps build), or { app: null }.
+  if (url.pathname === '/api/review-app' && req.method === 'GET') {
+    try {
+      const lib = await loadEvidenceLib();
+      const picked = lib.pickReviewApp(lib.readReviewApps(DATA_ROOT));
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(picked || { app: null }));
+    } catch (e) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Review projects: POST /api/open-project {path} launches the newest configured build on a saved project
   if (url.pathname === '/api/open-project' && req.method === 'POST') {
     try {

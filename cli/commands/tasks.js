@@ -26,7 +26,7 @@
   notes dismiss <id>#<n>
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
- *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
+ *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
  *              [--held-pr "<why>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr; adds the check 'Try on branch X, then say merge or not')
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
@@ -64,9 +64,9 @@
              [--verify-check N --verify-note "<how it was run>" [--verify-result pass|fail] [--verify-by name]] [--unverify-check N]
                  record that an AGENT ran check N (never ticks it; the tick stays Tal's); --unverify-check removes the marker
  *              [--remove-check N] [--clear-checks] [--check-all-checks]
-             [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...
+             [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...
                  attach (or replace) evidence on the Nth EXISTING check as `ch tasks get` lists it; same rules as review; text and tick unchanged
- *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...   (N = the Nth existing check; attach or replace)
+ *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...   (N = the Nth existing check; attach or replace)
  *              [--review-of T1] [--clear-review-of] [--clear-result]
  *              [--clear-unverified] [--resolve-unverified N]   (edit result.unverified; an epic's lines are numbered as listed)
  *              [--promote-subtask N [--parent EPIC | --promote-parent EPIC]]   (subtask N becomes its own task in todo; with
@@ -117,7 +117,7 @@ import { totalsLine, computeRunPlan, isLiveCheckedEpic, laneDisplayName, openEpi
 import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
-  REVIEW_SECTION, normalizeResult, normalizeCheckInput, noVideoReasonError, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
+  REVIEW_SECTION, normalizeResult, normalizeCheckInput, noVideoReasonError, noProjectReasonError, checkProjectGateProblem, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
   rollUpAfterClose, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
@@ -954,6 +954,15 @@ function parseCheckNoVideoFlags(list, count) {
   });
 }
 
+/** `--check-no-project N=<reason>` values: [{ n, value }] (same N rules as the evidence flags). */
+function parseCheckNoProjectFlags(list, count) {
+  return parseCheckEvidenceFlags(list, '--check-no-project', count).map(({ n, value }) => {
+    const err = noProjectReasonError(value, '--check-no-project');
+    if (err) die(err);
+    return { n, value };
+  });
+}
+
 /**
  * The checks of one `review` call as [{ text, project?, video? }]: those in --result-json
  * (strings or objects) first, then --check, with --check-project / --check-video N=<path>
@@ -979,7 +988,11 @@ function reviewCheckItems(base, values) {
   for (const { n, value } of parseCheckNoVideoFlags(values['check-no-video'], flagTexts.length)) {
     flagItems[n - 1].noVideo = value;
   }
+  for (const { n, value } of parseCheckNoProjectFlags(values['check-no-project'], flagTexts.length)) {
+    flagItems[n - 1].noProject = value;
+  }
   for (const item of [...items, ...flagItems]) {
+    if (item.project && item.noProject) die(`check "${item.text}" has both a project and a no-project reason: give one or the other`);
     if (item.video && item.noVideo) die(`check "${item.text}" has both a video and a no-video reason: give one or the other`);
   }
   return [...items, ...flagItems];
@@ -1000,16 +1013,23 @@ function applyCheckEvidence(task, values) {
   }
   given.noVideo = parseCheckNoVideoFlags(values['check-no-video'], count);
   if (given.noVideo.length) any = true;
+  given.noProject = parseCheckNoProjectFlags(values['check-no-project'], count);
+  if (given.noProject.length) any = true;
   if (!any) return false;
   for (const a of given.video) for (const b of given.noVideo) {
     if (a.n === b.n) die(`check ${a.n} has both a video and a no-video reason: give one or the other`);
   }
-  for (const kind of ['project', 'video', 'audio', 'noVideo']) {
+  for (const a of given.project) for (const b of given.noProject) {
+    if (a.n === b.n) die(`check ${a.n} has both a project and a no-project reason: give one or the other`);
+  }
+  for (const kind of ['project', 'video', 'audio', 'noVideo', 'noProject']) {
     for (const { n, value } of given[kind]) {
       const check = task.checks[n - 1];
       check[kind] = value;
       if (kind === 'video') delete check.noVideo;
       if (kind === 'noVideo') delete check.video;
+      if (kind === 'project') delete check.noProject;
+      if (kind === 'noProject') delete check.project;
     }
   }
   return true;
@@ -1035,6 +1055,7 @@ function cmdReview(argv) {
     'check-video': { type: 'string', multiple: true },
     'check-audio': { type: 'string', multiple: true },
     'check-no-video': { type: 'string', multiple: true },
+    'check-no-project': { type: 'string', multiple: true },
     'result-json': { type: 'string' },
     section:       { type: 'string',  short: 's' },
     json:          { type: 'boolean', short: 'j' },
@@ -1099,7 +1120,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--ask "<question>" --ask-details "<at least 60 chars>"]... [--same-judgement | --not-same "<why>"] [--add-link URL]');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--ask "<question>" --ask-details "<at least 60 chars>"]... [--same-judgement | --not-same "<why>"] [--add-link URL]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -1117,6 +1138,9 @@ function cmdReview(argv) {
   const checkItems = reviewCheckItems(base, values);
   const checkTexts = checkItems.map(c => c.text);
   assertChecksAreTals(checkItems, values['allow-check-owner']);
+  // PRO100: every --check carries a project to open or says why it has none (taste lines and held-PR checks added later are exempt).
+  // (CH_NO_CHECK_PROJECT_GATE=1 switches it off: for this repo's own fixture tests, not for sessions.)
+  const projectProblem = process.env.CH_NO_CHECK_PROJECT_GATE === '1' ? null : checkProjectGateProblem(checkItems);
 
   const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
   let result = null;
@@ -1199,6 +1223,10 @@ function cmdReview(argv) {
     die(values.force && values['force-reason'] !== undefined ? `--force needs a reason: --force "<why>"\n${proofProblem}` : proofProblem);
   }
 
+  if (projectProblem && !forceReason) {
+    die(values.force && values['force-reason'] !== undefined ? `--force needs a reason: --force "<why>"\n${projectProblem}` : projectProblem);
+  }
+
   // PRO70: an open PR blocks review unless --held-pr says why (adds the "try on branch" check).
   const newLinks = (values['add-link'] || []).map((url, i) => ({ url, ...((values['link-label'] || [])[i] ? { label: values['link-label'][i] } : {}) }));
   const pr = openPrGate({ id, heldPr: values['held-pr'], links: [...(task.links || []), ...newLinks] });
@@ -1221,7 +1249,7 @@ function cmdReview(argv) {
 
   if (result) task.result = result;
   if (evidenceRels.length) task.reviewEvidence = [...new Set([...(task.reviewEvidence || []), ...evidenceRels])];
-  if (proofProblem && forceReason) task.forcedReview = { reason: forceReason, at: new Date().toISOString() };
+  if ((proofProblem || projectProblem) && forceReason) task.forcedReview = { reason: forceReason, at: new Date().toISOString() };
   if (noChecksReason && !checkTexts.length && !(task.checks || []).length) task.noChecksReason = noChecksReason;
   applyUnverifiedEdits(task, values);
   (values.ask || []).forEach((text, i) => {
@@ -1517,6 +1545,7 @@ function cmdUpdate(argv) {
     'check-video':   { type: 'string', multiple: true },
     'check-audio':   { type: 'string', multiple: true },
     'check-no-video': { type: 'string', multiple: true },
+    'check-no-project': { type: 'string', multiple: true },
     'remove-check':  { type: 'string' },
     'clear-checks':  { type: 'boolean' },
     'check-all-checks': { type: 'boolean' },
@@ -2972,7 +3001,7 @@ Subcommands:
   next [--n 5] [--project P] [--json]   best ready tickets to start next (read-only)
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
          [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]...
-         [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]...
+         [--check "..."]... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...
          [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
          [--evidence <path>]...   a saved proof file under $CH_HOME/evidence (screenshot, AX dump, render, run log)
          ui/audio tickets (label on the ticket or its epic): each --unverified line starts with taste: / hardware: /
@@ -2981,7 +3010,9 @@ Subcommands:
          [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--allow-parked "<why>"] [--json]
          --check-project / --check-video / --check-audio attach a saved .agsproj / short .mp4 / .wav (or .mp3 .m4a .ogg .flac) to the Nth --check of this call; --check-no-video N=<reason> (3-200 chars) says why a check has no video (not with a video on the same check) (Open project / Play video / audio player
          on the Plan page); the path is absolute or relative to $CH_HOME/evidence, must lie inside it and exist; --result-json checks may be
-         {"text","project","video","audio","noVideo"} objects
+         {"text","project","video","audio","noVideo","noProject"} objects
+         every --check carries a project (--check-project N=<path>) or a reason there is none (--check-no-project N=<reason>, 3-200 chars,
+         not both); a check with neither is refused, naming its number (--force "<why>" overrides; --no-checks needs none)
          refuses checks a session should verify itself (CI green, running commands/evals/scripts, older projects, regressions, VoiceOver, measured results): put those in --tests;
          also refuses "nothing to check" texts (use --no-checks), file paths in a check without an attached project/video/audio (attach it),
          and AI-generated-content checks without --check-project (create the project with the AI yourself)

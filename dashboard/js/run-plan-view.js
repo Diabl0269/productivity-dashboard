@@ -4,6 +4,7 @@ import { computeRunPlan, threadLink, laneDisplayName, totalsLine } from '../../s
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
+import { checkBuildChip, noProjectNote } from './check-build-ui.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { heldPrChip } from './held-pr-ui.js';
 import { linkedCheckKeys } from '../../shared/ask-check-overlap.js';
@@ -209,6 +210,10 @@ function renderCheckGrid(task) {
     if (c.noVideo) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(el('span', 'rp-check-muted', `No video: ${c.noVideo}`));
+    }
+    // PRO100: the exact build the project opens in (and whether it has the change), or why there is no project.
+    for (const extra of [checkBuildChip(task, c, Object.values(getState?.()?.tasks || {}).flat(), renderRunPlanView), noProjectNote(c)]) {
+      if (extra) { what.appendChild(document.createTextNode(' ')); what.appendChild(extra); }
     }
     if (c.audio) what.appendChild(audioPlayer(c, i + 1));
     if (c.checkedNote) {

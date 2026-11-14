@@ -16,6 +16,9 @@ import {
   checkOwnerProblem, isPickCheckText, removeStalePickChecks, rollUpIntoEpic, reviewClosedTooFast,
 } from '../../shared/review.js';
 
+// PRO100: these fixtures file bare checks; the project-or-reason gate has its own tests (review-project-gate.test.js).
+process.env.CH_NO_CHECK_PROJECT_GATE = '1';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 

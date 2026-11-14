@@ -17,6 +17,9 @@ import { clearMergedHeldPrs, heldPrError, cleanHeldPr, prNumber } from '../../sh
 import { validateTasksDoc } from '../lib/schema.js';
 import { normalizeChecks } from '../../dashboard/js/tasks-json.js';
 
+// PRO100: these fixtures file bare checks; the project-or-reason gate has its own tests (review-project-gate.test.js).
+process.env.CH_NO_CHECK_PROJECT_GATE = '1';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 const PR = 'https://github.com/example/demo/pull/42';

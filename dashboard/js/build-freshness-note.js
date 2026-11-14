@@ -16,10 +16,11 @@ function el(tag, className, text) {
 }
 
 /**
- * The build line of a review card, or null while loading / when no rule applies. `tasks` is every
- * ticket (flat, dashboard shape); `rerender` is called once a lookup lands. Fetches lazily.
+ * The rolled-up freshness line of a review card ({ text, kind, ... }), or null while loading / when no
+ * rule applies. `tasks` is every ticket (flat, dashboard shape); `rerender` is called once a lookup
+ * lands. Fetches lazily. (PRO100: also read per check, see check-build-ui.js.)
  */
-export function buildFreshnessNote(task, tasks, rerender) {
+export function buildFreshnessLine(task, tasks, rerender) {
   const links = cardPrLinks(task, tasks);
   const entries = links.map(({ ticketId, url }) => {
     if (!freshnessByUrl.has(url) && !freshnessPending.has(url) && typeof fetch === 'function') {
@@ -32,7 +33,12 @@ export function buildFreshnessNote(task, tasks, rerender) {
     }
     return { ticketId, result: freshnessByUrl.has(url) ? freshnessByUrl.get(url) : undefined };
   });
-  const line = rollUpFreshness(entries, task?.taskId);
+  return rollUpFreshness(entries, task?.taskId);
+}
+
+/** The "Your app: ..." note of a review card, or null (same lookup as buildFreshnessLine). */
+export function buildFreshnessNote(task, tasks, rerender) {
+  const line = buildFreshnessLine(task, tasks, rerender);
   if (!line) return null;
   const note = el('div', `rp-build rp-build-${line.kind}`, line.unknown ? line.text : `Your app: ${line.text}`);
   if (line.staleIds) note.appendChild(document.createTextNode(`. Behind: ${line.staleIds.join(', ')}`));

@@ -150,6 +150,7 @@ export function normalizeChecks(raw) {
     if (typeof c.video === 'string' && c.video) e.video = c.video;
     if (typeof c.audio === 'string' && c.audio) e.audio = c.audio;
     if (typeof c.noVideo === 'string' && c.noVideo && !e.video) e.noVideo = c.noVideo;
+    if (typeof c.noProject === 'string' && c.noProject && !e.project) e.noProject = c.noProject;
     const av = c.agentVerified;
     if (av && typeof av === 'object' && typeof av.at === 'string' && av.at && typeof av.note === 'string' && av.note.trim()
         && (av.result === 'pass' || av.result === 'fail')) {

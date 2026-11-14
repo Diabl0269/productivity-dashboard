@@ -18,6 +18,9 @@ import { addAsk, answerAsk, askErrors, cleanAsks, tickLinkedChecks, resolveAsk }
 import { foldTasteChecks } from '../lib/taste-checks.js';
 import { validateTasksDoc } from '../lib/schema.js';
 
+// PRO100: these fixtures file bare checks; the project-or-reason gate has its own tests (review-project-gate.test.js).
+process.env.CH_NO_CHECK_PROJECT_GATE = '1';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 const DETAILS = 'Open the Reverb panel on the master bus and compare the mix at 30 percent against 50; it sets the default.';
