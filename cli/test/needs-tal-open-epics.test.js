@@ -1,7 +1,9 @@
 // PRO97: needs-tal Unverified lines of done children show on the Plan page while the epic is in progress.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { computeRunPlan } from '../../shared/run-plan.js';
+import { resolveNeedsTalLine, parseNeedsTalLine } from '../../shared/needs-tal-lines.js';
 
 const LINE = 'needs-tal: hardware: Ctrl+Space opens the palette on a real keyboard';
 
@@ -57,4 +59,29 @@ test('epics in review are unchanged: their lines are not in openChecks', () => {
   const plan = computeRunPlan(doc({ epicSection: 'review' }));
   assert.deepEqual(plan.openChecks, []);
   assert.deepEqual(plan.review.map(r => r.id), ['E1']);
+});
+
+// PRO112: each line is answerable on the Plan page: media shown, tick resolves it, note goes on the source ticket.
+test('PRO112: a line with media after a bar carries it and shows clean text', () => {
+  assert.deepEqual(parseNeedsTalLine('C1: needs-tal: taste: caption colour | video=C1/a.mp4 project=C1/a.agsproj'),
+    { text: 'taste: caption colour', media: { video: 'C1/a.mp4', project: 'C1/a.agsproj' } });
+  const plan = computeRunPlan(doc({ unverified: ['needs-tal: taste: caption colour | image=C1/a.png'] }));
+  assert.deepEqual(plan.openChecks[0].lines, [{ from: 'C1', text: 'taste: caption colour', media: { image: 'C1/a.png' } }]);
+});
+
+test('PRO112: resolveNeedsTalLine drops the line from the child and the epic copy, and only that line', () => {
+  const other = 'needs-tal: taste: something else | video=x.mp4';
+  const child = { result: { unverified: [LINE, other, 'tried: hardware: no controller'] } };
+  const epic = { result: { unverified: [`C1: ${LINE}`] } };
+  assert.equal(resolveNeedsTalLine([child, epic], 'hardware: Ctrl+Space opens the palette on a real keyboard'), 2);
+  assert.deepEqual(child.result.unverified, [other, 'tried: hardware: no controller']);
+  assert.equal(epic.result.unverified, undefined);
+  assert.equal(resolveNeedsTalLine([child], 'not there'), 0);
+});
+
+test('PRO112 guard: the Plan page needs-tal rows keep a tick box and a note field (every For-you item has an answer control)', () => {
+  const src = fs.readFileSync(new URL('../../dashboard/js/run-plan-view.js', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('function renderNeedsTalLines'), src.indexOf('function tickNeedsTalLine'));
+  assert.match(body, /type = 'checkbox'/);
+  assert.match(body, /noteCell\(/);
 });

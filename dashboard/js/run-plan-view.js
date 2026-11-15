@@ -5,7 +5,8 @@ import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
 import { checkBuildChip, noProjectNote } from './check-build-ui.js';
-import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
+import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl } from './check-evidence.js';
+import { resolveNeedsTalLine } from '../../shared/needs-tal-lines.js';
 import { heldPrChip } from './held-pr-ui.js';
 import { linkedCheckKeys } from '../../shared/ask-check-overlap.js';
 import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
@@ -451,18 +452,54 @@ function renderReview(review, openChecks, asks, interps = []) {
 }
 
 /** PRO97: needs-tal Unverified lines of done children, shown under the epic's checks while it is still in progress. */
-function renderNeedsTalLines(lines) {
+function renderNeedsTalLines(lines, epicId) {
   const box = el('div', 'rp-needs-tal');
   box.appendChild(el('div', 'rp-review-empty', 'Only you can judge these (from finished tickets):'));
-  const ul = el('ul', 'rp-needs-tal-list');
-  for (const l of lines) {
-    const li = el('li', null);
-    li.appendChild(idButton(l.from, 'rp-link rp-review-id'));
-    li.appendChild(document.createTextNode(` ${l.text}`));
-    ul.appendChild(li);
-  }
-  box.appendChild(ul);
+  // PRO112: each line is a row like a check: tick box, the line with its media, and a note field on the source ticket.
+  const grid = el('div', 'rp-checks rp-needs-tal-list');
+  grid.setAttribute('role', 'group');
+  grid.setAttribute('aria-label', 'Lines only you can judge: tick and notes');
+  lines.forEach((l, i) => {
+    const source = findTicket(l.from);
+    const row = el('div', 'rp-check-row');
+    const pass = el('div', 'rp-check-pass');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.setAttribute('aria-label', `Pass ${l.from}: ${l.text}`);
+    cb.addEventListener('change', () => tickNeedsTalLine(l, epicId));
+    pass.appendChild(cb);
+    row.appendChild(pass);
+    const what = el('div', 'rp-check-what');
+    what.appendChild(idButton(l.from, 'rp-link rp-review-id'));
+    what.appendChild(document.createTextNode(` ${l.text}`));
+    const media = l.media || {};
+    if (media.project) { what.appendChild(document.createTextNode(' ')); what.appendChild(projectGroupHeader(media.project, 'ce-group-head')); }
+    if (media.video) { what.appendChild(document.createTextNode(' ')); what.appendChild(playVideoButton({ video: media.video }, i + 1, what, `${l.from} line ${i + 1}`)); }
+    if (media.audio) what.appendChild(audioPlayer({ audio: media.audio }, i + 1, `${l.from} line ${i + 1}`));
+    if (media.image) {
+      const img = el('img', 'ce-image');
+      img.src = evidenceUrl(media.image);
+      img.alt = `Image for ${l.from} line ${i + 1}`;
+      what.appendChild(img);
+    }
+    row.appendChild(what);
+    if (source) {
+      row.appendChild(noteCell(source, unsentNotes(source).filter(n => n.check === l.text), {
+        check: l.text, key: `needs-tal-${i}`, placeholder: 'What did you see? Enter saves', label: `Note on ${l.from}: ${l.text}`,
+      }));
+    }
+    grid.appendChild(row);
+  });
+  box.appendChild(grid);
   return box;
+}
+
+/** PRO112: ticking a needs-tal line resolves it on the source ticket and the epic's rolled-up copy (what `--resolve-unverified` does). */
+function tickNeedsTalLine(line, epicId) {
+  const tickets = [findTicket(line.from), findTicket(epicId)].filter(Boolean);
+  if (!resolveNeedsTalLine(tickets, line.text)) return;
+  tickets.forEach(markChanged);
+  renderRunPlanView();
 }
 
 /** Review items and decision cards in one list, oldest first (a review by when it entered review, a decision by when it was asked). */
@@ -509,7 +546,7 @@ function renderReviewList(items, asks = [], interps = []) {
       li.appendChild(line);
     }
     if (open && task && (task.checks || []).length) li.appendChild(renderCheckGrid(task));
-    if (open && item.lines?.length) li.appendChild(renderNeedsTalLines(item.lines));
+    if (open && item.lines?.length) li.appendChild(renderNeedsTalLines(item.lines, item.id));
     list.appendChild(li);
   }
   return list;
