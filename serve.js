@@ -829,6 +829,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Dashboard answers (PRO102): GET /api/live-epics -> { liveEpics } (epics with a live automatic run; none when the dispatcher is stale).
+  if (url.pathname === '/api/live-epics' && req.method === 'GET') {
+    try {
+      const lib = await import('./cli/lib/next-start-inputs.js');
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ liveEpics: lib.liveEpicsNow() }));
+    } catch (e) {
+      res.writeHead(e.status || 500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Plan page "Next start" line: GET /api/next-start -> { next, reason, line } (shared/next-start.js; read-only).
   if (url.pathname === '/api/next-start' && req.method === 'GET') {
     try {

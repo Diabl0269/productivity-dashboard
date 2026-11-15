@@ -7,6 +7,9 @@
  * finished review to done). Pinning and unpinning are left to the caller (see `pin`/`unpin`
  * in the result) so this module stays free of plan/meta helpers.
  *
+ * PRO104: an answered ask on a done / review / archive ticket that nothing picked up yet is planned and
+ * filed like a note on that ticket (one ticket per answer; the ask is marked `filedAs: <new id>`).
+ *
  * Pure (no fs, no DOM); used by the CLI and the dashboard.
  */
 
@@ -24,6 +27,35 @@ const isLater = (epic) => /\(later\)\s*$/i.test(epic.title || '');
 const sameProject = (a, b) => (a || null) === (b || null);
 const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const lowerFirst = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+
+/** Sections whose answered asks the notes run picks up (the work is closed: nobody will read the answer). */
+const ANSWER_SECTIONS = ['done', REVIEW_SECTION, 'archive'];
+
+/** Handle of an answered ask: `T1#ask2` (a note's is `T1#2`). */
+const askHandle = (task, ask) => `${task.id}#ask${ask.n}`;
+
+/** True when a review note already carries this ask's answer (the PRO102 / older done-ticket path). */
+function answerHasNote(task, ask) {
+  const head = `answered "${ask.text}"`;
+  return (task.reviewNotes || []).some(n => n && typeof n.text === 'string' && n.text.includes(head));
+}
+
+/**
+ * Answered asks on closed tickets that no ticket has picked up: state 'answered', ticket in done / review /
+ * archive, no `filedAs`, no review note already holding the answer. Document order.
+ * @returns {{ task, section, ask, handle }[]}
+ */
+export function pendingAnswers(doc, { ticket } = {}) {
+  const out = [];
+  for (const { task, section } of rows(doc)) {
+    if (!ANSWER_SECTIONS.includes(section) || (ticket && task.id !== ticket)) continue;
+    for (const ask of task.asks || []) {
+      if (!ask || ask.state !== 'answered' || !ask.answer || ask.filedAs || answerHasNote(task, ask)) continue;
+      out.push({ task, section, ask, handle: askHandle(task, ask) });
+    }
+  }
+  return out;
+}
 
 function rows(doc) {
   const out = [];
@@ -76,41 +108,50 @@ export function planFiling(doc, { ticket } = {}) {
   const all = rows(doc);
   const groups = [];
   const unrouted = [];
+  const entries = [];
   for (const { task } of all) {
     if (ticket && task.id !== ticket) continue;
     for (const note of unsentNotes(task)) {
-      const handle = `${task.id}#${note.n}`;
-      const item = { handle, noteKind: note.kind, title: titleOf(note.text), sourceId: task.id };
-      const area = noteArea(doc, task, note);
-      const project = task.project || null;
-      let epic = null;
-      let key;
-      if (!area) {
-        const own = task.type === 'epic' ? all.find(r => r.task === task) : epicOf(doc, task);
-        if (own && OPEN_SECTIONS.includes(own.section)) {
-          epic = { id: own.task.id, title: own.task.title, section: own.section, isNew: false, project: own.task.project || null };
-          key = `own|${own.task.id}`;
-        } else {
-          unrouted.push({ handle, reason: 'needs an area' });
-          continue;
-        }
-      } else if (note.kind === 'idea') {
-        const hit = findEpic(all, area, project, OPEN_SECTIONS, t => isLater(t) || t.title === `${laneDisplayName(area)}: later`);
-        epic = hit
-          ? { id: hit.task.id, title: hit.task.title, section: hit.section, isNew: false, project }
-          : { id: null, title: `${laneDisplayName(area)}: later`, section: 'backlog', isNew: true, project };
-        key = `later|${area}|${project}`;
-      } else {
-        const hit = findEpic(all, area, project, NEXT_SECTIONS, t => !isLater(t));
-        epic = hit
-          ? { id: hit.task.id, title: hit.task.title, section: hit.section, isNew: false, project }
-          : { id: null, title: `${laneDisplayName(area)} follow-ups`, section: 'todo', isNew: true, project };
-        key = `next|${area}|${project}`;
-      }
-      let group = groups.find(g => g.key === key);
-      if (!group) { group = { key, area: area || null, epic, items: [] }; groups.push(group); }
-      group.items.push(item);
+      entries.push({ task, note, handle: `${task.id}#${note.n}`, item: { noteKind: note.kind, title: titleOf(note.text), sourceId: task.id } });
     }
+    for (const a of pendingAnswers(doc, { ticket: task.id })) {
+      entries.push({
+        task, note: { kind: 'fix' }, handle: a.handle,
+        item: { noteKind: 'fix', title: titleOf(`Answer on ${task.id}: ${a.ask.answer}`), sourceId: task.id, askN: a.ask.n },
+      });
+    }
+  }
+  for (const { task, note, handle, item: base } of entries) {
+    const item = { handle, ...base };
+    const area = noteArea(doc, task, note);
+    const project = task.project || null;
+    let epic = null;
+    let key;
+    if (!area) {
+      const own = task.type === 'epic' ? all.find(r => r.task === task) : epicOf(doc, task);
+      if (own && OPEN_SECTIONS.includes(own.section)) {
+        epic = { id: own.task.id, title: own.task.title, section: own.section, isNew: false, project: own.task.project || null };
+        key = `own|${own.task.id}`;
+      } else {
+        unrouted.push({ handle, reason: 'needs an area' });
+        continue;
+      }
+    } else if (note.kind === 'idea') {
+      const hit = findEpic(all, area, project, OPEN_SECTIONS, t => isLater(t) || t.title === `${laneDisplayName(area)}: later`);
+      epic = hit
+        ? { id: hit.task.id, title: hit.task.title, section: hit.section, isNew: false, project }
+        : { id: null, title: `${laneDisplayName(area)}: later`, section: 'backlog', isNew: true, project };
+      key = `later|${area}|${project}`;
+    } else {
+      const hit = findEpic(all, area, project, NEXT_SECTIONS, t => !isLater(t));
+      epic = hit
+        ? { id: hit.task.id, title: hit.task.title, section: hit.section, isNew: false, project }
+        : { id: null, title: `${laneDisplayName(area)} follow-ups`, section: 'todo', isNew: true, project };
+      key = `next|${area}|${project}`;
+    }
+    let group = groups.find(g => g.key === key);
+    if (!group) { group = { key, area: area || null, epic, items: [] }; groups.push(group); }
+    group.items.push(item);
   }
   return { groups: groups.map(({ key, ...g }) => g), unrouted };
 }
@@ -136,6 +177,27 @@ function describe(src, note, text) {
   return `## In plain words\n**What you'll notice:** ${text}\n**Why it matters:** noted while reviewing ${src.id}${on}.\n**How to check it:** see ${src.id}'s review card.\n\n## Technical detail (for Claude)\nFiled by File review from note ${src.id}#${note.n}.`;
 }
 
+/** The description of the ticket filed from an answered ask: the question, its options and the answer. */
+function describeAnswer(src, ask) {
+  const opts = (ask.options || []).map(o => `${o.key}: ${o.text}`).join('; ');
+  return `## In plain words\n**What you'll notice:** Tal answered "${ask.text}" with "${ask.answer}".\n**Why it matters:** the answer came after ${src.id} closed, so nobody has acted on it yet.\n**How to check it:** the work the answer asks for is done.\n\n## Technical detail (for Claude)\nFiled from the answered ask ${src.id}#ask${ask.n}.\nQuestion: ${ask.text}\n${opts ? `Options: ${opts}\n` : ''}Answer: ${ask.answer}${ask.details ? `\nDetails: ${ask.details}` : ''}`;
+}
+
+/** File one answered ask as a ticket under `epicId` and mark the ask `filedAs`. */
+function fileAnswer(item, { byId, add, epicId, now, out }) {
+  const src = byId(item.sourceId);
+  const ask = (src?.asks || []).find(a => a && a.n === item.askN);
+  if (!src || !ask || ask.state !== 'answered' || ask.filedAs) return;
+  const ui = (src.labels || []).includes('ui') ? ['ui'] : [];
+  const id = out.newId(src.project || null);
+  add('todo', makeTask(id, item.title, {
+    parentId: epicId, project: src.project || null, reviewOf: src.id, now, section: 'todo', labels: ['model:sonnet', ...ui], description: describeAnswer(src, ask),
+  }));
+  ask.filedAs = id;
+  src.updated = now.slice(0, 10);
+  out.filed.push({ handle: item.handle, id });
+}
+
 /**
  * Apply `plan` to `doc`. `newId(projectId)` allocates ids (called after each ticket is added to
  * the doc). Returns { created: [ids], filed: [{ handle, id }], movedToDone: [ids],
@@ -149,7 +211,7 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
     if (!Array.isArray(s.tasks)) s.tasks = [];
     return s;
   };
-  const out = { created: [], filed: [], movedToDone: [], pin: [] };
+  const out = { created: [], filed: [], movedToDone: [], pin: [], newId };
   const touched = new Set();
 
   const add = (section, task) => { sec(section).tasks.push(task); out.created.push(task.id); };
@@ -179,6 +241,7 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
       if (e.section !== 'backlog') out.pin.push(epicId);
     }
     for (const item of group.items) {
+      if (item.askN) { fileAnswer(item, { byId, add, epicId, now, out }); continue; }
       const src = byId(item.sourceId);
       const note = (src?.reviewNotes || []).find(x => `${src.id}#${x.n}` === item.handle);
       if (!src || !note || note.state !== 'new') continue;
@@ -236,5 +299,6 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
     sec('done').tasks.push(row.task);
     out.movedToDone.push(id);
   }
+  delete out.newId;
   return out;
 }

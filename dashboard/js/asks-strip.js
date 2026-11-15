@@ -8,7 +8,7 @@
 // through commitReviewChange: decision + waitingOn cleared, Park moves it to backlog, an answer on a
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
-import { openAsks, groupAsks, resolveAsk, closeMergedAsks, tickLinkedChecks } from '../../shared/asks.js';
+import { openAsks, groupAsks, resolveAsk, closeMergedAsks, tickLinkedChecks, liveOwnerOf } from '../../shared/asks.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
@@ -25,9 +25,18 @@ const detailsOpen = new Set();
 const prChecked = new Set();
 // Files a done ticket's answer note as a follow-up (set by the Plan page; see run-plan-view.js).
 let filer = null;
+// Epics with a live automatic run (GET /api/live-epics); null until known, which counts as "live" (decision only, never a note).
+let liveEpics = null;
+function refreshLive() {
+  try {
+    fetch('/api/live-epics', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then((j) => {
+      if (j && Array.isArray(j.liveEpics)) liveEpics = j.liveEpics;
+    }).catch(() => {});
+  } catch { /* no server: stay on decisions */ }
+}
 
 /** The Plan page hands in its File review path: filer(ticketId) files that ticket's new notes. */
-export function setAskFiler(fn) { filer = fn; }
+export function setAskFiler(fn) { filer = fn; refreshLive(); }
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -71,11 +80,16 @@ function applyAnswer(state, card, action, reply, redraw) {
   const touched = [];
   const park = [];
   const file = [];
+  let filedTo = ''; // the one note this answer became (twin tickets share it)
+  const doc = stateToDoc(state);
+  const isLive = liveEpics ? liveOwnerOf(doc, liveEpics) : undefined;
+  refreshLive();
   for (const m of card.members) {
     const found = findTicket(state, m.id);
     if (!found) continue;
     try {
-      const r = resolveAsk(found.task, m.key, { action, reply, section: found.section, options: card.options });
+      const r = resolveAsk(found.task, m.key, { action, reply, section: found.section, options: card.options, isLive, filedTo });
+      if (r.note && !filedTo) filedTo = `${m.id}#${r.note.n}`;
       // PRO90: an answer / done ticks the checks the question links (dismiss and park do not).
       if (action === 'answer' || action === 'done') {
         for (const t of tickLinkedChecks(id => findTicket(state, id)?.task, r, { now: new Date().toISOString() })) {
