@@ -5,6 +5,7 @@
 // Rules and storage: shared/interpretations.js. Saves through commitReviewChange like the decision cards.
 
 import { openInterpretations, resolveInterpretation } from '../../shared/interpretations.js';
+import { nextStep } from '../../shared/asks.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { todayStr } from './tasks-parser.js';
@@ -74,6 +75,9 @@ export function renderInterpretationCard(state, card, redraw) {
   q.appendChild(el('span', null, card.text));
   li.appendChild(q);
   li.appendChild(el('div', 'rp-ask-details rp-ask-details-inline', 'Work goes ahead on this reading. Only correct it if it is wrong.'));
+  const next = el('div', 'rp-ask-next', nextStep({ kind: 'interpretation' }));
+  next.dataset.nextStep = 'interpretation';
+  li.appendChild(next);
   if (open) {
     const wrap = el('div', 'rp-ask-answer');
     const box = el('textarea', 'rp-ask-input');
