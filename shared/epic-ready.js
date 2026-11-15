@@ -17,7 +17,7 @@ const FINISHED = new Set(['done', 'review', 'archive']);
 /** Labels that hold a ticket back from automatic runs: they need a human go-ahead. */
 export const HELD_LABELS = ['deploy', 'money', 'public-post', 'needs-approval'];
 export const AUTO_LABEL = 'auto';
-const LATER_TITLE = /\b(later|future)\b/i;
+export const LATER_TITLE = /\b(later|future)\b/i;
 const COMPUTER_USE_TEXT = /computer use|open\/save panel|menu bar|voiceover|another app/i;
 // An autorun session that skips a ticket records only a decision saying it waits for a run Tal starts.
 const SKIPPED_FOR_TAL_RUN = /waits? for a run Tal starts|left for a run Tal starts/i;
@@ -212,6 +212,25 @@ export function isParkedEpic(r) {
 /** Readiness rows of open epics whose only open tickets are in backlog (they can never start). */
 export function parkedEpics(doc) {
   return openEpicReadiness(doc).filter(isParkedEpic);
+}
+
+/**
+ * PRO114: open "later"/"future" epics (any section but done, review, archive) with no open
+ * non-epic ticket under them at any depth. They hold nothing, so they should be closed.
+ * Returns [{ id, section }].
+ */
+export function emptyLaterEpics(doc) {
+  const ix = indexDoc(doc);
+  const out = [];
+  for (const [id, t] of ix.byId) {
+    const section = ix.sectionOf.get(id);
+    if (t.type !== 'epic' || FINISHED.has(section) || !LATER_TITLE.test(String(t.title || ''))) continue;
+    const open = descendantIds(id, ix.childrenOf)
+      .map(d => ix.byId.get(d))
+      .filter(d => d.type !== 'epic' && !FINISHED.has(ix.sectionOf.get(d.id)) && !d.checked);
+    if (!open.length) out.push({ id, section });
+  }
+  return out;
 }
 
 /**

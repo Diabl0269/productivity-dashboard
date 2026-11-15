@@ -12,6 +12,7 @@
  */
 
 import { hasUnsentNotes, unsentNotes } from './review-notes.js';
+import { LATER_TITLE } from './epic-ready.js';
 
 export const REVIEW_SECTION = 'review';
 export const REVIEW_SECTION_NAME = 'Ready for review';
@@ -663,9 +664,11 @@ function moveBetween(doc, task, from, to, now) {
  * to review when it has a result or checks to look at, else straight to done; then do the same
  * for the epic above it. An epic already in review/done/archive, one with open work left, and
  * one that never had any children, result or checks stay put.
+ * `closeEmptyLater` (PRO114, passed when a child was moved out): a "later"/"future" epic left with no
+ * descendants closes too instead of staying open and empty.
  * Mutates `doc`; returns [{ id, from, to }] for the epics moved, innermost first.
  */
-export function rollUpAfterClose(doc, epicId, { now = new Date().toISOString() } = {}) {
+export function rollUpAfterClose(doc, epicId, { now = new Date().toISOString(), closeEmptyLater = false } = {}) {
   const moved = [];
   let row = epicId ? findRow(doc, epicId) : null;
   while (row && row.task.type === 'epic') {
@@ -673,7 +676,8 @@ export function rollUpAfterClose(doc, epicId, { now = new Date().toISOString() }
     if (CLOSED_SECTIONS.has(section) || hasOpenWork(doc, epic.id)) break;
     const hadWork = !!epic.result || (epic.checks || []).length > 0;
     const toReview = hadWork && epicNeedsTal(epic);
-    if (!hadWork && !descendantsOf(doc, epic.id).length) break;
+    const emptiedLater = closeEmptyLater && LATER_TITLE.test(String(epic.title || ''));
+    if (!hadWork && !descendantsOf(doc, epic.id).length && !emptiedLater) break;
     if (!toReview) settleMechanicalChecks(epic, now);
     const to = toReview ? REVIEW_SECTION : 'done';
     if (!moveBetween(doc, epic, section, to, now)) break;
