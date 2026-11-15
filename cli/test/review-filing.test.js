@@ -74,6 +74,29 @@ test('idea notes go to the lane\'s later epic, or a new one in backlog', () => {
   assert.equal(again.epic.id, 'T10');
 });
 
+test('PRO108: an idea with no area filed under a todo epic lands in todo, not backlog', () => {
+  const doc = makeDoc();
+  const todo = doc.sections.find(s => s.id === 'todo').tasks;
+  todo.push(task('T22', { title: 'Laneless epic', type: 'epic' })); // no lane: the note has no area
+  todo.push(task('T20', {
+    parentId: 'T22', reviewNotes: [note(1, 'idea', 'someday: gradient fills')],
+  }));
+  applyFiling(doc, planFiling(doc, { ticket: 'T20' }), { newId: newId(doc), now: AT });
+  const filed = find(doc, find(doc, 'T20').t.reviewNotes[0].filed);
+  assert.equal(filed.t.parentId, 'T22');
+  assert.equal(filed.s, 'todo');
+});
+
+test('PRO108: an idea under a backlog epic stays in backlog', () => {
+  const doc = makeDoc();
+  const doc2 = doc.sections.find(s => s.id === 'backlog');
+  doc2.tasks.push(task('T21', { type: 'epic', lane: 'canvas', title: 'Canvas 5: ideas (later)' }));
+  applyFiling(doc, planFiling(doc, { ticket: 'T3' }), { newId: newId(doc), now: AT });
+  const idea = find(doc, find(doc, 'T3').t.reviewNotes[1].filed);
+  assert.equal(idea.t.parentId, 'T21');
+  assert.equal(idea.s, 'backlog');
+});
+
 test('a new epic runs on opus only when a design pick gates it', () => {
   const doc = makeDoc();
   // With T1 closed the canvas fix and design notes need a new epic; the design pick makes it opus.

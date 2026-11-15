@@ -89,6 +89,7 @@ import { promoteSubtaskInState } from '../../shared/subtasks.js';
 import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines, groupChecksByProject } from '../../shared/review.js';
 import { askLines } from '../../shared/asks.js';
 import { renderResolvedAsks } from './asks-strip.js';
+import { idButton } from './ticket-id-button.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { unsentNotes } from '../../shared/review-notes.js';
 import { reviewNoteAddRow, reviewNoteRow } from './review-notes-ui.js';
@@ -2906,6 +2907,7 @@ function buildReviewPanel(task, body) {
       text.textContent = c.text || '';
       row.appendChild(cb);
       row.appendChild(text);
+      if (c.handedTo) { text.appendChild(document.createTextNode(' → ')); text.appendChild(idButton(c.handedTo, 'rp-link rp-review-id')); }
       const videoHost = c.video ? document.createElement('div') : null;
       if (videoHost) row.appendChild(playVideoButton(c, idx + 1, videoHost));
       list.appendChild(row);

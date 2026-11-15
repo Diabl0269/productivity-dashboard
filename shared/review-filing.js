@@ -253,7 +253,10 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
       if (note.kind === 'idea') {
         filedId = newId(src.project || null);
         created.push(filedId);
-        add('backlog', makeTask(filedId, item.title, { ...base, section: 'backlog', labels: ['model:sonnet', ...ui], description: describe(src, note, text) }));
+        // PRO108: the ticket's section follows its epic. Under a todo / in-progress epic an idea is
+        // runnable work (a backlog child there is skipped by auto-run); only a backlog epic keeps it in backlog.
+        const ideaSection = e.section === 'todo' || e.section === 'in-progress' ? 'todo' : 'backlog';
+        add(ideaSection, makeTask(filedId, item.title, { ...base, section: ideaSection, labels: ['model:sonnet', ...ui], description: describe(src, note, text) }));
       } else if (note.kind === 'design') {
         const pickId = newId(src.project || null);
         created.push(pickId);
