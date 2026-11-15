@@ -198,8 +198,14 @@ test('asksNotice wording', () => {
 // CLI
 // ---------------------------------------------------------------------------
 
-test('CLI: ask -> asks -> answer / dismiss round-trip, decision on the ticket', () => {
+test('CLI: ask -> asks -> answer / dismiss round-trip, decision on the ticket', (t) => {
   const dir = makeTmpDir();
+  // PRO102: T1 has a live run (fresh tick.json), so its answer is read and stays a decision.
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-asks-state-'));
+  fs.writeFileSync(path.join(stateDir, 'tick.json'), JSON.stringify({ at: new Date().toISOString(), intervalMin: 10, liveEpics: ['T1'] }));
+  const prevState = process.env.AUTORUN_STATE_DIR;
+  process.env.AUTORUN_STATE_DIR = stateDir;
+  t.after(() => { if (prevState === undefined) delete process.env.AUTORUN_STATE_DIR; else process.env.AUTORUN_STATE_DIR = prevState; });
   let r = runCli(['tasks', 'ask', 'T1', 'Keep the old layout?', '--details', D, '--ask-by', '2026-03-10'], dir);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /1 ask for Tal is on the Plan page/);

@@ -15,7 +15,7 @@ import { parse } from '../lib/args.js';
 import { print, jsonOut, ok, die, printErr } from '../lib/output.js';
 import { load, save, findTask, todayStr, nextId } from '../lib/tasks-store.js';
 import {
-  addAsk, openAsks, groupAsks, answerAsk, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
+  addAsk, openAsks, groupAsks, answerAsk, liveOwnerOf, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
 } from '../../shared/asks.js';
 import { ghPrState } from '../lib/open-pr-gate.js';
 import { clearMergedHeldPrs } from '../../shared/held-pr.js';
@@ -23,6 +23,7 @@ import { overlapsForAsk } from '../../shared/ask-check-overlap.js';
 import { checkEntries, askOverlapMessage, ticketAndEpic } from '../lib/ask-overlap.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
 import { dataRoot } from '../lib/io.js';
+import { liveEpicsNow } from '../lib/next-start-inputs.js';
 
 /** The ticket's labels plus its epic's (a ui / audio ticket's questions need media). */
 function labelsOf(doc, task) {
@@ -140,7 +141,8 @@ export async function cmdAnswer(argv) {
   if (action === 'answer' && /^park\b/i.test(text.trim())) { action = 'park'; text = text.trim().replace(/^park\b\s*[:,-]?\s*/i, ''); }
   let out;
   try {
-    out = answerAsk(doc, task.id, key, { action, reply: text, newId: project => nextId(doc, project) });
+    // PRO102: an answer on a ticket no live run owns would never be read, so it becomes a review note.
+    out = answerAsk(doc, task.id, key, { action, reply: text, newId: project => nextId(doc, project), isLive: liveOwnerOf(doc, liveEpicsNow()) });
   } catch (e) { die(`answer: ${e.message}`); }
   save(doc);
   const left = countAsks(doc);

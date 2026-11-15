@@ -5,7 +5,9 @@
  * review card). It lives on the ticket as `asks`:
  *   asks: [{ n, at, text, by?, mergePr?, options?: [{ key, text }], recommend?, details?,
  *            media?: { video?, audio?, image?, project? }, sameAs?, checkRefs?: [{ id, text }], notSame?,
- *            state, answer?, resolvedAt? }]
+ *            state, answer?, resolvedAt?, filedAs? }]
+ *   filedAs (PRO102, PRO104): where a free-text answer nobody will read went: the review note handle
+ *   ("T1#2") or the ticket id the notes run filed; a filed ask is never listed or filed again.
  *   checkRefs (PRO90): checks (ticket id + exact text) that put the same judgement; they hide while the ask
  *   is open and tick themselves when it is answered or done (tickLinkedChecks); notSame says why a check
  *   that looks alike is a different judgement.
@@ -25,15 +27,16 @@
  * Rows with the same question (normalized text) or joined by `sameAs` show as one card
  * (groupAsks); answering one answers them all.
  *
- * Answering records a decision and clears waitingOn. On a done / archived ticket it adds a review
- * note instead, which is filed as a follow-up ticket (shared/review-filing.js). Park records the
+ * Answering records a decision and clears waitingOn. On a finished ticket (ticked, done / archived, or
+ * open with no live run: PRO102) a free-text answer adds a review note instead, which is filed as a
+ * follow-up ticket (shared/review-filing.js); an option pick is only a decision. Park records the
  * reason and moves the ticket to backlog.
  *
  * Pure (no fs, no DOM); used by the CLI and the dashboard.
  */
 
 import {
-  evidencePathError, videoPathError, audioPathError, projectPathError, tidyEvidencePath,
+  evidencePathError, videoPathError, audioPathError, projectPathError, tidyEvidencePath, epicOf,
 } from './review.js';
 import { addReviewNote } from './review-notes.js';
 import { planFiling, applyFiling } from './review-filing.js';
@@ -44,6 +47,30 @@ const RESOLVED_KINDS = ['left', 'needs-tal', 'interpretation']; // interpretatio
 /** Sections where work is still open: an ask outside them is stale. */
 export const ASK_OPEN_SECTIONS = ['inbox', 'todo', 'in-progress', 'review'];
 const CLOSED_SECTIONS = ['done', 'archive'];
+
+/**
+ * `isLive(task)` for resolveAsk / answerAsk: true when one of `liveEpics` (the dispatcher's live runs) is
+ * the ticket itself or its epic. Pass the doc the ticket sits in.
+ */
+export function liveOwnerOf(doc, liveEpics = []) {
+  const live = new Set((liveEpics || []).map(x => String(x).toUpperCase()));
+  return (task) => {
+    if (!task) return false;
+    if (live.has(String(task.id).toUpperCase())) return true;
+    const epic = epicOf(doc, task);
+    return !!epic && live.has(String(epic.task.id).toUpperCase());
+  };
+}
+
+/**
+ * Is `task` finished, so nobody will read an answer on it: ticked, done / archived, or open with no live run.
+ * A ticket in review is Tal's own queue: its answered asks are picked up by the notes run (PRO104) instead.
+ */
+function isFinished(task, section, isLive) {
+  if (section === 'review') return false;
+  if (task?.checked === true || CLOSED_SECTIONS.includes(section)) return true;
+  return typeof isLive === 'function' && !isLive(task);
+}
 /** A new question's length cap; longer context goes in --details. */
 export const ASK_TEXT_MAX = 140;
 const STORED_TEXT_MAX = 1000; // older asks were longer; the schema still accepts them
@@ -380,13 +407,16 @@ const ACTIONS = { answer: 'answered', done: 'done', dismiss: 'dismissed', park: 
 /**
  * Resolve the open ask `key` on `task`. `action`: 'answer' (needs `reply`: free text or an option
  * key of the ask, or of `options` when given), 'done', 'dismiss' or 'park' (reply = the reason). Clears waitingOn when it names Tal.
- * Answer / done write a decision, except on a done / archived ticket (`section`), where they add
- * a review note for the caller to file as a follow-up. Park writes the reason as a decision; the
+ * Answer / done write a decision, except on a finished ticket (ticked, `section` done / archive, or open
+ * with no live run per `isLive(task)`; without `isLive` an open ticket counts as live), where a free-text
+ * answer adds a review note for the caller to file as a follow-up (an option pick stays a decision, except
+ * on a done / archived ticket). `filedTo` (a note handle) says the answer already became a note on a
+ * twin ticket: this one gets the decision and the same `filedAs`, no second note. Park writes the reason as a decision; the
  * caller moves the ticket to backlog when `park` is true. Mutates `task`.
  * @returns {{ question, state, said, decision, note, park, file }}
  */
 export function resolveAsk(task, key, {
-  action, reply = '', now = new Date().toISOString(), by = 'Tal', section = '', options,
+  action, reply = '', now = new Date().toISOString(), by = 'Tal', section = '', options, isLive, filedTo,
 } = {}) {
   const state = ACTIONS[action];
   if (!state) throw new Error(`unknown action "${action}" (answer, done, dismiss or park)`);
@@ -422,10 +452,17 @@ export function resolveAsk(task, key, {
   if (action === 'park') {
     out.decision = { at: now, text: `${by} ${day}: parked "${question}": ${said || 'not now'}` };
     out.park = !CLOSED_SECTIONS.includes(section) && section !== 'backlog';
-  } else if (CLOSED_SECTIONS.includes(section)) {
-    out.note = addReviewNote(task, { text: `${by} answered "${question}": ${said || 'done'}`, kind: 'fix', now });
-    out.file = true;
-    return out;
+  } else if (CLOSED_SECTIONS.includes(section) || (action === 'answer' && !opt && isFinished(task, section, isLive))) {
+    const own = ask.key !== 'W' && !ask.legacy ? task.asks.find(a => String(a.n) === ask.key) : null;
+    if (filedTo) {
+      if (own) own.filedAs = filedTo;
+      out.decision = { at: now, text: `${by} ${day}: asked "${question}": ${said || 'done'} (filed as ${filedTo})` };
+    } else {
+      out.note = addReviewNote(task, { text: `${by} answered "${question}": ${said || 'done'}`, kind: 'fix', now });
+      if (own) own.filedAs = `${task.id}#${out.note.n}`;
+      out.file = true;
+      return out;
+    }
   } else {
     out.decision = { at: now, text: `${by} ${day}: asked "${question}": ${said || 'done'}` };
   }
@@ -481,14 +518,16 @@ function moveToBacklog(doc, id, now) {
  * An answered / done ask ticks the checks it links (tickLinkedChecks); dismiss and park never do.
  * @returns {{ question, state, resolved: [{ id, key, decision, note }], parked: [ids], filed: [{ handle, id }], unrouted: [handles], ticked: [{ id, text }] }}
  */
-export function answerAsk(doc, id, key, { action, reply = '', newId, now = new Date().toISOString(), by = 'Tal' } = {}) {
+export function answerAsk(doc, id, key, { action, reply = '', newId, now = new Date().toISOString(), by = 'Tal', isLive } = {}) {
   const { members, options } = askCardOf(doc, id, key);
   const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [] };
   const toFile = [];
+  let filedTo = ''; // the one note this answer became (twins share it)
   for (const m of members) {
     const row = flat(doc).find(r => r.task.id === m.id);
     if (!row) throw new Error(`task ${m.id} not found`);
-    const r = resolveAsk(row.task, m.key, { action, reply, now, by, section: row.section, options });
+    const r = resolveAsk(row.task, m.key, { action, reply, now, by, section: row.section, options, isLive, filedTo });
+    if (r.note && !filedTo) filedTo = `${m.id}#${r.note.n}`;
     row.task.updated = now.slice(0, 10);
     if (action === 'answer' || action === 'done') {
       for (const t of tickLinkedChecks(id => flat(doc).find(x => x.task.id === id)?.task, r, { now })) out.ticked.push(t);
@@ -556,6 +595,7 @@ function askExtraErrors(a, r) {
     }
   }
   if (a.notSame !== undefined && typeof a.notSame !== 'string') errors.push(`${r}.notSame must be a string`);
+  if (a.filedAs !== undefined && (typeof a.filedAs !== 'string' || !a.filedAs.trim())) errors.push(`${r}.filedAs must be a non-empty string`);
   return errors;
 }
 
@@ -600,7 +640,7 @@ export function cleanAsks(task) {
     ? task.asks.filter(a => a && typeof a === 'object' && Number.isInteger(a.n) && a.n > 0 && !askTextError(a.text)
       && typeof a.at === 'string' && ASK_STATES.includes(a.state)).map((a) => {
       const e = { n: a.n, at: a.at, text: a.text, state: a.state };
-      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs', 'notSame']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
+      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs', 'notSame', 'filedAs']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
       if (Array.isArray(a.checkRefs)) {
         const refs = a.checkRefs.filter(x => x && ID_RE.test(String(x.id)) && typeof x.text === 'string' && x.text.trim()).map(x => ({ id: x.id, text: x.text }));
         if (refs.length) e.checkRefs = refs;

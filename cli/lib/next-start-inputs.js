@@ -27,6 +27,19 @@ export function autorunStateDir() {
   return process.env.AUTORUN_STATE_DIR || path.join(os.homedir(), '.local/share/agentsynth-autorun');
 }
 
+/**
+ * Epics with a live automatic run, from the dispatcher's tick.json. The same rule nextStartNow uses: a tick
+ * file older than two intervals (or a missing / unreadable one) means the dispatcher is not running, so
+ * nobody is live.
+ */
+export function liveEpicsNow({ now = Date.now() } = {}) {
+  const tick = readJson(path.join(autorunStateDir(), 'tick.json')) || {};
+  const tickMin = Number.isFinite(tick.intervalMin) && tick.intervalMin > 0 ? tick.intervalMin : DEFAULT_TICK_MIN;
+  const lastTickMs = Number.isFinite(Date.parse(tick.at)) ? Date.parse(tick.at) : null;
+  const fresh = lastTickMs !== null && now - lastTickMs < 2 * tickMin * 60e3;
+  return fresh && Array.isArray(tick.liveEpics) ? tick.liveEpics : [];
+}
+
 export async function nextStartNow({ now = Date.now(), overrides = {} } = {}) {
   const root = dataRoot();
   const doc = normalizeTasksDoc(readTasksDoc(root));
