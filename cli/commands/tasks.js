@@ -22,7 +22,7 @@
  *   notes route [--ticket ID] [--json] show which epic each unsent note (or such an answer) would be filed under
  *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note or answer, under its area's epic
  *   notes prep [--ticket ID] [--json]  route + flags (spike epic, no area, over-full epic) + duplicate hints, before send (PRO105)
- *   notes report --since <ISO> [--apply-auto] [--json]  after send: note -> ticket lines, raw titles, epics Ready for `auto`
+ *   notes report --since <ISO> [--apply-auto] [--json]  after send: note -> ticket lines, raw titles, 5d verified/skipped, not investigated, epics Ready for `auto`
   notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
   notes edit <id>#<n> ["<text>"] [--kind fix|idea|design]
   notes dismiss <id>#<n> | <id>#ask<n>   (the second form drops an answered question the notes run would file)
