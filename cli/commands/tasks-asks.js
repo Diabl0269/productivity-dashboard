@@ -5,6 +5,7 @@
  *       [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
  *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
+ *   answer <id> <key> --reopen [--json]   put a dismissed / answered question back to open (PRO107)
  *   asks [--ticket ID] [--refresh] [--json]
  * Keys come from `ch tasks asks`: the ask's number, L<i> for an older Left question, W for a
  * ticket whose waitingOn names Tal. Rules and shapes: shared/asks.js.
@@ -15,7 +16,7 @@ import { parse } from '../lib/args.js';
 import { print, jsonOut, ok, die, printErr } from '../lib/output.js';
 import { load, save, findTask, todayStr, nextId } from '../lib/tasks-store.js';
 import {
-  addAsk, openAsks, groupAsks, answerAsk, liveOwnerOf, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
+  addAsk, reopenAsk, reopenHint, openAsks, groupAsks, answerAsk, liveOwnerOf, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
 } from '../../shared/asks.js';
 import { ghPrState } from '../lib/open-pr-gate.js';
 import { clearMergedHeldPrs } from '../../shared/held-pr.js';
@@ -121,16 +122,40 @@ function keyAndReply(task, rest, flagged) {
   return { key: only, reply: rest[0] ?? '' };
 }
 
+/** PRO107: `ch tasks answer <id> <key> --reopen`: a dismissed or answered question goes back to open. */
+function reopenCmd(id, rest, values) {
+  if (values.done || values.dismiss || values.park) die('answer: --reopen does not go with --done, --dismiss or --park');
+  if (rest.length !== 1) die('answer: --reopen takes the ticket and the question number: ch tasks answer <id> <key> --reopen');
+  const doc = load();
+  const task = ticketOrDie(doc, id);
+  const lookup = (tid) => {
+    for (const section of doc.sections || []) for (const t of section.tasks || []) if (t.id === tid) return { task: t, section: section.id };
+    return null;
+  };
+  const before = (task.asks || []).find(a => String(a?.n) === String(rest[0]).trim());
+  const hint = before ? reopenHint(task, before).line : '';
+  let out;
+  try { out = reopenAsk(task, rest[0], { lookup }); } catch (e) { die(`answer: ${e.message}`); }
+  task.updated = todayStr();
+  save(doc);
+  if (values.json) { jsonOut({ id: task.id, key: out.key, state: 'open', hint, asksForTal: countAsks(doc) }); return; }
+  ok(`${task.id} question ${out.key} reopened: ${out.question}`);
+  print(hint);
+  print(asksNotice(countAsks(doc)));
+}
+
 /** `ch tasks answer <id> [<key>] <A|B|reply>`: resolve an ask (and its same-question twins); the answer drives the work. */
 export async function cmdAnswer(argv) {
   const { values, positionals } = parse(argv, {
     done: { type: 'boolean' },
     dismiss: { type: 'boolean' },
     park: { type: 'boolean' },
+    reopen: { type: 'boolean' },
     json: { type: 'boolean', short: 'j' },
   });
   const [id, ...rest] = positionals;
-  if (!id) die('usage: ch tasks answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]   (keys: ch tasks asks)');
+  if (!id) die('usage: ch tasks answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]   (keys: ch tasks asks)\n       ch tasks answer <id> <key> --reopen [--json]   (put a dismissed or answered question back to open)');
+  if (values.reopen) { reopenCmd(id, rest, values); return; }
   if ([values.done, values.dismiss, values.park].filter(Boolean).length > 1) die('answer: pass one of --done, --dismiss, --park');
   const doc = load();
   const task = ticketOrDie(doc, id);

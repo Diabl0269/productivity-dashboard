@@ -8,7 +8,7 @@
 // through commitReviewChange: decision + waitingOn cleared, Park moves it to backlog, an answer on a
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
-import { openAsks, groupAsks, resolveAsk, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep } from '../../shared/asks.js';
+import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep } from '../../shared/asks.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
@@ -327,6 +327,65 @@ export function checkMergedPrs(state, cards, redraw) {
         .catch(() => {});
     }
   }
+}
+
+// Open resolved-questions folds, by ticket id, so a re-render keeps them open.
+const resolvedOpen = new Set();
+
+/**
+ * PRO107: a "Resolved questions" fold for one ticket (the task detail's Review panel): each dismissed or
+ * answered question with how it ended, a hint saying whether Claude already acted on it, and Reopen.
+ * Null when the ticket has none. Reopen puts the question back in the For you list; it is refused once the
+ * follow-up filed from it has started.
+ */
+export function renderResolvedAsks(state, task) {
+  const rows = resolvedTaskAsks(task);
+  if (!rows.length) return null;
+  const id = task.taskId || task.id;
+  const wrap = el('div', 'rp-resolved-asks');
+  wrap.dataset.resolvedAsks = id;
+  let open = resolvedOpen.has(id);
+  const btn = el('button', 'rp-btn rp-fold-btn');
+  btn.type = 'button';
+  const fold = el('div', 'rp-fold');
+  fold.id = `rpResolvedAsks-${String(id).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  btn.setAttribute('aria-controls', fold.id);
+  const inner = el('div', 'rp-fold-inner');
+  const list = el('ul', 'rp-ask-settles');
+  for (const row of rows) {
+    const item = el('li', 'rp-ask-settle');
+    item.dataset.ask = `${id}#${row.key}`;
+    item.appendChild(el('div', 'rp-title rp-ask-q', row.text));
+    const how = row.state === 'dismissed' ? 'Dismissed' : row.answer ? `${row.state[0].toUpperCase()}${row.state.slice(1)}: ${row.answer}` : `${row.state[0].toUpperCase()}${row.state.slice(1)}`;
+    item.appendChild(el('div', 'rp-ask-details', how));
+    item.appendChild(el('div', 'rp-ask-next', reopenHint(task, row).line));
+    const actions = el('div', 'rp-actions');
+    actions.appendChild(button('Reopen', 'rp-btn', () => {
+      try {
+        reopenAsk(task, row.key, { lookup: tid => findTicket(state, tid) });
+      } catch (e) { showEvidenceToast(e.message); return; }
+      task.updated = todayStr();
+      commitReviewChange(task);
+    }, 'Put this question back in the For you list; what Claude already did from it stays'));
+    item.appendChild(actions);
+    list.appendChild(item);
+  }
+  inner.appendChild(list);
+  fold.appendChild(inner);
+  const apply = () => {
+    btn.textContent = `Resolved questions (${rows.length}) ${open ? '▴' : '▾'}`;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    fold.classList.toggle('rp-fold-open', open);
+  };
+  apply();
+  btn.addEventListener('click', () => {
+    open = !open;
+    if (open) resolvedOpen.add(id); else resolvedOpen.delete(id);
+    apply();
+  });
+  wrap.appendChild(btn);
+  wrap.appendChild(fold);
+  return wrap;
 }
 
 /** The Overview widget's list of decision cards, or null when nothing waits. */

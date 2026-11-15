@@ -38,6 +38,7 @@
  *       there is nothing to check (stored as noChecksReason). Refuses a ticket with unchecked subtasks unless --force.
  *   ask <id> "<question>" [--ask-by YYYY-MM-DD] [--merge-pr URL]   leave a decision for Tal (Plan page: For you; options, media, details: tasks-asks.js)
  *   answer <id> [<key>] <A|reply> [--done | --dismiss | --park]     resolve it; the answer drives the work (decision, follow-up, park)
+ *   answer <id> <key> --reopen                                      put a dismissed / answered question back to open
  *   interpret <id> "<reading>"   record an Interpretation: line; Plan page card OK / Not this, never blocks (tasks-interpret.js)
  *   asks [--ticket ID] [--refresh] [--json]                          open asks; --refresh closes merge asks whose PR merged
  *   done <id> [--force]            refuses unchecked subtasks (list + --promote-subtask hint), a review ticket with unticked checks/unsent notes, and an epic with unticked checks, unless --force
@@ -3046,6 +3047,7 @@ Subcommands:
          ticket or its epic is open, with option buttons (Park is always offered), the media and a Details fold;
          --same-as shows it as one card with another ticket's ask; --merge-pr closes it once that PR merges
   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
+  answer <id> <key> --reopen [--json]    put a dismissed or answered question back to open (not once its follow-up has started)
          resolve an ask and its same-question twins (keys from ch tasks asks: the ask's number, L<i> for an older Left
          line ending in '?' or saying 'Merge it', W for a ticket whose waitingOn names Tal; the key may be left out when
          the ticket has one). Records the decision and clears waitingOn; on a done ticket it files a follow-up ticket
