@@ -15,7 +15,7 @@ import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/rev
 import { nextTaskId } from '../../shared/task-ids.js';
 import { withAutoLabel } from '../../shared/epic-ready.js';
 import { fillEpicEstimates } from './ticket-cost-ui.js';
-import { idButton, setTicketLookup } from './ticket-id-button.js';
+import { idButton, setTicketLookup, openTicket } from './ticket-id-button.js';
 import { toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { moveTask } from './tasks-board.js';
