@@ -9,6 +9,7 @@
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
 import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep } from '../../shared/asks.js';
+import { idButton } from './ticket-id-button.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
@@ -194,6 +195,7 @@ function settlesBlock(state, card) {
     const item = el('li', 'rp-ask-settle');
     item.appendChild(el('span', 'rp-check-muted', 'Also settles: '));
     item.appendChild(el('span', null, ref.text));
+    if (check?.handedTo) { item.appendChild(document.createTextNode(' → ')); item.appendChild(idButton(check.handedTo, 'rp-link rp-review-id')); }
     if (check?.project && !shown.has(check.project)) { shown.add(check.project); item.appendChild(document.createTextNode(' ')); item.appendChild(openProjectButton(check.project)); }
     if (check?.video) { item.appendChild(document.createTextNode(' ')); item.appendChild(playVideoButton(check, 1, item, `${ref.id} check`)); }
     wrap.appendChild(item);

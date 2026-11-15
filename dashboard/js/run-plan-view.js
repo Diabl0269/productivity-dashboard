@@ -13,7 +13,8 @@ import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/rev
 import { nextTaskId } from '../../shared/task-ids.js';
 import { withAutoLabel } from '../../shared/epic-ready.js';
 import { fillEpicEstimates } from './ticket-cost-ui.js';
-import { openTaskDetail, toggleReviewCheck, commitReviewChange } from './task-detail.js';
+import { idButton, setTicketLookup } from './ticket-id-button.js';
+import { toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { moveTask } from './tasks-board.js';
 import { loadTasksJson } from './tasks-json.js';
@@ -31,7 +32,7 @@ import { showStatus } from './state.js';
 let getState = null;
 let toastTimer = null;
 
-export function setRunPlanStateGetter(fn) { getState = fn; }
+export function setRunPlanStateGetter(fn) { getState = fn; setTicketLookup(fn, showToast); }
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -41,27 +42,6 @@ function el(tag, className, text) {
 }
 
 const STATE_LABEL = { backlog: 'In backlog', ready: 'Ready now', partial: 'Partly ready', later: 'Later', notready: 'Not ready', pick: 'Your pick' };
-
-/** Open a ticket's detail in place (no navigation); toasts if the ticket is gone. */
-function openTicket(id) {
-  const state = getState?.();
-  for (const list of Object.values(state?.tasks || {})) {
-    const task = (list || []).find(t => t.taskId === id);
-    if (task) { openTaskDetail(task); return; }
-  }
-  showToast(`Ticket ${id} not found`);
-}
-
-/** A ticket id as a button that opens the ticket. */
-function idButton(id, className = 'rp-id rp-link') {
-  const btn = el('button', className, id);
-  btn.type = 'button';
-  btn.title = `Open ${id}`;
-  btn.setAttribute('aria-label', `Open ticket ${id}`);
-  btn.dataset.ticket = id;
-  btn.addEventListener('click', () => openTicket(id));
-  return btn;
-}
 
 /** The ticket (dashboard shape) with this id, or null. */
 function findTicket(id) {
