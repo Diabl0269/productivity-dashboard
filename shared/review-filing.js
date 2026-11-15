@@ -66,7 +66,7 @@ function rows(doc) {
 }
 
 /** Ticket title from a note: trimmed, first letter capitalised, at most 120 chars. */
-function titleOf(text) {
+export function titleOf(text) {
   const t = capFirst(String(text).trim() || IMAGE_ONLY_TEXT);
   return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1).trimEnd()}…` : t;
 }
