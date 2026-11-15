@@ -562,6 +562,51 @@ export function closeMergedAsks(task, prState, { now = new Date().toISOString() 
   return closed;
 }
 
+/** When the daily review-notes job starts (local time; scripts/autorun dispatcher, AGE54). */
+export const NOTES_RUN_TIME = '07:50';
+
+/**
+ * PRO103: the one plain line under an ask card saying what happens to the answer. It follows the same
+ * rules as resolveAsk / pendingAnswers, so it never promises what the code does not do:
+ *   - a merge ask: nothing merges the PR for you; Merged closes the card, and it closes itself once the PR merges
+ *   - a ticket in done / archive: any answer becomes a review note, which the daily notes run files as a ticket
+ *   - a ticket in review: an own ask's answer is filed by the daily notes run (PRO104); older Left / waiting rows only get a decision
+ *   - a finished open ticket (ticked, or no live run): a typed answer becomes a note, an option pick is a decision
+ *   - otherwise a decision on the ticket that the run on it reads
+ * `card` is a row or a card (kind, legacy, options, mergePr); `task` the ticket (checked); `section` its section;
+ * `isLive(task)` as for resolveAsk (omitted: whether a run is live is unknown).
+ * kind 'interpretation' (PRO96) is the interpretation card's own line.
+ */
+export function nextStep(card, { task, section = '', isLive } = {}) {
+  if (card?.kind === 'interpretation') {
+    return `OK changes nothing. Not this saves your correction as the newest note on the ticket, the next run on it builds to that, and the daily notes run (from ${NOTES_RUN_TIME}) files it.`;
+  }
+  const note = `becomes a ticket at the next daily notes run (from ${NOTES_RUN_TIME})`;
+  const decision = 'saved on the ticket as a decision';
+  const hasOptions = (card?.options || []).length > 0;
+  const lead = card?.kind === 'merge'
+    ? `Nothing merges the PR for you: merge it yourself, then press Merged${card.mergePr ? '; the card also closes by itself once the PR merges' : ''}. `
+    : '';
+  const closed = CLOSED_SECTIONS.includes(section);
+  let tail;
+  if (closed) {
+    tail = `Your answer ${note}: the ticket is closed, so nobody would read it otherwise.`;
+  } else if (section === 'review') {
+    tail = !card?.legacy
+      ? `Your answer is ${decision} and ${note}.`
+      : `Your answer is ${decision}.`;
+  } else if (isFinished(task, section, isLive)) {
+    tail = hasOptions
+      ? `Picking an option is ${decision}; a typed answer ${note}, because no run is working on this ticket.`
+      : `Your answer ${note}, because no run is working on this ticket.`;
+  } else if (typeof isLive === 'function') {
+    tail = `Your answer is ${decision}; the live run on it reads it before its PR.`;
+  } else {
+    tail = `Your answer is ${decision}; the next run on it reads it.`;
+  }
+  return card?.kind === 'merge' && !hasOptions ? lead.trim() : lead + tail;
+}
+
 /** Plain lines for a ticket's own asks, shown with its result: "Ask: <q>" (+ how it ended). */
 export function askLines(task) {
   return (task?.asks || []).filter(Boolean).map((a) => {

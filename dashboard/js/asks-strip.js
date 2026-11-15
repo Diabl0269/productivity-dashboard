@@ -8,7 +8,7 @@
 // through commitReviewChange: decision + waitingOn cleared, Park moves it to backlog, an answer on a
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
-import { openAsks, groupAsks, resolveAsk, closeMergedAsks, tickLinkedChecks, liveOwnerOf } from '../../shared/asks.js';
+import { openAsks, groupAsks, resolveAsk, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep } from '../../shared/asks.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
@@ -267,6 +267,14 @@ export function renderAskCard(state, card, redraw, surface = 'plan') {
     a.rel = 'noopener noreferrer';
     li.appendChild(a);
   }
+  const first = findTicket(state, card.ids[0]);
+  const nextLine = el('div', 'rp-ask-next', nextStep(card, {
+    task: first?.task,
+    section: first?.section || '',
+    isLive: liveEpics ? liveOwnerOf(stateToDoc(state), liveEpics) : undefined,
+  }));
+  nextLine.dataset.nextStep = 'ask';
+  li.appendChild(nextLine);
   const { button: detailsBtn, fold } = detailsFold(state, card);
   if (mode) {
     li.appendChild(textBox(state, card, mode, redraw, surface));
