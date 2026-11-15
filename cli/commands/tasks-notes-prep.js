@@ -2,7 +2,7 @@
  * cli/commands/tasks-notes-prep.js
  * `ch tasks notes prep [--ticket ID] [--json]`: routing, flags and duplicate hints for every unsent note (run before `notes send`).
  * `ch tasks notes report --since <ISO> [--apply-auto] [--json]`: after `notes send`, one line per filed note, the tickets still
- * carrying a raw title, and which epics are Ready and could take `auto` (--apply-auto adds the label).
+ * carrying a raw title, the 5d verified/skipped check counts, and which epics are Ready and could take `auto` (--apply-auto adds the label).
  * Rules: shared/notes-prep.js (PRO105).
  */
 
@@ -35,10 +35,17 @@ export function cmdNotesReport(argv) {
   const labelled = values['apply-auto'] ? applyAuto(doc, report) : [];
   if (labelled.length) save(doc);
   if (values.json) { jsonOut({ ...report, labelled }); return; }
-  if (!report.lines.length) { print('No notes were filed since then.'); return; }
+  const c = report.checks;
+  const tail = () => {
+    print(`5d: ${c.verified} verified, ${c.skipped} skipped${c.skipped ? ` (${c.skippedChecks.join(', ')})` : ''}`);
+    print(`not investigated: ${report.notInvestigated.length}${report.notInvestigated.length ? ` (${report.notInvestigated.join(', ')})` : ''}`);
+    if (c.skipped || report.notInvestigated.length) print('A cost cut is a ticket, never a silent skip: file one for each skipped step.');
+  };
+  if (!report.lines.length) { print('No notes were filed since then.'); tail(); return; }
   for (const l of report.lines) print(`${l.handle} -> ${l.id}, model:${l.model}, ${l.epic || 'no epic'}${l.raw ? '  (title still raw: rewrite it)' : ''}`);
   for (const e of report.epics) {
     const state = labelled.includes(e.id) ? 'auto added' : e.auto ? 'auto already' : e.ready ? 'ready, auto not set (run with --apply-auto)' : `not ready: ${e.reasons.join('; ')}`;
     print(`${e.id} ${e.title} [model:${e.model}, ${e.children} new] ${state}`);
   }
+  tail();
 }

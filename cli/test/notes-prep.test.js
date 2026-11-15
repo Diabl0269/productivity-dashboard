@@ -11,7 +11,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { prepNotes, roundReport, applyAuto, words, overlap } from '../../shared/notes-prep.js';
+import { prepNotes, roundReport, checkStats, applyAuto, words, overlap } from '../../shared/notes-prep.js';
 import { applyFiling, planFiling } from '../../shared/review-filing.js';
 
 const task = (id, extra = {}) => ({ id, title: id, checked: false, priority: 'medium', type: 'task', subtasks: [], checks: [], links: [], created: '2026-03-01', ...extra });
@@ -99,6 +99,30 @@ test('report: a rewritten ticket is not raw, and applyAuto adds the label once t
   if (e.candidate) assert.ok(doc.sections[1].tasks.find(t => t.id === 'E2').labels.includes('auto'));
 });
 
+test('report (PRO110): verified vs skipped checks and tickets still not investigated', () => {
+  const doc = docWith();
+  doc.sections[1].tasks = doc.sections[1].tasks.filter(t => t.id !== 'E1');
+  let n = 10;
+  applyFiling(doc, planFiling(doc), { newId: () => `N${++n}`, now: '2026-03-02T09:00:00.000Z' });
+  const rest = doc.sections.flatMap(s => s.tasks);
+  const rewritten = rest.find(t => t.id === 'N11');
+  rewritten.description = '## In plain words\nz'; rewritten.title = 'Zoom snaps on click';
+  const host = rest.find(t => t.id === 'R1');
+  host.updated = '2026-03-02';
+  host.checks = [
+    { text: 'a', checked: false, agentVerified: { at: '2026-03-02T10:00:00Z', by: 'agent', result: 'pass', note: 'ran it for real' } },
+    { text: 'b', checked: false },
+    { text: 'c', checked: true },
+    { text: 'd', checked: false, agentVerified: { at: '2026-02-01T10:00:00Z', by: 'agent', result: 'pass', note: 'older run' } },
+  ];
+  const rep = roundReport(doc, '2026-03-02T08:00:00Z');
+  assert.equal(rep.checks.verified, 1);
+  assert.deepEqual(rep.checks.skippedChecks, ['R1#2']);
+  assert.ok(!rep.notInvestigated.includes('N11'));
+  assert.ok(rep.notInvestigated.length >= 2);
+  assert.deepEqual(checkStats(doc, '2026-03-05'), { verified: 0, skipped: 0, skippedChecks: [] });
+});
+
 test('CLI: notes prep and notes report run on a fixture tracker', () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pro105-'));
@@ -113,4 +137,9 @@ test('CLI: notes prep and notes report run on a fixture tracker', () => {
   const rep = run('notes', 'report', '--since', '2026-03-01');
   assert.equal(rep.status, 0, rep.stderr);
   assert.match(rep.stdout, /No notes were filed/);
+  assert.match(rep.stdout, /5d: \d+ verified, \d+ skipped/);
+  assert.match(rep.stdout, /not investigated: 0/);
+  const j = JSON.parse(run('notes', 'report', '--since', '2026-03-01', '--json').stdout);
+  assert.deepEqual(j.notInvestigated, []);
+  assert.equal(typeof j.checks.verified, 'number');
 });

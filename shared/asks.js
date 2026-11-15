@@ -474,7 +474,7 @@ export function resolveAsk(task, key, {
 /** The ticket id a `filedAs` names when the notes run already filed it as a ticket ("FRO12"), else '' (a note handle "T1#2" or nothing). */
 function filedTicketId(filedAs) {
   const f = String(filedAs || '').trim();
-  return f && !f.includes('#') ? f : '';
+  return f && f !== 'dismissed' && !f.includes('#') ? f : '';
 }
 
 /**
@@ -495,6 +495,7 @@ export function resolvedTaskAsks(task) {
 export function reopenHint(task, ask) {
   const fid = filedTicketId(ask?.filedAs);
   if (fid) return { acted: true, line: `Claude already filed ${fid} from this answer: changing it won't undo that` };
+  if (ask?.filedAs === 'dismissed') return { acted: false, line: 'Dismissed from the notes run without filing: changing it still matters' };
   if (ask?.filedAs) return { acted: true, line: `Claude already filed a note (${ask.filedAs}) from this answer: changing it won't undo that` };
   const q = String(ask?.text || '');
   const decided = q && (task?.decisions || []).some(d => String(d?.text || '').includes(`"${q}"`));

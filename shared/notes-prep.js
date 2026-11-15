@@ -100,8 +100,26 @@ export function prepNotes(doc, { ticket } = {}) {
 }
 
 /**
+ * PRO110 (step 5d): checks an agent verified since `since` (`agentVerified.at`), and checks still skipped: unticked, not handed
+ * off and not agent-verified, on tickets touched since (`updated` on or after the day). Same "unverified" test as `ch tasks checks`.
+ */
+export function checkStats(doc, since) {
+  const day = String(since || '').slice(0, 10);
+  let verified = 0;
+  const skipped = [];
+  for (const { task } of rows(doc)) {
+    (task.checks || []).forEach((c, i) => {
+      if (!c) return;
+      if (c.agentVerified?.at && String(c.agentVerified.at) >= String(since || '')) verified++;
+      else if (!c.checked && !c.handedTo && !c.agentVerified && String(task.updated || '') >= day) skipped.push(`${task.id}#${i + 1}`);
+    });
+  }
+  return { verified, skipped: skipped.length, skippedChecks: skipped };
+}
+
+/**
  * After filing. `since` is the run start (ISO date or time): tickets created on or after its date count.
- * Returns { lines: [{ handle, id, model, epic, epicTitle, raw }], epics: [{ id, title, ready, auto, reasons, candidate, model, children }] }.
+ * Returns { lines: [...], notInvestigated: [ids of raw tickets], checks: { verified, skipped, skippedChecks }, epics: [{ id, title, ready, auto, reasons, candidate, model, children }] }.
  * `raw`: the ticket still has File review's stub description (or the note's own words and no "In plain words"): not rewritten yet.
  * `candidate`: the epic is Ready, `auto` is off and it is not a later / backlog bucket: it may take the label.
  */
@@ -134,7 +152,8 @@ export function roundReport(doc, since) {
       candidate: !!r?.ready && !r?.auto, model: modelOf(e), children: lines.filter(l => l.epic === id).length,
     };
   });
-  return { lines, epics };
+  const notInvestigated = lines.filter(l => l.raw).map(l => l.id);
+  return { lines, epics, checks: checkStats(doc, since), notInvestigated };
 }
 
 /** Add the `auto` label to every candidate epic in `report` (mutates `doc`); returns the ids changed. */

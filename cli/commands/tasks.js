@@ -22,10 +22,10 @@
  *   notes route [--ticket ID] [--json] show which epic each unsent note (or such an answer) would be filed under
  *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note or answer, under its area's epic
  *   notes prep [--ticket ID] [--json]  route + flags (spike epic, no area, over-full epic) + duplicate hints, before send (PRO105)
- *   notes report --since <ISO> [--apply-auto] [--json]  after send: note -> ticket lines, raw titles, epics Ready for `auto`
+ *   notes report --since <ISO> [--apply-auto] [--json]  after send: note -> ticket lines, raw titles, 5d verified/skipped, not investigated, epics Ready for `auto`
   notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
   notes edit <id>#<n> ["<text>"] [--kind fix|idea|design]
-  notes dismiss <id>#<n>
+  notes dismiss <id>#<n> | <id>#ask<n>   (the second form drops an answered question the notes run would file)
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
@@ -126,7 +126,7 @@ import {
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
 import {
-  NOTE_KINDS, addReviewNote, editReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
+  NOTE_KINDS, addReviewNote, editReviewNote, setNoteState, parseNoteHandle, parseAskHandle, dismissAnswer, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
 } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, pendingAnswers } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
@@ -2209,7 +2209,17 @@ function cmdNotes(argv) {
       ok(`edited ${handle.id}#${handle.n}`);
       return;
     }
-    if (!handle) die('usage: ch tasks notes dismiss <id>#<n>');
+    const askHandle = handle ? null : parseAskHandle(positionals[0]);
+    if (askHandle) {
+      const { task } = resolveTask(doc, askHandle.id, values.section);
+      try { dismissAnswer(task, askHandle.askN); } catch (e) { die(e.message); }
+      task.updated = todayStr();
+      save(doc);
+      if (values.json) { jsonOut({ id: askHandle.id, ask: askHandle.askN, filedAs: 'dismissed' }); return; }
+      ok(`dismissed ${askHandle.id}#ask${askHandle.askN}`);
+      return;
+    }
+    if (!handle) die('usage: ch tasks notes dismiss <id>#<n> | <id>#ask<n>');
     const { task } = resolveTask(doc, handle.id, values.section);
     try { setNoteState(task, handle.n, 'dismissed'); } catch (e) { die(e.message); }
     task.updated = todayStr();
