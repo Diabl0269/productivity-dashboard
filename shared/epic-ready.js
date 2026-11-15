@@ -23,6 +23,14 @@ const COMPUTER_USE_TEXT = /computer use|open\/save panel|menu bar|voiceover|anot
 const SKIPPED_FOR_TAL_RUN = /waits? for a run Tal starts|left for a run Tal starts/i;
 const skippedForTalRun = t => (Array.isArray(t.decisions) ? t.decisions : [])
   .some(d => SKIPPED_FOR_TAL_RUN.test(typeof d === 'string' ? d : String((d && d.text) || '')));
+/** A `wait-until:YYYY-MM-DD` label keeps a ticket out of automatic runs until that day (UTC) starts; returns the date while it still waits, else null. */
+export function waitUntilDate(t, nowMs = Date.now()) {
+  for (const l of labelsOf(t)) {
+    const m = /^wait-until:\s*(\d{4}-\d{2}-\d{2})$/.exec(l);
+    if (m && Date.parse(m[1]) > nowMs) return m[1];
+  }
+  return null;
+}
 const RUNNABLE_SECTIONS = new Set(['todo', 'in-progress']);
 
 /** Auto-queue priorities, first to run first. Stored on the epic as `autoPriority` (the ticket's own `priority` stays low/medium/high). */
@@ -120,6 +128,7 @@ function readinessIn(ix, epic) {
     if (isPickGate(t)) why = isDesignPick(t) ? 'your pick' : 'your co-task';
     else if (!RUNNABLE_SECTIONS.has(sec)) why = `in ${sec}`;
     else if (t.blocked) why = 'marked blocked';
+    else if (waitUntilDate(t)) why = `waits until ${waitUntilDate(t)}`;
     else if (typeof t.waitingOn === 'string' && t.waitingOn.trim()) why = `waiting on ${t.waitingOn.trim()}`;
     else if (blockedBy.length) {
       const pick = blockedBy.find(b => openIds.has(b) && isPickGate(byId.get(b)));

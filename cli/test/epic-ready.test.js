@@ -136,6 +136,15 @@ test('needsComputerUse: a decision saying the ticket waits for a run Tal starts;
   assert.deepEqual(cu, { T1: [true, true], T2: [false, true], T3: [true, true] });
 });
 
+test('wait-until label: the child is not runnable until that day, then it is', () => {
+  const doc = mk({ todo: [epic('E1'),
+    task('T1', { parentId: 'E1', labels: ['wait-until:2999-01-01'] }),
+    task('T2', { parentId: 'E1', labels: ['wait-until:2000-01-01'] }),
+    task('T3', { parentId: 'E1', labels: ['wait-until:soon'] })] });
+  const c = Object.fromEntries(ready(doc, 'E1').children.map(x => [x.id, [x.runnable, x.why]]));
+  assert.deepEqual(c, { T1: [false, 'waits until 2999-01-01'], T2: [true, null], T3: [true, null] });
+});
+
 test('lanes hold in-progress and Ready epics even when nothing is pinned', () => {
   const doc = mk({
     'in-progress': [epic('E1', { lane: 'x', description: '' }), task('T1', { parentId: 'E1', description: '' })],
