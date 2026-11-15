@@ -19,8 +19,28 @@ const OPEN_EPIC_SECTIONS = new Set(['inbox', 'todo', 'in-progress']);
 const ID_PREFIX = /^\s*([A-Za-z]{1,8}\d+):\s*/;
 const BODY = /^\s*(?:[A-Za-z]{1,8}\d+:\s*)?needs-tal\s*:\s*/i;
 
+const MEDIA_RE = /\b(project|video|audio|image)\s*=\s*(\S+)/gi;
+
+/** `FRO1: needs-tal: hardware: x | video=a.mp4` -> { text: 'hardware: x', media: { video: 'a.mp4' } } (media only when present). */
+export function parseNeedsTalLine(raw) {
+  let body = String(raw).replace(ID_PREFIX, '').replace(BODY, '');
+  const media = {};
+  const bar = body.lastIndexOf('|');
+  if (bar >= 0) {
+    const found = [...body.slice(bar + 1).matchAll(MEDIA_RE)];
+    if (found.length) {
+      for (const m of found) media[m[1].toLowerCase()] = m[2];
+      body = body.slice(0, bar);
+    }
+  }
+  return { text: body.trim(), media };
+}
+
+/** PRO112: the line text the Plan page shows and matches on when a tick resolves the line. */
+export const needsTalText = (raw) => parseNeedsTalLine(raw).text;
+
 /**
- * @returns {Map<string, Array<{ from: string, text: string }>>} epic id -> lines (`from` = the child's id)
+ * @returns {Map<string, Array<{ from: string, text: string, media?: object }>>} epic id -> lines (`from` = the child's id)
  */
 export function needsTalLinesByEpic(doc) {
   const rows = [];
@@ -45,14 +65,33 @@ export function needsTalLinesByEpic(doc) {
     const lines = [];
     const add = (from, raw) => {
       if (!isNeedsTalLine(raw)) return;
-      const text = String(raw).replace(ID_PREFIX, '').replace(BODY, '').trim();
+      const { text, media } = parseNeedsTalLine(raw);
       if (!text || lines.some(l => normalizeJudgement(l.text) === normalizeJudgement(text))) return;
       if (asks.some(a => family.has(a.id) && sameJudgement(a.text, text))) return;
-      lines.push({ from, text });
+      lines.push(Object.keys(media).length ? { from, text, media } : { from, text });
     };
     for (const line of epic.result?.unverified || []) add(ID_PREFIX.exec(String(line))?.[1] || epic.id, line);
     for (const kid of doneKids) for (const line of kid.result?.unverified || []) add(kid.id, line);
     if (lines.length) out.set(epic.id, lines);
   }
   return out;
+}
+
+/**
+ * PRO112: Tal ticks a needs-tal line. Drop every needs-tal Unverified entry with this text from each
+ * of `tickets` (the source child and the epic's rolled-up copy), like `--resolve-unverified`.
+ * Returns how many entries were removed.
+ */
+export function resolveNeedsTalLine(tickets, text) {
+  const want = normalizeJudgement(text);
+  let removed = 0;
+  for (const t of tickets || []) {
+    const list = t?.result?.unverified;
+    if (!Array.isArray(list)) continue;
+    const keep = list.filter(l => !(isNeedsTalLine(l) && normalizeJudgement(needsTalText(l)) === want));
+    removed += list.length - keep.length;
+    if (keep.length === list.length) continue;
+    if (keep.length) t.result.unverified = keep; else delete t.result.unverified;
+  }
+  return removed;
 }

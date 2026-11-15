@@ -122,7 +122,7 @@ import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, normalizeCheckInput, noVideoReasonError, noProjectReasonError, checkProjectGateProblem, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
-  rollUpAfterClose, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
+  rollUpAfterClose, epicNeedsTal, settleMechanicalChecks, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
 import {
@@ -2131,6 +2131,19 @@ function cmdUpdate(argv) {
     appendHistory(task, { event: 'moved', from: taskSection.id, to: 'done' });
     doneSection.tasks.push(task);
     movedToDone = true;
+  }
+  // PRO111: a run that verifies the last mechanical check of an epic in review closes it; taste, hardware and hearing checks stay Tal's tick.
+  if (!movedToDone && values['verify-check'] !== undefined && task.type === 'epic' && taskSection.id === REVIEW_SECTION
+      && (task.checks || []).length && !epicNeedsTal(task) && !hasUnsentNotes(task) && !(task.asks || []).some(a => a.state === 'open')) {
+    const doneSection = sectionById(doc, 'done');
+    if (doneSection) {
+      settleMechanicalChecks(task);
+      taskSection.tasks = taskSection.tasks.filter(t => t.id !== task.id);
+      task.checked = true;
+      appendHistory(task, { event: 'moved', from: taskSection.id, to: 'done' });
+      doneSection.tasks.push(task);
+      movedToDone = true;
+    }
   }
   const heldByNotes = !movedToDone && ticked && taskSection.id === REVIEW_SECTION && allChecksTicked(task) && hasUnsentNotes(task)
     ? unsentNotes(task).length : 0;

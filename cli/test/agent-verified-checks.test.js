@@ -144,5 +144,8 @@ test('reviewing a child keeps the agent-verified marker on the epic copy of its 
   const epicCheck = taskOf(h, 'T96').checks.find(c => c.text === 'T97: see the thing');
   assert.ok(epicCheck, 'epic got the check');
   assert.deepEqual(epicCheck.agentVerified, verified);
-  assert.equal(epicCheck.checked, false);
+  // PRO111: the only check is mechanical and run-verified, so the epic closes without Tal's tick.
+  assert.equal(epicCheck.checked, true);
+  assert.match(epicCheck.checkedNote, /^Verified by agent: /);
+  assert.equal(taskOf(h, 'T96').checked, true);
 });

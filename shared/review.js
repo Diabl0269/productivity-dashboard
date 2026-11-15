@@ -575,14 +575,45 @@ export function rollUpIntoEpic(doc, task, checkTexts, { now = new Date().toISOSt
   );
   // An epic with no checks at all (none unticked, none ever) has nothing for Tal to look at: Done, not review.
   // Left or unverified lines on its result are still for Tal, so those epics go to review.
-  const noChecks = !(epic.checks || []).length && !(epic.result?.left || []).length && !(epic.result?.unverified || []).length;
+  // PRO111: checks a run verified that need only the page or CLI (no clip, project or taste) are not Tal's either.
+  const noChecks = !epicNeedsTal(epic);
   const closing = epicSection !== REVIEW_SECTION && !siblingsOpen;
+  if (closing && noChecks) settleMechanicalChecks(epic, now);
   const moveEpicToDone = closing && noChecks && epicSection !== 'done';
   const moveEpicToReview = closing && !noChecks && (epicSection !== 'done' || added > 0);
   return { epic, epicSection, added, moveEpicToReview, moveEpicToDone };
 }
 
 const CLOSED_SECTIONS = new Set(['done', REVIEW_SECTION, 'archive']);
+
+/**
+ * PRO111 (Tal, 2026-11-15): a check a run verified (`agentVerified.result` pass) that is purely
+ * mechanical (no clip, audio, project or taste flag, not on a held PR) needs no tick from Tal.
+ * Taste, hardware and hearing checks always carry media or the taste flag and stay his.
+ */
+export function isMechanicalVerified(c) {
+  return !!c && c.agentVerified?.result === 'pass' && !c.video && !c.audio && !c.project && !c.taste && !c.heldPr;
+}
+
+/** Does anything on `epic` still need Tal: a check that is not mechanical-verified, a left line or an unverified line? */
+export function epicNeedsTal(epic) {
+  return (epic.checks || []).some(c => !isMechanicalVerified(c))
+    || (epic.result?.left || []).length > 0
+    || (epic.result?.unverified || []).length > 0;
+}
+
+/** Tick the mechanical-verified checks of an epic that closes without Tal. Returns how many. */
+export function settleMechanicalChecks(epic, now = new Date().toISOString()) {
+  let n = 0;
+  for (const c of epic.checks || []) {
+    if (c.checked || !isMechanicalVerified(c)) continue;
+    c.checked = true;
+    c.checkedAt = now;
+    c.checkedNote = `Verified by ${c.agentVerified.by || 'agent'}: ${c.agentVerified.note}`;
+    n++;
+  }
+  return n;
+}
 
 /**
  * Epics to drop from the day plan now that `task` has closed (done, review or archive):
@@ -640,8 +671,10 @@ export function rollUpAfterClose(doc, epicId, { now = new Date().toISOString() }
   while (row && row.task.type === 'epic') {
     const { task: epic, section } = row;
     if (CLOSED_SECTIONS.has(section) || hasOpenWork(doc, epic.id)) break;
-    const toReview = !!epic.result || (epic.checks || []).length > 0;
-    if (!toReview && !descendantsOf(doc, epic.id).length) break;
+    const hadWork = !!epic.result || (epic.checks || []).length > 0;
+    const toReview = hadWork && epicNeedsTal(epic);
+    if (!hadWork && !descendantsOf(doc, epic.id).length) break;
+    if (!toReview) settleMechanicalChecks(epic, now);
     const to = toReview ? REVIEW_SECTION : 'done';
     if (!moveBetween(doc, epic, section, to, now)) break;
     moved.push({ id: epic.id, from: section, to });
