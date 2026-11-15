@@ -700,3 +700,17 @@ export function clearUnverified(task) {
   if (had) delete task.result.unverified;
   return had;
 }
+
+/**
+ * AGE80: a review item with no checks, no unsent notes, no needs-tal lines and no decision card of its own
+ * shows on the Plan page as one compact row (id, title, tick box) instead of a full card.
+ * `asks` are the grouped ask cards ({ members: [{ id }] }).
+ */
+export function isCompactReview(item, asks = []) {
+  if (!item) return false;
+  const id = String(item.id || '').toUpperCase();
+  return (item.checks?.total || 0) === 0
+    && !(item.notes > 0)
+    && !(item.lines?.length)
+    && !asks.some(card => (card.members || []).some(m => String(m.id || '').toUpperCase() === id));
+}

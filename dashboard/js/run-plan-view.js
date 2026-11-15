@@ -2,7 +2,8 @@
 
 import { computeRunPlan, threadLink, laneDisplayName, totalsLine } from '../../shared/run-plan.js';
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
-import { epicsToUnpin, groupChecksByProject } from '../../shared/review.js';
+import { epicsToUnpin, groupChecksByProject, isCompactReview } from '../../shared/review.js';
+import { toggleTaskComplete } from './tasks-list.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
 import { checkBuildChip, noProjectNote } from './check-build-ui.js';
 import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl } from './check-evidence.js';
@@ -502,6 +503,24 @@ function tickNeedsTalLine(line, epicId) {
   renderRunPlanView();
 }
 
+/** AGE80: an epic in review with nothing to check, note or answer: id, title and a tick box that moves it to Done (the list view's own toggle). */
+function renderCompactReviewRow(item, task) {
+  const li = el('li', 'rp-review-item rp-review-compact');
+  const row = el('div', 'rp-row');
+  const box = el('button', 'rp-compact-tick');
+  box.type = 'button';
+  box.setAttribute('role', 'checkbox');
+  box.setAttribute('aria-checked', 'false');
+  box.setAttribute('aria-label', `Mark ${item.id} reviewed: move to Done`);
+  box.title = 'Reviewed: move to Done';
+  box.addEventListener('click', () => { toggleTaskComplete(task); renderRunPlanView(); });
+  row.appendChild(box);
+  row.appendChild(idButton(item.id));
+  row.appendChild(el('span', 'rp-title', item.title));
+  li.appendChild(row);
+  return li;
+}
+
 /** Review items and decision cards in one list, oldest first (a review by when it entered review, a decision by when it was asked). */
 function renderReviewList(items, asks = [], interps = []) {
   const list = el('ol', 'rp-review-list');
@@ -513,6 +532,7 @@ function renderReviewList(items, asks = [], interps = []) {
     if (entry.kind === 'interp') { list.appendChild(renderInterpretationCard(getState(), entry.card, renderRunPlanView)); continue; }
     const { item } = entry;
     const task = findTicket(item.id);
+    if (task && isCompactReview(item, asks)) { list.appendChild(renderCompactReviewRow(item, task)); continue; }
     const open = openReview.has(item.id);
     const li = el('li', 'rp-review-item' + (open ? ' rp-open' : ''));
     const row = el('div', 'rp-row');

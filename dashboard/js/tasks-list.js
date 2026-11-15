@@ -343,6 +343,22 @@ function startAddingListSection(btn) {
   input.addEventListener('blur', saveSection);
 }
 
+/** The checkbox toggle. A ready-for-review ticket is already checked; its box means "reviewed" -> Done (also the Plan page's compact review row). */
+export function toggleTaskComplete(task) {
+  task.checked = task.section === 'review' ? true : !task.checked;
+  if (task.checked) {
+    task.updated = todayStr();
+    moveTask(task.id, 'done', 0);
+  } else if (task.section === 'done') {
+    const { sections } = getState();
+    const target = sections.find(s => s.id !== 'done' && s.id !== 'archive' && s.id !== 'backlog');
+    moveTask(task.id, target ? target.id : task.section, 0);
+  } else {
+    markChanged(task);
+    getRenderTasks()();
+  }
+}
+
 function createListItem(task, section) {
   const item = document.createElement('div');
   item.className = 'list-item' + (isSelected(task) ? ' selected' : '');
@@ -376,19 +392,7 @@ function createListItem(task, section) {
       toggleSelect(task, { additive: true });
       return;
     }
-    // A ready-for-review ticket is already checked; its checkbox means "reviewed" -> Done.
-    task.checked = task.section === 'review' ? true : !task.checked;
-    if (task.checked) {
-      task.updated = todayStr();
-      moveTask(task.id, 'done', 0);
-    } else if (task.section === 'done') {
-      const { sections } = getState();
-      const target = sections.find(s => s.id !== 'done' && s.id !== 'archive' && s.id !== 'backlog');
-      moveTask(task.id, target ? target.id : task.section, 0);
-    } else {
-      markChanged(task);
-      getRenderTasks()();
-    }
+    toggleTaskComplete(task);
   };
   checkbox.addEventListener('click', toggleCheckbox);
   checkbox.addEventListener('keydown', (e) => {
