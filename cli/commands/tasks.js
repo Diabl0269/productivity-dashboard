@@ -21,6 +21,8 @@
  *   notes [--ticket ID] [--json]       list unsent review notes, and answered asks on done / review / archive tickets nothing picked up yet
  *   notes route [--ticket ID] [--json] show which epic each unsent note (or such an answer) would be filed under
  *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note or answer, under its area's epic
+ *   notes prep [--ticket ID] [--json]  route + flags (spike epic, no area, over-full epic) + duplicate hints, before send (PRO105)
+ *   notes report --since <ISO> [--apply-auto] [--json]  after send: note -> ticket lines, raw titles, epics Ready for `auto`
   notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
   notes edit <id>#<n> ["<text>"] [--kind fix|idea|design]
   notes dismiss <id>#<n>
@@ -84,6 +86,7 @@
 import { parse } from '../lib/args.js';
 import cmdNext from './tasks-next.js';
 import cmdReady from './tasks-ready.js';
+import { cmdNotesPrep, cmdNotesReport } from './tasks-notes-prep.js';
 import cmdNextStart from './tasks-next-start.js';
 import cmdSweepIdle from './tasks-sweep-idle.js';
 import { readinessLabel, parkedEpics, parkedAfterClosing, openEpicReadiness } from '../../shared/epic-ready.js';
@@ -2214,6 +2217,9 @@ function cmdNotes(argv) {
     ok(`dismissed ${handle.id}#${handle.n}`);
     return;
   }
+
+  if (sub === 'prep') { cmdNotesPrep(argv.slice(1)); return; }
+  if (sub === 'report') { cmdNotesReport(argv.slice(1)); return; }
 
   if (sub === 'route' || sub === 'send') {
     const { values } = parse(argv.slice(1), {
