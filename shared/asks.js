@@ -471,6 +471,65 @@ export function resolveAsk(task, key, {
   return out;
 }
 
+/** The ticket id a `filedAs` names when the notes run already filed it as a ticket ("FRO12"), else '' (a note handle "T1#2" or nothing). */
+function filedTicketId(filedAs) {
+  const f = String(filedAs || '').trim();
+  return f && !f.includes('#') ? f : '';
+}
+
+/**
+ * PRO107: every own ask of `task` that is no longer open (answered, done, dismissed, parked), in order, as
+ * { key, text, state, answer, resolvedAt, filedAs }. Older `resolvedAsks` entries are not listed: they cannot be reopened.
+ */
+export function resolvedTaskAsks(task) {
+  return (task?.asks || []).filter(a => a && a.state && a.state !== 'open').map(a => ({
+    key: String(a.n), text: a.text, state: a.state, answer: a.answer || '', resolvedAt: a.resolvedAt || '', filedAs: a.filedAs || '',
+  }));
+}
+
+/**
+ * PRO107: one plain line saying whether Claude already acted on a resolved ask, from its `filedAs` and the
+ * decisions recorded on the ticket.
+ * @returns {{ acted: boolean, line: string }}
+ */
+export function reopenHint(task, ask) {
+  const fid = filedTicketId(ask?.filedAs);
+  if (fid) return { acted: true, line: `Claude already filed ${fid} from this answer: changing it won't undo that` };
+  if (ask?.filedAs) return { acted: true, line: `Claude already filed a note (${ask.filedAs}) from this answer: changing it won't undo that` };
+  const q = String(ask?.text || '');
+  const decided = q && (task?.decisions || []).some(d => String(d?.text || '').includes(`"${q}"`));
+  if (decided) return { acted: true, line: 'A decision from this answer is recorded on the ticket: changing it will not remove it' };
+  return { acted: false, line: 'Nothing acted on this yet: changing it still matters' };
+}
+
+/**
+ * PRO107: put a dismissed or answered own ask back to open: state open, answer and resolvedAt cleared
+ * (`filedAs` too, so a new answer is filed afresh), waitingOn set to Tal again when empty. Restores the
+ * question only: the note, decision and follow-up the old answer made stay. Throws when `key` is not a
+ * resolved own ask (older `resolvedAsks` entries cannot be reopened) or when the follow-up filed from it has
+ * started; `lookup(id)` returns { task, section } for that ticket (omitted: not checked). Mutates `task`.
+ * @returns {{ question, key, filedAs }}
+ */
+export function reopenAsk(task, key, { lookup = () => null } = {}) {
+  const k = String(key).trim();
+  const tid = task?.id || task?.taskId || 'ticket';
+  const ask = (task?.asks || []).find(a => a && String(a.n) === k);
+  if (!ask) throw new Error(`${tid} has no own question "${key}" to reopen (older resolved questions cannot be reopened)`);
+  if (ask.state === 'open') throw new Error(`${tid} question ${k} is already open`);
+  const fid = filedTicketId(ask.filedAs);
+  const found = fid ? lookup(fid) : null;
+  if (found && found.section !== 'todo') {
+    throw new Error(`${fid}, filed from ${tid} question ${k}, has started (${found.section}): too late to reopen`);
+  }
+  const filedAs = ask.filedAs || '';
+  ask.state = 'open';
+  delete ask.answer;
+  delete ask.resolvedAt;
+  delete ask.filedAs;
+  if (!task.waitingOn) task.waitingOn = `Tal: ${ask.text}`;
+  return { question: ask.text, key: k, filedAs };
+}
+
 /**
  * Tick the checks an answered / done ask links (PRO90): each `checkRefs` entry { id, text } found through
  * `findTask(id)` (the doc or the dashboard state) and not yet ticked gets checked = true, checkedAt and

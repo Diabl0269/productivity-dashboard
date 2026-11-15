@@ -88,6 +88,7 @@ import {
 import { promoteSubtaskInState } from '../../shared/subtasks.js';
 import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultLines, groupChecksByProject } from '../../shared/review.js';
 import { askLines } from '../../shared/asks.js';
+import { renderResolvedAsks } from './asks-strip.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { unsentNotes } from '../../shared/review-notes.js';
 import { reviewNoteAddRow, reviewNoteRow } from './review-notes-ui.js';
@@ -2933,6 +2934,9 @@ function buildReviewPanel(task, body) {
     }));
     box.appendChild(general);
   }
+
+  const resolvedAsks = renderResolvedAsks(getState(), task);
+  if (resolvedAsks) box.appendChild(resolvedAsks);
 
   if (task.reviewOf) box.appendChild(reviewRelationRow('From review of', [task.reviewOf]));
   if (followUps.length) {
