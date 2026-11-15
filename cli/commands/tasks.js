@@ -90,7 +90,7 @@ import cmdReady from './tasks-ready.js';
 import { cmdNotesPrep, cmdNotesReport } from './tasks-notes-prep.js';
 import cmdNextStart from './tasks-next-start.js';
 import cmdSweepIdle from './tasks-sweep-idle.js';
-import { readinessLabel, parkedEpics, parkedAfterClosing, openEpicReadiness } from '../../shared/epic-ready.js';
+import { readinessLabel, parkedEpics, emptyLaterEpics, parkedAfterClosing, openEpicReadiness } from '../../shared/epic-ready.js';
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
@@ -207,8 +207,8 @@ function assertNoOpenSubtasks(task, force) {
  * left (review when there is something to look at, else done) and unpin them.
  * Returns { epics: [{ id, from, to }], unpinned: [ids] }.
  */
-function rollUpEpics(doc, epicId) {
-  const epics = rollUpAfterClose(doc, epicId);
+function rollUpEpics(doc, epicId, opts) {
+  const epics = rollUpAfterClose(doc, epicId, opts);
   const unpinned = epics.flatMap(m => autoUnpin(doc, findTask(doc, m.id).task));
   return { epics, unpinned: [...new Set(unpinned)] };
 }
@@ -2152,7 +2152,8 @@ function cmdUpdate(argv) {
   const rolledEpics = [];
   const rolledUnpinned = [];
   for (const eid of new Set([epicBefore, epicToCheck].filter(Boolean))) {
-    const r = rollUpEpics(doc, eid);
+    // PRO114: the epic a ticket was moved out of closes when it is an emptied "later" bucket.
+    const r = rollUpEpics(doc, eid, eid === epicBefore ? { closeEmptyLater: true } : undefined);
     rolledEpics.push(...r.epics);
     rolledUnpinned.push(...r.unpinned);
   }
@@ -2524,6 +2525,9 @@ function cmdLint(argv) {
   // PRO72: an open epic whose only open tickets are in backlog can never start.
   const parked = parkedEpics(doc);
   for (const r of parked) printErr(`lint: warning: epic ${r.id} is in ${r.section} but its only open tickets are in backlog (${r.parked.join(', ')}); move them to todo or to a "(later)" epic`);
+
+  // PRO114: a "later" epic with nothing open under it is clutter.
+  for (const r of emptyLaterEpics(doc)) printErr(`lint: warning: epic ${r.id} is an empty later bucket (nothing open under it); close it: ch tasks done ${r.id}`);
 
   // Reviews are Tal's: a ticket that went review -> done within minutes was probably closed by a session.
   for (const t of doc.sections.filter(s => s.id === 'done').flatMap(s => s.tasks)) {

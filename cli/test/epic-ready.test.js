@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { epicReadiness, openEpicReadiness, readinessLabel, howToCheckText, plainReasonLine } from '../../shared/epic-ready.js';
+import { emptyLaterEpics, epicReadiness, openEpicReadiness, readinessLabel, howToCheckText, plainReasonLine } from '../../shared/epic-ready.js';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { cleanupPins } from '../../shared/pin-rules.js';
 import { normalizeMeta } from '../lib/schema.js';
@@ -310,4 +310,21 @@ test('promotable: only a backlog or parked epic, only its own backlog tickets, n
   assert.deepEqual(ready(doc, 'E1').promotable, [], 'E1 has a runnable ticket: not parked');
   assert.deepEqual(ready(doc, 'E2').promotable, ['B2', 'B3']);
   assert.deepEqual(ready(doc, 'E3').promotable, []);
+});
+
+test('PRO114: emptyLaterEpics lists open later/future epics with no open non-epic ticket under them', () => {
+  const doc = mk({
+    todo: [
+      epic('L1', { title: 'Canvas (later)' }),
+      epic('L2', { title: 'Future work' }),
+      epic('L3', { title: 'Audio (later)' }),
+      epic('L4', { title: 'Nested (later)' }),
+      epic('E1', { title: 'Plain empty epic' }),
+      task('T3', { parentId: 'L3' }),
+      epic('S1', { parentId: 'L4', title: 'Sub epic' }),
+    ],
+    backlog: [task('T2', { parentId: 'L2' })],
+    done: [epic('L5', { title: 'Old (later)' }), task('T1', { parentId: 'L1', checked: true })],
+  });
+  assert.deepEqual(emptyLaterEpics(doc).map(r => r.id), ['L1', 'L4']);
 });

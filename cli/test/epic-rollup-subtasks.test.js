@@ -170,6 +170,59 @@ test('PRO32: rollUpAfterClose recurses to the enclosing epic and skips closed or
   assert.deepEqual(rollUpAfterClose(doc, 'T9'), [], 'a childless epic with nothing to review stays');
 });
 
+test('PRO114: rollUpAfterClose closes an emptied later epic only with closeEmptyLater; other empty epics stay', () => {
+  const task = (id, extra = {}) => ({ id, title: id, checked: false, priority: 'medium', type: 'task', subtasks: [], checks: [], ...extra });
+  const mk = () => ({
+    sections: [
+      { id: 'todo', tasks: [task('L1', { type: 'epic', title: 'Area (later)' }), task('E1', { type: 'epic', title: 'Area work' })] },
+      { id: 'done', tasks: [] },
+    ],
+  });
+  assert.deepEqual(rollUpAfterClose(mk(), 'L1'), [], 'default keeps an empty later epic');
+  const doc = mk();
+  assert.deepEqual(rollUpAfterClose(doc, 'L1', { closeEmptyLater: true }), [{ id: 'L1', from: 'todo', to: 'done' }]);
+  assert.equal(doc.sections[0].tasks.some(t => t.id === 'L1'), false);
+  assert.deepEqual(rollUpAfterClose(mk(), 'E1', { closeEmptyLater: true }), [], 'a non-later empty epic stays open');
+});
+
+test('PRO114: update --parent moving the last ticket out of a later epic closes it and says so', () => {
+  const dir = makeTmpDir();
+  const later = addEpic(dir, 'Canvas (later)');
+  const other = addEpic(dir, 'Canvas now');
+  const t = addChild(dir, 'Parked idea', later);
+  const r = runCli(['tasks', 'update', t, '--parent', other], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, new RegExp(`\\(epic ${later} now done\\)`));
+  const e = find(dir, later);
+  assert.equal(e.section, 'done');
+  assert.equal(e.task.history.at(-1).event, 'moved');
+  assert.equal(find(dir, other).section, 'todo');
+});
+
+test('PRO114: --clear-parent closes the emptied later epic; a brand-new empty later epic and a non-later epic stay', () => {
+  const dir = makeTmpDir();
+  const later = addEpic(dir, 'Future ideas');
+  const plain = addEpic(dir, 'Plain epic');
+  const t = addChild(dir, 'Idea', later);
+  const u = addChild(dir, 'Other', plain);
+  const fresh = addEpic(dir, 'Another later bucket');
+  assert.equal(runCli(['tasks', 'update', t, '--clear-parent'], dir).status, 0);
+  assert.equal(find(dir, later).section, 'done');
+  assert.equal(runCli(['tasks', 'update', u, '--clear-parent'], dir).status, 0);
+  assert.equal(find(dir, plain).section, 'todo', 'emptied non-later epic stays open');
+  assert.equal(find(dir, fresh).section, 'todo', 'untouched empty later epic stays open');
+});
+
+test('PRO114: lint warns about an open later epic with nothing open under it', () => {
+  const dir = makeTmpDir();
+  const empty = addEpic(dir, 'Canvas (later)');
+  const full = addEpic(dir, 'Audio (later)');
+  addChild(dir, 'Idea', full);
+  const r = runCli(['tasks', 'lint'], dir);
+  assert.match(r.stderr, new RegExp(`epic ${empty} is an empty later bucket \\(nothing open under it\\); close it: ch tasks done ${empty}`));
+  assert.doesNotMatch(r.stderr, new RegExp(`epic ${full} is an empty later bucket`));
+});
+
 // ---------------------------------------------------------------------------
 // PRO34
 // ---------------------------------------------------------------------------
