@@ -67,6 +67,21 @@ export function editReviewNote(task, n, { text, kind } = {}) {
   return note;
 }
 
+/** Parse an answer-note handle `PRO19#ask2` into { id, askN }, else null (PRO109). */
+export function parseAskHandle(str) {
+  const m = /^(.+)#ask(\d+)$/.exec(String(str ?? '').trim());
+  return m ? { id: m[1], askN: parseInt(m[2], 10) } : null;
+}
+
+/** Dismiss an answered ask the notes run would file: marks it `filedAs: 'dismissed'` (pendingAnswers skips it). Returns the ask. */
+export function dismissAnswer(task, askN) {
+  const ask = (task?.asks || []).find(a => a && a.n === askN);
+  if (!ask) throw new Error(`no question #${askN} on ${task?.id ?? 'ticket'}`);
+  if (ask.filedAs) throw new Error(`${task?.id ?? 'ticket'}#ask${askN} is already ${ask.filedAs === 'dismissed' ? 'dismissed' : `filed (${ask.filedAs})`}`);
+  ask.filedAs = 'dismissed';
+  return ask;
+}
+
 /** Parse `PRO19#3` into { id, n }, else null. */
 export function parseNoteHandle(str) {
   const m = HANDLE_RE.exec(String(str ?? '').trim());

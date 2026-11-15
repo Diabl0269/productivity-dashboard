@@ -131,3 +131,22 @@ test('no double-file with the note path: an answer already turned into a note is
   assert.equal(out.filed.length, 1);
   assert.equal(out.filed[0].handle, 'T11#1');
 });
+
+test('PRO109: `notes dismiss <id>#ask<n>` drops an answered ask: nothing is filed, reopen does not read it as a ticket', async () => {
+  const dir = setup();
+  const r = ch(['tasks', 'notes', 'dismiss', 'T11#ask1'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /dismissed T11#ask1/);
+  const doc = read(dir);
+  assert.equal(find(doc, 'T11').asks[0].filedAs, 'dismissed');
+  assert.deepEqual(pendingAnswers(doc), []);
+  assert.match(ch(['tasks', 'notes'], dir).stdout, /No new review notes/);
+  assert.equal(JSON.parse(ch(['tasks', 'notes', 'send', '--json'], dir).stdout).filed.length, 0);
+  const { reopenHint } = await import('../../shared/asks.js');
+  const hint = reopenHint(find(doc, 'T11'), find(doc, 'T11').asks[0]);
+  assert.equal(hint.acted, false);
+  assert.match(hint.line, /Dismissed/);
+  // a second dismiss, or an unknown ask, is refused
+  assert.notEqual(ch(['tasks', 'notes', 'dismiss', 'T11#ask1'], dir).status, 0);
+  assert.notEqual(ch(['tasks', 'notes', 'dismiss', 'T11#ask9'], dir).status, 0);
+});
