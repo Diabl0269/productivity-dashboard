@@ -18,9 +18,9 @@
  *   runplan [--json]
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
  *   stale [--days N] [--json]
- *   notes [--ticket ID] [--json]       list unsent review notes
- *   notes route [--ticket ID] [--json] show which epic each unsent note would be filed under
- *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note, under its area's epic
+ *   notes [--ticket ID] [--json]       list unsent review notes, and answered asks on done / review / archive tickets nothing picked up yet
+ *   notes route [--ticket ID] [--json] show which epic each unsent note (or such an answer) would be filed under
+ *   notes send [--ticket ID] [--json]  file them (File review): one ticket per note or answer, under its area's epic
   notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
   notes edit <id>#<n> ["<text>"] [--kind fix|idea|design]
   notes dismiss <id>#<n>
@@ -124,7 +124,7 @@ import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/
 import {
   NOTE_KINDS, addReviewNote, editReviewNote, setNoteState, parseNoteHandle, noteLine, unsentNotes, hasUnsentNotes, pendingReviewNotes,
 } from '../../shared/review-notes.js';
-import { planFiling, applyFiling } from '../../shared/review-filing.js';
+import { planFiling, applyFiling, pendingAnswers } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
 import { openPrGate } from '../lib/open-pr-gate.js';
 import { reviewOverlap, applyLinks, ticketAndEpic } from '../lib/ask-overlap.js';
@@ -2230,7 +2230,7 @@ function cmdNotes(argv) {
         const e = g.epic;
         const where = e.isNew ? `new epic "${e.title}" (${e.section})` : `${e.id} ${e.title} (${e.section})`;
         print(`${g.area ? laneDisplayName(g.area) : 'No area'} -> ${where}`);
-        for (const it of g.items) print(`  ${it.handle} [${it.noteKind}] ${it.title}`);
+        for (const it of g.items) print(`  ${it.handle} [${it.askN ? 'answer' : it.noteKind}] ${it.title}`);
       }
       if (plan.unrouted.length) {
         print('Needs an area:');
@@ -2258,11 +2258,21 @@ function cmdNotes(argv) {
   });
   const doc = load();
   const pending = pendingReviewNotes(doc).filter(t => !values.ticket || t.id === values.ticket);
+  // PRO104: answered asks on closed tickets join the list, one entry per ticket (notes first).
+  for (const a of pendingAnswers(doc, { ticket: values.ticket })) {
+    let t = pending.find(x => x.id === a.task.id);
+    if (!t) {
+      t = { id: a.task.id, title: a.task.title, type: a.task.type, lane: a.task.lane, section: a.section, notes: [] };
+      pending.push(t);
+    }
+    (t.answers ||= []).push({ handle: a.handle, n: a.ask.n, question: a.ask.text, answer: a.ask.answer });
+  }
   if (values.json) { jsonOut(pending); return; }
   if (!pending.length) { print('No new review notes.'); return; }
   const clip = (str, n) => (str.length > n ? `${str.slice(0, n - 1)}…` : str);
   for (const t of pending) {
     print(`${t.id} ${t.type || 'task'}${t.lane ? ` lane:${t.lane}` : ''} ${clip(t.title || '', 60)}`);
+    for (const a of t.answers || []) print(`  ${a.handle} [answer] ${clip(a.question, 60)}: ${a.answer}`);
     for (const x of t.notes) {
       print(`  ${noteLine(t.id, x)}`);
       for (const img of x.images || []) {
