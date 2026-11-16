@@ -18,7 +18,8 @@
  *     `asks` merge by `n` like notes (an ask no longer `open` wins), `resolvedAsks` and `decisions`
  *     are unioned; every other field comes from current unless only local changed it.
  * Top-level keys other than `sections` (meta, ticketTypes, version) follow the same
- * "local only changed it -> local, else current" rule.
+ * "local only changed it -> local, else current" rule. When both changed `meta`, it is merged key by
+ * key and `meta.freeNotes` (PRO121) is unioned by `n` like `reviewNotes`.
  *
  * Pure (no fs, no DOM). All three arguments are parsed documents ({ sections: [...] }).
  */
@@ -168,6 +169,26 @@ function mergeTicket(b, l, c) {
   return m;
 }
 
+/**
+ * PRO121: both sides changed `meta`. Start from current, bring in each meta key only local changed,
+ * and union `freeNotes` by n like review notes, so a free note added (or filed, dismissed) on one side
+ * survives a write from the other.
+ */
+function mergeMeta(b, l, c) {
+  const base = b || {};
+  const loc = l || {};
+  const m = clone(c) || {};
+  for (const k of new Set([...Object.keys(loc), ...Object.keys(base)])) {
+    if (k === 'freeNotes' || same(loc[k], base[k]) || !same(m[k], base[k])) continue;
+    if (loc[k] === undefined) delete m[k]; else m[k] = clone(loc[k]);
+  }
+  if (loc.freeNotes || m.freeNotes || base.freeNotes) {
+    const notes = mergeNotes(base.freeNotes, loc.freeNotes, m.freeNotes);
+    if (notes.length) m.freeNotes = notes; else delete m.freeNotes;
+  }
+  return m;
+}
+
 export function mergeTasksDocs(base, local, current) {
   const B = indexDoc(base); const L = indexDoc(local); const C = indexDoc(current);
   const merged = clone(current);
@@ -177,7 +198,10 @@ export function mergeTasksDocs(base, local, current) {
   for (const k of topKeys) {
     if (k === 'sections') continue;
     if (same(local?.[k], base?.[k])) continue;
-    if (!same(current?.[k], base?.[k])) continue;
+    if (!same(current?.[k], base?.[k])) {
+      if (k === 'meta') merged.meta = mergeMeta(base?.meta, local?.meta, current?.meta);
+      continue;
+    }
     if (local[k] === undefined) delete merged[k]; else merged[k] = clone(local[k]);
   }
   // Sections only local has (a section added in the dashboard).

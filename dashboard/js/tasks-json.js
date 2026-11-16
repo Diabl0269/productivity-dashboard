@@ -9,7 +9,7 @@ import { isValidTaskId, collectKnownPrefixes } from '../../shared/task-ids.js';
 import { normalizeProjectRow } from '../../shared/projects.js';
 
 import { normalizeModel } from '../../shared/model.js';
-import { NOTE_KINDS, NOTE_STATES } from '../../shared/review-notes.js';
+import { NOTE_KINDS, NOTE_STATES, normalizeFreeNotes } from '../../shared/review-notes.js';
 import { cleanAsks } from '../../shared/asks.js';
 import { cleanHeldPr } from '../../shared/held-pr.js';
 import { readCustomFromJson, serializeCustomToJson } from './custom-fields.js';
@@ -231,6 +231,7 @@ export function normalizeTasksMeta(meta) {
   const checks = (reviewIn.checks && typeof reviewIn.checks === 'object' && !Array.isArray(reviewIn.checks))
     ? { ...reviewIn.checks }
     : {};
+  const freeNotes = normalizeFreeNotes(meta.freeNotes);
 
   return {
     // handPinnedIds (epics Tal pinned by hand, PRO61) is only written once there is one
@@ -239,6 +240,8 @@ export function normalizeTasksMeta(meta) {
     projects,
     ideas,
     review: { weeklyDate, checks },
+    // PRO121: notes with no ticket (shared/review-notes.js); only written once there is one
+    ...(freeNotes.length ? { freeNotes } : {}),
   };
 }
 

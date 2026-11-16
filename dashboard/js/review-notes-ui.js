@@ -55,11 +55,12 @@ function ensureDocListeners() {
   document.addEventListener('mouseup', () => { mouseDown = false; }, true);
 }
 
-/** True while a note input has focus and text in it: a watcher update should wait. */
+/** True while a note input (a review note, or Home's free-note box: PRO121) has focus and text in it: a watcher update should wait. */
 export function isNoteInputBusy() {
   if (typeof document === 'undefined') return false;
   const a = document.activeElement;
-  return !!a && a.classList?.contains('td-review-note-input') && !!String(a.value || '').trim();
+  const noteInput = a?.classList?.contains('td-review-note-input') || a?.classList?.contains('hn-input');
+  return !!noteInput && !!String(a.value || '').trim();
 }
 
 /** Focus the note input with this key, once the caller has re-rendered. */

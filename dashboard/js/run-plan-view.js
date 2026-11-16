@@ -10,7 +10,7 @@ import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl } from '.
 import { resolveNeedsTalLine } from '../../shared/needs-tal-lines.js';
 import { heldPrChip } from './held-pr-ui.js';
 import { linkedCheckKeys } from '../../shared/ask-check-overlap.js';
-import { unsentNotes, countUnsentNotes, pendingReviewNotes } from '../../shared/review-notes.js';
+import { unsentNotes, countUnsentNotes, pendingReviewNotes, freeHolder } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, noteArea, areaOptions } from '../../shared/review-filing.js';
 import { nextTaskId } from '../../shared/task-ids.js';
 import { withAutoLabel } from '../../shared/epic-ready.js';
@@ -243,7 +243,7 @@ function handToClaude() {
 /** Lane <select> that sets the area of an unrouted note. */
 function unroutedRow(handle) {
   const [id, n] = handle.split('#');
-  const task = findTicket(id);
+  const task = id === 'free' ? freeHolder(toDoc(getState())) : findTicket(id);
   const note = (task?.reviewNotes || []).find(x => String(x.n) === n);
   const row = el('li', 'rp-file-item');
   if (!note) return row;
@@ -382,8 +382,16 @@ function renderNotesList() {
   panel.setAttribute('role', 'region');
   panel.setAttribute('aria-label', 'Open review notes');
   for (const entry of pendingReviewNotes(currentDoc)) {
-    const task = findTicket(entry.id);
+    // PRO121: a free note has no ticket; its rows edit meta.freeNotes through the same holder shape.
+    const task = entry.type === 'free' ? freeHolder(toDoc(getState())) : findTicket(entry.id);
     if (!task) continue;
+    if (entry.type === 'free') {
+      const block = el('div', 'rp-file-group');
+      block.appendChild(el('div', 'rp-file-head', `Free note${entry.lane ? ` (${laneDisplayName(entry.lane)})` : ' (no area yet)'}`));
+      for (const note of entry.notes) block.appendChild(reviewNoteRow(task, note, { onChange: commitReviewChange }));
+      panel.appendChild(block);
+      continue;
+    }
     const block = el('div', 'rp-file-group');
     const head = el('div', 'rp-file-head');
     head.appendChild(idButton(entry.id));
@@ -403,10 +411,14 @@ function renderNotesList() {
 function renderFileBar() {
   const notes = countUnsentNotes(currentDoc);
   if (!notes) { filingOpen = false; notesListOpen = false; return null; }
-  const cards = pendingReviewNotes(currentDoc).length;
+  const pending = pendingReviewNotes(currentDoc);
+  const cards = pending.filter(e => e.type !== 'free').length;
+  const free = pending.length - cards; // PRO121: free notes have no ticket
   const wrap = el('div', 'rp-file');
   const bar = el('div', 'rp-file-bar');
-  bar.appendChild(el('span', 'rp-file-count', `${notes} note${notes === 1 ? '' : 's'} on ${cards} ticket${cards === 1 ? '' : 's'}`));
+  const where = [cards ? `on ${cards} ticket${cards === 1 ? '' : 's'}` : '', free ? `${free} free` : ''].filter(Boolean).join(', ');
+  const count = cards ? `${notes} note${notes === 1 ? '' : 's'} ${where}` : `${free} free note${free === 1 ? '' : 's'}`;
+  bar.appendChild(el('span', 'rp-file-count', count));
   const file = el('button', 'rp-btn rp-btn-primary', 'File review');
   file.type = 'button';
   file.setAttribute('aria-expanded', filingOpen ? 'true' : 'false');

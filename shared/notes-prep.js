@@ -14,6 +14,7 @@
  */
 
 import { planFiling, titleOf } from './review-filing.js';
+import { freeNotes, freeHandle } from './review-notes.js';
 import { openEpicReadiness, AUTO_LABEL, withAutoLabel } from './epic-ready.js';
 
 const OPEN_SECTIONS = ['inbox', 'backlog', 'todo', 'in-progress', 'review'];
@@ -128,20 +129,23 @@ export function roundReport(doc, since) {
   const all = rows(doc);
   const byId = new Map(all.map(r => [r.task.id, r.task]));
   const lines = [];
-  for (const { task } of all) {
-    for (const note of task.reviewNotes || []) {
-      if (!note || note.state !== 'filed' || !note.filed) continue;
-      for (const id of [].concat(note.filed)) {
-        const t = byId.get(String(id));
-        if (!t || (day && String(t.created || '') < day)) continue;
-        const epic = byId.get(t.parentId);
-        lines.push({
-          handle: `${task.id}#${note.n}`, id: t.id, model: modelOf(t), epic: epic?.id || null, epicTitle: epic?.title || '',
-          raw: /Filed by File review from note/.test(t.description || '') || (t.title === titleOf(note.text) && !/## In plain words/.test(t.description || '')),
-        });
-      }
+  const addLines = (handle, note) => {
+    if (!note || note.state !== 'filed' || !note.filed) return;
+    for (const id of [].concat(note.filed)) {
+      const t = byId.get(String(id));
+      if (!t || (day && String(t.created || '') < day)) continue;
+      const epic = byId.get(t.parentId);
+      lines.push({
+        handle, id: t.id, model: modelOf(t), epic: epic?.id || null, epicTitle: epic?.title || '',
+        raw: /Filed by File review from note/.test(t.description || '') || (t.title === titleOf(note.text) && !/## In plain words/.test(t.description || '')),
+      });
     }
+  };
+  for (const { task } of all) {
+    for (const note of task.reviewNotes || []) if (note) addLines(`${task.id}#${note.n}`, note);
   }
+  for (const note of freeNotes(doc)) if (note) addLines(freeHandle(note), note); // PRO121
+
   const epicIds = [...new Set(lines.map(l => l.epic).filter(Boolean))];
   const ready = new Map(openEpicReadiness(doc).map(r => [r.id, r]));
   const epics = epicIds.map((id) => {

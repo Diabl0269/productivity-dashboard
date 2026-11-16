@@ -10,11 +10,14 @@
  * PRO104: an answered ask on a done / review / archive ticket that nothing picked up yet is planned and
  * filed like a note on that ticket (one ticket per answer; the ask is marked `filedAs: <new id>`).
  *
+ * PRO121: a free note (`doc.meta.freeNotes`, handle `free#n`) routes by its own `area` only (none:
+ * unrouted, "needs an area"); its ticket has no `reviewOf` and the meta note is marked filed.
+ *
  * Pure (no fs, no DOM); used by the CLI and the dashboard.
  */
 
 import { epicOf, allChecksTicked, REVIEW_SECTION } from './review.js';
-import { unsentNotes, hasUnsentNotes } from './review-notes.js';
+import { unsentNotes, hasUnsentNotes, freeNotes, freeSource, freeHandle, isFreeSource, FREE_ID } from './review-notes.js';
 import { laneDisplayName } from './run-plan.js';
 
 /** Sections whose epics still take new work. */
@@ -71,9 +74,10 @@ export function titleOf(text) {
   return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1).trimEnd()}…` : t;
 }
 
-/** The area (lane slug) a note files into, or null: its own `area`, else the lane of the ticket / its epic. */
+/** The area (lane slug) a note files into, or null: its own `area`, else the lane of the ticket / its epic (a free note: its own only). */
 export function noteArea(doc, ticket, note) {
   if (note.area) return note.area;
+  if (isFreeSource(ticket)) return null;
   if (ticket.type === 'epic') return ticket.lane || null;
   return epicOf(doc, ticket)?.task.lane || null;
 }
@@ -121,6 +125,13 @@ export function planFiling(doc, { ticket } = {}) {
       });
     }
   }
+  // PRO121: free notes (no ticket) after the ticket notes; `--ticket free` limits the plan to them.
+  if (!ticket || ticket === FREE_ID) {
+    for (const note of freeNotes(doc)) {
+      if (!note || note.state !== 'new') continue;
+      entries.push({ task: freeSource(note), note, handle: freeHandle(note), item: { noteKind: note.kind, title: titleOf(note.text), sourceId: FREE_ID } });
+    }
+  }
   for (const { task, note, handle, item: base } of entries) {
     const item = { handle, ...base };
     const area = noteArea(doc, task, note);
@@ -128,7 +139,7 @@ export function planFiling(doc, { ticket } = {}) {
     let epic = null;
     let key;
     if (!area) {
-      const own = task.type === 'epic' ? all.find(r => r.task === task) : epicOf(doc, task);
+      const own = isFreeSource(task) ? null : task.type === 'epic' ? all.find(r => r.task === task) : epicOf(doc, task);
       if (own && OPEN_SECTIONS.includes(own.section)) {
         epic = { id: own.task.id, title: own.task.title, section: own.section, isNew: false, project: own.task.project || null };
         key = `own|${own.task.id}`;
@@ -173,6 +184,10 @@ function makeTask(id, title, { section, parentId, project, labels, description, 
 }
 
 function describe(src, note, text) {
+  if (isFreeSource(src)) {
+    const place = note.where ? ` Place: ${note.where}.` : '';
+    return `## In plain words\n**What you'll notice:** ${text}\n**Why it matters:** from a free note (${String(note.at || '').slice(0, 10)}).${place}\n**How to check it:** the note's point is fixed.\n\n## Technical detail (for Claude)\nFiled by File review from note ${freeHandle(note)}.`;
+  }
   const on = note.check ? ` on the check "${note.check}"` : '';
   return `## In plain words\n**What you'll notice:** ${text}\n**Why it matters:** noted while reviewing ${src.id}${on}.\n**How to check it:** see ${src.id}'s review card.\n\n## Technical detail (for Claude)\nFiled by File review from note ${src.id}#${note.n}.`;
 }
@@ -229,6 +244,7 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
       // builds; a bucket of independent fixes or ideas runs on sonnet. /process-review-notes
       // re-judges it once it knows which tickets share files.
       const designGated = group.items.some(item => {
+        if (item.sourceId === FREE_ID) return freeNotes(doc).some(x => x && freeHandle(x) === item.handle && x.kind === 'design');
         const src = byId(item.sourceId);
         return (src?.reviewNotes || []).some(x => `${src.id}#${x.n}` === item.handle && x.kind === 'design');
       });
@@ -242,11 +258,14 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
     }
     for (const item of group.items) {
       if (item.askN) { fileAnswer(item, { byId, add, epicId, now, out }); continue; }
-      const src = byId(item.sourceId);
-      const note = (src?.reviewNotes || []).find(x => `${src.id}#${x.n}` === item.handle);
+      // PRO121: a free note has no ticket: no reviewOf, no labels or checks to read; the note itself is marked filed.
+      const free = item.sourceId === FREE_ID;
+      const freeNote = free ? freeNotes(doc).find(x => x && freeHandle(x) === item.handle) : null;
+      const src = free ? (freeNote ? freeSource(freeNote) : null) : byId(item.sourceId);
+      const note = free ? freeNote : (src?.reviewNotes || []).find(x => `${src.id}#${x.n}` === item.handle);
       if (!src || !note || note.state !== 'new') continue;
       const ui = (src.labels || []).includes('ui') ? ['ui'] : [];
-      const base = { parentId: epicId, project: src.project || null, reviewOf: src.id, now };
+      const base = { parentId: epicId, project: src.project || null, reviewOf: free ? undefined : src.id, now };
       const text = note.text.trim() || IMAGE_ONLY_TEXT;
       const created = [];
       let filedId;
@@ -276,11 +295,12 @@ export function applyFiling(doc, plan, { newId, now = new Date().toISOString() }
       // The reviewer's screenshots travel with the ticket as a note, so whoever fixes it sees them.
       if (note.images?.length) {
         for (const id of created) {
-          byId(id).notes = [{ at: now, text: `Screenshot from the review of ${src.id}`, images: [...note.images] }];
+          byId(id).notes = [{ at: now, text: free ? `Screenshot from ${freeHandle(note)}` : `Screenshot from the review of ${src.id}`, images: [...note.images] }];
         }
       }
       note.state = 'filed';
       note.filed = filedId;
+      if (free) { out.filed.push({ handle: item.handle, id: filedId }); continue; }
       if (note.check) {
         const check = (src.checks || []).find(c => c.text === note.check);
         if (check) { check.checked = true; check.handedTo = filedId; }

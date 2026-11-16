@@ -25,8 +25,10 @@
  *   notes prep [--ticket ID] [--json]  route + flags (spike epic, no area, over-full epic) + duplicate hints, before send (PRO105)
  *   notes report --since <ISO> [--apply-auto] [--json]  after send: note -> ticket lines, raw titles, 5d verified/skipped, not investigated, epics Ready for `auto`
   notes add <id> "<text>" [--kind fix|idea|design] [--check N] [--area <lane>]
-  notes edit <id>#<n> ["<text>"] [--kind fix|idea|design]
-  notes dismiss <id>#<n> | <id>#ask<n>   (the second form drops an answered question the notes run would file)
+  notes add --free "<text>" --project <slug> [--kind K] [--area <lane>] [--where <box>] [--image <file>]   a note with no ticket (free#n, PRO121)
+  notes edit <id>#<n> | free#<n> ["<text>"] [--kind fix|idea|design]
+  notes dismiss <id>#<n> | <id>#ask<n> | free#<n>   (ask: drops an answered question the notes run would file)
+  (list, route, send, prep and report include free notes; --ticket free limits them to free notes)
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
@@ -90,6 +92,7 @@ import cmdNext from './tasks-next.js';
 import cmdReady from './tasks-ready.js';
 import cmdPages from './tasks-pages.js';
 import { cmdNotesPrep, cmdNotesReport } from './tasks-notes-prep.js';
+import { isFreeAdd, isFreeHandleArg, cmdFreeNoteAdd, cmdFreeNoteChange, freeEntryLine } from './tasks-free-notes.js';
 import cmdNextStart from './tasks-next-start.js';
 import cmdRunning from './tasks-running.js';
 import cmdSweepIdle from './tasks-sweep-idle.js';
@@ -2182,6 +2185,8 @@ function cmdUpdate(argv) {
 /** ch tasks notes — list, add and dismiss review notes. */
 function cmdNotes(argv) {
   const sub = argv[0];
+  if (sub === 'add' && isFreeAdd(argv.slice(1))) { cmdFreeNoteAdd(argv.slice(1)); return; }
+  if ((sub === 'dismiss' || sub === 'edit') && isFreeHandleArg(argv.slice(1))) { cmdFreeNoteChange(sub, argv.slice(1)); return; }
   if (sub === 'add' || sub === 'dismiss' || sub === 'edit') {
     const { values, positionals } = parse(argv.slice(1), {
       kind:    { type: 'string' },
@@ -2255,7 +2260,7 @@ function cmdNotes(argv) {
       json:   { type: 'boolean', short: 'j' },
     });
     const doc = load();
-    if (values.ticket) resolveTask(doc, values.ticket);
+    if (values.ticket && values.ticket !== 'free') resolveTask(doc, values.ticket);
     const plan = planFiling(doc, { ticket: values.ticket });
     if (sub === 'route') {
       if (values.json) { jsonOut(plan); return; }
@@ -2305,7 +2310,7 @@ function cmdNotes(argv) {
   if (!pending.length) { print('No new review notes.'); return; }
   const clip = (str, n) => (str.length > n ? `${str.slice(0, n - 1)}…` : str);
   for (const t of pending) {
-    print(`${t.id} ${t.type || 'task'}${t.lane ? ` lane:${t.lane}` : ''} ${clip(t.title || '', 60)}`);
+    print(t.type === 'free' ? freeEntryLine(t) : `${t.id} ${t.type || 'task'}${t.lane ? ` lane:${t.lane}` : ''} ${clip(t.title || '', 60)}`);
     for (const a of t.answers || []) print(`  ${a.handle} [answer] ${clip(a.question, 60)}: ${a.answer}`);
     for (const x of t.notes) {
       print(`  ${noteLine(t.id, x)}`);
@@ -3036,6 +3041,8 @@ Subcommands:
   list [--section S] [--priority P] [--active] [--json]
   get <id> [--json]
   capture "<title>" (--project slug | --no-project) [--priority medium] [--json]
+  notes [--ticket ID|free] [--json] | notes add|edit|dismiss|prep|route|send|report   review notes and free notes
+  notes add --free "<text>" --project <slug> [--kind fix|idea|design] [--area <lane>] [--where <box>] [--image <file>]
   plan [--pin T1] [--unpin T1] [--carry] [--cleanup-pins [--dry-run]] [--json]
          (a pin means this week's focus; an epic pins itself only when it moves to in-progress; --cleanup-pins unpins every epic
           that is not in-progress and was not pinned by hand with --pin; task history records no hand pins, so hand pins are

@@ -20,7 +20,7 @@ import {
 } from '../../shared/projects.js';
 import { normalizeModel } from '../../shared/model.js';
 import { resultErrors, checkEvidenceErrors } from '../../shared/review.js';
-import { reviewNoteErrors } from '../../shared/review-notes.js';
+import { reviewNoteErrors, freeNoteErrors, normalizeFreeNotes } from '../../shared/review-notes.js';
 import { askErrors } from '../../shared/asks.js';
 import { heldPrError } from '../../shared/held-pr.js';
 
@@ -117,6 +117,7 @@ export function normalizeMeta(meta) {
   const checks = (reviewIn.checks && typeof reviewIn.checks === 'object' && !Array.isArray(reviewIn.checks))
     ? { ...reviewIn.checks }
     : {};
+  const freeNotes = normalizeFreeNotes(meta.freeNotes);
 
   return {
     // handPinnedIds (epics Tal pinned by hand, PRO61) is only written once there is one
@@ -125,6 +126,8 @@ export function normalizeMeta(meta) {
     projects,
     ideas,
     review: { weeklyDate, checks },
+    // PRO121: notes with no ticket (shared/review-notes.js); only written once there is one
+    ...(freeNotes.length ? { freeNotes } : {}),
   };
 }
 
@@ -1264,6 +1267,8 @@ export function validateTasksDoc(doc) {
       if (doc.meta.ideas != null && !Array.isArray(doc.meta.ideas)) {
         errors.push('doc.meta.ideas must be an array');
       }
+      // freeNotes (optional, PRO121): notes with no ticket (shared/review-notes.js)
+      if (doc.meta.freeNotes != null) errors.push(...freeNoteErrors(doc.meta.freeNotes));
     }
   }
 
