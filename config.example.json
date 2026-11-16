@@ -30,6 +30,7 @@
     "areas": { "lane-or-project-slug": "Area name" },
     "stallMinutes": 20,
     "forgottenEpicDays": 3,
+    "weeklyReset": { "weekday": 2, "utcHour": 11, "utcMinute": 0 },
     "planUSDPerMonth": null
   },
   "wipLimit": 3,

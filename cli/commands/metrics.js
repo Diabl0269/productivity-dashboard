@@ -605,6 +605,7 @@ const USAGE = `ch metrics <subcommand>
   flow    [--project P] [--lane L] [--since 30d] [--json]
   report  [--project P] [--since 30d] [--json]
   cost [<ticket-id>] [--project P] [--since 30d] [--json]
+  usage [--set <pct> [--resets <iso>]] [--clear] [--project P] [--json]   this week's usage meter
   estimate [<ticket-id>] [--project P] [--json]
   estimate --accuracy [--project P] [--json]   backtest: how close Likely cost was to real cost
   time <name> [--repo R] [--kind K] -- <command...>
@@ -619,6 +620,7 @@ export default async function metrics(argv) {
     case 'flow': return flowCmd(rest);
     case 'report': return reportCmd(rest);
     case 'cost': return costCmd(rest);
+    case 'usage': return (await import('./metrics-usage.js')).default(rest);
     case 'estimate': return estimateCmd(rest);
     case undefined: case '--help': case 'help': print(USAGE); return;
     default: die(`unknown metrics subcommand: ${sub}\n${USAGE}`);

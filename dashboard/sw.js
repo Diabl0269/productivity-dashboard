@@ -24,6 +24,7 @@ const SHELL = [
   './styles/metrics.css',
   './styles/home.css',
   './styles/home-running.css',
+  './styles/home-usage.css',
   './js/main.js',
 ];
 
