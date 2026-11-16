@@ -1,0 +1,70 @@
+/* Home tab — "Running now" strip item and its panel (js/home-running-strip.js, js/home-running-rows.js).
+   Chips, ids and dots are the Plan page's (rp-chip, rp-chip-id, rp-dot); colours and motion are base.css tokens. */
+
+.hm-run-trigger {
+  display: inline-flex; align-items: center; gap: 10px; font: inherit; color: var(--text-primary); cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-md); padding: 4px 8px; margin: -4px -8px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.hm-run-trigger:hover { background: var(--surface-3); border-color: var(--border); }
+.hm-run-trigger[aria-expanded="true"] { background: var(--surface-3); border-color: var(--border); }
+.hm-run-summary { display: inline-flex; align-items: center; gap: 12px; min-width: 240px; }
+.hm-run-scope { font-weight: 600; font-variant-numeric: tabular-nums; }
+.hm-run-count { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.hm-run-caret {
+  width: 7px; height: 7px; border-top: 2px solid var(--text-secondary); border-left: 2px solid var(--text-secondary);
+  transform: translateY(1px) rotate(45deg); transition: transform var(--hm-motion) ease;
+}
+.hm-run-trigger[aria-expanded="true"] .hm-run-caret { transform: translateY(-1px) rotate(225deg); }
+
+/* The panel grows up from the strip (fixed, so the strip's own scrolling never clips it) */
+.hm-run-panel {
+  position: fixed; z-index: 30; display: flex; flex-direction: column; max-height: min(62vh, 560px);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
+  transform-origin: 0 100%; opacity: 0; visibility: hidden; transform: translateY(10px) scaleY(.94);
+  transition: opacity var(--hm-motion) ease, transform var(--hm-motion) var(--stagger-ease), visibility 0s linear var(--hm-motion);
+}
+.hm-run-panel[data-open="true"] {
+  opacity: 1; visibility: visible; transform: none;
+  transition: opacity var(--hm-motion) ease, transform var(--hm-motion) var(--stagger-ease), visibility 0s linear 0s;
+}
+.hm-run-panel:focus-visible { outline-offset: -2px; }
+.hm-run-head { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); flex: none; }
+.hm-run-title-h { margin: 0; font-size: 14px; font-weight: 700; }
+.hm-run-headscope, .hm-run-updated { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.hm-run-spacer { flex: 1; }
+.hm-run-refresh {
+  font: inherit; font-size: 12px; color: var(--text-secondary); background: transparent; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px;
+}
+.hm-run-refresh:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+.hm-run-body { min-height: 0; overflow: auto; padding: 6px 8px 10px; overflow-anchor: none; }
+.hm-run-warn { margin: 6px 6px 2px; font-size: 12.5px; color: var(--urgency-soon); }
+.hm-run-empty { margin: 10px 6px; }
+.hm-run-sub { margin: 12px 6px 4px; }
+.hm-run-list { list-style: none; margin: 0; padding: 0; }
+.hm-run-list:focus { outline: none; }
+
+.hm-run-row {
+  --c: var(--accent); display: grid; align-items: center; column-gap: 10px; padding: 6px; border-radius: 6px; overflow: hidden;
+  grid-template-columns: 78px minmax(0, 1fr) 112px 48px 150px 64px minmax(0, 250px);
+}
+.hm-run-row:hover { background: var(--surface-3); }
+.hm-run-row.hm-run-leaving { pointer-events: none; }
+.hm-run-title, .hm-run-source, .hm-run-epic { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-run-source { font-size: 12px; color: var(--text-secondary); }
+.hm-run-age { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; text-align: right; }
+.hm-run-row .rp-chip { justify-self: start; }
+.hm-run-pr, .hm-run-epic { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.hm-run-epictitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
+.hm-run-prlink { font-size: 12.5px; }
+.hm-run-panel a.rp-link { color: var(--accent); text-decoration: underline dotted; text-underline-offset: 3px; }
+.hm-run-panel a.rp-link:hover { text-decoration-style: solid; }
+
+@media (max-width: 900px) {
+  .hm-run-row { grid-template-columns: 72px minmax(0, 1fr) 108px 44px; }
+  .hm-run-source, .hm-run-pr, .hm-run-epic { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-run-panel, .hm-run-caret { transition: none !important; }
+}

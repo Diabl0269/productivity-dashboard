@@ -23,6 +23,7 @@ const SHELL = [
   './styles/run-plan.css',
   './styles/metrics.css',
   './styles/home.css',
+  './styles/home-running.css',
   './js/main.js',
 ];
 

@@ -2,7 +2,7 @@
   "$comment": "Example Home page config for a made-up bakery. Copy it next to your project as home.config.json and point the tracker config.json at it: \"home\": { \"bakery\": \"/absolute/path/to/home.config.json\" }. Every key: docs/home-page.md.",
   "version": 1,
   "title": "Corner Bakery",
-  "repos": ["bakery-site", "bakery-orders"],
+  "repos": ["bakery-site", { "name": "Orders", "path": "bakery-orders" }],
   "groups": [
     {
       "id": "shop",

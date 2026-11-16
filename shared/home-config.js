@@ -15,8 +15,8 @@ import {
 
 export const HOME_CONFIG_VERSION = 1;
 
-const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations'];
-const LEGACY_KEYS = ['repos', 'groups', 'keywordProjects', 'areas', 'cables'];
+const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'fallback'];
+const LEGACY_KEYS = ['repos', 'groups', 'keywordProjects', 'areas', 'cables', 'fallback'];
 const GROUP_KEYS = ['id', 'name', 'areas', 'keywordProjects', 'box', 'page', 'covers'];
 const BOX_KEYS = ['id', 'name', 'lanes', 'match', 'projects', 'box', 'page', 'covers', 'parts'];
 const LEGACY_AREA_KEYS = [...BOX_KEYS, 'group'];
@@ -146,6 +146,40 @@ function normEntries(raw, key, errors) {
   }).filter(Boolean);
 }
 
+/**
+ * repos[]: each entry is a text path or { name, path }; anything else is reported and skipped.
+ * Paths are resolved later (server/home/repos.js), not here.
+ */
+function normRepos(raw, errors) {
+  const v = raw.repos;
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) {
+    errors.push(`the file: "repos" should be a list of paths or { "name", "path" } objects, got ${shown(v)}.`);
+    return [];
+  }
+  const out = [];
+  v.forEach((r, i) => {
+    const where = `repos[${i}]`;
+    if (typeof r === 'string' && r.trim()) { out.push(r); return; }
+    if (!isPlainObject(r)) {
+      errors.push(`${where}: should be a path or an object with "path" (and optionally "name"), got ${shown(r)}; skipped.`);
+      return;
+    }
+    unknownKeys(r, ['name', 'path'], where, errors);
+    if (typeof r.path !== 'string' || !r.path.trim()) {
+      errors.push(`${where}: "path" should be text, got ${shown(r.path)}; skipped.`);
+      return;
+    }
+    const entry = { path: r.path };
+    if (r.name !== undefined && r.name !== null) {
+      if (typeof r.name === 'string' && r.name.trim()) entry.name = r.name;
+      else errors.push(`${where}: "name" should be text, got ${shown(r.name)}; the folder name is used.`);
+    }
+    out.push(entry);
+  });
+  return out;
+}
+
 /** The older flat shape -> groups[] with their areas nested (a list of {raw, label} per group). */
 function legacyGroups(raw, errors) {
   unknownKeys(raw, LEGACY_KEYS, '', errors);
@@ -206,13 +240,20 @@ export function normalizeHomeConfig(raw) {
   const config = {
     version: HOME_CONFIG_VERSION,
     title: str(raw, 'title', '', errors),
-    repos: strList(raw, 'repos', '', errors),
+    repos: normRepos(raw, errors),
     groups: groups.filter(Boolean),
     cables: normCables(raw, errors, ctx.ids),
     decorations,
     services: legacy ? [] : normEntries(raw, 'services', errors),
     automations: legacy ? [] : normEntries(raw, 'automations', errors),
+    fallback: null,
+    legacy,
   };
+  const fb = strOrNull(raw, 'fallback', '', errors);
+  if (fb !== null) {
+    if (config.groups.some(g => g.areas.some(a => a.id === fb))) config.fallback = fb;
+    else errors.push(`the file: "fallback" should be the id of an area, got "${fb}"; the last area is used.`);
+  }
   return { config, errors, legacy };
 }
 
