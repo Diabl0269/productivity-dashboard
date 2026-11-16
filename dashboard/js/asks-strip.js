@@ -9,6 +9,7 @@
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
 import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep, closesAfterAnswer, ANSWER_CLOSE_LINE } from '../../shared/asks.js';
+import { epicsToUnpin } from '../../shared/review.js';
 import { idButton } from './ticket-id-button.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
@@ -121,6 +122,14 @@ function applyAnswer(state, card, action, reply, redraw) {
       if (!Array.isArray(found.task.decisions)) found.task.decisions = [];
       found.task.decisions.push({ at: new Date().toISOString(), text: ANSWER_CLOSE_LINE });
       moveTask(found.task.id, 'done', 0, { skipRender: true });
+      const docNow = stateToDoc(state);
+      const docTask = docNow.sections.flatMap(x => x.tasks).find(t => t.id === m.id);
+      const gone = new Set(docTask ? epicsToUnpin(docNow, docTask) : []);
+      const daily = state.meta?.dailyPlan;
+      if (gone.size && daily) {
+        daily.taskIds = (daily.taskIds || []).filter(x => !gone.has(x));
+        daily.carriedIds = (daily.carriedIds || []).filter(x => !gone.has(x));
+      }
     }
   }
   touched.forEach(t => commitReviewChange(t));
