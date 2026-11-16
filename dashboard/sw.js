@@ -28,6 +28,7 @@ const SHELL = [
   './styles/home-pages.css',
   './styles/home-notes.css',
   './styles/home-runs.css',
+  './styles/home-palette.css',
   './js/main.js',
 ];
 

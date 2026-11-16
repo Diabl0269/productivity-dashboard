@@ -237,3 +237,7 @@ export function applyHomeRoute(route) {
   if (viewChanged) notify({ type: 'view' });
   if (selectedBoxId() !== before) notify({ type: 'selection' });
 }
+
+// ===== commands (PRO125; the registry itself is home-commands.js) =====
+// registerHomeCommand({ id, title, hint?, keys?, group, run(ctx), when?(ctx), keywords? }): a palette command, and a key when `keys` is set.
+export { registerHomeCommand, homeCommands } from './home-commands.js';

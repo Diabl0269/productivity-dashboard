@@ -5,14 +5,14 @@ import { homeViews, setView, hasSelection, clearSelection } from './home-state.j
 import { isTaskDetailOpen } from './task-detail.js';
 import { isTaskCreateOpen } from './task-create.js';
 
-function isTypingTarget(el) {
+export function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
 /** A modal or dialog is above the page: its own keys win. */
-function somethingOnTop() {
+export function somethingOnTop() {
   if (isTaskDetailOpen() || isTaskCreateOpen()) return true;
   return !!document.querySelector('dialog[open], .modal-overlay.visible, .modal.visible');
 }
