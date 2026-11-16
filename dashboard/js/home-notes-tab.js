@@ -8,6 +8,8 @@ import { pendingReviewNotes, freeNotes, freeHolder, freeHandle } from '../../sha
 import { noteArea } from '../../shared/review-filing.js';
 import { laneDisplayName } from '../../shared/run-plan.js';
 import { boxOfWhere, findWhere } from '../../shared/home-config.js';
+import { lanesForBox } from '../../shared/home-areas.js';
+import { ticketInSelection } from './home-where.js';
 import { reviewNoteRow } from './review-notes-ui.js';
 import { commitReviewChange } from './task-detail.js';
 
@@ -36,15 +38,9 @@ export function placeScope(config, where) {
   const box = boxOfWhere(config, where);
   if (!box) return null;
   const ids = new Set();
-  const lanes = new Set();
-  const walk = (b) => {
-    ids.add(b.id);
-    for (const l of b.lanes || []) lanes.add(l);
-    for (const a of b.areas || []) walk(a);
-    for (const p of b.parts || []) walk(p);
-  };
+  const walk = (b) => { ids.add(b.id); [...(b.areas || []), ...(b.parts || [])].forEach(walk); };
   walk(box);
-  return { box, ids, lanes };
+  return { box, ids, lanes: new Set(lanesForBox(config, box.id)) };
 }
 
 /** A free note's place name: its box on the map, else its area's lane name. */
@@ -75,7 +71,8 @@ export function openNotesIn(doc, config, scope, findTask) {
     if (!task || !dt) continue;
     for (const note of entry.notes) {
       const lane = noteArea(doc, dt, note);
-      if (scope && !(lane && scope.lanes.has(lane))) continue;
+      // A ticket's note is in the place when its epic is (home-where.js, as every Home view), else by lane.
+      if (scope && !(scope.ticketIn ? scope.ticketIn(entry.id) : (lane && scope.lanes.has(lane)))) continue;
       out.push({ note, holder: task, ticketId: entry.id, place: lane ? laneDisplayName(lane) : 'No area', lane });
     }
   }
@@ -134,6 +131,7 @@ function filedFold(ctx, root, filed) {
 function renderNotesTab(root, ctx) {
   const config = ctx.config();
   const scope = placeScope(config, ctx.selection());
+  if (scope) scope.ticketIn = (id) => ticketInSelection(ctx, { id });
   const doc = ctx.doc();
   const findTask = (id) => {
     for (const list of Object.values(ctx.state().tasks || {})) {
@@ -149,7 +147,7 @@ function renderNotesTab(root, ctx) {
   add.type = 'button';
   add.dataset.hmKey = 'notes-new';
   add.title = 'Write a note with no ticket (N)';
-  add.addEventListener('click', () => document.querySelector('.hm-root .hn-btn')?.click()); // the top bar's Note button (home-notes.js)
+  add.addEventListener('click', () => document.dispatchEvent(new CustomEvent('hm:note', { detail: { where: ctx.selection() } }))); // home-notes.js opens the box
   head.appendChild(add);
   root.appendChild(head);
   root.appendChild(el('p', 'hm-muted hn-scope', scope ? `In ${scope.box.name} and the places inside it.` : 'Every place. Pick one to narrow the list.'));

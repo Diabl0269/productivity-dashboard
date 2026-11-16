@@ -194,6 +194,7 @@ function paintPlaces() {
     ui.place.appendChild(o);
   }
   ui.place.value = list.some(p => p.id === draft.place) ? draft.place : '';
+  ui.placesPainted = list.length;
 }
 
 function paintHint() {
@@ -212,11 +213,14 @@ function placeBox() {
 
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-export function openBox() {
+export function openBox({ where } = {}) {
   if (!ui || !ui.root.isConnected) return false;
   clearTimeout(closeTimer);
-  // A fresh note takes the selected place; a kept draft keeps its own.
-  if (!draft.text.trim() && !draft.images.length) draft.place = selectedBoxId() || getSelection().group || null;
+  // A fresh note takes the asked-for place, else the selected one; a kept draft keeps its own.
+  if (!draft.text.trim() && !draft.images.length) {
+    const asked = typeof where === 'string' ? where : (where && (where.part || where.area || where.group));
+    draft.place = (asked && places().some(p => p.id === asked) ? asked : null) || selectedBoxId() || getSelection().group || null;
+  }
   paintPlaces();
   ui.input.value = draft.text;
   ui.kind.value = draft.kind;
@@ -292,10 +296,26 @@ document.addEventListener('keydown', (e) => {
   if (openBox()) e.preventDefault();
 });
 
+// Other Home views open the box with document.dispatchEvent(new CustomEvent('hm:note', { detail: { where } })),
+// `where` (optional) a box id or a { group, area, part } selection that pre-fills the place.
+document.addEventListener('hm:note', (e) => {
+  if (open) { ui.input.focus(); return; }
+  openBox({ where: e.detail?.where });
+});
+
 registerTopBarItem({
   id: 'note',
   slot: 'note',
   render(root) { buildBox(root); },
   // Live data refreshes must not rebuild the box under a half-typed note: keep it, just re-anchor it.
-  update() { if (open && ui) placeBox(); },
+  // The box opened before Home's map config arrived: fill the place list now that it has.
+  update() {
+    if (!open || !ui) return;
+    placeBox();
+    if (!ui.placesPainted && places().length) {
+      if (!draft.place) draft.place = selectedBoxId() || getSelection().group || null;
+      paintPlaces();
+      paintHint();
+    }
+  },
 });
