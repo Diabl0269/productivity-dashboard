@@ -3,10 +3,10 @@
 import { onTabSwitch } from './search.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
-export let activeMainTab = 'overview'; // overview | tasks | search | projects | plan | memory | settings | metrics
+export let activeMainTab = 'overview'; // overview | tasks | search | projects | plan | memory | settings | metrics | home
 
 const MAIN_TAB_ORDER = [
-  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings', 'metrics',
+  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings', 'metrics', 'home',
 ];
 
 // Externally-configured tabs (config.json externalTabs) register themselves here so
@@ -20,7 +20,7 @@ export function registerExternalTab(id, refs) {
 
 const MAIN_TAB_BTN_IDS = [
   'overviewTabBtn', 'tasksTabBtn', 'searchTabBtn', 'projectsTabBtn',
-  'runPlanTabBtn', 'memoryTabBtn', 'settingsTabBtn', 'metricsTabBtn',
+  'runPlanTabBtn', 'memoryTabBtn', 'settingsTabBtn', 'metricsTabBtn', 'homeTabBtn',
 ];
 
 const MOD_KEY_LABEL = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
@@ -156,6 +156,7 @@ export function switchMainTab(tab, opts = {}) {
     { btn: metricsTabBtn, id: 'metrics' },
     { btn: memoryTabBtn, id: 'memory' },
     { btn: settingsTabBtn, id: 'settings' },
+    { btn: document.getElementById('homeTabBtn'), id: 'home' },
   ];
   for (const { btn, id } of tabButtons) {
     if (!btn) continue;
@@ -172,6 +173,7 @@ export function switchMainTab(tab, opts = {}) {
   if (metricsPanel) metricsPanel.classList.toggle('active', tab === 'metrics');
   memoryPanel.classList.toggle('active', tab === 'memory');
   if (settingsPanel) settingsPanel.classList.toggle('active', tab === 'settings');
+  document.getElementById('homePanel')?.classList.toggle('active', tab === 'home');
 
   // Externally-configured (config.json externalTabs) tabs, if any.
   for (const [extId, { btn, panel }] of externalTabs) {
@@ -231,6 +233,10 @@ export function switchMainTab(tab, opts = {}) {
     import('./metrics-view.js').then(m => m.onMetricsTabShow()).catch(() => {});
   }
 
+  if (tab === 'home') {
+    import('./home-view.js').then(m => m.renderHomeView()).catch(e => console.error('Home failed to load:', e));
+  }
+
   if (tab === 'search') {
     import('./search-page.js').then(m => m.onSearchTabShow()).catch(() => {});
   }
@@ -261,6 +267,7 @@ export function initStateListeners() {
   if (metricsTabBtn) metricsTabBtn.addEventListener('click', () => switchMainTab('metrics'));
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
+  document.getElementById('homeTabBtn')?.addEventListener('click', () => switchMainTab('home'));
 
   document.addEventListener('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;

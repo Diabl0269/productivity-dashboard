@@ -1,0 +1,161 @@
+/* Home tab — four zones: top bar | centre view + right inspector | lower strip (js/home-view.js).
+   Same surfaces, chips, radii and type scale as the Plan page (run-plan.css); base.css tokens only. */
+
+#homePanel { overflow: hidden; min-height: 0; }
+.hm-root {
+  --hm-insp-w: 320px;
+  --hm-motion: 180ms;
+  flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr);
+  color: var(--text-primary); font-size: 13px;
+}
+/* base.css gives every button padding and a box-shadow focus ring; Home sets its own (one ring: the outline) */
+:where(.hm-root) button { padding: 0; line-height: 1.2; }
+:where(.hm-root) button:focus-visible { box-shadow: none; }
+@media (min-width: 1500px) { .hm-root { --hm-insp-w: 360px; } }
+
+.hm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.hm-muted { color: var(--text-secondary); font-size: 13px; }
+.hm-root :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hm-root [tabindex="-1"]:focus-visible { outline-offset: -2px; }
+.hm-root code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-3); border-radius: var(--radius-sm); padding: 1px 5px; }
+
+/* ── Top bar ── */
+/* Three columns so the view switch stays centred whatever the sides hold */
+.hm-top {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;
+  padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface-1);
+}
+.hm-top-left, .hm-slots { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.hm-slots { justify-content: flex-end; gap: 6px; }
+.hm-slot { display: flex; align-items: center; gap: 6px; }
+.hm-slot:empty { display: none; }
+.hm-slot-empty { font-size: 12px; color: var(--text-tertiary); border: 1px dashed var(--border); border-radius: var(--radius-pill); padding: 3px 10px; white-space: nowrap; }
+
+.hm-select {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--text-primary); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; width: auto; max-width: 170px; flex: none; cursor: pointer;
+}
+.hm-select:hover { border-color: var(--text-secondary); }
+
+.hm-where {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 360px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px 4px 2px 12px;
+  transition: opacity var(--hm-motion) ease, transform var(--hm-motion) ease, visibility 0s linear 0s;
+}
+.hm-where[data-on="false"] { opacity: 0; transform: translateX(-4px); visibility: hidden; transition: opacity var(--hm-motion) ease, transform var(--hm-motion) ease, visibility 0s linear var(--hm-motion); }
+.hm-where-path { display: flex; min-width: 0; white-space: nowrap; }
+.hm-where-up { color: var(--text-secondary); flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hm-where-up::after { content: " ›\00a0"; }
+.hm-where-name { font-weight: 600; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hm-where-clear {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; border: 0; background: transparent; color: var(--text-secondary);
+  font-size: 15px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.hm-where-clear:hover { background: var(--surface-4); color: var(--text-primary); }
+
+/* View switch: the header's segmented control, one size down */
+.hm-views { flex: none; display: flex; gap: 2px; background: var(--surface-2); padding: 3px; border-radius: var(--radius-lg); }
+.hm-view-tab {
+  font: inherit; font-size: 13px; font-weight: var(--weight-medium); color: var(--text-tertiary); background: transparent; border: 0;
+  border-radius: var(--radius-md); padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  transition: color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+.hm-view-tab:hover { color: var(--text-primary); background: var(--surface-4); }
+.hm-view-tab.active { color: var(--text-primary); background: var(--surface-4); box-shadow: var(--shadow-sm); }
+.hm-key { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; line-height: 15px; }
+
+/* ── Centre + inspector ── */
+.hm-body {
+  min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--hm-insp-w);
+  transition: grid-template-columns var(--hm-motion) var(--stagger-ease);
+}
+.hm-body[data-inspector="closed"] { grid-template-columns: minmax(0, 1fr) 42px; }
+.hm-centre { min-width: 0; min-height: 0; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.hm-notice:empty { display: none; }
+.hm-stage { display: grid; min-width: 0; }
+.hm-view { grid-area: 1 / 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.hm-view:focus { outline: none; }
+
+@keyframes hm-in-right { from { opacity: 0; transform: translateX(12px); } }
+@keyframes hm-in-left { from { opacity: 0; transform: translateX(-12px); } }
+@keyframes hm-out-left { to { opacity: 0; transform: translateX(-12px); } }
+@keyframes hm-out-right { to { opacity: 0; transform: translateX(12px); } }
+.hm-enter.hm-from-right { animation: hm-in-right var(--hm-motion) var(--stagger-ease) both; }
+.hm-enter.hm-from-left { animation: hm-in-left var(--hm-motion) var(--stagger-ease) both; }
+.hm-leave { pointer-events: none; }
+.hm-leave.hm-to-left { animation: hm-out-left 140ms ease both; }
+.hm-leave.hm-to-right { animation: hm-out-right 140ms ease both; }
+
+.hm-inspector { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid var(--border); background: var(--surface-1); }
+.hm-insp-head { display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border-subtle); min-height: 44px; }
+.hm-insp-tabs { flex: 1; min-width: 0; display: flex; gap: 2px; overflow: hidden; transition: opacity var(--hm-motion) ease; }
+.hm-insp-tab {
+  font: inherit; font-size: 12.5px; font-weight: var(--weight-medium); color: var(--text-secondary); background: transparent; border: 0;
+  border-radius: 6px; padding: 4px 8px; cursor: pointer; white-space: nowrap; transition: color var(--transition-fast), background var(--transition-fast);
+}
+.hm-insp-tab:hover { color: var(--text-primary); background: var(--surface-3); }
+.hm-insp-tab.active { color: var(--text-primary); background: var(--surface-3); }
+.hm-insp-toggle {
+  flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--text-secondary);
+}
+.hm-insp-toggle:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+.hm-insp-toggle svg { transition: transform var(--hm-motion) ease; }
+.hm-body[data-inspector="closed"] .hm-insp-toggle svg { transform: rotate(180deg); }
+.hm-insp-pane { flex: 1; min-height: 0; overflow: auto; transition: opacity var(--hm-motion) ease; }
+.hm-insp-body { min-width: 260px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.hm-insp-body:focus { outline: none; }
+.hm-body[data-inspector="closed"] .hm-insp-tabs,
+.hm-body[data-inspector="closed"] .hm-insp-pane { opacity: 0; }
+@keyframes hm-fade { from { opacity: 0; } }
+.hm-insp-body.hm-swap { animation: hm-fade 140ms ease both; }
+
+.hm-insp-title { margin: 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.hm-insp-sub { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); letter-spacing: .02em; }
+.hm-details { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 4px 10px; margin: 0; font-size: 12.5px; }
+.hm-details dt { color: var(--text-secondary); }
+.hm-details dd { margin: 0; overflow-wrap: anywhere; }
+.hm-place-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.hm-place-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hm-place {
+  font: inherit; font-size: 13px; text-align: left; width: 100%; cursor: pointer; color: var(--text-primary);
+  background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 5px 8px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.hm-place:hover { background: var(--surface-3); border-color: var(--border); }
+.hm-place-up { width: auto; font-size: 12.5px; color: var(--text-secondary); border-color: var(--border); background: var(--surface-2); }
+
+/* ── Cards (placeholder, setup, problems) ── */
+.hm-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
+.hm-card-title { margin: 0; font-size: 15px; font-weight: 700; }
+.hm-card-text { margin: 0; font-size: 13.5px; line-height: var(--leading-normal); }
+.hm-card-note { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.hm-placeholder { border-style: dashed; }
+.hm-setup { border-left: 4px solid var(--status-todo); }
+.hm-broken { border-left: 4px solid var(--status-blocked); }
+.hm-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: var(--leading-normal); }
+.hm-code { margin: 6px 0 0; font-family: var(--font-mono); font-size: 12px; background: var(--surface-0); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px; overflow-x: auto; white-space: pre; }
+.hm-errors { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--text-primary); }
+.hm-problems { max-width: 760px; background: var(--urgency-soon-bg); border: 1px solid color-mix(in srgb, var(--urgency-soon) 45%, var(--border)); border-radius: 10px; padding: 8px 12px; }
+.hm-problems summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--urgency-soon); }
+.hm-problems .hm-errors { margin-top: 8px; }
+
+/* ── Lower strip ── */
+.hm-strip { display: flex; align-items: center; gap: 22px; padding: 8px 20px; min-height: 40px; border-top: 1px solid var(--border); background: var(--surface-1); overflow-x: auto; }
+.hm-strip-item { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.hm-strip-label { font-weight: 600; }
+.hm-strip-count { font-variant-numeric: tabular-nums; }
+.hm-strip-note { font-size: 12px; color: var(--text-tertiary); }
+
+/* ── Narrow screens: inspector below the view ── */
+@media (max-width: 900px) {
+  .hm-top { grid-template-columns: minmax(0, 1fr); }
+  .hm-views { justify-self: start; overflow-x: auto; max-width: 100%; }
+  .hm-body, .hm-body[data-inspector="closed"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .hm-inspector { border-left: 0; border-top: 1px solid var(--border); max-height: 40vh; }
+  .hm-insp-body { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hm-root *, .hm-root { animation: none !important; transition: none !important; }
+}

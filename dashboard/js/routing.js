@@ -1,8 +1,12 @@
 // routing.js — URL ↔ dashboard state (History API, /dashboard/* paths)
 
 const MAIN_TABS = new Set([
-  'overview', 'tasks', 'search', 'projects', 'plan', 'metrics', 'memory', 'settings',
+  'overview', 'tasks', 'search', 'projects', 'plan', 'metrics', 'memory', 'settings', 'home',
 ]);
+
+// Home tab query keys (home-state.js owns them): the selected box and the project whose map it is.
+// `hproject`, not `project`: the Tasks tab's filters already read ?project=.
+const HOME_QUERY = { where: 'where', project: 'hproject' };
 
 /**
  * Register an additional tab id as routable (e.g. an iframe-mode external tab from
@@ -87,9 +91,23 @@ export function parseRoute() {
     if (segments[1]) route.globalSubtab = decodeURIComponent(segments[1]);
   } else if (route.tab === 'settings' && segments[1]) {
     route.settingsSubtab = decodeURIComponent(segments[1]);
+  } else if (route.tab === 'home') {
+    Object.assign(route, parseHomeRoute(segments));
   }
 
   return route;
+}
+
+/** /dashboard/home/<view>?where=<box id>&hproject=<slug> -> { homeView?, where?, homeProject? }. */
+function parseHomeRoute(segments) {
+  const out = {};
+  if (segments[1]) out.homeView = decodeURIComponent(segments[1]);
+  const params = new URLSearchParams(window.location.search || '');
+  const where = params.get(HOME_QUERY.where);
+  const project = params.get(HOME_QUERY.project);
+  if (where) out.where = where;
+  if (project) out.homeProject = project;
+  return out;
 }
 
 /** Build a pathname from a route object (no query/hash). */
@@ -113,20 +131,27 @@ export function buildPath(route) {
     }
   } else if (tab === 'settings' && route.settingsSubtab) {
     parts.push(encodeURIComponent(route.settingsSubtab));
+  } else if (tab === 'home' && route.homeView) {
+    parts.push(encodeURIComponent(route.homeView));
   }
 
   if (parts.length === 0) return `${base}/`;
   return `${base}/${parts.join('/')}`;
 }
 
-/** Build query string, embedding ?ticket= when a modal is open off the tasks tab. */
-function buildSearchForRoute(route) {
-  const params = new URLSearchParams(window.location.search);
+/** Build query string, embedding ?ticket= when a modal is open off the tasks tab (and Home's ?where=). */
+export function buildSearchForRoute(route) {
+  const params = new URLSearchParams(window.location.search || '');
   const taskInPath = route.tab === 'tasks' && route.taskId;
   if (taskInPath || !route.taskId) {
     params.delete('ticket');
   } else {
     params.set('ticket', route.taskId);
+  }
+  const onHome = route.tab === 'home';
+  for (const [key, param] of [['where', HOME_QUERY.where], ['homeProject', HOME_QUERY.project]]) {
+    if (onHome && route[key]) params.set(param, route[key]);
+    else params.delete(param);
   }
   const s = params.toString();
   return s ? `?${s}` : '';
@@ -158,6 +183,8 @@ export function routeFromState() {
   } else if (route.tab === 'settings') {
     const st = deps.getSettingsSubtab?.();
     if (st && st !== 'display') route.settingsSubtab = st;
+  } else if (route.tab === 'home') {
+    Object.assign(route, deps.getHomeRoute?.() || {});
   }
 
   return route;
@@ -194,6 +221,7 @@ export function applyRoute(route) {
   applyingRoute = true;
   try {
     const tab = route.tab || 'overview';
+    if (tab === 'home') deps.applyHomeRoute?.(route); // before the switch, so the tab opens on the asked view
     deps.switchMainTab(tab, { fromRoute: true });
 
     if (tab === 'tasks' && route.taskView) {

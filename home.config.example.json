@@ -1,0 +1,77 @@
+{
+  "$comment": "Example Home page config for a made-up bakery. Copy it next to your project as home.config.json and point the tracker config.json at it: \"home\": { \"bakery\": \"/absolute/path/to/home.config.json\" }. Every key: docs/home-page.md.",
+  "version": 1,
+  "title": "Corner Bakery",
+  "repos": ["bakery-site", "bakery-orders"],
+  "groups": [
+    {
+      "id": "shop",
+      "name": "Shop floor",
+      "areas": [
+        {
+          "id": "counter",
+          "name": "Counter & till",
+          "lanes": ["counter"],
+          "match": "till|counter|receipt|payment",
+          "box": [40, 40, 300, 120],
+          "page": "docs/counter.md",
+          "covers": ["bakery-orders/till/"]
+        },
+        {
+          "id": "display",
+          "name": "Display case",
+          "lanes": ["display"],
+          "match": "display|shelf|label|price tag",
+          "box": [40, 180, 300, 100]
+        },
+        {
+          "id": "website",
+          "name": "Website & orders",
+          "projects": ["bakery-site"],
+          "box": [360, 40, 280, 240],
+          "parts": [
+            { "id": "menu-page", "name": "Menu page", "match": "menu|allergen", "box": [370, 60, 260, 60] },
+            { "id": "checkout", "name": "Online checkout", "match": "checkout|cart|pickup slot", "box": [370, 130, 260, 60] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "areas": [
+        {
+          "id": "oven",
+          "name": "Oven & baking",
+          "lanes": ["baking"],
+          "match": "oven|bake|proof|dough|sourdough",
+          "box": [40, 320, 380, 140],
+          "parts": [
+            { "id": "proofing", "name": "Proofing cabinet", "match": "proof|rise", "box": [50, 340, 170, 100] },
+            { "id": "deck-oven", "name": "Deck oven", "match": "deck|temperature|steam", "box": [240, 340, 170, 100] }
+          ]
+        },
+        {
+          "id": "pantry",
+          "name": "Pantry & suppliers",
+          "match": "flour|butter|supplier|stock|delivery",
+          "box": [440, 320, 200, 140],
+          "covers": ["bakery-orders/stock/"]
+        }
+      ]
+    }
+  ],
+  "cables": [
+    { "from": "checkout", "to": "oven", "label": "pre-orders" },
+    { "from": "pantry", "to": "oven", "path": "M640 390 C 600 390, 460 390, 420 390" }
+  ],
+  "decorations": null,
+  "services": [
+    { "id": "order-api", "name": "Order API", "what": "Takes online orders and pickup slots." },
+    { "id": "till-sync", "name": "Till sync", "what": "Copies the day's till sales into the order database every evening." }
+  ],
+  "automations": [
+    { "id": "morning-bake-list", "name": "Morning bake list", "what": "Prints tomorrow's bake list from the pre-orders at 6 pm." },
+    { "id": "stock-reminder", "name": "Stock reminder", "what": "Opens a ticket when flour or butter runs below two days of stock." }
+  ]
+}

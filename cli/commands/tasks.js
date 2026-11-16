@@ -89,6 +89,7 @@ import cmdNext from './tasks-next.js';
 import cmdReady from './tasks-ready.js';
 import { cmdNotesPrep, cmdNotesReport } from './tasks-notes-prep.js';
 import cmdNextStart from './tasks-next-start.js';
+import cmdRunning from './tasks-running.js';
 import cmdSweepIdle from './tasks-sweep-idle.js';
 import { readinessLabel, parkedEpics, emptyLaterEpics, parkedAfterClosing, openEpicReadiness } from '../../shared/epic-ready.js';
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
@@ -3040,6 +3041,7 @@ Subcommands:
   runplan [--json]
   ready [--json] [--auto]   every open epic as Ready or Not ready (reasons), and Auto; --auto = Ready and Auto only (read-only)
   next-start [--json] [--live A,B] [--manual-busy N] [--now <iso>]   which Ready Auto epic autorun starts next, and when or why none (read-only)
+  running [--json] [--repo <path>]... [--project <slug>]   which tickets have live work now (sessions, worktrees, recent commits, autorun): state, age, epic, PR; then stale and idle epics (read-only)
   sweep-idle [--hours 24] [--dry-run] [--no-collect] [--json]   move in-progress tickets (not epics) with no session work for --hours back to todo,
          with a decision saying why; a real run reads the Claude Code sessions first (--no-collect skips that, --dry-run changes nothing)
   next [--n 5] [--project P] [--json]   best ready tickets to start next (read-only)
@@ -3150,6 +3152,7 @@ const SUBCOMMANDS = {
   next:          cmdNext,
   ready:         cmdReady,
   'next-start':  cmdNextStart,
+  running:       cmdRunning,
   'sweep-idle':  cmdSweepIdle,
   stale:         cmdStale,
   add:           cmdAdd,

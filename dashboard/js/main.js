@@ -32,6 +32,7 @@ import {
 import {
   switchGlobalMemorySubtab, getGlobalMemorySubtab,
 } from './global-memory.js';
+import { homeRouteState, applyHomeRoute } from './home-state.js';
 
 // Load dashboard config (gitignored — personal quick links, sprints, etc.)
 async function loadConfig() {
@@ -100,6 +101,8 @@ initRouting({
   applyFiltersFromUrl,
   refreshTaskViews: renderFilteredViews,
   getActiveMainTab: () => activeMainTab,
+  getHomeRoute: homeRouteState,
+  applyHomeRoute,
 });
 
 initUrlFiltersEarly();
