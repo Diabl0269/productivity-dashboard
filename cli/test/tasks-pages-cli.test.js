@@ -35,6 +35,7 @@ test('--stale keeps only the stale ones; a page with no change is "has a page"',
   assert.equal(r.stdout.trim().split('\n').length, 1);
   assert.match(r.stdout, /^counter/);
   const all = ch(s.dataRoot, []);
+  assert.match(all.stdout, /\d+ of \d+ boxes have a page: /);
   assert.match(all.stdout, /oven\s+ok\s+has a page \(pages\/oven\.md\)/);
 });
 

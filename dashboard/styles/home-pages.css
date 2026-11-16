@@ -117,3 +117,7 @@
   .hp-dlg-body { padding: 16px; }
   .hp-card { top: 0; bottom: 0; width: 100vw; border-radius: 0; }
 }
+.hp-about { margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
+.hp-about-sum { cursor: pointer; border-radius: var(--radius-sm); width: fit-content; }
+.hp-about-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hp-about > * { margin-top: 6px; }

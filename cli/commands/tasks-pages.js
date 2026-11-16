@@ -27,11 +27,16 @@ export default async function cmdPages(argv) {
   if (!ctx.loaded.project) die('No project has a Home config: add "home": { "<slug>": "<path to home.config.json>" } to the tracker config.json.');
   if (!ctx.loaded.config) die(ctx.loaded.errors[0] || `Project "${ctx.loaded.project}" has no Home config.`);
   let rows = await pageSummary(ctx);
+  const all = rows;
   if (values.stale) rows = rows.filter(r => r.state === 'stale');
   if (values.json) { jsonOut({ project: ctx.loaded.project, pages: rows }); return; }
   if (!rows.length) { print(values.stale ? 'No page is out of date.' : 'This map has no boxes.'); return; }
   const width = Math.max(...rows.map(r => r.box.length));
   for (const r of rows) {
     print(`${r.box.padEnd(width)}  ${r.state === 'none' ? '-' : r.state === 'ok' ? 'ok' : r.state === 'stale' ? 'STALE' : 'MISSING'}  ${describe(r)}`);
+  }
+  if (!values.stale) {
+    const n = (st) => all.filter(r => r.state === st).length;
+    print(`${all.length - n('none')} of ${all.length} boxes have a page: ${n('ok')} up to date, ${n('stale')} may be out of date, ${n('missing')} missing.`);
   }
 }

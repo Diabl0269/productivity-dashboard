@@ -124,6 +124,37 @@ function insideNav(config, boxId, ctx) {
   return nav;
 }
 
+/** A quiet fold "About this box": what, lanes, projects, covers, matches and the way back up. */
+function aboutBlock(config, box, ctx) {
+  const w = ctx.selection();
+  const d = el('details', 'hp-about');
+  d.appendChild(el('summary', 'hp-about-sum', 'About this box'));
+  if (box.what) d.appendChild(el('p', 'hm-muted', box.what));
+  const dl = el('dl', 'hm-details');
+  for (const [term, v] of [['Lanes', box.lanes], ['Projects', box.projects], ['Covers', box.covers], ['Matches', box.match], ['Page', box.page]]) {
+    if (!v || (Array.isArray(v) && !v.length)) continue;
+    dl.append(el('dt', '', term), el('dd', '', Array.isArray(v) ? v.join(', ') : v));
+  }
+  if (dl.children.length) d.appendChild(dl);
+  const up = w.part ? { group: w.group, area: w.area } : w.area ? { group: w.group } : null;
+  const upBox = up && boxOfWhere(config, up);
+  const nav = el('div', 'hm-place-nav');
+  if (upBox) {
+    const b = el('button', 'hm-place hm-place-up', `\u2191 ${upBox.name}`);
+    b.type = 'button';
+    b.dataset.hmKey = `place-${upBox.id}`;
+    b.addEventListener('click', () => ctx.setSelection(upBox.id));
+    nav.appendChild(b);
+  }
+  const all = el('button', 'hm-place hm-place-up', 'All places');
+  all.type = 'button';
+  all.dataset.hmKey = 'place-all';
+  all.addEventListener('click', () => ctx.clearSelection());
+  nav.appendChild(all);
+  d.appendChild(nav);
+  return d;
+}
+
 function renderHow(root, ctx) {
   const config = ctx.config();
   root.classList.add('hp-panel');
@@ -147,6 +178,7 @@ function renderHow(root, ctx) {
     } else root.appendChild(el('p', 'hm-muted', 'Pick a place to read how it works.'));
     const nav = insideNav(config, boxId, ctx);
     if (nav) root.appendChild(nav);
+    if (box) root.appendChild(aboutBlock(config, box, ctx));
     return;
   }
 
@@ -159,12 +191,14 @@ function renderHow(root, ctx) {
   if (!page) {
     root.appendChild(head);
     root.appendChild(el('p', 'hm-muted hp-loading', 'Loading the page...'));
+    if (box) root.appendChild(aboutBlock(config, box, ctx));
     return;
   }
   if (page.error) { root.appendChild(head); root.appendChild(el('p', 'hm-muted', `The page could not be loaded: ${page.error}`)); return; }
   if (page.missing) {
     root.appendChild(head);
     root.appendChild(emptyBlock(target.name, page));
+    if (box) root.appendChild(aboutBlock(config, box, ctx));
     return;
   }
 
@@ -205,6 +239,7 @@ function renderHow(root, ctx) {
   root.appendChild(doc);
   const nav = insideNav(config, boxId, ctx);
   if (nav) root.appendChild(nav);
+  if (box) root.appendChild(aboutBlock(config, box, ctx));
 }
 
 registerInspectorTab({
