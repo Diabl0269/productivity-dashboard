@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "Corner Bakery",
+  "repos": [{ "name": "bakery-orders", "path": "../repo" }],
+  "groups": [
+    {
+      "id": "shop",
+      "name": "Shop floor",
+      "areas": [
+        { "id": "counter", "name": "Counter & till", "page": "pages/counter.md" },
+        { "id": "display", "name": "Display case" }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "areas": [
+        { "id": "oven", "name": "Oven & baking", "parts": [{ "id": "proofing", "name": "Proofing cabinet" }] }
+      ]
+    }
+  ],
+  "pages": { "oven": "pages/oven.md" }
+}

@@ -13,10 +13,12 @@ import {
   isPlainObject, shown, str, strOrNull, strList, regex, rect, id as checkId, unknownKeys, objList,
 } from './home-config-check.js';
 
+import { applyPages } from './home-pages-config.js';
+
 export const HOME_CONFIG_VERSION = 1;
 
-const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'fallback'];
-const LEGACY_KEYS = ['repos', 'groups', 'keywordProjects', 'areas', 'cables', 'fallback'];
+const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'fallback', 'pages', 'page'];
+const LEGACY_KEYS = ['repos', 'groups', 'keywordProjects', 'areas', 'cables', 'fallback', 'pages', 'page'];
 const GROUP_KEYS = ['id', 'name', 'what', 'areas', 'keywordProjects', 'box', 'page', 'covers'];
 const BOX_KEYS = ['id', 'name', 'what', 'lanes', 'match', 'projects', 'box', 'page', 'covers', 'parts'];
 
@@ -262,6 +264,7 @@ export function normalizeHomeConfig(raw) {
     if (config.groups.some(g => g.areas.some(a => a.id === fb))) config.fallback = fb;
     else errors.push(`the file: "fallback" should be the id of an area, got "${fb}"; the last area is used.`);
   }
+  applyPages(config, raw, errors);
   return { config, errors, legacy };
 }
 
