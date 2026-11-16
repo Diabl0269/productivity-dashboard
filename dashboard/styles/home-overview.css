@@ -1,0 +1,109 @@
+/* Home tab — the Overview view (js/home-overview-view.js, js/home-overview-cards.js).
+   Quiet cards on the page's surfaces; rows are the Running now panel's rows (home-running.css) laid out in two
+   lines; chips, ids and dots are the Plan page's (rp-chip, rp-chip-id, rp-dot). base.css tokens only. */
+
+.hm-ov { container-type: inline-size; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.hm-ov [hidden] { display: none !important; }
+
+/* ── The sentence on top ── */
+.hm-ov-top { display: flex; align-items: baseline; gap: 12px; min-height: 26px; }
+.hm-ov-summary { margin: 0; font-size: 16px; line-height: 1.45; color: var(--text-primary); }
+.hm-ov-num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.hm-ov-clear {
+  flex: none; font: inherit; font-size: 12.5px; color: var(--text-secondary); cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px 10px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.hm-ov-clear:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+
+/* ── Cards: one, two or three columns by the space the view has (never four) ── */
+.hm-ov-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+@container (min-width: 560px) { .hm-ov-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 880px) { .hm-ov-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.hm-ov-wide { grid-column: 1 / -1; }
+
+.hm-ov-card {
+  min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.hm-ov-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.hm-ov-title {
+  flex: none; display: inline-flex; align-items: baseline; gap: 8px; font: inherit; font-size: 14px; font-weight: 700;
+  color: var(--text-primary); background: transparent; border: 0; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; cursor: pointer;
+}
+.hm-ov-title:hover .hm-ov-name { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--text-tertiary); }
+.hm-ov-count { font-size: 14px; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.hm-ov-sub { min-width: 0; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-ov-lead { margin: 0; font-size: 12.5px; color: var(--text-secondary); line-height: 1.4; }
+.hm-ov-empty { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
+
+.hm-ov-more, .hm-ov-action {
+  align-self: flex-start; font: inherit; font-size: 12.5px; color: var(--text-secondary); cursor: pointer;
+  background: transparent; border: 0; border-radius: 6px; padding: 2px 6px; margin-left: -6px;
+}
+.hm-ov-more:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.hm-ov-action { margin: 2px 0 0; border: 1px solid var(--border); background: var(--surface-1); padding: 3px 10px; color: var(--text-primary); }
+.hm-ov-action:hover { border-color: var(--text-secondary); }
+
+/* ── Rows: id | title | chip | age, then the plain line under the title ── */
+.hm-ov .hm-ov-list { display: flex; flex-direction: column; }
+.hm-ov .hm-run-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "id title chip age" ". line line line";
+  column-gap: 8px; row-gap: 1px; padding: 4px 6px; margin: 0 -6px; cursor: pointer;
+}
+.hm-ov .hm-run-id { grid-area: id; justify-self: start; }
+.hm-ov .hm-run-title { grid-area: title; font-size: 13px; }
+.hm-ov .hm-run-row .rp-chip { grid-area: chip; font-size: 11px; padding: 1px 7px; }
+.hm-ov .hm-run-row .rp-chip:empty { display: none; }
+.hm-ov .hm-run-age { grid-area: age; font-size: 12px; text-align: right; }
+.hm-ov .hm-run-source { grid-area: line; font-size: 12px; display: block; }
+.hm-ov .hm-run-pr, .hm-ov .hm-run-epic { display: none; }
+.hm-ov .hm-run-source:empty { display: none; }
+
+/* Kind chips: the Plan page's colours for the same kinds */
+.hm-ov-row[data-kind="review"] .rp-chip { color: var(--rp-c-review); }
+.hm-ov-row[data-kind="question"] .rp-chip { color: var(--accent); }
+.hm-ov-row[data-kind="reading"] .rp-chip,
+.hm-ov-row[data-kind="pick"] .rp-chip { color: var(--rp-cpick); }
+.hm-ov-row[data-kind="next"] .rp-chip { color: var(--rp-c-running); }
+.hm-ov-row[data-kind="ready"] .rp-chip { color: var(--rp-c-ready); }
+.hm-ov-row[data-kind="pinned"] .rp-chip { color: var(--text-secondary); }
+
+/* ── Finished lately: rows under a small day heading ── */
+.hm-ov-days { display: flex; flex-direction: column; gap: 4px; }
+.hm-ov-dayhead { margin: 2px 0 0; font-size: 11.5px; font-weight: 600; color: var(--text-tertiary); letter-spacing: .02em; }
+
+/* ── Health: only what is wrong ── */
+.hm-ov-card[data-card="health"] { border-color: color-mix(in srgb, var(--urgency-soon) 45%, var(--border)); }
+.hm-ov-health { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hm-ov-hline {
+  font: inherit; font-size: 13px; text-align: left; width: 100%; cursor: pointer; color: var(--text-primary);
+  background: transparent; border: 0; border-radius: 6px; padding: 4px 6px; margin-left: -6px;
+}
+.hm-ov-hline::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--urgency-soon); }
+.hm-ov-hline:hover { background: var(--surface-3); }
+
+/* ── Where the work is: one column per group, a bar per area ── */
+.hm-ov-places { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 18px; }
+.hm-ov-group { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hm-ov-gbtn, .hm-ov-area {
+  font: inherit; width: 100%; text-align: left; cursor: pointer; color: var(--text-primary);
+  background: transparent; border: 0; border-radius: 6px; display: grid; align-items: center; column-gap: 8px;
+}
+.hm-ov-gbtn { grid-template-columns: minmax(0, 1fr) auto; padding: 3px 6px; font-size: 12.5px; font-weight: 600; }
+.hm-ov-gcount { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.hm-ov-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.hm-ov-area { grid-template-columns: minmax(0, 1.3fr) minmax(24px, 1fr) 22px 8px; padding: 1px 6px; font-size: 12px; line-height: 1.35; }
+.hm-ov-gbtn:hover, .hm-ov-area:hover { background: var(--surface-3); }
+.hm-ov-aname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.hm-ov-track { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.hm-ov-bar { display: block; height: 100%; border-radius: 3px; background: color-mix(in srgb, var(--accent) 70%, var(--surface-3)); transition: width 240ms var(--stagger-ease); }
+.hm-ov-acount { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.hm-ov-dot { width: 7px; height: 7px; transition: opacity var(--hm-motion) ease; }
+.hm-ov-area.hm-ov-on, .hm-ov-group.hm-ov-on > .hm-ov-gbtn { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.hm-ov-area.hm-ov-on .hm-ov-aname { color: var(--text-primary); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hm-ov-bar, .hm-ov-dot, .hm-ov-clear { transition: none !important; }
+}
