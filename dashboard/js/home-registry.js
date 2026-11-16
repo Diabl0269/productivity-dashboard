@@ -20,6 +20,6 @@ import './home-placeholders.js'; // PRO116: quiet stand-ins until each feature l
 
 // import './home-how-it-runs-view.js'; // PRO122: How it runs view (key 5, id 'how-it-runs')
 
-// import './home-running-strip.js'; // PRO117: Running now strip item (id 'running')
+import './home-running-strip.js'; // PRO117: Running now strip item (id 'running')
 
 // Other features: one import line each, below.

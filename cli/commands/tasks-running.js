@@ -6,31 +6,25 @@
  * cli/lib/running-inputs.js.
  *
  * Without --repo the repos come from the project's home config (config.json `home.<slug>` -> a config file with
- * `repos`, relative paths resolved against that file's directory), else the current git repo.
+ * `repos`, resolved by server/home/repos.js), else the current git repo.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { parse } from '../lib/args.js';
 import { print, jsonOut } from '../lib/output.js';
-import { dataRoot, readConfig } from '../lib/io.js';
+import { dataRoot } from '../lib/io.js';
+import { loadProjectHomeConfig } from '../../server/home/project-config.js';
+import { resolveRepos } from '../../server/home/repos.js';
 import { readTasksDoc } from '../../shared/tasks-files.js';
 import { normalizeTasksDoc } from '../lib/schema.js';
 import { computeRunning } from '../../shared/running.js';
 import { collectRunningInputs } from '../lib/running-inputs.js';
 
-/**
- * Repos of a project's home config, or [] when there is none.
- * TODO: replace with the loader in shared/home-config.js once it lands (another branch adds it).
- */
-function homeConfigRepos(slug, config = readConfig()) {
-  const ref = slug ? config?.home?.[slug] : null;
-  const file = typeof ref === 'string' ? ref : ref?.config;
-  if (!file) return [];
-  const abs = path.resolve(dataRoot(), file);
-  let cfg;
-  try { cfg = JSON.parse(fs.readFileSync(abs, 'utf8')); } catch { return []; }
-  return (Array.isArray(cfg?.repos) ? cfg.repos : []).filter(r => typeof r === 'string').map(r => path.resolve(path.dirname(abs), r));
+/** Absolute repo paths of a project's home config (the shared loader and resolver), or [] when there is none. */
+function homeConfigRepos(slug) {
+  if (!slug) return [];
+  const home = loadProjectHomeConfig(dataRoot(), slug);
+  return home.config ? resolveRepos(home.config, home.path).map(r => r.path) : [];
 }
 
 function currentRepo() {

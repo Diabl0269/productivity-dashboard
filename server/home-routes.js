@@ -11,9 +11,11 @@
  */
 
 import configRoute from './home/config-route.js';
+import runningRoute from './home/running-route.js';
 
 const routes = [
   configRoute, // GET /api/home?project=<slug> -> the project's home.config.json, validated
+  runningRoute, // GET /api/home/running?project=<slug> -> running work (PRO117)
 ];
 
 function sendJson(res, deps, status, body) {
