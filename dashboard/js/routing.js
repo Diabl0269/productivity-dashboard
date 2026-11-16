@@ -1,4 +1,5 @@
 // routing.js — URL ↔ dashboard state (History API, /dashboard/* paths)
+import { stripTicketParams } from '../../shared/home-ticket-params.js';
 
 const MAIN_TABS = new Set([
   'overview', 'tasks', 'search', 'projects', 'plan', 'metrics', 'memory', 'settings', 'home',
@@ -149,6 +150,7 @@ export function buildSearchForRoute(route) {
     params.set('ticket', route.taskId);
   }
   const onHome = route.tab === 'home';
+  if (!(onHome && route.homeView === 'tickets')) stripTicketParams(params); // the Tickets view's own t* parameters (PRO119)
   for (const [key, param] of [['where', HOME_QUERY.where], ['homeProject', HOME_QUERY.project]]) {
     if (onHome && route[key]) params.set(param, route[key]);
     else params.delete(param);
