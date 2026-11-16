@@ -67,7 +67,8 @@ export function isNoteInputBusy() {
 export function focusNoteInput(task, key) {
   requestAnimationFrame(() => {
     const k = noteInputKey(task, key);
-    const el = [...document.querySelectorAll('.td-review-note-input')].find(n => n.dataset.key === k);
+    const all = [...document.querySelectorAll('.td-review-note-input')].filter(n => n.dataset.key === k);
+    const el = all.find(n => n.getClientRects().length) || all[0]; // the shown one (Plan and Home may both hold it)
     if (el) el.focus();
   });
 }

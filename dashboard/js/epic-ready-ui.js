@@ -133,12 +133,13 @@ export function buildEpicPlanPanel(task, { state, commit, refresh }) {
   return wrap;
 }
 
+// Per page: a page passes { keyPrefix, idPrefix } so its fold state and ids stay its own (Plan passes none).
 const FOLD_KEY = 'runPlanNotReadyOpen';
-function readFold() {
-  try { return localStorage.getItem(FOLD_KEY) === '1'; } catch { return false; }
+function readFold(key) {
+  try { return localStorage.getItem(key) === '1'; } catch { return false; }
 }
-function writeFold(open) {
-  try { localStorage.setItem(FOLD_KEY, open ? '1' : '0'); } catch { /* storage unavailable */ }
+function writeFold(key, open) {
+  try { localStorage.setItem(key, open ? '1' : '0'); } catch { /* storage unavailable */ }
 }
 
 /**
@@ -167,8 +168,9 @@ export function buildAutoToggle(r, onToggle) {
  * @param {object[]} readiness  plan.readiness
  * @param {(id: string) => HTMLElement} idButton  makes the epic id a button that opens the ticket
  * @param {(r: object, on: boolean, where: string) => void} [onAuto]  writes the Auto label for an epic
+ * @param {{keyPrefix?: string, idPrefix?: string}} [folds]  this page's fold key and id prefixes
  */
-export function renderReadyState(readiness, idButton, onAuto) {
+export function renderReadyState(readiness, idButton, onAuto, { keyPrefix = '', idPrefix = '' } = {}) {
   const sec = el('section', 'rp-ready');
   sec.setAttribute('aria-label', 'Ready state of every open epic');
   sec.appendChild(el('h3', 'rp-ready-title', 'Ready state'));
@@ -192,11 +194,12 @@ export function renderReadyState(readiness, idButton, onAuto) {
   sec.appendChild(list);
 
   if (notReady.length) {
-    let open = readFold();
+    const key = keyPrefix + FOLD_KEY;
+    let open = readFold(key);
     const btn = el('button', 'rp-btn rp-fold-btn');
     btn.type = 'button';
     const fold = el('div', 'rp-fold');
-    fold.id = 'rpNotReadyFold';
+    fold.id = `${idPrefix}rpNotReadyFold`;
     btn.setAttribute('aria-controls', fold.id);
     const inner = el('div', 'rp-fold-inner');
     const nrList = el('ul', 'rp-ready-list');
@@ -211,7 +214,7 @@ export function renderReadyState(readiness, idButton, onAuto) {
     };
     apply();
     // Toggle in place (no redraw) so the height transition runs.
-    btn.addEventListener('click', () => { open = !open; writeFold(open); apply(); });
+    btn.addEventListener('click', () => { open = !open; writeFold(key, open); apply(); });
     sec.appendChild(btn);
     sec.appendChild(fold);
   }

@@ -48,8 +48,9 @@ function promoteButton(ids, epicId, redraw) {
  * @param {{id: string, why: string, reasons?: {ids: string[], text: string}[], promoteIds?: string[]}} card
  * @param {(id: string) => HTMLElement} idButton
  * @param {() => void} redraw  redraws the Plan page after tickets move
+ * @param {{keyPrefix?: string, idPrefix?: string}} [folds]  this page's fold key and id prefixes (Plan: none)
  */
-export function renderReasonBlock(card, idButton, redraw) {
+export function renderReasonBlock(card, idButton, redraw, folds = {}) {
   const out = [];
   const reasons = card.reasons || [];
   const first = reasons[0];
@@ -58,24 +59,25 @@ export function renderReasonBlock(card, idButton, redraw) {
     line.appendChild(textWithIdButtons(first.text, first.ids, idButton, ''));
     out.push(line);
   } else out.push(el('div', 'rp-why', card.why));
-  if (reasons.length > 1) out.push(missingFold(card, reasons, idButton));
+  if (reasons.length > 1) out.push(missingFold(card, reasons, idButton, folds));
   if ((card.promoteIds || []).length) out.push(promoteButton(card.promoteIds, card.id, redraw));
   return out;
 }
 
 const OPEN_KEY = 'runPlanMissingOpen';
-const readOpen = () => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || '[]')); } catch { return new Set(); } };
-const writeOpen = set => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...set])); } catch { /* storage unavailable */ } };
+const readOpen = (key = OPEN_KEY) => { try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); } catch { return new Set(); } };
+const writeOpen = (set, key = OPEN_KEY) => { try { localStorage.setItem(key, JSON.stringify([...set])); } catch { /* storage unavailable */ } };
 
 /** "What's missing (N)": a real button toggles the list (aria-expanded); the height animates like the other Plan folds. */
-function missingFold(card, reasons, idButton) {
+function missingFold(card, reasons, idButton, folds) {
   const wrap = el('div', 'rp-missing');
-  let open = readOpen().has(card.id);
+  const key = (folds.keyPrefix || '') + OPEN_KEY;
+  let open = readOpen(key).has(card.id);
   const btn = el('button', 'rp-btn rp-fold-btn rp-missing-btn');
   btn.type = 'button';
   btn.dataset.missingFold = card.id;
   const fold = el('div', 'rp-fold');
-  fold.id = `rpMissing-${card.id}`;
+  fold.id = `${folds.idPrefix || ''}rpMissing-${card.id}`;
   btn.setAttribute('aria-controls', fold.id);
   const inner = el('div', 'rp-fold-inner');
   const list = el('ul', 'rp-missing-list');
@@ -94,9 +96,9 @@ function missingFold(card, reasons, idButton) {
   apply();
   btn.addEventListener('click', () => {
     open = !open;
-    const set = readOpen();
+    const set = readOpen(key);
     if (open) set.add(card.id); else set.delete(card.id);
-    writeOpen(set);
+    writeOpen(set, key);
     apply();
   });
   wrap.append(btn, fold);

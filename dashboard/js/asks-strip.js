@@ -230,7 +230,7 @@ function settlesBlock(state, card) {
 }
 
 /** The Details fold (rp-fold, animated): the ticket description, for a card with no details of its own. */
-function detailsFold(state, card) {
+function detailsFold(state, card, surface = 'plan') {
   if (card.details) return { button: null, fold: null }; // PRO91: the ask's own details show inline, not behind a fold
   const text = findTicket(state, card.ids[0])?.task.description || '';
   if (!text.trim()) return { button: null, fold: null };
@@ -239,7 +239,7 @@ function detailsFold(state, card) {
   const btn = el('button', 'rp-btn rp-fold-btn');
   btn.type = 'button';
   const fold = el('div', 'rp-fold');
-  fold.id = `rpAskDetails-${handle.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  fold.id = `${surface === 'plan' ? '' : `${surface}-`}rpAskDetails-${handle.replace(/[^A-Za-z0-9_-]/g, '_')}`; // unique per surface
   btn.setAttribute('aria-controls', fold.id);
   const inner = el('div', 'rp-fold-inner');
   inner.appendChild(el('div', 'rp-ask-details', text.trim()));
@@ -303,7 +303,7 @@ export function renderAskCard(state, card, redraw, surface = 'plan') {
   }));
   nextLine.dataset.nextStep = 'ask';
   li.appendChild(nextLine);
-  const { button: detailsBtn, fold } = detailsFold(state, card);
+  const { button: detailsBtn, fold } = detailsFold(state, card, surface);
   if (mode) {
     li.appendChild(textBox(state, card, mode, redraw, surface));
   } else {
@@ -445,20 +445,21 @@ let baseTitle = null;
 let baseIcon = null;
 let shownCount = -1;
 
-/** Show `n` on the tab title, favicon, Plan tab and app badge (0 clears them). */
+/** Show `n` on the tab title, favicon, Plan and Home tabs and app badge (0 clears them). */
 export function updateAsksBadge(n) {
   if (typeof document === 'undefined' || n === shownCount) return;
   shownCount = n;
   if (baseTitle === null) baseTitle = document.title.replace(/^\(\d+\)\s*/, '');
   document.title = n ? `(${n}) ${baseTitle}` : baseTitle;
-  const tab = document.getElementById('runPlanTabBtn');
-  if (tab) {
+  for (const [id, name] of [['runPlanTabBtn', 'Plan'], ['homeTabBtn', 'Home']]) {
+    const tab = document.getElementById(id);
+    if (!tab) continue;
     let badge = tab.querySelector('.rp-tab-badge');
     if (n && !badge) { badge = el('span', 'rp-tab-badge'); tab.appendChild(badge); }
     if (badge) {
       badge.textContent = n ? String(n) : '';
       badge.hidden = !n;
-      tab.setAttribute('aria-label', n ? `Plan, ${n} decision${n === 1 ? '' : 's'} for you` : 'Plan');
+      tab.setAttribute('aria-label', n ? `${name}, ${n} decision${n === 1 ? '' : 's'} for you` : name);
     }
   }
   try {

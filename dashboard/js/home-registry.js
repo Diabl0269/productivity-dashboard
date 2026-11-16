@@ -14,7 +14,7 @@ import './home-placeholders.js'; // PRO116: quiet stand-ins until each feature l
 
 // import './home-map-view.js'; // PRO39: Map view (key 2, id 'map')
 
-// import './home-lanes-view.js'; // PRO118: Lanes view (key 3, id 'lanes')
+import './home-lanes.js'; // PRO118: Lanes view (key 3, id 'lanes')
 
 // import './home-tickets-view.js'; // PRO119: Tickets view (key 4, id 'tickets')
 

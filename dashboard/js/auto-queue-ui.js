@@ -2,6 +2,7 @@
 // reordered by drag (project-drag.js) or Alt+ArrowUp/Down. Order rules and moves: shared/auto-queue.js.
 
 import { autoQueue, groupQueue, moveInQueue, stepTarget } from '../../shared/auto-queue.js';
+import { fullQueueTarget } from '../../shared/plan-scope.js';
 import { bindReorderDrag, playFlip } from './project-drag.js';
 
 const GROUPS = [['high', 'High'], ['normal', 'Normal'], ['low', 'Low']];
@@ -21,10 +22,13 @@ let pending = null;
  * @param {{ idButton: (id: string) => HTMLElement,
  *           openTicket: (id: string) => void,
  *           apply: (changes: {id: string, priority: string, autoRank: number}[], note: string) => void,
- *           redraw: () => void }} ctx
+ *           redraw: () => void,
+ *           shows?: (id: string) => boolean }} ctx  `shows` narrows the rows shown (Home's selected place);
+ *   a move among the shown rows is made in the whole queue, so the epics left out keep their places.
  */
 export function renderAutoQueue(readiness, ctx) {
-  const queue = autoQueue(readiness);
+  const full = autoQueue(readiness);
+  const queue = ctx.shows ? full.filter(r => ctx.shows(r.id)) : full;
   const sec = el('section', 'rp-aq');
   sec.setAttribute('aria-label', 'Auto queue');
   sec.appendChild(el('h3', 'rp-aq-title', 'Auto queue'));
@@ -42,7 +46,8 @@ export function renderAutoQueue(readiness, ctx) {
   const groups = groupQueue(queue);
   const lists = [];
   const move = (id, target) => {
-    const { changes } = moveInQueue(queue, id, target);
+    const at = ctx.shows ? fullQueueTarget(full, new Set(queue.map(r => r.id)), id, target) : target;
+    const { changes } = moveInQueue(full, id, at);
     if (!changes.length) return false;
     const label = GROUPS.find(g => g[0] === target.priority)[1];
     ctx.apply(changes, `${id} moved to ${label}, place ${target.index + 1}`);

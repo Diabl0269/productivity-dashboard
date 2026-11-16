@@ -1,0 +1,53 @@
+/* Home > Lanes (js/home-lanes.js): the Plan tab's blocks (run-plan.css) as one calm column in Home's centre
+   zone, with a sticky section nav and the place filter's count line. base.css tokens only; the cards, chips
+   and id buttons keep the Plan tab's look. */
+
+.hl { display: flex; flex-direction: column; gap: 18px; min-width: 0; color: var(--text-primary); }
+.hl-sec { display: flex; flex-direction: column; gap: 10px; min-width: 0; scroll-margin-top: 56px; border-radius: 10px; }
+.hl-sec:focus { outline: none; }
+.hl-sec:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.hl-lanes-title { margin: 0; font-size: 15px; font-weight: 700; }
+
+/* Sticky nav: sits at the top of the centre zone's scroll (which has 20px padding) */
+.hl-nav {
+  position: sticky; top: -20px; z-index: 5; margin: -20px -20px 0; padding: 10px 20px;
+  display: flex; gap: 4px; flex-wrap: wrap; background: var(--surface-0); border-bottom: 1px solid var(--border-subtle);
+}
+.hl .hl-nav-btn {
+  font: inherit; font-size: 12.5px; font-weight: var(--weight-medium); color: var(--text-secondary); cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-pill); padding: 4px 10px;
+  display: inline-flex; align-items: center; gap: 6px; transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+.hl .hl-nav-btn:hover { color: var(--text-primary); background: var(--surface-3); }
+.hl .hl-nav-btn[aria-current="true"] { color: var(--text-primary); background: var(--surface-2); border-color: var(--border); }
+.hl-nav-count { font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--text-tertiary); }
+
+/* "Showing Mixer: 4 of 61 epics. Clear" */
+.hl-scope { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); }
+.hl .hl-scope-clear { padding: 2px 10px; font-size: 12.5px; }
+
+/* The centre zone is ~900px at 1280: lanes read as one column, the review grid keeps its auto-fill */
+.hl .rp-track { grid-template-columns: 160px minmax(0, 1fr); }
+
+/* Nothing pops: a filter change cross-fades the view; an opened review card and drawer slide in */
+@keyframes hl-fade { from { opacity: 0; transform: translateY(4px); } }
+.hl.hl-swap { animation: hl-fade 160ms var(--stagger-ease, ease) both; }
+.hl .rp-review-item.rp-open > .rp-checks,
+.hl .rp-review-item.rp-open > .rp-needs-tal,
+.hl .rp-drawer,
+.hl .rp-file-preview,
+.hl .rp-compact-note { animation: hl-fade 160ms ease both; }
+
+/* Strip item: For you */
+.hl-strip-btn {
+  font: inherit; color: var(--text-primary); background: transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid transparent; border-radius: var(--radius-pill); padding: 3px 10px; margin: -3px -10px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.hl-strip-btn:hover { background: var(--surface-3); border-color: var(--border); }
+.hl-strip-count { font-weight: 700; }
+
+@media (max-width: 720px) { .hl .rp-track { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .hl, .hl * { animation: none !important; }
+}
