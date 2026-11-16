@@ -108,3 +108,23 @@ test('openAskBlock: empty without an open ask', () => {
   assert.equal(openAskBlock({ id: 'T1', asks: [{ n: 1, text: 'q', state: 'answered', answer: 'A' }] }), '');
   assert.match(openAskBlock({ id: 'T1', asks: [ask(1)] }), /T1 still has an open ask \(1\)/);
 });
+
+test('an epic closed by its last answer leaves the day plan (CLI and shared path)', () => {
+  const doc = makeDoc({ asks: [ask(1)] });
+  find(doc, 'T1').type = 'epic';
+  doc.meta = { dailyPlan: { date: '2026-11-16', taskIds: ['T1', 'T9'], carriedIds: ['T1'] } };
+  const out = answerAsk(doc, 'T1', '1', { action: 'answer', reply: 'A', now: AT });
+  assert.deepEqual(out.closed, ['T1']);
+  assert.deepEqual(out.unpinned, ['T1']);
+  assert.deepEqual(doc.meta.dailyPlan.taskIds, ['T9']);
+  assert.deepEqual(doc.meta.dailyPlan.carriedIds, []);
+
+  const doc2 = makeDoc();
+  find(doc2, 'T1').type = 'epic';
+  doc2.meta = { dailyPlan: { date: '2026-11-16', taskIds: ['T1'], carriedIds: [] } };
+  const dir = setup(doc2);
+  const r = ch(['tasks', 'answer', 'T1', '1', 'A'], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /unpinned T1/);
+  assert.deepEqual(read(dir).meta.dailyPlan.taskIds, []);
+});

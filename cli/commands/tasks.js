@@ -122,7 +122,7 @@ import { resolveCreateProject } from '../../shared/project-required.js';
 import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, normalizeCheckInput, noVideoReasonError, noProjectReasonError, checkProjectGateProblem, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
-  rollUpAfterClose, epicNeedsTal, settleMechanicalChecks, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
+  rollUpAfterClose, unpinFromPlan, epicNeedsTal, settleMechanicalChecks, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
 import {
@@ -139,19 +139,6 @@ import { cmdInterpret } from './tasks-interpret.js';
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Remove ids from the day plan (pins and carried). Returns the ids that were pinned. */
-function unpinFromPlan(doc, ids) {
-  const plan = doc.meta?.dailyPlan;
-  if (!plan || !ids.length) return [];
-  const drop = new Set(ids);
-  const was = [...(plan.taskIds || []), ...(plan.carriedIds || [])];
-  const removed = [...new Set(was.filter(id => drop.has(id)))];
-  if (!removed.length) return [];
-  plan.taskIds = (plan.taskIds || []).filter(id => !drop.has(id));
-  plan.carriedIds = (plan.carriedIds || []).filter(id => !drop.has(id));
-  return removed;
-}
 
 /** After `task` closed: unpin it if it is an epic, and its epic once nothing under it is open. */
 function autoUnpin(doc, task) {

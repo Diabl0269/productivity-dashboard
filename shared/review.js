@@ -718,3 +718,16 @@ export function isCompactReview(item, asks = []) {
     && !(item.lines?.length)
     && !asks.some(card => (card.members || []).some(m => String(m.id || '').toUpperCase() === id));
 }
+
+/** Remove ids from the day plan (pins and carried) of `doc` (tasks.json shape). Returns the ids that were pinned. */
+export function unpinFromPlan(doc, ids) {
+  const plan = doc.meta?.dailyPlan;
+  if (!plan || !ids.length) return [];
+  const drop = new Set(ids);
+  const was = [...(plan.taskIds || []), ...(plan.carriedIds || [])];
+  const removed = [...new Set(was.filter(id => drop.has(id)))];
+  if (!removed.length) return [];
+  plan.taskIds = (plan.taskIds || []).filter(id => !drop.has(id));
+  plan.carriedIds = (plan.carriedIds || []).filter(id => !drop.has(id));
+  return removed;
+}
