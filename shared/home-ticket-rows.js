@@ -14,7 +14,7 @@
  *
  * One state per ticket, first match wins:
  *   running    live work now (state words: working, waiting on CI, waiting on you)
- *   needs you  an open ask, an interpretation to confirm, or a check to tick, on open work
+ *   needs you  an open ask or interpretation, or a check to tick by the Plan page's rule (checksOnOpenWork: not in review or done)
  *   in review  its column is "Ready for review"
  *   ready      Ready by the Plan page's rule: its epic is Ready and this ticket is free to run
  *   waiting    in To do / In progress but not free to run (blocked, held, its epic not ready); `stateWhy` says why
@@ -27,13 +27,14 @@ import { openAsks } from './asks.js';
 import { openInterpretations } from './interpretations.js';
 import { unsentNotes } from './review-notes.js';
 import { boxForEpic, boxPath } from './home-areas.js';
+import { checksOnOpenWork } from './review.js';
+import { needsTalLinesByEpic } from './needs-tal-lines.js';
 
 export const STATES = ['running', 'needs you', 'in review', 'ready', 'waiting', 'later', 'done'];
 export const GROUPS = ['none', 'place', 'epic', 'state', 'lane'];
 export const SORT_KEYS = ['id', 'title', 'state', 'place', 'epic', 'lane', 'model', 'updated'];
 export const TYPES = ['epic', 'task', 'subtask'];
 
-const OPEN_SECTIONS = new Set(['inbox', 'backlog', 'todo', 'in-progress', 'review']);
 const WORK_SECTIONS = new Set(['todo', 'in-progress']);
 const FINISHED = new Set(['done', 'review', 'archive']);
 const CLOSED = new Set(['done', 'archive']);
@@ -99,6 +100,9 @@ export function ticketRows(doc, config, readinessById, running) {
   const readingsBy = new Map();
   for (const r of openInterpretations(doc)) readingsBy.set(r.id, (readingsBy.get(r.id) || 0) + 1);
 
+  // Checks to tick: the Plan page's own list (checksOnOpenWork), so a ticket already in review stays "in review".
+  const checksBy = new Map(checksOnOpenWork(doc, { lines: needsTalLinesByEpic(doc) }).map(c => [c.id, c.checks.total - c.checks.done]));
+
   const boxCache = new Map();
   const placeOf = (owner) => {
     const key = owner.id;
@@ -118,7 +122,7 @@ export function ticketRows(doc, config, readinessById, running) {
     const epic = epicOf(t);
     const run = running?.[t.id] && running[t.id].state !== 'idle' ? running[t.id] : null;
     const openBlockers = (t.blockedBy || []).filter(id => byId.has(id) && !FINISHED.has(byId.get(id).section));
-    const unticked = (t.checks || []).filter(c => c && !c.checked && !c.handedTo).length;
+    const unticked = checksBy.get(t.id) || 0;
     const asks = (asksBy.get(t.id) || 0) + (readingsBy.get(t.id) || 0);
     const r = readinessOf(readinessById, epic?.id);
     const kind = r?.reasonDetails?.[0]?.kind;
@@ -129,7 +133,7 @@ export function ticketRows(doc, config, readinessById, running) {
     if (run) {
       state = 'running';
       stateWhy = RUN_WORDS[run.state] || 'Running';
-    } else if (OPEN_SECTIONS.has(section) && (asks > 0 || unticked > 0)) {
+    } else if (!CLOSED.has(section) && (asks > 0 || unticked > 0)) {
       state = 'needs you';
       const bits = [];
       if (asks) bits.push(plural(asks, 'open question', 'open questions'));
@@ -182,7 +186,8 @@ export function ticketRows(doc, config, readinessById, running) {
       created: t.created || '',
       ...(pr ? { prUrl: pr } : {}),
       notesOpen: unsentNotes(t).length,
-      checksOpen: unticked,
+      idle: !run && running?.[t.id]?.state === 'idle', // a recent session or commit but nothing running now: a quiet mark, never "running"
+      checksOpen: (t.checks || []).filter(c => c && !c.checked && !c.handedTo).length,
       blockedBy: openBlockers,
       asks,
     });

@@ -41,7 +41,7 @@ export const prLabel = (url) => {
 /** The box id a row's place is (the deepest one), for "e" and the place filter. */
 export const placeBoxId = row => row.box.part || row.box.area || row.box.group || null;
 
-const sigOf = r => [r.state, r.stateWhy, r.title, r.placeName, r.epicId, r.epicTitle, r.lane, r.model, r.updated, r.notesOpen, r.checksOpen, r.prUrl || '', r.type].join('\u0001');
+const sigOf = r => [r.state, r.stateWhy, r.title, r.placeName, r.epicId, r.epicTitle, r.lane, r.model, r.updated, r.notesOpen, r.checksOpen, r.idle ? 1 : 0, r.prUrl || '', r.type].join('\u0001');
 
 /** The table row skeleton for ticket `id`. */
 export function buildRow(id, ctx) {
@@ -63,8 +63,9 @@ export function buildRow(id, ctx) {
   p.epicTitle = epicTitle;
   p.notes = el('span', 'ht-mark ht-mark-notes');
   p.checks = el('span', 'ht-mark ht-mark-checks');
+  p.idle = el('span', 'ht-mark ht-mark-idle');
   p.pr = el('span', 'ht-mark ht-mark-pr');
-  p.marks.append(p.notes, p.checks, p.pr);
+  p.marks.append(p.idle, p.notes, p.checks, p.pr);
   for (const c of [p.id, p.title, p.state, p.place, p.epic, p.lane, p.model, p.upd, p.marks]) c.setAttribute('role', 'gridcell');
   li.append(p.id, p.title, p.state, p.place, p.epic, p.lane, p.model, p.upd, p.marks);
   li._p = p;
@@ -104,6 +105,8 @@ export function fillRow(li, row, ctx) {
   }
   setText(p.epicTitle, row.epicId && row.epicId !== row.id ? row.epicTitle : '');
   p.epic.title = row.epicTitle;
+  setText(p.idle, row.idle ? 'idle' : '');
+  p.idle.title = row.idle ? 'Idle: a recent session or commit, nothing running now' : '';
   setText(p.notes, row.notesOpen ? `✎ ${row.notesOpen}` : '');
   p.notes.title = row.notesOpen ? `${row.notesOpen} open review ${row.notesOpen === 1 ? 'note' : 'notes'}` : '';
   setText(p.checks, row.checksOpen ? `☐ ${row.checksOpen}` : '');
@@ -155,7 +158,7 @@ export function fillGroup(li, item) {
   setText(p.count, String(item.count));
   p.states.textContent = '';
   for (const s of STATES) {
-    if (!item.counts[s] || item.key === s) continue;
+    if (!item.counts[s] || item.key === `g:state:${s}`) continue; // a state group does not repeat its own state
     const chip = el('span', 'ht-gstate');
     const dot = el('span', 'ht-dot');
     dot.dataset.state = s;

@@ -32,6 +32,7 @@ function render(root, ctx) {
   };
   root._ht = inst;
   root.classList.add('ht-view');
+  root.setAttribute('data-hm-claims-slash', ''); // the command palette leaves "/" to this view's filter box
 
   const bar = createBar({
     onChange: apply,

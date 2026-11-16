@@ -226,6 +226,25 @@ covers: [bakery-orders/till/**, bakery-orders/receipts.js]
 - **Read it on a phone**: a page is only a file; ask a Claude session to "publish `<page path>` as a private
   artifact" and open the link. The tracker has no publish code.
 
+## Tickets view
+
+The Tickets view (key 4, `/dashboard/home/tickets`) is one dense table of every ticket in the project, and the inspector's Tickets tab lists the selected place's open tickets by state. The rules live in `shared/home-ticket-rows.js`.
+
+**States, first match wins:**
+- **running**: a session is working on it, waiting on CI, or waiting on you. An idle session is only a quiet "idle" mark.
+- **needs you**: an open question or reading to confirm, or a check to tick, by the Plan page's rule (a ticket already in Ready for review stays "in review").
+- **in review**: in the Ready for review column.
+- **ready**: its epic is Ready and the ticket is free to run, by the Plan page's rule.
+- **waiting**: in To do or In progress but not free to run; hover the chip to see why.
+- **later**: in the inbox or backlog, or under a "later" epic.
+- **done**: done or archived; hidden until "show done" is on or the done chip is picked.
+
+Picking a place on the map narrows the table ("Showing Mixer: 23 of 412 tickets. Clear").
+
+**Address parameters** (only differences from the default are written; each project also remembers its own): `tq` text, `tstate` states, `ttype` types, `tgroup` none/place/epic/state/lane, `tsort` and `tdir` sort, `tdone=1` show done, `tlane`, `tmodel`, `tlabel`.
+
+**Keys:** `/` focus the filter box; up/down, PageUp/PageDown, Home/End move the row cursor; Enter opens the ticket; left/right fold a group; `e` selects the row's place on the map; `p` opens its PR; `o` opens its epic; Esc leaves the filter box.
+
 ## Adding to the page
 
 Each feature is its own module under `dashboard/js/` that registers itself, plus one import line in

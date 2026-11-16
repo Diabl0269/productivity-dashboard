@@ -89,9 +89,9 @@ test('state: needs you for an ask to the user and for a check to tick', () => {
   const rows = byId(rowsOf());
   assert.equal(rows.BK4.state, 'needs you');
   assert.match(rows.BK4.stateWhy, /waiting for you/);
-  assert.equal(rows.BK31.state, 'needs you'); // in review, but a check is waiting: needs you wins
+  // The Plan page's rule (checksOnOpenWork): a ticket already in Ready for review is not "needs you" for its checks.
+  assert.equal(rows.BK31.state, 'in review');
   assert.equal(rows.BK31.checksOpen, 1);
-  assert.match(rows.BK31.stateWhy, /1 check to tick/);
 });
 
 test('state: needs you for an open ask and an interpretation', () => {
@@ -151,7 +151,7 @@ test('countByState counts every state and the total', () => {
   assert.equal(c.all, 15);
   assert.equal(STATES.reduce((n, s) => n + c[s], 0), 15);
   assert.equal(c.done, 2);
-  assert.equal(c['in review'], 1);
+  assert.equal(c['in review'], 2); // BK30 and BK31: its open check does not make it "needs you" in review
 });
 
 test('filterRows: done is hidden unless asked for, by switch or by the done state', () => {
@@ -210,4 +210,21 @@ test('groupRows: by state, place, epic and lane; none gives one group', () => {
   const none = groupRows(rows, 'none');
   assert.equal(none.length, 1);
   assert.equal(none[0].rows, rows);
+});
+
+test('state: a check to tick on open work is needs you (the Plan page rule), a check in review is not', () => {
+  const doc = sample();
+  doc.sections.find(x => x.id === 'todo').tasks.push({ id: 'BK12', title: 'Tick the fan', type: 'task', parentId: 'BK10', checks: [{ text: 'fan spins', checked: false }] });
+  const rows = byId(ticketRows(doc, config, readinessOf(doc), {}));
+  assert.equal(rows.BK12.state, 'needs you');
+  assert.match(rows.BK12.stateWhy, /1 check to tick/);
+  assert.equal(rows.BK31.state, 'in review');
+});
+
+test('an idle session is a quiet mark, never running; working, waiting on CI and waiting on you are running', () => {
+  const rows = byId(rowsOf({ BK2: { state: 'working' }, BK4: { state: 'waiting-ci' }, BK31: { state: 'waiting-you' }, BK3: { state: 'idle' } }));
+  assert.deepEqual(['BK2', 'BK4', 'BK31'].map(id => rows[id].state), ['running', 'running', 'running']);
+  assert.equal(rows.BK3.idle, true);
+  assert.notEqual(rows.BK3.state, 'running');
+  assert.equal(rows.BK2.idle, false);
 });

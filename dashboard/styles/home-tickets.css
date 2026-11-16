@@ -75,6 +75,7 @@
 .ht-marks { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .ht-mark:empty { display: none; }
 .ht-mark-notes { color: var(--status-review); }
+.ht-mark-idle { color: var(--text-secondary); opacity: 0.7; font-style: italic; }
 .ht-prlink { font-size: 12px; color: var(--accent); text-decoration: underline dotted; text-underline-offset: 3px; }
 .ht-prlink:hover { text-decoration-style: solid; }
 
