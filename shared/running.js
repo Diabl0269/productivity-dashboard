@@ -64,7 +64,13 @@ export function computeRunning(doc, inputs = {}, opts = {}) {
   const byId = new Map(all.map(t => [t.id, t]));
   const children = new Map();
   for (const t of all) if (t.parentId) (children.get(t.parentId) || children.set(t.parentId, []).get(t.parentId)).push(t);
-  const inProject = t => !o.project || t.project === o.project;
+  // A project counts with its sub-projects (meta.projects parentId), as the Home page shows them together.
+  const family = new Set(o.project ? [o.project] : []);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const p of doc?.meta?.projects || []) if (p?.parentId && family.has(p.parentId) && !family.has(p.id)) { family.add(p.id); grew = true; }
+  }
+  const inProject = t => !o.project || family.has(t.project);
   const epicOf = t => {
     const seen = new Set();
     let c = t;

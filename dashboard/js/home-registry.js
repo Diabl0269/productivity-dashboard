@@ -12,7 +12,7 @@ import './home-placeholders.js'; // PRO116: quiet stand-ins until each feature l
 
 import './home-overview-view.js'; // PRO129: Overview view (key 1, id 'overview')
 
-// import './home-map-view.js'; // PRO39: Map view (key 2, id 'map')
+import './home-map.js'; // PRO39: Map view (key 2, id 'map') and the inspector's Work tab
 
 import './home-lanes.js'; // PRO118: Lanes view (key 3, id 'lanes')
 
