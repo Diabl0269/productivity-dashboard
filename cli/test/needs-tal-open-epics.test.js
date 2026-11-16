@@ -80,7 +80,7 @@ test('PRO112: resolveNeedsTalLine drops the line from the child and the epic cop
 });
 
 test('PRO112 guard: the Plan page needs-tal rows keep a tick box and a note field (every For-you item has an answer control)', () => {
-  const src = fs.readFileSync(new URL('../../dashboard/js/run-plan-view.js', import.meta.url), 'utf8');
+  const src = fs.readFileSync(new URL('../../dashboard/js/run-plan-review.js', import.meta.url), 'utf8');
   const body = src.slice(src.indexOf('function renderNeedsTalLines'), src.indexOf('function tickNeedsTalLine'));
   assert.match(body, /type = 'checkbox'/);
   assert.match(body, /noteCell\(/);
