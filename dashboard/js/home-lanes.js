@@ -4,12 +4,14 @@
 // open cards, folds and pending focus never leak between the two pages. Also the strip's "For you" item.
 //
 // The place filter comes from ONE function, placeScope(): `?hmEpics=ID1,ID2` in the address forces a
-// set (a link or test hook); else ./home-where.js selectedEpicIds(ctx) when that module exists; else none.
+// set (a link or test hook; kept for the session until Clear, even when a tab switch drops it from the
+// address); else ./home-where.js selectedEpicIds(ctx), the selected place; else none.
 
 import { registerHomeView, registerStripItem, setView } from './home-state.js';
 import { boxOfWhere } from '../../shared/home-config.js';
 import { computeRunPlan } from '../../shared/run-plan.js';
-import { scopePlan, scopeForYou, scopeLine, scopeTest, epicsFromSearch } from '../../shared/plan-scope.js';
+import { scopePlan, scopeForYou, scopeLine, scopeTest, scopeNotes, epicsFromSearch } from '../../shared/plan-scope.js';
+import { selectedEpicIds } from './home-where.js';
 import { asksFromState } from './asks-strip.js';
 import { interpretationsFromState } from './interpretation-card.js';
 import { fillEpicEstimates } from './ticket-cost-ui.js';
@@ -25,8 +27,7 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 
 // ===== the place filter (the one place the selection module is read) =====
 
-let whereModule; // undefined: not asked yet; null: not there; else the module
-let whereLoading = null;
+let forcedIds = null; // the last ?hmEpics= set, until Clear
 
 /** "Kitchen › Oven" style name of the selected place, or ''. */
 function placeName(ctx) {
@@ -35,27 +36,18 @@ function placeName(ctx) {
   return box?.name || '';
 }
 
-/**
- * The epics to show: { set: Set<string>, place, forced } or null for everything.
- * `onLoaded` runs once the selection module has been looked for (so the view can draw again).
- */
-function placeScope(ctx, onLoaded) {
-  const forced = epicsFromSearch(window.location.search);
-  if (forced) return { set: forced, place: 'the linked epics', forced: true };
-  if (whereModule === undefined) {
-    whereLoading ||= import('./home-where.js')
-      .then((m) => { whereModule = typeof m.selectedEpicIds === 'function' ? m : null; })
-      .catch(() => { whereModule = null; });
-    whereLoading.then(onLoaded);
-    return null;
-  }
-  const set = whereModule?.selectedEpicIds(ctx) || null;
+/** The epics to show: { set: Set<string>, place, forced } or null for everything. */
+function placeScope(ctx) {
+  forcedIds = epicsFromSearch(window.location.search) || forcedIds;
+  if (forcedIds) return { set: forcedIds, place: 'the linked epics', forced: true };
+  const set = selectedEpicIds(ctx) || null;
   return set ? { set, place: placeName(ctx) || 'the selected place', forced: false } : null;
 }
 
 /** Drop ?hmEpics= from the address (keeps the rest) and draw again. */
 function clearForced(redraw) {
   const url = new URL(window.location.href);
+  forcedIds = null;
   url.searchParams.delete('hmEpics');
   window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
   redraw();
@@ -155,8 +147,9 @@ function draw(root, ctx, page, { animate = false } = {}) {
     return;
   }
   const { plan: whole, asks: allAsks, interps: allInterps } = preparePlan(page, wrap, state);
-  const scope = placeScope(ctx, () => { if (mounted?.ctx === ctx) ctx.redraw(); });
+  const scope = placeScope(ctx);
   const set = scope?.set || null;
+  page.notesShown = set ? pending => scopeNotes(pending, page.doc, set) : null;
   const plan = scopePlan(whole, page.doc, set);
   const { asks, interps } = scopeForYou(page.doc, set, allAsks, allInterps);
   const review = plan.review || [];
@@ -188,7 +181,11 @@ function draw(root, ctx, page, { animate = false } = {}) {
   } else {
     lanes.appendChild(renderRules(plan));
     lanes.appendChild(renderLegend());
-    if (plan.totals && !set) lanes.appendChild(renderTotals(plan.totals));
+    if (plan.totals) {
+      const totals = renderTotals(plan.totals);
+      if (set) totals.textContent = `Whole project: ${totals.textContent}`; // a check on the whole plan, not this place
+      lanes.appendChild(totals);
+    }
     lanes.appendChild(renderTracks(page, plan.lanes, plan.picks));
     if (plan.doneEpics.length) lanes.appendChild(renderDoneNote(plan.doneEpics));
   }

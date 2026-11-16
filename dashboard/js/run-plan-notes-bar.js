@@ -168,12 +168,15 @@ export function fileNotesOf(ctx, id) {
   else ctx.toast(`${id}: the answer is a review note that needs an area before it can be filed (Notes above)`);
 }
 
+/** The notes this page lists: all of them, or the place's (ctx.notesShown, Home's Lanes view under a filter). */
+const shownNotes = (ctx, pending) => (ctx.notesShown ? ctx.notesShown(pending) : pending);
+
 /** Every unsent note, grouped by ticket, with the ticket it came from. Works when the cards are collapsed. */
 function renderNotesList(ctx) {
   const panel = el('div', 'rp-file-preview rp-notes-list');
   panel.setAttribute('role', 'region');
   panel.setAttribute('aria-label', 'Open review notes');
-  for (const entry of pendingReviewNotes(ctx.doc)) {
+  for (const entry of shownNotes(ctx, pendingReviewNotes(ctx.doc))) {
     // PRO121: a free note has no ticket; its rows edit meta.freeNotes through the same holder shape.
     const task = entry.type === 'free' ? freeHolder(toDoc(ctx.getState())) : ctx.findTicket(entry.id);
     if (!task) continue;
@@ -204,13 +207,18 @@ export function renderFileBar(ctx) {
   const ui = ctx.ui;
   const notes = countUnsentNotes(ctx.doc);
   if (!notes) { ui.filingOpen = false; ui.notesListOpen = false; return null; }
-  const pending = pendingReviewNotes(ctx.doc);
+  const all = pendingReviewNotes(ctx.doc);
+  const pending = shownNotes(ctx, all);
   const cards = pending.filter(e => e.type !== 'free').length;
   const free = pending.length - cards; // PRO121: free notes have no ticket
   const wrap = el('div', 'rp-file');
   const bar = el('div', 'rp-file-bar');
   const where = [cards ? `on ${cards} ticket${cards === 1 ? '' : 's'}` : '', free ? `${free} free` : ''].filter(Boolean).join(', ');
-  const count = cards ? `${notes} note${notes === 1 ? '' : 's'} ${where}` : `${free} free note${free === 1 ? '' : 's'}`;
+  let count = cards ? `${notes} note${notes === 1 ? '' : 's'} ${where}` : `${free} free note${free === 1 ? '' : 's'}`;
+  if (pending !== all) { // narrowed: say what is here and that filing still takes every note
+    const here = pending.reduce((sum, e) => sum + e.notes.length, 0);
+    count = `${here} of ${notes} note${notes === 1 ? '' : 's'} here${where ? ` (${where})` : ''}; File review files all ${notes}`;
+  }
   bar.appendChild(el('span', 'rp-file-count', count));
   const file = el('button', 'rp-btn rp-btn-primary', 'File review');
   file.type = 'button';

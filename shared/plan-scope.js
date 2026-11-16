@@ -39,12 +39,40 @@ export function scopeTest(doc, scope) {
   return test;
 }
 
+/** "A, B and C" (the same rule run-plan.js uses for these cards). */
+function joinList(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/** A design-lane card's title, why and command, retold for fewer tickets (counts and id lists). */
+function retellCard(card, ids) {
+  const n = ids.length;
+  const swap = s => (typeof s === 'string' ? s.split(joinList(card.ticketIds)).join(joinList(ids)) : s);
+  let title = card.title;
+  if (card.id === 'design-canvases') title = `Draw the ${n} pick ${n === 1 ? 'canvas' : 'canvases'}`;
+  if (card.id === 'design-publish') title = `Publish the ${n} picked ${n === 1 ? 'design' : 'designs'} to the Design System`;
+  return { ...card, title, why: swap(card.why), command: swap(card.command), ticketIds: ids, openTickets: n };
+}
+
 /** A card of a lane narrowed to the scope, or null when nothing of it is left. */
 function scopeCard(card, test) {
   if (!card.ticketIds) return test(card.id) ? card : null;
   const ids = card.ticketIds.filter(test);
   if (!ids.length) return null;
-  return ids.length === card.ticketIds.length ? card : { ...card, ticketIds: ids, openTickets: ids.length };
+  return ids.length === card.ticketIds.length ? card : retellCard(card, ids);
+}
+
+/**
+ * Review notes in scope: a ticket's notes when the ticket is in scope; a free note (no ticket) when
+ * its area is the lane of an epic in scope. `pending` is shared/review-notes.js pendingReviewNotes(doc).
+ */
+export function scopeNotes(pending, doc, scope) {
+  if (!scope) return pending;
+  const test = scopeTest(doc, scope);
+  const lanes = new Set();
+  for (const sec of doc?.sections || []) for (const t of sec.tasks || []) if (t?.type === 'epic' && scope.has(t.id) && t.lane) lanes.add(t.lane);
+  return pending.filter(e => (e.type === 'free' ? !!e.lane && lanes.has(e.lane) : test(e.id)));
 }
 
 /**

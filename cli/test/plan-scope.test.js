@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  scopeTest, scopePlan, scopeForYou, scopeLine, epicsFromSearch, fullQueueTarget, scopedQueue,
+  scopeTest, scopePlan, scopeForYou, scopeLine, epicsFromSearch, fullQueueTarget, scopedQueue, scopeNotes,
 } from '../../shared/plan-scope.js';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { moveInQueue, stepTarget } from '../../shared/auto-queue.js';
@@ -77,6 +77,28 @@ test('scopePlan: a design-lane card keeps only the scope\'s pick tickets', () =>
   assert.equal(out.lanes[0].now[0].openTickets, 1);
   assert.deepEqual(out.picks.map(p => p.id), ['E2a']);
   assert.equal(scopePlan(plan, doc(), new Set(['E3'])).lanes.length, 0, 'nothing left: the lane goes');
+});
+
+test('scopePlan: a narrowed design card retells its title, why and command for the tickets left', () => {
+  const card = {
+    id: 'design-canvases', title: 'Draw the 2 pick canvases', ticketIds: ['E1a', 'E2a'], openTickets: 2,
+    why: 'x', command: 'Draw the design canvases for E1a and E2a (one board per ticket)',
+  };
+  const plan = { lanes: [{ lane: 'design', now: [card, { id: 'co-tasks', title: 'You: do the co-tasks', ticketIds: ['E1a', 'E2a'], openTickets: 2, why: 'Co-tasks: E1a and E2a' }], later: [], laterEpics: [] }],
+    readiness: [], review: [], openChecks: [], doneEpics: [], picks: [] };
+  const [canvases, todo] = scopePlan(plan, doc(), new Set(['E2'])).lanes[0].now;
+  assert.equal(canvases.title, 'Draw the 1 pick canvas');
+  assert.equal(canvases.command, 'Draw the design canvases for E2a (one board per ticket)');
+  assert.equal(todo.why, 'Co-tasks: E2a');
+});
+
+test('scopeNotes: ticket notes in scope stay; a free note stays when its area is a scoped epic\'s lane', () => {
+  const pending = [
+    { id: 'E1a', type: 'task', notes: [1] }, { id: 'E3a', type: 'task', notes: [1, 2] },
+    { id: 'free', type: 'free', lane: 'cakes', notes: [1] }, { id: 'free', type: 'free', lane: null, notes: [1] },
+  ];
+  assert.deepEqual(scopeNotes(pending, doc(), new Set(['E3'])).map(e => e.id + ':' + (e.lane || '')), ['E3a:', 'free:cakes']);
+  assert.equal(scopeNotes(pending, doc(), null), pending, 'no scope: the same list');
 });
 
 test('scopePlan: review items, open checks and done epics follow the scope', () => {
