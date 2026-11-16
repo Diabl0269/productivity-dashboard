@@ -933,6 +933,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Home tab API: /api/home* routes live in server/home-routes.js (a route table, one file per route).
+  if (url.pathname === '/api/home' || url.pathname.startsWith('/api/home/')) {
+    const { handleHomeRoute } = await import('./server/home-routes.js');
+    if (handleHomeRoute(req, res, url, { dataRoot: DATA_ROOT, root: ROOT, corsHeaders, readBody })) return;
+  }
+
   // Redirect root to dashboard
   if (url.pathname === '/') {
     res.writeHead(302, { ...corsHeaders, 'Location': '/dashboard/' });

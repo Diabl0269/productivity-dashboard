@@ -59,6 +59,9 @@ export function renderTasks() {
   refreshOverviewTaskWidgets({ tasks: taskState.tasks, meta: taskState.meta });
   refreshProjectsView();
   refreshRunPlanView();
+  if (document.getElementById('homePanel')?.classList.contains('active')) {
+    import('./home-view.js').then(m => m.refreshHomeView()).catch(() => {}); // Home keeps focus and scroll
+  }
   refreshAsks(taskState); // Overview "Decisions for you" widget + tab title / favicon count (PRO73)
   syncTaskDetailAfterReload(taskState.tasks);
 }

@@ -115,8 +115,8 @@ export function buildFilterQueryString() {
   const ticket = readParams().get('ticket');
   if (ticket) params.set('ticket', ticket);
 
-  // Preserve the Metrics tab's range/project (metrics-view.js owns them).
-  for (const k of ['mrange', 'mproject']) {
+  // Preserve the Metrics tab's range/project (metrics-view.js owns them) and Home's place/project (home-state.js).
+  for (const k of ['mrange', 'mproject', 'where', 'hproject']) {
     const v = readParams().get(k);
     if (v) params.set(k, v);
   }
