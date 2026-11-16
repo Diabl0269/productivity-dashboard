@@ -45,21 +45,24 @@
 .hm-ov-action { margin: 2px 0 0; border: 1px solid var(--border); background: var(--surface-1); padding: 3px 10px; color: var(--text-primary); }
 .hm-ov-action:hover { border-color: var(--text-secondary); }
 
-/* ── Rows: id | title | chip | age, then the plain line under the title ── */
+/* ── Rows: the title takes the whole first line (two lines before it cuts); the plain line, chip and age under it ── */
 .hm-ov .hm-ov-list { display: flex; flex-direction: column; }
 .hm-ov .hm-run-row {
   grid-template-columns: auto minmax(0, 1fr) auto auto;
-  grid-template-areas: "id title chip age" ". line line line";
-  column-gap: 8px; row-gap: 1px; padding: 4px 6px; margin: 0 -6px; cursor: pointer;
+  grid-template-areas: "id title title title" ". line chip age";
+  align-items: baseline; column-gap: 8px; row-gap: 1px; padding: 4px 6px; margin: 0 -6px; cursor: pointer;
 }
 .hm-ov .hm-run-id { grid-area: id; justify-self: start; }
-.hm-ov .hm-run-title { grid-area: title; font-size: 13px; }
+.hm-ov .hm-run-title {
+  grid-area: title; font-size: 13px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
 .hm-ov .hm-run-row .rp-chip { grid-area: chip; font-size: 11px; padding: 1px 7px; }
 .hm-ov .hm-run-row .rp-chip:empty { display: none; }
 .hm-ov .hm-run-age { grid-area: age; font-size: 12px; text-align: right; }
 .hm-ov .hm-run-source { grid-area: line; font-size: 12px; display: block; }
 .hm-ov .hm-run-pr, .hm-ov .hm-run-epic { display: none; }
-.hm-ov .hm-run-source:empty { display: none; }
+.hm-ov-row[data-kind="note"] .hm-run-source, .hm-ov-row[data-kind="free-note"] .hm-run-source { color: var(--text-tertiary); }
 
 /* Kind chips: the Plan page's colours for the same kinds */
 .hm-ov-row[data-kind="review"] .rp-chip { color: var(--rp-c-review); }

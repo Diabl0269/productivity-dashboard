@@ -89,7 +89,7 @@ test('On the agenda: next start first, then Ready epics, then pins', () => {
   assert.equal(a.next.id, 'E1'); // computeNextStart's own answer (it was given no live runs)
   assert.equal(a.ready, 2);
   assert.ok(!a.items.some(i => i.id === 'E1')); // shown once, as the next start
-  assert.ok(a.items.some(i => i.kind === 'pinned' && i.id === 'E3' && i.line === 'Pinned: 0 of 1 done'));
+  assert.ok(a.items.some(i => i.kind === 'pinned' && i.id === 'E3' && i.line === '0 of 1 done'));
 });
 
 test('On the agenda: the next-start row says when, and a Ready epic says why it is next', () => {
@@ -144,10 +144,31 @@ test('Where the work is: open epics per area, running dots, selected place', () 
   assert.deepEqual(model(bakery()).places.groups.length, 2);
 });
 
-test('Open notes: unfiled notes only, newest two first', () => {
+test('Open notes: unfiled notes only, newest two first, the note first and its ticket under it', () => {
   const n = model().notes;
   assert.equal(n.count, 2);
-  assert.deepEqual(n.items.map(i => i.line), ['Add gluten', 'Bigger font']);
+  assert.deepEqual(n.items.map(i => i.title), ['Add gluten', 'Bigger font']);
+  assert.deepEqual(n.items.map(i => i.line), ['Allergen list', 'Allergen list']);
+  assert.deepEqual(n.items[0].target, { ticket: 'T3' });
+});
+
+test('Open notes: a free note says so, opens the Notes tab and follows its own place', () => {
+  const doc = bakery();
+  doc.meta.freeNotes = [{ n: 1, at: '2026-03-09T13:00:00Z', text: 'Oven door squeaks', kind: 'fix', state: 'new', area: 'oven', where: 'oven' },
+    { n: 2, at: '2026-03-09T09:00:00Z', text: 'gone', kind: 'fix', state: 'filed' }];
+  const n = model(doc).notes;
+  assert.deepEqual([n.count, n.tickets, n.free], [3, 1, 1]);
+  assert.deepEqual([n.items[0].kind, n.items[0].title, n.items[0].line], ['free-note', 'Oven door squeaks', 'free note']);
+  assert.deepEqual(n.items[0].target, { inspector: 'notes' });
+  const kitchen = { epicIds: epicIdsForBox(config, doc, 'kitchen'), where: { group: 'kitchen' } };
+  assert.equal(model(doc, { ...kitchen, noteScope: { ids: new Set(['kitchen', 'oven']), lanes: new Set(['oven']) } }).notes.count, 1);
+  assert.equal(model(doc, { ...kitchen, noteScope: { ids: new Set(['shop']), lanes: new Set(['web']) } }).notes.count, 0);
+});
+
+test('Needs you: a "Co-task:" prefix is dropped (the card already says it waits on you)', () => {
+  const doc = bakery();
+  doc.sections[0].tasks.find(t => t.id === 'T2').title = 'Co-task: Timer knob';
+  assert.equal(model(doc).needsYou.items.find(i => i.id === 'T2').title, 'Timer knob');
 });
 
 test('Health: only what is wrong, linked to How it runs', () => {

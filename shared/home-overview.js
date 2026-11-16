@@ -23,7 +23,7 @@ import { groupAsks, openAsks } from './asks.js';
 import { openInterpretations } from './interpretations.js';
 import { autoQueueOrder } from './epic-ready.js';
 import { formatWhen } from './next-start.js';
-import { pendingReviewNotes } from './review-notes.js';
+import { pendingReviewNotes, FREE_ID } from './review-notes.js';
 import { epicIdsForBox } from './home-areas.js';
 
 export const OVERVIEW_ROWS = 4; // four lines a card keeps the whole Overview on a laptop screen
@@ -58,6 +58,8 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const byAtAsc = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 function cut(items, rows) { return { items: items.slice(0, rows), more: Math.max(0, items.length - rows) }; }
+// "Co-task: " says the ticket waits on you, which the Needs you card already says.
+const bare = t => String(t || '').replace(/^co-task:\s*/i, '');
 
 // ===== Needs you: computeRunPlan().review (shared/review.js reviewQueue), groupAsks(openAsks()) and
 // openInterpretations(): the Plan page's For you list; plus computeRunPlan().picks at the "pick" stage. =====
@@ -70,20 +72,20 @@ function needsYou(doc, keep, rows) {
     const todo = r.checks.total - r.checks.done;
     const line = todo > 0 ? `${todo} of ${plural(r.checks.total, 'check')} to do`
       : r.notes > 0 ? `${plural(r.notes, 'note')} to file` : 'Shipped: ready for your look';
-    items.push({ key: `review-${r.id}`, kind: 'review', id: r.id, title: r.title || '', line, at: r.enteredAt || '', target: { view: 'lanes', ticket: r.id } });
+    items.push({ key: `review-${r.id}`, kind: 'review', id: r.id, title: bare(r.title), line, at: r.enteredAt || '', target: { view: 'lanes', ticket: r.id } });
   }
   for (const c of groupAsks(openAsks(doc))) {
     if (!(c.ids || [c.id]).some(keep)) continue;
-    items.push({ key: `ask-${c.id}-${c.key}`, kind: 'question', id: c.id, title: c.title || '', line: c.text || '', at: c.at || '', target: { view: 'lanes', ticket: c.id } });
+    items.push({ key: `ask-${c.id}-${c.key}`, kind: 'question', id: c.id, title: bare(c.title), line: c.text || '', at: c.at || '', target: { view: 'lanes', ticket: c.id } });
   }
   for (const i of openInterpretations(doc)) {
     if (!keep(i.id)) continue;
-    items.push({ key: `reading-${i.id}-${i.key}`, kind: 'reading', id: i.id, title: i.title || '', line: `Is this reading right? ${i.text}`, at: i.at || '', target: { view: 'lanes', ticket: i.id } });
+    items.push({ key: `reading-${i.id}-${i.key}`, kind: 'reading', id: i.id, title: bare(i.title), line: `Is this reading right? ${i.text}`, at: i.at || '', target: { view: 'lanes', ticket: i.id } });
   }
   const forYou = items.length;
   items.sort(byAtAsc);
   const picks = (plan.picks || []).filter(p => p.stage === 'pick' && keep(p.id)).map(p => ({
-    key: `pick-${p.id}`, kind: 'pick', id: p.id, title: p.title || '', line: 'Pick an option on its design board', at: '', target: { view: 'lanes', ticket: p.id },
+    key: `pick-${p.id}`, kind: 'pick', id: p.id, title: bare(p.title), line: 'Pick an option on its design board', at: '', target: { view: 'lanes', ticket: p.id },
   }));
   const all = [...items, ...picks];
   return { count: all.length, forYou, picks: picks.length, ...cut(all, rows), target: { view: 'lanes', focus: 'for-you' } };
@@ -153,7 +155,7 @@ function agenda(doc, ix, readinessById, running, keep, ns, now, rows) {
     const t = ix.byId.get(id);
     if (!t || pinned.some(p => p.id === id) || shown.has(id) || t.checked || CLOSED.has(ix.sectionOf.get(id)) || !keep(id)) continue;
     const p = t.type === 'epic' ? progressOf(ix, id) : null;
-    pinned.push({ key: `pin-${id}`, kind: 'pinned', id, title: t.title || '', line: p && p.total ? `Pinned: ${p.done} of ${p.total} done` : 'Pinned', target: { view: 'lanes', ticket: id } });
+    pinned.push({ key: `pin-${id}`, kind: 'pinned', id, title: t.title || '', line: p && p.total ? `${p.done} of ${p.total} done` : '', target: { view: 'lanes', ticket: id } });
   }
   // The card holds `rows` lines: the next start, then Ready epics, keeping one line for a pin when there are pins.
   const room = rows - (next && next.id ? 1 : 0);
@@ -232,14 +234,23 @@ function places(config, doc, readinessById, running, selected) {
 
 // ===== Open notes: pendingReviewNotes() (shared/review-notes.js), newest first. =====
 
-function notes(doc, keep) {
+// Each row is the note's own words, its ticket the quiet second line; a free note (PRO121) has no ticket
+// and stays in when no place is picked or its place / lane is inside the picked one (`scope`: { ids, lanes }).
+function notes(doc, keep, scope, filtered) {
   const all = [];
+  const inScope = n => !filtered || (scope && (scope.ids?.has(n.where) || (n.area && scope.lanes?.has(n.area))));
   for (const t of pendingReviewNotes(doc)) {
-    if (!keep(t.id)) continue;
-    for (const n of t.notes) all.push({ key: `note-${t.id}-${n.n}`, kind: 'note', id: t.id, title: t.title || '', line: n.text || '(image)', at: n.at || '', target: { view: 'lanes', ticket: t.id } });
+    const free = t.id === FREE_ID;
+    if (free ? !inScope(t.notes[0] || {}) : !keep(t.id)) continue;
+    for (const n of t.notes) {
+      all.push(free
+        ? { key: `note-free-${n.n}`, kind: 'free-note', id: FREE_ID, title: n.text || '(image)', line: 'free note', at: n.at || '', target: { inspector: 'notes' } }
+        : { key: `note-${t.id}-${n.n}`, kind: 'note', id: t.id, title: n.text || '(image)', line: t.title || '', at: n.at || '', target: { ticket: t.id } });
+    }
   }
   all.sort((a, b) => -byAtAsc(a, b));
-  return { count: all.length, tickets: new Set(all.map(n => n.id)).size, items: all.slice(0, 2), more: Math.max(0, all.length - 2), target: { view: 'lanes', focus: 'notes' } };
+  const onTickets = all.filter(n => n.id !== FREE_ID);
+  return { count: all.length, tickets: new Set(onTickets.map(n => n.id)).size, free: all.length - onTickets.length, items: all.slice(0, 2), more: Math.max(0, all.length - 2), target: { inspector: 'notes' } };
 }
 
 // ===== Health: home-health-data's getHealth() when that feature is present; only what is wrong. =====
@@ -293,7 +304,7 @@ export function overviewModel(doc, config, readinessById, running, now, extras =
     agenda: agenda(doc, ix, readinessById, running, keep, extras.nextStart, now, rows),
     finished: finished(doc, ix, keep, now, rows),
     places: places(config, doc, readinessById, running, selected),
-    notes: notes(doc, keep),
+    notes: notes(doc, keep, extras.noteScope, !!epicIds),
     health: health(extras.health),
   };
   model.summary = summaryOf({

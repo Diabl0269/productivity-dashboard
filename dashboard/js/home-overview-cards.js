@@ -25,7 +25,7 @@ export function tick(node, value) {
   if (from === undefined || from === to || reduced() || !node.isConnected) { setText(node, String(to)); return; }
   const start = performance.now();
   const step = (t) => {
-    const k = Math.min(1, (t - start) / 300);
+    const k = Math.min(1, Math.max(0, (t - start) / 300)); // a frame's time can be before `start`: never overshoot
     setText(node, String(Math.round(from + (to - from) * (1 - (1 - k) ** 3))));
     if (k < 1) node._raf = requestAnimationFrame(step);
   };
@@ -46,6 +46,20 @@ export function reveal(node, on) {
   node.dataset.leaving = 'true';
   const a = node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'ease' });
   a.onfinish = () => { if (node.dataset.leaving === 'true') { node.hidden = true; node.dataset.leaving = 'false'; } };
+}
+
+// The ticket window does not hand the focus back when it closes; put it back on the row it was opened from.
+export function refocusAfterTicket() {
+  const from = document.activeElement;
+  const overlay = document.getElementById('taskDetailOverlay');
+  if (!from || from === document.body || !overlay || !from.closest('.hm-ov')) return;
+  const watch = new MutationObserver(() => {
+    if (!overlay.hidden) return;
+    watch.disconnect();
+    const lost = !document.activeElement || document.activeElement === document.body || overlay.contains(document.activeElement);
+    if (lost && from.isConnected) from.focus({ preventScroll: true });
+  });
+  watch.observe(overlay, { attributes: true, attributeFilter: ['hidden'] });
 }
 
 /**
@@ -83,6 +97,15 @@ export function makeCard({ id, title, follow, target, label }) {
     if (e.target.closest('button, a')) return;
     e.target.closest('.hm-run-row')?.querySelector('button[data-ticket]')?.click();
   });
+  // A ticket id opens the ticket window; the focus comes back to it when that window closes.
+  card.addEventListener('click', (e) => { if (e.target.closest('button[data-ticket]')) refocusAfterTicket(); }, true);
+  // A free note has no ticket: its row (and its "Note" chip) opens the card's own place, the Notes tab.
+  list.addEventListener('click', (e) => {
+    if (!e.target.closest('.hm-run-row[data-kind="free-note"]')) return;
+    e.stopPropagation();
+    e.preventDefault();
+    follow(card._target || target);
+  }, true);
   return { card, btn, count, sub, lead, empty, list, more, rows: new Map() };
 }
 
@@ -106,6 +129,10 @@ export function fillRows(part, specs, ctx) {
     if (!li) continue;
     if (li.dataset.kind !== s.kind) li.dataset.kind = s.kind || '';
     li.classList.add('hm-ov-row');
+    if (s.kind === 'free-note') {
+      const id = li.querySelector('.hm-run-id');
+      if (id && id.textContent !== 'Note') { id.textContent = 'Note'; id.title = 'Open the Notes tab'; id.setAttribute('aria-label', 'Free note: open the Notes tab'); }
+    }
     const src = li.querySelector('.hm-run-source');
     if (src && src.title !== s.source) src.title = s.source;
   }

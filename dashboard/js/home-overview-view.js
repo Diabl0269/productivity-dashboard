@@ -9,7 +9,7 @@
 //
 // Events for sibling features (both harmless when nobody listens):
 //   'hm:open' on document, detail { view, focus }: a card asked a view to show one part (e.g. Lanes' For you).
-//   'hm:note' on document, detail { where }: "Add a note" asks the note box to open.
+//   'hm:note' on document, detail { where }: "Add a note" opens the note box (home-notes.js).
 
 import { registerHomeView, setView, selectedBoxId, getHomeConfig } from './home-state.js';
 import { getRunning, onRunning, startRunning, refreshRunningIfStale } from './home-running-data.js';
@@ -17,8 +17,9 @@ import { selectedEpicIds } from './home-where.js';
 import { boxPath } from '../../shared/home-areas.js';
 import { openEpicReadiness } from '../../shared/epic-ready.js';
 import { overviewModel } from '../../shared/home-overview.js';
+import { placeScope } from './home-notes-tab.js';
 import {
-  el, tick, reveal, makeCard, rowSpecs, fillRows, setMore, setLead, syncDays, syncPlaces,
+  refocusAfterTicket, el, tick, reveal, makeCard, rowSpecs, fillRows, setMore, setLead, syncDays, syncPlaces,
 } from './home-overview-cards.js';
 import { activeMainTab } from './state.js';
 
@@ -71,18 +72,15 @@ function placeName() {
 
 function follow(ctx, target) {
   if (!target) return;
-  if (target.ticket) { ctx.openTicket(target.ticket); return; }
+  if (target.ticket) { refocusAfterTicket(); ctx.openTicket(target.ticket); return; }
+  if (target.inspector) { document.querySelector(`.hm-insp-tab[data-id="${target.inspector}"]`)?.click(); return; }
   if (target.where) ctx.setSelection(target.where);
   if (target.view) setView(target.view);
   document.dispatchEvent(new CustomEvent('hm:open', { detail: { view: target.view, focus: target.focus || null } }));
 }
 
-function addNote(ctx, button) {
+function addNote() {
   document.dispatchEvent(new CustomEvent('hm:note', { detail: { where: selectedBoxId() } }));
-  // The note box takes the focus when it is there; when nothing did, say where notes go for now.
-  setTimeout(() => {
-    if (document.activeElement === button) ctx.toast('The note box is not on this page yet: add a note from a ticket for now');
-  }, 120);
 }
 
 // ===== build once =====
@@ -108,7 +106,7 @@ function build(root, ctx) {
   inst.running = card('running', 'Running now', { view: 'lanes', focus: 'running' }, 'Open the running work in Lanes');
   inst.agenda = card('agenda', 'On the agenda', { view: 'lanes', focus: 'ready' }, 'Open Ready and the Auto queue in Lanes');
   inst.finished = card('finished', 'Finished lately', { view: 'tickets', focus: 'finished' }, 'Open the closed tickets in Tickets');
-  inst.notes = card('notes', 'Open notes', { view: 'lanes', focus: 'notes' }, 'Open the notes in Lanes');
+  inst.notes = card('notes', 'Open notes', { inspector: 'notes' }, 'Open the Notes tab');
   inst.health = card('health', 'Health', { view: 'how-it-runs' }, 'Open How it runs');
   inst.health.card.hidden = true;
   inst.where = card('where', 'Where the work is', { view: 'map' }, 'Open the Map');
@@ -118,7 +116,7 @@ function build(root, ctx) {
   inst.addNote.type = 'button';
   inst.addNote.tabIndex = -1;
   inst.addNote.dataset.hmKey = 'ov-add-note';
-  inst.addNote.addEventListener('click', () => addNote(ctx, inst.addNote));
+  inst.addNote.addEventListener('click', () => addNote());
   inst.notes.card.appendChild(inst.addNote);
   inst.healthList = el('ul', 'hm-ov-health');
   inst.health.list.replaceWith(inst.healthList);
@@ -147,6 +145,7 @@ function paintAll(inst) {
   refreshNextStart(inst.paint);
   const m = overviewModel(doc, ctx.config(), readinessOf(doc), running, now, {
     epicIds, placeName: placeName(), where: ctx.selection(), nextStart, health: health?.getHealth?.() || null,
+    noteScope: epicIds ? placeScope(ctx.config(), ctx.selection()) : null,
   });
   paintSummary(inst, m);
   const place = m.place;
@@ -194,7 +193,8 @@ function paintAll(inst) {
   // Open notes
   const o = inst.notes;
   tick(o.count, m.notes.count);
-  setSub(o, m.notes.count ? `on ${m.notes.tickets} ${m.notes.tickets === 1 ? 'ticket' : 'tickets'}, not filed yet` : '');
+  const on = [m.notes.tickets ? `on ${m.notes.tickets} ${m.notes.tickets === 1 ? 'ticket' : 'tickets'}` : '', m.notes.free ? `${m.notes.free} free` : ''].filter(Boolean);
+  setSub(o, m.notes.count ? `${on.join(', ')}, not filed yet` : '');
   empty(o, m.notes.count === 0, 'No notes waiting to be filed.');
   fillRows(o, rowSpecs(m.notes.items, now), ctx);
   setMore(o, m.notes.more);
