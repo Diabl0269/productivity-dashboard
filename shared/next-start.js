@@ -11,18 +11,14 @@
 import { openEpicReadiness, autoQueueOrder } from './epic-ready.js';
 import { DEFAULT_MACHINE_CAP } from './run-plan.js';
 import { normalizeSettings } from './autorun-settings.js';
+import { nextWeeklyReset } from './weekly-reset.js';
 
 export const DEFAULT_TICK_MIN = 30;
 const BATCH_MAX = 4;
 const MIN = 60e3;
-/** Weekly plan limits reset every Tuesday 11:00 UTC (same anchor as the dispatcher's gates.mjs lastWeeklyReset). */
-const WEEK_RESET_ANCHOR_MS = Date.parse('2026-11-03T11:00:00Z');
-const WEEK_MS = 7 * 86400e3;
-
-/** First weekly reset strictly after `nowMs`. */
-export function nextWeeklyReset(nowMs) {
-  return WEEK_RESET_ANCHOR_MS + (Math.floor((nowMs - WEEK_RESET_ANCHOR_MS) / WEEK_MS) + 1) * WEEK_MS;
-}
+// The weekly reset moment is one definition, shared/weekly-reset.js (config metrics.weeklyReset; default
+// Tuesday 11:00 UTC, the same anchor as the dispatcher's gates.mjs lastWeeklyReset). Re-exported for callers.
+export { nextWeeklyReset };
 
 /**
  * First tick at or after `afterMs`. With a known last tick: lastTick + k * interval. Without one the time
@@ -63,13 +59,14 @@ export function formatWhen(ms, nowMs) {
  * @param {number|null} [input.lastTickMs]  when the dispatcher last ran
  * @param {number} [input.tickMin]      minutes between ticks
  * @param {number} [input.machineCap]   app builds at once
+ * @param {object} [input.weeklyReset]  metrics.weeklyReset ({weekday, utcHour, utcMinute}); default Tuesday 11:00 UTC
  * @returns {{next: null|{epic: string, title: string, lane: string|null, children: string[], model: string, atMs: number|null, atKind: 'tick'|'reset'|'slot', waitsFor: string|null},
  *   reason: string|null, line: string}}
  */
 export function computeNextStart(input) {
   const {
     doc, now, liveEpics = [], manualBusy = 0, off = false, weekCostUSD = 0, weekUSD = null,
-    reviewCount = 0, limitHits = [], lastTickMs = null, tickMin = DEFAULT_TICK_MIN, machineCap = DEFAULT_MACHINE_CAP,
+    reviewCount = 0, limitHits = [], lastTickMs = null, tickMin = DEFAULT_TICK_MIN, machineCap = DEFAULT_MACHINE_CAP, weeklyReset,
   } = input;
   const s = normalizeSettings(input.settings);
   const none = reason => ({ next: null, reason, line: `Next start: none, ${reason}` });
@@ -93,7 +90,7 @@ export function computeNextStart(input) {
     gateOpensMs = activeHit.resetsAtMs;
     gate = `the ${activeHit.kind} usage limit resets`;
   } else if (weekUSD > 0 && weekCostUSD / weekUSD >= s.paceStop) {
-    gateOpensMs = nextWeeklyReset(now);
+    gateOpensMs = nextWeeklyReset(now, weeklyReset);
     gate = `the weekly pace stop (${Math.round(s.paceStop * 100)}% of the limit) lifts at the weekly reset`;
   }
 

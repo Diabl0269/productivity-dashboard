@@ -12,10 +12,12 @@
 
 import configRoute from './home/config-route.js';
 import runningRoute from './home/running-route.js';
+import usageRoute from './home/usage-route.js';
 
 const routes = [
   configRoute, // GET /api/home?project=<slug> -> the project's home.config.json, validated
   runningRoute, // GET /api/home/running?project=<slug> -> running work (PRO117)
+  usageRoute, // GET /api/home/usage?project=<slug> -> this week's usage meter
 ];
 
 function sendJson(res, deps, status, body) {

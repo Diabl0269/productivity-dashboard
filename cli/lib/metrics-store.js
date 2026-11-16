@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { dataRoot, readConfig } from './io.js';
+import { normalizeWeeklyReset } from '../../shared/weekly-reset.js';
 
 /** $CH_HOME/metrics, created on demand. */
 export function metricsDir() {
@@ -92,6 +93,7 @@ export function metricsConfig() {
     areas: m.areas && typeof m.areas === 'object' ? m.areas : {},
     stallMinutes: Number.isFinite(m.stallMinutes) ? m.stallMinutes : 20,
     forgottenEpicDays: Number.isFinite(m.forgottenEpicDays) ? m.forgottenEpicDays : 3,
+    weeklyReset: normalizeWeeklyReset(m.weeklyReset),
     planUSDPerMonth: Number.isFinite(m.planUSDPerMonth) && m.planUSDPerMonth > 0 ? m.planUSDPerMonth : null,
   };
 }

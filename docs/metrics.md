@@ -39,9 +39,15 @@ ch tasks sweep-idle [--hours 24] [--dry-run] [--no-collect] [--json]      in-pro
   "areas": { "lane-or-project-slug": "Area name" },
   "stallMinutes": 20,
   "forgottenEpicDays": 3,
+  "weeklyReset": { "weekday": 2, "utcHour": 11, "utcMinute": 0 },
   "planUSDPerMonth": null
 }
 ```
+
+`weeklyReset` is when your plan's weekly limit resets, in UTC: `weekday` 0 (Sunday) to 6, `utcHour` 0-23, optional
+`utcMinute`. The default is Tuesday 11:00 UTC. It is the one definition used by `ch tasks next-start` (the pace stop
+lifts at the reset) and the Home usage chip (`ch metrics usage`); a missing or invalid value uses the default.
+Any other script that mirrors this moment (for example an autorun dispatcher) must be given the same value.
 
 `planUSDPerMonth` (a number, or `null` / absent until you set it) is what you pay a month for a plan; with it the Cost
 section and the report show the window's API-priced cost scaled to 30 days and its multiple of the plan. The value is

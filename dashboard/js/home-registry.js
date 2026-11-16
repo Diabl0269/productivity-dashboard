@@ -23,3 +23,4 @@ import './home-placeholders.js'; // PRO116: quiet stand-ins until each feature l
 import './home-running-strip.js'; // PRO117: Running now strip item (id 'running')
 
 // Other features: one import line each, below.
+import './home-usage.js'; // PRO124: usage chip and popover (top bar slot 'usage')

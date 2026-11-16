@@ -1,0 +1,68 @@
+/* Home usage chip and popover (PRO124, js/home-usage.js). base.css tokens only, so both themes follow.
+   The popover sits on <body> (the top bar clips overflow), hence its own focus rings. */
+
+.hu-chip {
+  display: inline-flex; align-items: center; gap: 7px; flex: none; max-width: 100%;
+  min-width: 36ch; justify-content: flex-start; /* room for the longest text: a changing number never moves its neighbours */
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--text-primary); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 3px 12px 3px 10px; cursor: pointer; white-space: nowrap;
+  font-variant-numeric: tabular-nums; line-height: 1.2;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.hu-chip:hover { border-color: var(--text-secondary); background: var(--surface-3); }
+.hu-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+.hu-chip[aria-expanded="true"] { border-color: var(--accent); }
+.hu-text { overflow: hidden; text-overflow: ellipsis; }
+.hu-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-done); flex: none; transition: background 120ms ease; }
+.hu-chip[data-level="none"] .hu-dot { background: var(--text-tertiary); }
+.hu-chip[data-level="amber"] { color: var(--status-review); border-color: var(--status-review); }
+.hu-chip[data-level="amber"] .hu-dot { background: var(--status-review); }
+.hu-chip[data-level="red"] { color: var(--status-blocked); border-color: var(--status-blocked); }
+.hu-chip[data-level="red"] .hu-dot { background: var(--status-blocked); }
+.hu-chip[data-stale="true"] { opacity: 0.7; }
+
+.hu-pop {
+  position: fixed; z-index: 60; box-sizing: border-box; overflow-y: auto; padding: 14px 16px 12px;
+  background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); font-size: 13px; font-variant-numeric: tabular-nums;
+  opacity: 0; transform: scale(0.9); transition: opacity 160ms ease-out, transform 160ms ease-out;
+}
+.hu-pop[data-state="open"] { opacity: 1; transform: none; }
+.hu-pop[data-state="closing"] { opacity: 0; transform: scale(0.9); transition-duration: 120ms; transition-timing-function: ease-in; pointer-events: none; }
+.hu-pop:focus { outline: none; }
+.hu-pop button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hu-pop, .hu-chip, .hu-dot, .hu-bar-fill, .hu-meter-fill { transition: none !important; }
+}
+
+.hu-head { display: flex; align-items: baseline; gap: 12px; }
+.hu-big { font-size: 30px; font-weight: 700; line-height: 1; min-width: 3.4ch; }
+.hu-line { line-height: 1.35; }
+.hu-muted { color: var(--text-secondary); font-size: 12px; margin: 0; }
+.hu-meter { height: 8px; border-radius: var(--radius-pill); background: var(--surface-4); overflow: hidden; margin: 12px 0 8px; }
+.hu-meter-fill { display: block; height: 100%; background: var(--status-done); border-radius: inherit; transition: width 200ms ease; }
+.hu-meter-fill[data-level="amber"] { background: var(--status-review); }
+.hu-meter-fill[data-level="red"] { background: var(--status-blocked); }
+.hu-pace { margin: 10px 0 2px; font-weight: 600; line-height: 1.4; }
+
+.hu-sec { margin-top: 14px; }
+.hu-h { margin: 0 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-secondary); }
+
+.hu-bars { display: flex; align-items: stretch; gap: 6px; height: 96px; }
+.hu-bar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.hu-bar-val { font-size: 10px; color: var(--text-secondary); height: 12px; line-height: 12px; white-space: nowrap; }
+.hu-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; background: var(--surface-3); border-radius: var(--radius-sm); overflow: hidden; }
+.hu-bar-fill { display: block; width: 100%; background: var(--text-tertiary); border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: height 200ms ease; }
+.hu-bar[data-today="true"] .hu-bar-fill { background: var(--accent); }
+.hu-bar-day { font-size: 10px; color: var(--text-secondary); }
+.hu-bar[data-today="true"] .hu-bar-day { color: var(--text-primary); font-weight: 700; }
+
+.hu-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; min-width: 0; }
+.hu-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.hu-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; min-width: 0; }
+.hu-sub { color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+.hu-usd { min-width: 6ch; text-align: right; font-weight: 600; }
+.hu-foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+@media (max-width: 900px) { .hu-chip { min-width: 0; } }
+.hu-copy { align-self: flex-start; margin-top: 4px; font: inherit; font-size: 12px; font-family: var(--font-mono); color: var(--text-primary); background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px 8px; cursor: pointer; }
+.hu-copy:hover { border-color: var(--text-secondary); }

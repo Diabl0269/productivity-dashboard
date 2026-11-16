@@ -9,14 +9,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { dataRoot } from './io.js';
-import { readRecords } from './metrics-store.js';
+import { readRecords, metricsConfig } from './metrics-store.js';
 import { readTasksDoc } from '../../shared/tasks-files.js';
 import { normalizeTasksDoc } from './schema.js';
 import { distinctHits } from '../../shared/plan-share.js';
 import { reviewQueue } from '../../shared/review.js';
-import { computeNextStart, nextWeeklyReset, DEFAULT_TICK_MIN } from '../../shared/next-start.js';
-
-const WEEK_MS = 7 * 86400e3;
+import { computeNextStart, DEFAULT_TICK_MIN } from '../../shared/next-start.js';
+import { lastWeeklyReset } from '../../shared/weekly-reset.js';
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
@@ -56,9 +55,10 @@ export async function nextStartNow({ now = Date.now(), overrides = {} } = {}) {
 
   let weekCostUSD = 0;
   let weekUSD = null;
+  const weeklyReset = metricsConfig().weeklyReset;
   try {
     const { loadMetricsPayload } = await import('../commands/metrics.js');
-    const hours = Math.max(1, Math.ceil((now - (nextWeeklyReset(now) - WEEK_MS)) / 3600e3));
+    const hours = Math.max(1, Math.ceil((now - lastWeeklyReset(now, weeklyReset)) / 3600e3));
     const p = loadMetricsPayload({ since: `${hours}h`, now, costLimit: Infinity });
     weekCostUSD = p.costs?.total?.costUSD || 0;
     weekUSD = p.costs?.limits?.weekUSD || null;
@@ -78,6 +78,7 @@ export async function nextStartNow({ now = Date.now(), overrides = {} } = {}) {
     tickMin,
     weekCostUSD,
     weekUSD,
+    weeklyReset,
     reviewCount: reviewQueue(doc).length,
     limitHits,
     ...overrides,
