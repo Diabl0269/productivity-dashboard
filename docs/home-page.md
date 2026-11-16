@@ -46,6 +46,7 @@ Keys starting with `$` (like `$comment`) are ignored. Any other unknown key is r
 - **`areas`** (inside a group): the places work belongs to. An area has:
   - `id`: letters, digits, `-` and `_`; unique across every group, area and part (it goes in the address).
   - `name`: what the page shows.
+  - `what`: optional one line saying what the place is (groups and parts have it too).
   - `lanes`: tracker lanes whose tickets belong here.
   - `match`: a pattern (regular expression, any case) tested against ticket titles.
   - `projects`: tracker projects whose tickets belong here.

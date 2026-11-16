@@ -15,6 +15,7 @@ const STATES = ['working', 'waiting-ci', 'waiting-you', 'idle'];
 const COUNT_WORDS = { working: 'working', 'waiting-ci': 'waiting on CI', 'waiting-you': 'waiting on you', idle: 'idle' };
 const DOT = { working: 'running', 'waiting-ci': 'partial', 'waiting-you': 'pick', idle: 'later' };
 const instances = new WeakMap(); // item root -> instance
+let teardown = null; // removes the page-level listeners of the newest instance
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -97,6 +98,7 @@ function paintPanel(inst, ctx) {
   const warnings = data?.warnings || [];
   inst.warn.hidden = warnings.length === 0;
   inst.warn.textContent = warnings.join(' ');
+  inst.warn.title = warnings.join('\n');
   inst.updated.textContent = data?.at ? `Updated ${new Date(data.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : '';
 }
 
@@ -183,22 +185,26 @@ function build(root, ctx) {
   root.append(trigger, panel);
 
   trigger.addEventListener('click', () => setOpen(inst, !inst.open, { focus: false }));
+  // Page-level listeners belong to one instance: building a new one (the strip was rebuilt) removes the old ones.
+  teardown?.();
+  const ac = new AbortController();
+  const { signal } = ac;
   // Esc closes the topmost thing: this panel, before the page's own Esc (which clears the selected place).
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !inst.open) return;
     e.preventDefault();
     e.stopPropagation();
     setOpen(inst, false);
-  }, true);
+  }, { capture: true, signal });
   document.addEventListener('pointerdown', (e) => {
     if (inst.open && !panel.contains(e.target) && !trigger.contains(e.target)) setOpen(inst, false, { focus: false });
-  }, true);
-  window.addEventListener('resize', () => { if (inst.open) place(inst); });
+  }, { capture: true, signal });
+  window.addEventListener('resize', () => { if (inst.open) place(inst); }, { signal });
 
   const paint = () => { paintSummary(inst, ctx); paintPanel(inst, ctx); if (inst.open) place(inst); };
   inst.paint = paint;
-  onRunning(paint);
-  ctx.subscribe(e => { if (e.type === 'selection') paint(); });
+  const offs = [onRunning(paint), ctx.subscribe(e => { if (e.type === 'selection') paint(); })];
+  teardown = () => { ac.abort(); offs.forEach(off => off()); teardown = null; };
   startRunning(() => activeMainTab === 'home');
   return inst;
 }

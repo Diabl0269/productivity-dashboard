@@ -39,7 +39,8 @@ async function partialInputs(repos, now, warnings) {
 
 const EMPTY = { running: [], loose: [], epics: {}, byTicket: {} };
 
-export async function buildRunning(dataRoot, slug, now = Date.now()) {
+/** `collect` is the reader bundle (collectRunningInputs); tests pass one that throws. */
+export async function buildRunning(dataRoot, slug, now = Date.now(), collect = collectRunningInputs) {
   const warnings = [];
   const home = loadProjectHomeConfig(dataRoot, slug);
   warnings.push(...home.errors);
@@ -50,8 +51,9 @@ export async function buildRunning(dataRoot, slug, now = Date.now()) {
   }
   let inputs;
   try {
-    inputs = await collectRunningInputs({ repos: repos.map(r => r.path), now });
-  } catch {
+    inputs = await collect({ repos: repos.map(r => r.path), now });
+  } catch (e) {
+    warnings.push(`Some live-work sources could not be read (${e.message}); showing what could be.`);
     inputs = await partialInputs(repos, now, warnings);
   }
   let result = EMPTY;

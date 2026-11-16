@@ -11,6 +11,7 @@
         {
           "id": "counter",
           "name": "Counter & till",
+          "what": "Where customers pay and get their receipt.",
           "lanes": ["counter"],
           "match": "till|counter|receipt|payment",
           "box": [40, 40, 300, 120],

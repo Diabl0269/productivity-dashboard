@@ -17,8 +17,14 @@ export const HOME_CONFIG_VERSION = 1;
 
 const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'fallback'];
 const LEGACY_KEYS = ['repos', 'groups', 'keywordProjects', 'areas', 'cables', 'fallback'];
-const GROUP_KEYS = ['id', 'name', 'areas', 'keywordProjects', 'box', 'page', 'covers'];
-const BOX_KEYS = ['id', 'name', 'lanes', 'match', 'projects', 'box', 'page', 'covers', 'parts'];
+const GROUP_KEYS = ['id', 'name', 'what', 'areas', 'keywordProjects', 'box', 'page', 'covers'];
+const BOX_KEYS = ['id', 'name', 'what', 'lanes', 'match', 'projects', 'box', 'page', 'covers', 'parts'];
+
+/** The optional one-line `what` of a group, area or part: { what } when given, else nothing (the shape stays as before). */
+function whatOf(raw, where, errors) {
+  const v = strOrNull(raw, 'what', where, errors);
+  return v === null ? {} : { what: v };
+}
 const LEGACY_AREA_KEYS = [...BOX_KEYS, 'group'];
 const CABLE_KEYS = ['from', 'to', 'path', 'label'];
 
@@ -42,6 +48,7 @@ function normBox(raw, where, errors, ctx, { level, known = BOX_KEYS }) {
   const out = {
     id: boxId,
     name: nameOf(raw, here, errors, boxId),
+    ...whatOf(raw, here, errors),
     lanes: strList(raw, 'lanes', here, errors),
     match: regex(raw, 'match', here, errors),
     projects: strList(raw, 'projects', here, errors),
@@ -97,6 +104,7 @@ function normGroup(raw, i, errors, ctx, legacyAreas = null) {
   return {
     id: gid,
     name: nameOf(raw, here, errors, gid),
+    ...whatOf(raw, here, errors),
     keywordProjects: kp === undefined || kp === null ? null : strList(raw, 'keywordProjects', here, errors, { allowNull: true }),
     box: rect(raw, 'box', here, errors),
     page: strOrNull(raw, 'page', here, errors),

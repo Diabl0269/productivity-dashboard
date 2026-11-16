@@ -100,3 +100,12 @@ test('no project entry, an unreadable tasks file or a bad slug never throws', as
   const bad = await call(setup(), '/api/home/running?project=a%2Fb');
   assert.equal(bad.status, 400);
 });
+
+test('a reader that throws still answers (no throw) with the rest and a warning', async () => {
+  clearRunningCache();
+  const dir = setup();
+  const out = await buildRunning(dir, 'bakery', Date.now(), async () => { throw new Error('git exploded'); });
+  assert.equal(out.running.length, 1, 'the partial readers still found the session');
+  assert.match(out.warnings.join(' '), /live-work sources could not be read \(git exploded\)/);
+  assert.equal(out.project, 'bakery');
+});

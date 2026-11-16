@@ -89,3 +89,17 @@ test('"fallback" must name an area', () => {
   assert.equal(bad.config.fallback, null);
   assert.match(bad.errors[0], /"fallback" should be the id of an area/);
 });
+
+test('"what" (one line) is kept on groups, areas and parts, and must be text', () => {
+  const { config, errors } = normalizeHomeConfig({
+    version: 1,
+    groups: [{ id: 'g', name: 'G', what: 'The group', areas: [{ id: 'a', name: 'A', what: 'The area', parts: [{ id: 'p', name: 'P', what: 'The part' }, { id: 'q', name: 'Q' }] }] }],
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(config.groups[0].what, 'The group');
+  assert.equal(config.groups[0].areas[0].what, 'The area');
+  assert.equal(config.groups[0].areas[0].parts[0].what, 'The part');
+  assert.equal('what' in config.groups[0].areas[0].parts[1], false);
+  const bad = normalizeHomeConfig({ version: 1, groups: [{ id: 'g', name: 'G', areas: [{ id: 'a', name: 'A', what: 5 }] }] });
+  assert.equal(bad.errors.length, 1);
+});
