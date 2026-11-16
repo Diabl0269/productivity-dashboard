@@ -30,7 +30,7 @@
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
- *              [--held-pr "<why>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr; adds the check 'Try on branch X, then say merge or not')
+ *              [--held-pr "<why>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr; adds the check 'Try on branch X, then say merge or not', which takes the project and video of the review's other checks)
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *              [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   (PRO73: each --ask shows in the Plan page's For you list; PRO86: a needs-tal: taste: line becomes a check)
@@ -130,7 +130,7 @@ import {
 } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, pendingAnswers } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
-import { openPrGate } from '../lib/open-pr-gate.js';
+import { openPrGate, inheritHeldCheckEvidence } from '../lib/open-pr-gate.js';
 import { reviewOverlap, applyLinks, ticketAndEpic } from '../lib/ask-overlap.js';
 import { addAsk, askByError, askLines, countAsks, asksNotice } from '../../shared/asks.js';
 import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
@@ -1236,7 +1236,11 @@ function cmdReview(argv) {
   const pr = openPrGate({ id, heldPr: values['held-pr'], links: [...(task.links || []), ...newLinks] });
   if (pr.error) die(pr.error);
   pr.warnings.forEach(w => printErr(`review: warning: ${w}`));
-  checkItems.push(...pr.checks.map(text => ({ text })));
+  {
+    // FRO1979: the held check inherits the project/video of the review's other checks (else the ticket's own).
+    const own = checkItems.length ? checkItems.slice() : (task.checks || []);
+    checkItems.push(...pr.checks.map(text => inheritHeldCheckEvidence({ text }, own)));
+  }
   if (pr.held) {
     task.heldPr = pr.held;
     // PRO92: every check of this review is about a build of the unmerged PR's branch.

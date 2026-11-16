@@ -127,3 +127,55 @@ test('asks --refresh clears the label on a merged PR and says so', () => {
   assert.match(r.stdout, new RegExp(`cleared branch label on T1 \\(${PR.replace(/[/.]/g, '\\$&')} merged\\)`));
   assert.ok(taskOf(home, 'T1').checks.every(c => !c.heldPr));
 });
+
+// FRO1979: the "Try on branch" check shows Open project / Play video like the review's own checks.
+import { inheritHeldCheckEvidence } from '../lib/open-pr-gate.js';
+
+test('inheritHeldCheckEvidence: first project and video of the siblings, else their reasons, else nothing', () => {
+  const sib = [{ text: 'a', noProject: 'reads a setting' }, { text: 'b', project: 'p/one.agsproj', video: 'v/one.mp4' }, { text: 'c', project: 'p/two.agsproj' }];
+  assert.deepEqual(inheritHeldCheckEvidence({ text: 'h' }, sib), { text: 'h', project: 'p/one.agsproj', video: 'v/one.mp4' });
+  const reasons = inheritHeldCheckEvidence({ text: 'h' }, [{ text: 'a', noProject: 'no project here', noVideo: 'static label' }]);
+  assert.deepEqual(reasons, { text: 'h', noProject: 'no project here', noVideo: 'static label' });
+  assert.deepEqual(inheritHeldCheckEvidence({ text: 'h' }, [{ text: 'a' }]), { text: 'h' });
+  assert.deepEqual(inheritHeldCheckEvidence({ text: 'h' }, []), { text: 'h' });
+});
+
+test('review --held-pr: the held check inherits the sibling check project and video; the gate counts it once', () => {
+  const home = makeHome();
+  const ev = path.join(home, 'evidence');
+  fs.mkdirSync(ev, { recursive: true });
+  fs.writeFileSync(path.join(ev, 'demo.agsproj'), 'x');
+  fs.writeFileSync(path.join(ev, 'demo.mp4'), 'x');
+  const r = run(['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'Open the panel: the label reads Gain',
+    '--check-project', '1=demo.agsproj', '--check-video', '1=demo.mp4', '--held-pr', 'real-Mac check'], home, fakeGh('OPEN'));
+  assert.equal(r.status, 0, r.stderr);
+  const t = taskOf(home, 'T1');
+  assert.equal(t.checks.length, 2);
+  const held = t.checks.find(c => /^Try on branch/.test(c.text));
+  assert.equal(held.project, 'demo.agsproj');
+  assert.equal(held.video, 'demo.mp4');
+  assert.deepEqual(held.heldPr, HELD);
+});
+
+test('review --held-pr: sibling reasons carry over; no evidence at all stays bare', () => {
+  const home = makeHome();
+  const r = run(['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'Reads Gain', '--check-no-project', '1=reads a setting only', '--check-no-video', '1=static label', '--held-pr', 'why'], home, fakeGh('OPEN'));
+  assert.equal(r.status, 0, r.stderr);
+  const held = taskOf(home, 'T1').checks.find(c => /^Try on branch/.test(c.text));
+  assert.equal(held.noProject, 'reads a setting only');
+  assert.equal(held.noVideo, 'static label');
+  const home2 = makeHome();
+  const r2 = run(['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'Look', '--held-pr', 'why'], home2, fakeGh('OPEN'));
+  assert.equal(r2.status, 0, r2.stderr);
+  const bare = taskOf(home2, 'T1').checks.find(c => /^Try on branch/.test(c.text));
+  assert.deepEqual(Object.keys(bare).filter(k => ['project', 'video', 'audio', 'noProject', 'noVideo'].includes(k)), []);
+});
+
+test('review --held-pr with no new checks: the held check takes the ticket own check evidence', () => {
+  const home = makeHome((doc, t1) => { t1.checks = [{ text: 'Existing look', checked: false, project: 'old.agsproj', video: 'old.mp4' }]; });
+  const r = run(['tasks', 'review', 'T1', '--shipped', 'a', '--held-pr', 'why'], home, fakeGh('OPEN'));
+  assert.equal(r.status, 0, r.stderr);
+  const held = taskOf(home, 'T1').checks.find(c => /^Try on branch/.test(c.text));
+  assert.equal(held.project, 'old.agsproj');
+  assert.equal(held.video, 'old.mp4');
+});

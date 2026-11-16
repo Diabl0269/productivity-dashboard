@@ -58,3 +58,24 @@ export function openPrGate({ id, links, heldPr, state = ghPrState }) {
   }
   return out;
 }
+
+/**
+ * FRO1979: the auto-added "Try on branch X" check has no evidence of its own, so it takes the first
+ * project (or its noProject reason) and the first video/audio (or its noVideo reason) of the review's
+ * other checks: Plan then shows Open project (in the branch's build) and Play video on it too.
+ * `siblings` are the checks the call passed, or the ticket's own when it passed none.
+ */
+export function inheritHeldCheckEvidence(item, siblings) {
+  const from = (siblings || []).filter(c => c && c !== item);
+  const project = from.find(c => c.project);
+  const noProject = from.find(c => c.noProject);
+  if (project) item.project = project.project;
+  else if (noProject) item.noProject = noProject.noProject;
+  const video = from.find(c => c.video);
+  const noVideo = from.find(c => c.noVideo);
+  const audio = from.find(c => c.audio);
+  if (video) item.video = video.video;
+  else if (noVideo) item.noVideo = noVideo.noVideo;
+  if (audio) item.audio = audio.audio;
+  return item;
+}
