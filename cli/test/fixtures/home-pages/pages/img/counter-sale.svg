@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="cs" viewBox="0 0 480 120" width="480" height="120" role="img" aria-labelledby="cs-t">
+  <title id="cs-t">A sale from the basket to the receipt</title>
+  <style>
+    #cs { color: #1C1830; font-family: Arial, sans-serif; }
+    #cs .bg { fill: #FFFFFF; stroke: #DCD8E7; }
+    #cs text { fill: currentColor; font-size: 13px; }
+    #cs .box { fill: rgba(59, 125, 216, .10); stroke: #3B7DD8; stroke-width: 1.5; }
+    #cs .flow { stroke: currentColor; stroke-width: 1.5; opacity: .75; }
+    @media (prefers-color-scheme: dark) { #cs { color: #ECE8F5; } #cs .bg { fill: #1D1929; stroke: #342E45; } }
+  </style>
+  <rect class="bg" x="0.5" y="0.5" width="479" height="119" rx="16"/>
+  <rect class="box" x="20" y="40" width="90" height="40" rx="6"/><text x="65" y="64" text-anchor="middle">Basket</text>
+  <rect class="box" x="140" y="40" width="90" height="40" rx="6"/><text x="185" y="64" text-anchor="middle">Total</text>
+  <rect class="box" x="260" y="40" width="90" height="40" rx="6"/><text x="305" y="64" text-anchor="middle">Payment</text>
+  <rect class="box" x="380" y="40" width="80" height="40" rx="6"/><text x="420" y="64" text-anchor="middle">Receipt</text>
+  <path class="flow" d="M110 60H140M230 60H260M350 60H380"/>
+</svg>

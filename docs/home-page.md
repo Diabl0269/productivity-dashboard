@@ -51,11 +51,12 @@ Keys starting with `$` (like `$comment`) are ignored. Any other unknown key is r
   - `match`: a pattern (regular expression, any case) tested against ticket titles.
   - `projects`: tracker projects whose tickets belong here.
   - `box`: `[x, y, width, height]` of the area on the map drawing.
-  - `page`: a handbook page about the area (path or link).
-  - `covers`: what the area covers, such as folders or topics.
+  - `page`: the handbook page of the area: a `.md` path relative to the config file (see "Handbook pages").
+  - `covers`: what the area covers; used for staleness when its page has no `covers` of its own.
   - `parts`: smaller places inside the area, same keys as an area (one level only).
 - **`cables`**: lines on the map between two places: `from` and `to` are ids, `path` is an optional
   SVG path, `label` an optional caption.
+- **`pages`**: optional `{ "<box id>": "<page path>" }`, to give boxes pages without touching their entries (a `page` on the box wins; works for the older flat shape too). **`page`** at the top is the project's own page, shown when nothing is selected.
 - **`decorations`**: optional path of an SVG file drawn behind the map, relative to the config file.
 - **`services`**: the running things the project depends on: `id`, `name` and `what` (one line).
   Later views add more keys; extra keys are kept.
@@ -77,6 +78,46 @@ epic's title, only when the epic's project is in the area's group `keywordProjec
 allows every project); (3) an area whose `projects` hold the epic's project; (4) the `fallback` area. Areas
 are tried in the order of the file (groups first to last, areas first to last). Epics that reach rule 4 are
 listed by `unmatchedEpics`, so the map's owner can give them a place.
+
+## Handbook pages
+
+A box (group, area or part) can have a page that explains how that part really works: the
+inspector's "How it works" tab shows it, with its diagrams. A box without a page shows its nearest
+parent's page ("showing Kitchen's page"); with none up the tree it says "No page yet" and names the file
+to create. Pages are plain files in the project's own repo, so agents read the same text.
+
+```
+---
+title: "Counter and till: how a sale is rung up"
+updated: 2026-11-03
+covers: [bakery-orders/till/**, bakery-orders/receipts.js]
+---
+
+## What it is
+...
+![A sale from basket to receipt](img/counter-sale.svg)
+```
+
+- **Front matter**: `title` (quote it if it holds a colon), `updated` (`YYYY-MM-DD`, the day every claim was last checked against the code) and `covers`, an inline list `[a, b]` (or `- item` lines) of
+  `<repo name>/<glob>`. A missing field is a note on the page, never an error.
+- **Body**: headings, paragraphs, bullet and numbered lists (wrapped lines are fine), tables, fenced code, bold,
+  italic, `code`, links and images. Raw HTML is shown as text, never run. A link to another page of the
+  project (`other.md`) selects that page's box; `http(s)` links open in a new tab.
+- **Diagrams** are plain `.svg` files next to the page (`img/<box id>-<topic>.svg`), drawn by hand, no diagram
+  library, no script, no outside links. They carry their own background, are shown through `<img>` only
+  (never inlined) and open large on a click. `.png`, `.jpg` and `.webp` work too.
+- **Where files may live**: anywhere inside the folder that holds `home.config.json`; the server refuses
+  `..`, absolute paths, hidden files, links that lead outside and any other file type. A page is `.md`;
+  an image is `.svg`, `.png`, `.jpg` or `.webp`. A sample project is in `cli/test/fixtures/home-pages/`.
+- **Staleness**: when commits touched a `covers` glob after the end of the `updated` day, the page says
+  "may be out of date: 14 commits since 3 Nov" with the list (newest 30, merge commits ignored, checked at most
+  every 10 minutes). The repo name in a `covers` entry is one of `repos` in the config (an entry is a name or
+  path, or `{ "name": "...", "path": "..." }` with a path relative to the config file or absolute). A repo that
+  is not on disk is a note, not an error. After checking a page against the code, set `updated` to today.
+- **List them**: `ch tasks pages [--project <slug>] [--stale] [--json]` shows every box as has a page / stale
+  (n commits) / missing (page set, file absent) / no page set.
+- **Read it on a phone**: a page is only a file; ask a Claude session to "publish `<page path>` as a private
+  artifact" and open the link. The tracker has no publish code.
 
 ## Adding to the page
 
@@ -138,3 +179,13 @@ every 15 s while the Home tab shows (`getRunning`, `onRunning`, `runningFor`, `e
 `refreshRunning`); `dashboard/js/home-where.js` tells any view which tickets the selected place keeps
 (`selectedEpicIds`, `ticketInSelection`). The "Running now" strip item and its panel are
 `dashboard/js/home-running-strip.js`.
+
+`server/home/project-config.js` loads a project's config for any route that needs it.
+
+Handbook pages (routes in `server/home/page-routes.js`, spread into the table with one line):
+`GET /api/home/page?project=&box=` returns `{ box, name, page, title, updated, covers, markdown, imageBase,
+problems, stale, notices }` (or `{ none, expectedPath, template }` / `{ missing: { expectedPath } }`);
+`GET /api/home/pages?project=` returns one state row per box (`ok`, `stale`, `missing`, `none`);
+`GET /api/home/page-file?project=&path=` serves an image from inside the config's folder, with
+`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` and `nosniff`.
+In the page, `pageStateFor(boxId)` (`js/home-pages-data.js`) gives a box's state so the map can draw a book mark.

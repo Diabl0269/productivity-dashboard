@@ -1,0 +1,119 @@
+/* Home tab — "How it works" panel (js/home-pages.js): a handbook page in the inspector, the wide
+   reading overlay and the large diagram view. base.css tokens only; both themes. */
+
+/* ── Panel ── */
+.hp-panel { --hp-motion: 180ms; gap: 10px; }
+.hp-meta { margin: -4px 0 0; font-size: 12px; color: var(--text-secondary); }
+.hp-note { margin: 6px 0 0; font-size: 12px; color: var(--text-secondary); }
+.hp-actions { display: flex; gap: 6px; }
+.hp-btn, .hp-dlg-btn {
+  font: inherit; font-size: 12.5px; font-weight: var(--weight-medium); cursor: pointer; color: var(--text-primary);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 5px 12px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.hp-btn:hover, .hp-dlg-btn:hover { background: var(--surface-3); border-color: var(--text-secondary); }
+.hp-dlg-btn[aria-pressed="true"] { background: var(--surface-4); border-color: var(--text-secondary); }
+.hp-btn:focus-visible, .hp-dlg-btn:focus-visible, .hp-chip:focus-visible, .hp-fig:focus-visible,
+.hp-link-page:focus-visible, .hp-stale-sum:focus-visible, .hp-notes-sum:focus-visible,
+.hp-table-wrap:focus-visible, .hp-code:focus-visible, .hp-dlg-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+.hp-dlg-body:focus-visible { outline-offset: -2px; }
+
+/* "may be out of date": amber, quiet, the commits in a fold */
+.hp-stale { border: 1px solid var(--border); border-left: 3px solid var(--status-review); border-radius: var(--radius-md); background: var(--surface-2); }
+.hp-stale-sum { list-style: none; display: flex; align-items: baseline; gap: 8px; cursor: pointer; padding: 7px 10px; font-size: 12.5px; font-weight: var(--weight-medium); border-radius: var(--radius-md); }
+.hp-stale-sum::-webkit-details-marker { display: none; }
+.hp-stale-sum::after { content: "›"; margin-left: auto; color: var(--text-secondary); transition: transform var(--hp-motion, 180ms) ease; }
+.hp-stale[open] .hp-stale-sum::after { transform: rotate(90deg); }
+.hp-stale-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--status-review); align-self: center; }
+.hp-commits { list-style: none; margin: 0; padding: 2px 10px 8px; display: flex; flex-direction: column; gap: 5px; max-height: 260px; overflow: auto; }
+.hp-commit { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 1px 8px; font-size: 12px; align-items: baseline; }
+.hp-commit-hash { font-size: 11px; }
+.hp-commit-date, .hp-commit-repo { color: var(--text-secondary); white-space: nowrap; }
+.hp-commit-subject { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.hp-stale .hp-note { padding: 0 10px 8px; margin: 0; }
+.hp-notes { font-size: 12px; color: var(--text-secondary); }
+.hp-notes-sum { cursor: pointer; border-radius: var(--radius-sm); width: fit-content; }
+.hp-notes-list { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.hp-empty { display: flex; flex-direction: column; gap: 8px; }
+.hp-empty .hm-muted { margin: 0; }
+.hp-loading { animation: hp-pulse 1.2s ease-in-out infinite alternate; }
+@keyframes hp-pulse { from { opacity: .45; } to { opacity: 1; } }
+
+/* Places inside: small buttons with a book mark */
+.hp-inside { margin-top: 6px; border-top: 1px solid var(--border-subtle); padding-top: 10px; }
+.hp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.hp-chip {
+  font: inherit; font-size: 12.5px; cursor: pointer; color: var(--text-primary); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 3px 10px; display: inline-flex; align-items: center; gap: 6px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.hp-chip:hover { background: var(--surface-3); border-color: var(--text-secondary); }
+.hp-mark { display: inline-flex; color: var(--text-secondary); }
+.hp-mark-stale { color: var(--status-review); }
+.hp-mark-missing { color: var(--text-tertiary); opacity: .7; }
+
+/* ── The page itself (panel and overlay) ── */
+.hp-doc { font-size: 13px; line-height: 1.55; color: var(--text-primary); overflow-wrap: anywhere; }
+.hp-doc > :first-child { margin-top: 0; }
+.hp-doc code { font-family: var(--font-mono); font-size: .92em; background: var(--surface-3); border-radius: var(--radius-sm); padding: 1px 5px; }
+.hp-doc .hp-h { margin: 18px 0 6px; line-height: 1.3; font-weight: 700; }
+.hp-doc .hp-h1 { font-size: 1.35em; }
+.hp-doc .hp-h2 { font-size: 1.12em; }
+.hp-doc .hp-h3, .hp-doc .hp-h4 { font-size: 1em; color: var(--text-secondary); }
+.hp-doc .hp-p { margin: 0 0 10px; }
+.hp-doc .hp-list { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; }
+.hp-doc .hp-list .hp-list { margin: 5px 0 0; }
+.hp-doc .hp-hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+.hp-doc .hp-quote { margin: 0 0 10px; padding: 2px 12px; border-left: 3px solid var(--border); color: var(--text-secondary); }
+.hp-doc .hp-code { margin: 0 0 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: auto; font-size: 12px; }
+.hp-doc .hp-code code { background: none; padding: 0; overflow-wrap: normal; white-space: pre; }
+.hp-doc .hp-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.hp-doc .hp-link-page { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; border-radius: var(--radius-sm); text-align: left; }
+.hp-doc .hp-link-dead { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--text-tertiary); }
+.hp-doc .hp-img-missing { color: var(--text-secondary); font-style: italic; }
+.hp-doc .hp-table-wrap { overflow-x: auto; margin: 0 0 12px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.hp-doc .hp-table { border-collapse: collapse; width: 100%; font-size: .94em; }
+.hp-doc .hp-table th, .hp-doc .hp-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-subtle); min-width: 90px; overflow-wrap: normal; }
+.hp-doc .hp-table th { background: var(--surface-2); font-weight: 600; white-space: nowrap; }
+.hp-doc .hp-table tr:last-child td { border-bottom: 0; }
+
+/* Diagrams carry their own background (and dark mode follows the system, not this page), so they sit
+   in a frame: a hairline, rounded corners and a soft lift, the same on a light or a dark page. */
+.hp-doc .hp-p-fig { margin: 0 0 12px; }
+.hp-fig, .hp-frame { display: block; width: 100%; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface-2); box-shadow: var(--shadow-sm); }
+.hp-fig { cursor: zoom-in; transition: box-shadow var(--hp-motion, 180ms) ease, border-color var(--hp-motion, 180ms) ease; }
+.hp-fig:hover { border-color: var(--text-secondary); box-shadow: var(--shadow-md); }
+.hp-img { display: block; width: 100%; height: auto; }
+
+/* ── Overlays: native modal <dialog>, grows from what was clicked ── */
+.hp-dialog { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text-primary); overflow: hidden; }
+.hp-dialog::backdrop { background: transparent; }
+.hp-scrim { position: absolute; inset: 0; background: rgba(10, 7, 4, .55); opacity: 0; transition: opacity 180ms ease; }
+.hp-card {
+  position: absolute; top: 4vh; bottom: 4vh; left: 50%; width: min(860px, calc(100vw - 32px)); max-width: 860px;
+  display: flex; flex-direction: column; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg); overflow: hidden; opacity: 0; transform: translateX(-50%) scale(.96);
+  transition: opacity 180ms ease, transform 180ms var(--stagger-ease, ease);
+}
+.hp-dialog.hp-in .hp-scrim { opacity: 1; }
+.hp-dialog.hp-in .hp-card { opacity: 1; transform: translateX(-50%) scale(1); }
+.hp-diagram .hp-card { width: min(1400px, calc(100vw - 32px)); max-width: none; top: 3vh; bottom: 3vh; }
+.hp-dlg-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); }
+.hp-dlg-title { margin: 0; font-size: 15px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp-dlg-tools { display: flex; align-items: center; gap: 6px; }
+.hp-zoom-label { min-width: 38px; text-align: center; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.hp-dlg-body { flex: 1; min-height: 0; overflow: auto; padding: 22px 32px 32px; }
+.hp-reader .hp-doc { font-size: 14.5px; line-height: 1.65; max-width: 72ch; margin: 0 auto; padding: 0; overflow: visible; }
+.hp-reader .hp-dlg-body > .hp-stale { max-width: 72ch; margin: 0 auto 14px; }
+.hp-reader .hp-doc .hp-table-wrap, .hp-reader .hp-doc .hp-p-fig { max-width: none; }
+.hp-zoom { display: flex; padding: 16px; }
+.hp-zoom-frame { width: auto; margin: auto; flex: none; cursor: default; box-shadow: var(--shadow-md); }
+.hp-zoom-img { display: block; max-width: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-scrim, .hp-card, .hp-fig, .hp-stale-sum::after, .hp-loading { transition: none; animation: none; }
+}
+@media (max-width: 700px) {
+  .hp-dlg-body { padding: 16px; }
+  .hp-card { top: 0; bottom: 0; width: 100vw; border-radius: 0; }
+}

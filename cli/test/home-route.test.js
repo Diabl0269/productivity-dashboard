@@ -37,7 +37,7 @@ function call(dataRoot, urlPath, method = 'GET') {
 }
 
 test('the route table lists GET /api/home', () => {
-  assert.deepEqual(homeRoutes()[0], { method: 'GET', path: '/api/home' });
+  assert.ok(homeRoutes().some(r => r.method === 'GET' && r.path === '/api/home'));
 });
 
 test('config found: the project config, validated, with no errors', async () => {

@@ -17,6 +17,7 @@
  *   (an epic needs a lane and a model:<tier> label naming its orchestrator)
  *   runplan [--json]
   stale [--days 30] [--json]   open tickets untouched for N days (age, epic), oldest first
+ *   pages [--project <slug>] [--stale] [--json]   every Home map box: has a page / stale / missing / no page set
  *   stale [--days N] [--json]
  *   notes [--ticket ID] [--json]       list unsent review notes, and answered asks on done / review / archive tickets nothing picked up yet
  *   notes route [--ticket ID] [--json] show which epic each unsent note (or such an answer) would be filed under
@@ -87,6 +88,7 @@
 import { parse } from '../lib/args.js';
 import cmdNext from './tasks-next.js';
 import cmdReady from './tasks-ready.js';
+import cmdPages from './tasks-pages.js';
 import { cmdNotesPrep, cmdNotesReport } from './tasks-notes-prep.js';
 import cmdNextStart from './tasks-next-start.js';
 import cmdRunning from './tasks-running.js';
@@ -3151,6 +3153,7 @@ const SUBCOMMANDS = {
   runplan:       cmdRunPlan,
   next:          cmdNext,
   ready:         cmdReady,
+  pages:         cmdPages,
   'next-start':  cmdNextStart,
   running:       cmdRunning,
   'sweep-idle':  cmdSweepIdle,
