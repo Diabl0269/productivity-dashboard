@@ -558,6 +558,43 @@ export function tickLinkedChecks(findTask, resolved, { now = new Date().toISOStr
   return ticked;
 }
 
+/** The reason a ticket with an open ask must not move to done (AGE98), or '' when it may. Names the way out. */
+export function openAskBlock(task) {
+  const open = taskAsks(task);
+  if (!open.length) return '';
+  const id = task?.taskId || task?.id || '<id>';
+  const keys = open.map(a => a.key).join(', ');
+  return `${id} still has an open ask (${keys}): answer it, or drop it with \`ch tasks answer ${id} ${open[0].key} --dismiss\``;
+}
+
+/** The decision line a ticket gets when its last answered ask closes it. */
+export const ANSWER_CLOSE_LINE = 'closed: its last ask was answered; the notes run files the answer';
+
+/** True when answering an ask leaves `task` (in `section`) with nothing to do: in review, no unticked check, no other open ask. */
+export function closesAfterAnswer(task, section) {
+  if (section !== 'review') return false;
+  if (taskAsks(task).length) return false;
+  return !(task.checks || []).some(c => c && !c.checked);
+}
+
+/** Move `id` from review to done inside `doc`, with the closing decision. Returns true when it moved. */
+function moveToDone(doc, id, now) {
+  const from = (doc.sections || []).find(s => (s.tasks || []).some(t => t.id === id));
+  const to = (doc.sections || []).find(s => s.id === 'done');
+  if (!from || !to || from === to) return false;
+  const task = from.tasks.find(t => t.id === id);
+  from.tasks = from.tasks.filter(t => t !== task);
+  task.checked = true;
+  if (!Array.isArray(task.history)) task.history = [];
+  task.history.push({ at: now, event: 'moved', from: from.id, to: 'done', note: ANSWER_CLOSE_LINE });
+  if (!Array.isArray(task.decisions)) task.decisions = [];
+  task.decisions.push({ at: now, text: ANSWER_CLOSE_LINE });
+  task.updated = now.slice(0, 10);
+  if (!Array.isArray(to.tasks)) to.tasks = [];
+  to.tasks.push(task);
+  return true;
+}
+
 /** Move `id` to backlog inside `doc` (Park). Returns true when it moved. */
 function moveToBacklog(doc, id, now) {
   const from = (doc.sections || []).find(s => (s.tasks || []).some(t => t.id === id));
@@ -584,11 +621,11 @@ function moveToBacklog(doc, id, now) {
  * dashboard does the same on its own state). Parks move to backlog; answers on done tickets are
  * filed as follow-ups through review filing (`newId(project)` allocates ids).
  * An answered / done ask ticks the checks it links (tickLinkedChecks); dismiss and park never do.
- * @returns {{ question, state, resolved: [{ id, key, decision, note }], parked: [ids], filed: [{ handle, id }], unrouted: [handles], ticked: [{ id, text }] }}
+ * @returns {{ question, state, resolved: [{ id, key, decision, note }], parked: [ids], closed: [ids] (review tickets whose last ask this answered), filed: [{ handle, id }], unrouted: [handles], ticked: [{ id, text }] }}
  */
 export function answerAsk(doc, id, key, { action, reply = '', newId, now = new Date().toISOString(), by = 'Tal', isLive } = {}) {
   const { members, options } = askCardOf(doc, id, key);
-  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [] };
+  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [], closed: [] };
   const toFile = [];
   let filedTo = ''; // the one note this answer became (twins share it)
   for (const m of members) {
@@ -603,6 +640,7 @@ export function answerAsk(doc, id, key, { action, reply = '', newId, now = new D
     if (!out.question) { out.question = r.question; out.state = r.state; }
     out.resolved.push({ id: m.id, key: m.key, decision: r.decision, note: r.note });
     if (r.park && moveToBacklog(doc, m.id, now)) out.parked.push(m.id);
+    if ((action === 'answer' || action === 'done') && closesAfterAnswer(row.task, row.section) && moveToDone(doc, m.id, now)) out.closed.push(m.id);
     if (r.file) toFile.push(m.id);
   }
   for (const tid of toFile) {

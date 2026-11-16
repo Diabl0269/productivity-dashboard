@@ -8,7 +8,7 @@
 // through commitReviewChange: decision + waitingOn cleared, Park moves it to backlog, an answer on a
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
-import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep } from '../../shared/asks.js';
+import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep, closesAfterAnswer, ANSWER_CLOSE_LINE } from '../../shared/asks.js';
 import { idButton } from './ticket-id-button.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
@@ -113,6 +113,16 @@ function applyAnswer(state, card, action, reply, redraw) {
   detailsOpen.delete(handle);
   for (const [surface, t] of typing) if (t.handle === handle) typing.delete(surface);
   park.forEach(t => moveTask(t.id, 'backlog', -1, { skipRender: true }));
+  // An answered last ask closes a review ticket that has nothing left to tick (the notes run files the answer).
+  if (action === 'answer' || action === 'done') {
+    for (const m of card.members) {
+      const found = findTicket(state, m.id);
+      if (!found || !closesAfterAnswer(found.task, found.section)) continue;
+      if (!Array.isArray(found.task.decisions)) found.task.decisions = [];
+      found.task.decisions.push({ at: new Date().toISOString(), text: ANSWER_CLOSE_LINE });
+      moveTask(found.task.id, 'done', 0, { skipRender: true });
+    }
+  }
   touched.forEach(t => commitReviewChange(t));
   if (file.length) {
     if (filer) file.forEach(id => filer(id));

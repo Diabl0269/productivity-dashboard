@@ -503,6 +503,10 @@ function tickNeedsTalLine(line, epicId) {
   renderRunPlanView();
 }
 
+// Compact review rows whose Note box is open (survives re-renders).
+const openCompactNote = new Set();
+const COMPACT_HINT = "Tick when you've seen it; notes and answers are filed by the next notes run";
+
 /** AGE80: an epic in review with nothing to check, note or answer: id, title and a tick box that moves it to Done (the list view's own toggle). */
 function renderCompactReviewRow(item, task) {
   const li = el('li', 'rp-review-item rp-review-compact');
@@ -517,7 +521,33 @@ function renderCompactReviewRow(item, task) {
   row.appendChild(box);
   row.appendChild(idButton(item.id));
   row.appendChild(el('span', 'rp-title', item.title));
+  const noteBtn = el('button', 'rp-btn rp-compact-note-btn', 'Note');
+  noteBtn.type = 'button';
+  noteBtn.setAttribute('aria-label', `Add a note to ${item.id}`);
+  noteBtn.setAttribute('aria-expanded', openCompactNote.has(item.id) ? 'true' : 'false');
+  row.appendChild(noteBtn);
   li.appendChild(row);
+  li.appendChild(el('div', 'rp-compact-hint', COMPACT_HINT));
+  const focusInput = (wrap) => requestAnimationFrame(() => wrap.querySelector('.td-review-note-input')?.focus());
+  let wrap = null;
+  const openNote = () => {
+    wrap = el('div', 'rp-compact-note');
+    wrap.appendChild(reviewNoteAddRow(task, { key: 'general', placeholder: 'What did you see? Enter saves, Escape closes', label: `Note on ${item.id}`, onChange: commitReviewChange }));
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeNote(true); } });
+    li.appendChild(wrap);
+    openCompactNote.add(item.id);
+    noteBtn.setAttribute('aria-expanded', 'true');
+    focusInput(wrap);
+  };
+  const closeNote = (refocus) => {
+    wrap?.remove();
+    wrap = null;
+    openCompactNote.delete(item.id);
+    noteBtn.setAttribute('aria-expanded', 'false');
+    if (refocus) noteBtn.focus();
+  };
+  noteBtn.addEventListener('click', () => { if (wrap) closeNote(true); else openNote(); });
+  if (openCompactNote.has(item.id)) openNote();
   return li;
 }
 

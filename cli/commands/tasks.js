@@ -132,7 +132,7 @@ import { planFiling, applyFiling, pendingAnswers } from '../../shared/review-fil
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
 import { openPrGate, inheritHeldCheckEvidence } from '../lib/open-pr-gate.js';
 import { reviewOverlap, applyLinks, ticketAndEpic } from '../lib/ask-overlap.js';
-import { addAsk, askByError, askLines, countAsks, asksNotice } from '../../shared/asks.js';
+import { addAsk, askByError, askLines, countAsks, asksNotice, openAskBlock } from '../../shared/asks.js';
 import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
 import { cmdInterpret } from './tasks-interpret.js';
 
@@ -196,6 +196,12 @@ function assertReviewNotClosedBySession(task, fromSectionId, force) {
   if (task.type === 'epic' && open) {
     die(`${task.id} is an epic with ${open} unticked check(s). Tal ticks those in review; sessions must not close it. (--force only if Tal asked you to.)`);
   }
+}
+
+/** AGE98: a ticket with an open ask never moves to Done (the ask would vanish from Tal's list unanswered). */
+function assertNoOpenAsk(task) {
+  const why = openAskBlock(task);
+  if (why) die(why);
 }
 
 function assertNoOpenSubtasks(task, force) {
@@ -863,6 +869,7 @@ function cmdMove(argv) {
     return;
   }
   if (targetSectionId === 'done') {
+    assertNoOpenAsk(task);
     assertReviewNotClosedBySession(task, fromSection.id, values.force);
     assertNoOpenSubtasks(task, values.force);
   }
@@ -1184,6 +1191,7 @@ function cmdReview(argv) {
   if (!toSection) die(`section "${REVIEW_SECTION}" not found in document. Try 'ch tasks lint --fix'`);
 
   assertNoOpenSubtasks(task, values.force);
+  if (epicOf(doc, task)) assertNoOpenAsk(task); // AGE98: a child under an epic rolls up into Done
   // PRO72: closing the last runnable child must not leave the live epic with only backlog tickets open.
   const liveEpic = epicOf(doc, task)?.task;
   if (liveEpic) {
@@ -1423,6 +1431,7 @@ function cmdDone(argv) {
   const doc = load();
   const { task, section: fromSection } = resolveTask(doc, id, values.section);
   if (fromSection.id !== 'done') {
+    assertNoOpenAsk(task);
     assertReviewNotClosedBySession(task, fromSection.id, values.force);
     assertNoOpenSubtasks(task, values.force);
   }

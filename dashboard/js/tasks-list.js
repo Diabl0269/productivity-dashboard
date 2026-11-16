@@ -1,6 +1,8 @@
 // tasks-list.js - List view rendering
 
 import { markChanged } from './tasks-io.js';
+import { openAskBlock } from '../../shared/asks.js';
+import { showStatus } from './state.js';
 import { moveTask } from './tasks-board.js';
 import { taskSectionId, todayStr, renderLinks, daysSince } from './tasks-parser.js';
 import { openTaskDetail } from './task-detail.js';
@@ -345,6 +347,10 @@ function startAddingListSection(btn) {
 
 /** The checkbox toggle. A ready-for-review ticket is already checked; its box means "reviewed" -> Done (also the Plan page's compact review row). */
 export function toggleTaskComplete(task) {
+  if (task.section !== 'done' && (task.section === 'review' || !task.checked)) {
+    const why = openAskBlock(task); // AGE98: an open ask is answered or dismissed first
+    if (why) { showStatus(why.replace(/`/g, '')); return; }
+  }
   task.checked = task.section === 'review' ? true : !task.checked;
   if (task.checked) {
     task.updated = todayStr();

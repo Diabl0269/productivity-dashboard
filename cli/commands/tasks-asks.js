@@ -176,6 +176,7 @@ export async function cmdAnswer(argv) {
   const ids = out.resolved.map(r => r.id).join(', ');
   ok(`${ids} ask ${out.state}${out.resolved.some(r => r.decision) ? ' (decision recorded)' : ''}; no longer waiting on Tal`);
   for (const pid of out.parked) print(`parked ${pid}: moved to backlog`);
+  for (const cid of out.closed) print(`closed ${cid}: its last ask was answered; the notes run files the answer`);
   for (const t of out.ticked) print(`ticked ${t.id} check: ${t.text}`);
   for (const f of out.filed) print(`filed follow-up ${f.id} from ${f.handle} (the ticket was done)`);
   if (out.unrouted.length) printErr(`answer: ${out.unrouted.join(', ')} needs an area before it can be filed (Plan page Notes, or ch tasks notes send)`);
