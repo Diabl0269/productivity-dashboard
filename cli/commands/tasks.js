@@ -1263,7 +1263,7 @@ function cmdReview(argv) {
         details: (values['ask-details'] || [])[i], labels: ticketAndEpic(doc, task).flatMap(t => t.labels || []),
       });
     } catch (e) {
-      die(`--ask: ${e.message}${/seen or heard/.test(e.message) ? `. review --ask has no media flags: use ch tasks ask ${task.id} "<question>" --details "..." with --video/--audio/--image/--project` : ''}`);
+      die(`--ask: ${e.message}${/seen or heard/.test(e.message) ? `. review --ask has no media flags: use ch tasks ask ${task.id} "<question>" --details "..." with --video/--audio/--image/--project/--board` : ''}`);
     }
   });
   const filed = values['file-left'] ? fileLeftovers(doc, task) : [];
@@ -3069,7 +3069,7 @@ Subcommands:
          an --unverified "needs-tal: taste: <what to judge> | video=<path> project=<path> audio=<path>" line becomes a check
          (folded into an existing check on the same project); one with no media is refused (a taste question is never an ask)
   ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] [--details "..."]
-      [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--json]
+      [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--json]
          leave a decision for Tal and set the ticket's waitingOn; it shows in the Plan page's "For you" list while the
          ticket or its epic is open, with option buttons (Park is always offered), the media and a Details fold;
          --same-as shows it as one card with another ticket's ask; --merge-pr closes it once that PR merges

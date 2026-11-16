@@ -182,6 +182,13 @@ function mediaBlock(card) {
     wrap.appendChild(a);
   }
   if (m.audio) wrap.appendChild(audioPlayer({ audio: m.audio }, 1, label));
+  if (m.board) {
+    const a = el('a', 'rp-btn rp-ask-board-link', 'Open board');
+    a.href = m.board;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    wrap.appendChild(a);
+  }
   return wrap;
 }
 

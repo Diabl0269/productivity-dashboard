@@ -4,7 +4,7 @@
  * An ask is a choice between options, never a thing to look at (those are checks on the epic's
  * review card). It lives on the ticket as `asks`:
  *   asks: [{ n, at, text, by?, mergePr?, options?: [{ key, text }], recommend?, details?,
- *            media?: { video?, audio?, image?, project? }, sameAs?, checkRefs?: [{ id, text }], notSame?,
+ *            media?: { video?, audio?, image?, project?, board? }, sameAs?, checkRefs?: [{ id, text }], notSame?,
  *            state, answer?, resolvedAt?, filedAs? }]
  *   filedAs (PRO102, PRO104): where a free-text answer nobody will read went: the review note handle
  *   ("T1#2") or the ticket id the notes run filed; a filed ask is never listed or filed again.
@@ -81,7 +81,9 @@ export const ASK_DETAILS_MIN = 60;
 // A question about something seen or heard needs the thing to judge (PRO91).
 const SEEN_HEARD_RE = /\b(sound|sounds|hear|heard|listen|look|looks|see|seen|feel|feels|colou?r|visual|loud|mix)\b/i;
 const MEDIA_LABELS = ['ui', 'audio'];
-export const MEDIA_KINDS = ['video', 'audio', 'image', 'project'];
+export const MEDIA_KINDS = ['video', 'audio', 'image', 'project', 'board'];
+// A design board is a claude.ai artifact link, not a file under $CH_HOME/evidence.
+const BOARD_URL_RE = /^https:\/\/claude\.ai\/(code\/)?artifact\/[A-Za-z0-9-]+/;
 export const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[A-Za-z]{1,8}\d+$/;
@@ -136,7 +138,12 @@ export function imagePathError(v, label = 'image') {
   return base && !base.includes('must end with') ? base : `${label} must end with one of ${IMAGE_EXTS.join(', ')}: ${String(v ?? '').trim()}`;
 }
 
-const MEDIA_CHECK = { video: videoPathError, audio: audioPathError, image: imagePathError, project: projectPathError };
+/** Board link: a https://claude.ai/artifact/<id> (or /code/artifact/<id>) URL. */
+export function boardUrlError(v, label = 'board') {
+  return BOARD_URL_RE.test(String(v ?? '').trim()) ? '' : `${label} must be a claude.ai artifact link (https://claude.ai/artifact/<id>): ${String(v ?? '').trim()}`;
+}
+
+const MEDIA_CHECK = { video: videoPathError, audio: audioPathError, image: imagePathError, project: projectPathError, board: boardUrlError };
 
 /** Error for one media path of `kind`, or null. */
 export function mediaPathError(kind, value) {
@@ -183,7 +190,7 @@ export function addAsk(task, {
     if (v == null || v === '') continue;
     const e = mediaPathError(kind, v);
     if (e) throw new Error(e);
-    m[kind] = tidyEvidencePath(v);
+    m[kind] = kind === 'board' ? String(v).trim() : tidyEvidencePath(v);
   }
   if (sameAs != null && sameAs !== '' && !ID_RE.test(String(sameAs).trim())) throw new Error(`--same-as must be a ticket id: ${sameAs}`);
   const refs = (checkRefs || []).map(r => ({ id: String(r?.id ?? '').trim(), text: String(r?.text ?? '') }));
@@ -198,7 +205,7 @@ export function addAsk(task, {
   const seenHeard = SEEN_HEARD_RE.test(text) || opts.some(o => SEEN_HEARD_RE.test(o.text))
     || (labels || []).some(l => MEDIA_LABELS.includes(String(l).toLowerCase()));
   if (!exempt && seenHeard && !Object.keys(m).length) {
-    throw new Error('a question about something seen or heard needs the thing to judge: --video, --audio, --image or --project');
+    throw new Error('a question about something seen or heard needs the thing to judge: --video, --audio, --image, --project or --board');
   }
   if (!Array.isArray(task.asks)) task.asks = [];
   const n = task.asks.reduce((mx, a) => Math.max(mx, Number(a?.n) || 0), 0) + 1;

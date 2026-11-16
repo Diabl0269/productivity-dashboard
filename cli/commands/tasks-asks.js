@@ -2,7 +2,7 @@
  * cli/commands/tasks-asks.js
  * Decisions a session leaves for Tal, shown in the Plan page's "For you" list (PRO73, PRO86):
  *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
- *       [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
+ *       [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
  *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
  *   answer <id> <key> --reopen [--json]   put a dismissed / answered question back to open (PRO107)
@@ -48,7 +48,7 @@ function mediaRelOrDie(value, kind) {
   return rel;
 }
 
-const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]';
+const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]';
 
 /** `ch tasks ask <id> "<question>"`: leave a decision for Tal on the ticket (sets its waitingOn). */
 export async function cmdAsk(argv) {
@@ -62,6 +62,7 @@ export async function cmdAsk(argv) {
     audio: { type: 'string' },
     image: { type: 'string' },
     project: { type: 'string' },
+    board: { type: 'string' },
     'same-as': { type: 'string' },
     'same-judgement': { type: 'boolean' },
     'not-same': { type: 'string' },
@@ -74,7 +75,7 @@ export async function cmdAsk(argv) {
   const task = ticketOrDie(doc, id);
   if (values['same-as']) ticketOrDie(doc, values['same-as']);
   const media = {};
-  for (const kind of MEDIA_KINDS) if (values[kind]) media[kind] = mediaRelOrDie(values[kind], kind);
+  for (const kind of MEDIA_KINDS) if (values[kind]) media[kind] = kind === 'board' ? values[kind].trim() : mediaRelOrDie(values[kind], kind);
   // PRO90: one judgement, one card: a question that repeats an unticked check on the ticket or its epic links to it or says it differs.
   if (values['same-judgement'] && values['not-same'] !== undefined) die('ask: pass --same-judgement or --not-same, not both');
   if (values['not-same'] !== undefined && !values['not-same'].trim()) die('ask: --not-same needs a reason: --not-same "<why these are different judgements>"');

@@ -408,6 +408,17 @@ function homeWithEvidence(files) {
   return dir;
 }
 
+test('CLI: --board stores the link on the ask and satisfies the seen/heard rule; a non-claude.ai URL is refused', () => {
+  const dir = homeWithEvidence([]);
+  const board = 'https://claude.ai/artifact/D5DTGigt1wwT8B7jghYo3j';
+  let r = runCli(['tasks', 'ask', 'T1', 'Does the new card look right?', '--board', board, '--details', D], dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(readTask(dir, 'T1').asks[0].media, { board });
+  r = runCli(['tasks', 'ask', 'T2', 'Does the new card look right?', '--board', 'https://example.com/x', '--details', D], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /board must be a claude\.ai artifact link/);
+});
+
 test('CLI: ask with options + media, answer by letter (key optional), refusals for long / taste / missing media', () => {
   const dir = homeWithEvidence(['T1/shot.png', 'T1/clip.mp4']);
   let r = runCli(['tasks', 'ask', 'T1', 'Keep it or drop it?', '--option', 'A: keep', '--option', 'B: drop', '--recommend', 'A',
@@ -486,9 +497,20 @@ test('addAsk: details are required (60+ characters) and say what to include', ()
   assert.equal(addAsk(t, { text: 'Pick A or B?', details: D }).details, D);
 });
 
+test('addAsk: a claude.ai board link is the thing to judge; other URLs are refused', () => {
+  const t = { id: 'X1' };
+  const board = 'https://claude.ai/artifact/D5DTGigt1wwT8B7jghYo3j';
+  const ask = addAsk(t, { text: 'Does the glow look right?', details: D, media: { board } });
+  assert.deepEqual(ask.media, { board });
+  assert.ok(addAsk(t, { text: 'Which one?', details: D, labels: ['ui'], media: { board: 'https://claude.ai/code/artifact/abc-123' } }));
+  assert.throws(() => addAsk(t, { text: 'Does it look right?', details: D, media: { board: 'https://example.com/artifact/abc' } }), /board must be a claude\.ai artifact link/);
+  assert.throws(() => addAsk(t, { text: 'Does it look right?', details: D, media: { board: 'X1/board.png' } }), /board must be a claude\.ai artifact link/);
+  assert.deepEqual(askErrors(t, 'x'), []);
+});
+
 test('addAsk: a question about something seen or heard needs media; ui / audio labels always do', () => {
   const t = { id: 'X1' };
-  const need = /needs the thing to judge: --video, --audio, --image or --project/;
+  const need = /needs the thing to judge: --video, --audio, --image, --project or --board/;
   assert.throws(() => addAsk(t, { text: 'Does the glow look right?', details: D }), need);
   assert.throws(() => addAsk(t, { text: 'Which one?', options: ['A: louder', 'B: it sounds thin'], details: D }), need, 'an option can carry the word');
   assert.throws(() => addAsk(t, { text: 'Which one?', details: D, labels: ['ui'] }), need);
@@ -515,13 +537,13 @@ test('CLI: ask refused without details or media, accepted with them; a ui ticket
   assert.match(r.stderr, /at least 60 characters/);
   r = runCli(['tasks', 'ask', 'T1', 'Does the glow look right?', '--details', D], dir);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /--video, --audio, --image or --project/);
+  assert.match(r.stderr, /--video, --audio, --image, --project or --board/);
   r = runCli(['tasks', 'ask', 'T1', 'Does the glow look right?', '--details', D, '--project', 'T1/a.agsproj'], dir);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(readTask(dir, 'T1').asks[0].details, D);
   writeTask(dir, 'T2', { labels: ['ui'] });
   r = runCli(['tasks', 'ask', 'T2', 'Ship it?', '--details', D], dir);
-  assert.match(r.stderr, /--video, --audio, --image or --project/, 'ui label');
+  assert.match(r.stderr, /--video, --audio, --image, --project or --board/, 'ui label');
   r = runCli(['tasks', 'ask', 'T2', 'Ship it?', '--details', D, '--project', 'T1/a.agsproj'], dir);
   assert.equal(r.status, 0, r.stderr);
 });
