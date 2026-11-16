@@ -3,7 +3,7 @@
 //   rank(query, items, opts?) -> [{ item, score, ranges, idRanges }], best first
 //
 // An item is { title, id?, keywords?, recent? }: `title` and `id` are matched (and highlighted),
-// `keywords` only matched, `recent` is a number (bigger = used more recently) that breaks ties.
+// `keywords` only matched, `bias` a small score nudge (-10 .. 10), `recent` is a number (bigger = used more recently) that breaks ties.
 // The query is split on spaces; every word must match the title, the id or the keywords. A word
 // matches as a plain substring (best), or else as a subsequence of letters in order. Bonuses: start
 // of a word, start of the text, letters side by side. An id equal to the whole query comes first.
@@ -90,6 +90,7 @@ function scoreItem(words, q, item) {
   else if (id && il.startsWith(q)) score += 60;
   if (tl === q) score += 200;
   score -= Math.min(title.length, 200) * 0.05;
+  score += item.bias || 0; // a small nudge (e.g. done tickets a little below open ones at equal match quality)
   return { score, ranges: mergeRanges(ranges), idRanges: mergeRanges(idRanges) };
 }
 

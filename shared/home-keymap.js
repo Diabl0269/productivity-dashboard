@@ -21,6 +21,7 @@ export const KEY_GROUPS = ['Find', 'Views', 'Places', 'Close', 'Help', 'In the p
 export const BUILTIN_KEYS = [
   { id: 'palette', keys: ['Mod+K'], label: 'Open the palette: places, tickets, views and commands', group: 'Find', scope: 'page' },
   { id: 'palette-slash', keys: ['/'], label: 'Open the palette (a view with a search box of its own keeps this key)', group: 'Find', scope: 'page' },
+  { id: 'note', keys: ['n'], label: 'Write a note with no ticket (handled by the Note button)', group: 'Find', scope: 'page' },
   { id: 'prev-place', keys: ['['], label: 'Select the previous place on the same level', group: 'Places', scope: 'page' },
   { id: 'next-place', keys: [']'], label: 'Select the next place on the same level', group: 'Places', scope: 'page' },
   { id: 'up-place', keys: ['u'], label: 'Select the place one level up', group: 'Places', scope: 'page' },

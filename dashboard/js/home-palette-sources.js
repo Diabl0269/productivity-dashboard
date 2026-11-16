@@ -10,6 +10,7 @@ import { GO_KEYS } from '../../shared/home-keymap.js';
 
 export const GROUPS = ['Places', 'Tickets', 'Views', 'Commands'];
 const RECENT_MAX = 8;
+const CLOSED = new Set(['done', 'archive']);
 const LEVEL = { group: 'group', area: 'area', part: 'part' };
 const ticketCache = new WeakMap(); // doc -> items; a new doc object (a refresh) starts empty
 
@@ -45,6 +46,7 @@ export function ticketItems(ctx) {
       items.push({
         key: `ticket:${t.id}`, group: 'Tickets', title: t.title || t.id, id: t.id,
         hint: `${names.get(s.id) || s.id}${t.type ? ` · ${t.type}` : ''}`,
+        bias: CLOSED.has(s.id) ? -12 : 0, // open tickets first at equal match quality
         run: () => ctx.openTicket(t.id),
       });
     }
@@ -90,9 +92,11 @@ async function copyLink(ctx) {
 /** The built-in commands (names and what they do are in docs/home-page.md). */
 export function builtinCommands(ctx, { openHelp }) {
   const list = [
-    { id: 'note', title: 'Add a note', hint: 'opens the note box', keywords: 'new write', run: (c) => document.dispatchEvent(new CustomEvent('hm:note', { detail: { where: c.selection() } })) },
+    { id: 'note', title: 'Add a note', hint: 'N', keywords: 'new write', run: (c) => document.dispatchEvent(new CustomEvent('hm:note', { detail: { where: c.selection() } })) },
     { id: 'clear-selection', title: 'Clear the selected place', hint: 'Esc', keywords: 'deselect everything', when: () => hasSelection(), run: (c) => c.clearSelection() },
     { id: 'copy-link', title: 'Copy link to this view', hint: 'the address of this view and place', keywords: 'url share', run: (c) => copyLink(c) },
+    { id: 'how-it-works', title: 'Show how it works for this place', hint: 'inspector', keywords: 'explain docs page', when: () => hasSelection() && !!document.querySelector('[data-hm-key="insp-how"]'), run: () => showInspectorTab('how') },
+    { id: 'usage', title: 'Open usage', hint: 'top bar', keywords: 'limit week cost meter', when: () => !!document.querySelector('[data-hm-key="usage"]'), run: () => document.querySelector('[data-hm-key="usage"]')?.click() },
     { id: 'help', title: 'Open keyboard help', hint: '?', keywords: 'keys shortcuts', run: () => openHelp() },
   ];
   if (document.getElementById('themeToggle')) {

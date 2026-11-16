@@ -25,6 +25,7 @@ modal) or the palette or this sheet is open, or outside the Home tab. `Mod` is C
 | **Find** | |
 | `⌘K` (`Ctrl+K`) | Open the palette: places, tickets, views and commands |
 | `/` | Open the palette (a view with a search box of its own keeps this key) |
+| `n` | Write a note with no ticket (handled by the Note button) |
 | **Views** | |
 | `1` | Go to Overview |
 | `2` | Go to Map |
@@ -65,7 +66,7 @@ exact ticket id always comes first, and at most 50 rows are drawn.
 
 Built-in commands: Add a note (sends a `hm:note` event on `document` for the note box), Clear the selected
 place, Switch project to ..., Toggle theme (the header's theme button), Copy link to this view, Open keyboard
-help. A view that has a search box of its own keeps `/` by setting `data-hm-claims-slash` on its root element.
+help, Open usage (the top bar chip), Show how it works for this place (the inspector tab). Open tickets rank above done and archived ones at equal match quality. A view that has a search box of its own keeps `/` by setting `data-hm-claims-slash` on its root element.
 Any feature adds its own with `registerHomeCommand`, see below.
 
 ## Pointing a project at its config

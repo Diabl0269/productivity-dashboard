@@ -258,6 +258,7 @@ function buildTrigger(root) {
   b.dataset.hmKey = 'palette-trigger';
   b.title = `Search or jump (${formatChord('Mod+K', mac)})`;
   b.setAttribute('aria-haspopup', 'dialog');
+  b.setAttribute('aria-label', 'Search or jump');
   b.setAttribute('aria-expanded', String(st.open));
   b.setAttribute('aria-keyshortcuts', 'Meta+K Control+K');
   b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';

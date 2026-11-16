@@ -93,3 +93,10 @@ test('3,000 items rank well inside a generous bound', () => {
   assert.ok(each < 50, `one ranking of 3,000 items took ${each.toFixed(1)} ms (limit 50 ms; usually under 10)`);
   assert.equal(rank('PRJ1234', items)[0].item.id, 'PRJ1234');
 });
+
+test('bias puts open items above done ones at equal match quality, but not above a better match', () => {
+  const items = [{ title: 'Oven timer', bias: -12 }, { title: 'Oven timer' }];
+  assert.deepEqual(rank('oven', items).map(r => r.item.bias || 0), [0, -12]);
+  const better = rank('oven', [{ title: 'Oven', bias: -12 }, { title: 'A long way to the old oven timer room' }]);
+  assert.equal(better[0].item.title, 'Oven');
+});
