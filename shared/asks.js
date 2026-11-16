@@ -466,7 +466,8 @@ export function resolveAsk(task, key, {
       out.decision = { at: now, text: `${by} ${day}: asked "${question}": ${said || 'done'} (filed as ${filedTo})` };
     } else {
       out.note = addReviewNote(task, { text: `${by} answered "${question}": ${said || 'done'}`, kind: 'fix', now });
-      if (own) own.filedAs = `${task.id}#${out.note.n}`;
+      // The dashboard's tickets carry the ticket id as `taskId` (`id` is an internal number).
+      if (own) own.filedAs = `${task.taskId || task.id}#${out.note.n}`;
       out.file = true;
       return out;
     }

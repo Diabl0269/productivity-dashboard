@@ -23,6 +23,8 @@
  * Pure (no fs, no DOM). All three arguments are parsed documents ({ sections: [...] }).
  */
 
+import { waitsOnTal } from './asks.js';
+
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
@@ -150,6 +152,12 @@ function mergeTicket(b, l, c) {
   if (l.asks || c.asks || base.asks) {
     const asks = mergeNotes(base.asks, l.asks, c.asks, 'open');
     if (asks.length) m.asks = asks; else delete m.asks;
+    // An answer given here clears waitingOn. The generic rule above keeps current's value when the other
+    // side changed it too (or the base never had the ticket), which left the ticket "waiting on Tal" with
+    // no open ask: the For you card came back as a bare waiting row. Resolving the last open ask ends the wait.
+    const resolvedHere = (l.asks || []).some(la => la && la.state !== 'open'
+      && [...(b?.asks || []), ...(c.asks || [])].some(o => o && o.n === la.n && o.state === 'open'));
+    if (resolvedHere && !waitsOnTal(l) && waitsOnTal(m) && !asks.some(a => a.state === 'open')) delete m.waitingOn;
   }
   for (const k of ['resolvedAsks', 'decisions']) {
     if (!l[k] && !c[k]) continue;
