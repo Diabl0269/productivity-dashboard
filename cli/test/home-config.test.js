@@ -39,7 +39,7 @@ test('the shipped example is valid v1 with no problems', () => {
   assert.deepEqual(oven.parts.map(p => p.id), ['proofing', 'deck-oven']);
   assert.deepEqual(oven.parts[0].parts, []);
   assert.deepEqual(oven.box, [40, 320, 380, 140]);
-  assert.equal(config.services.length, 2);
+  assert.equal(config.services.length, 3);
   assert.equal(config.automations[0].what.startsWith('Prints'), true);
   assert.equal(config.cables.length, 2);
 });
@@ -50,7 +50,7 @@ test('every box comes back with the full v1 shape and defaults', () => {
   assert.deepEqual(config.groups[0].areas[0], {
     id: 'a', name: 'A', lanes: [], match: null, projects: [], box: null, page: null, covers: [], parts: [],
   });
-  assert.deepEqual(Object.keys(config), ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'fallback', 'legacy']);
+  assert.deepEqual(Object.keys(config), ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'lifecycle', 'fallback', 'legacy']);
 });
 
 test('the older flat shape is nested under its groups, with no problems', () => {

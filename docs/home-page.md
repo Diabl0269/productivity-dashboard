@@ -58,10 +58,60 @@ Keys starting with `$` (like `$comment`) are ignored. Any other unknown key is r
   SVG path, `label` an optional caption.
 - **`pages`**: optional `{ "<box id>": "<page path>" }`, to give boxes pages without touching their entries (a `page` on the box wins; works for the older flat shape too). **`page`** at the top is the project's own page, shown when nothing is selected.
 - **`decorations`**: optional path of an SVG file drawn behind the map, relative to the config file.
-- **`services`**: the running things the project depends on: `id`, `name` and `what` (one line).
-  Later views add more keys; extra keys are kept.
-- **`automations`**: jobs that run by themselves (schedules, hooks, bots): `id`, `name`, `what`.
-  Extra keys are kept, as for services.
+- **`services`**: the outside services the project depends on: `id`, `name` and `what` (one line), plus
+  the keys under "How it runs" below. Keys this page does not know are kept for later features.
+- **`automations`**: jobs that run by themselves (schedules, hooks, CI, runs inside another job): `id`,
+  `name`, `what`, plus the keys under "How it runs" below. Unknown keys are kept, as for services.
+- **`lifecycle`**: optional changes to the "How it runs" flow (below).
+
+### How it runs: automations, services and the flow
+
+The "How it runs" view (key 5) draws the life of a note as a flow (note written, filed and explained,
+ready, being built, questions for you, waiting for your checks, done) with live counts, then lists every
+automation and service with its state. `ch tasks automations [--project <slug>] [--json]` prints the same
+list in the terminal. The lower strip shows "2 automations late" only while something needs a look.
+
+An **automation**:
+
+| Key | What it is |
+| --- | --- |
+| `trigger` | when it runs, in words ("every 10 min", "before every commit") |
+| `kind` | `launchd`, `cron`, `hook`, `ci`, `skill`, `file` or `inside` (runs inside another job) |
+| `group` | the heading it is listed under; by default from `kind`: Scheduled jobs, Inside another job, Hooks, CI, By hand |
+| `status` | where its last run can be read: one source or a list of sources (below); left out = no status |
+| `docs` | a web address or file path about it |
+
+A **service**: `usedBy` (the group, area or part ids that use it), `console` (the https address of its
+console, shown as an Open console button), `status` (one source or a list) and `cost` (text, or
+`{ "note": "..." }`).
+
+A **status source** is `{ "type": ..., ... }`. Paths may start with `~`; a relative path is read from the
+config file's folder. Every reader only reads, gives up after a few seconds, and says in plain words why
+it cannot tell (the chip is then "unknown").
+
+| `type` | Needs | Reads |
+| --- | --- | --- |
+| `mtime` | `path`; `match` (a folder's entries to count, by name pattern, e.g. `^\\.git$`) | the newest change of a file or folder; with `match`, only the matching entries (so other writers to the folder do not hide a stopped job) |
+| `json-file` | `path`; `field` (a time, default `at`, dots for nested keys), `okField` | a time and an ok/failed field of a JSON file |
+| `log-tail` | `path`; `okPattern`, `failPattern` | the last non-empty line of a log and the time it starts with (else the file's time) |
+| `launchctl` | `label` | `launchctl print gui/<uid>/<label>`: loaded or not, last exit code, run interval or calendar times (the next run). The dashboard server must run outside a sandbox for this. |
+| `gh-workflow` | `repo` (`owner/name`), `workflow` (its name) | the last run through the `gh` command, cached for a minute |
+| `http` (services) | `url` | a GET with a 3 s timeout. Only `https://`, or `http://` to localhost; never an address with a user, password, `token`, `key=` or `secret` in it. The tracker never sends credentials: a service that needs a sign-in uses `none` and its console link. |
+| `none` | | nothing; the row shows what it is and its console link |
+
+Any source can add `maxAgeMin`: a last run older than that many minutes makes the chip "late". Services
+take `gh-workflow`, `http`, `json-file` or `none`. The chip is **ok** (ran, nothing failed), **late**,
+**failed** (a failed exit, a fail pattern, a red CI run, a service that does not answer), **off**
+(launchd does not know the job) or **unknown**. With several sources, a failure wins and the newest run
+counts.
+
+`lifecycle` relabels or hides steps of the flow: `{ "stages": [{ "id": "ready", "label": "Queued" },
+{ "id": "filed", "hide": true }] }`. Step ids: `note`, `filed`, `ready`, `running`, `asks`, `review`, `done`.
+
+Server: `GET /api/home/automations?project=<slug>` and `GET /api/home/services?project=<slug>` answer each
+entry with its `result` (`{ lastRun, ok, late, nextRun?, detail, off?, sources }`); results are cached for
+60 s and the readers run in parallel, so a slow one answers `{ checking: true }` and fills in on the next
+request.
 
 ### The older flat shape
 
