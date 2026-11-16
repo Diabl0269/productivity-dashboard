@@ -68,11 +68,51 @@
   ],
   "decorations": null,
   "services": [
-    { "id": "order-api", "name": "Order API", "what": "Takes online orders and pickup slots." },
-    { "id": "till-sync", "name": "Till sync", "what": "Copies the day's till sales into the order database every evening." }
+    {
+      "id": "order-api", "name": "Order API", "what": "Takes online orders and pickup slots.",
+      "usedBy": ["website", "checkout"], "console": "https://console.bakery.example/order-api",
+      "status": { "type": "http", "url": "https://orders.bakery.example/health" },
+      "cost": { "note": "Free tier, up to 1,000 orders a month" }
+    },
+    {
+      "id": "site-ci", "name": "Website builds", "what": "Builds and publishes the bakery site on every merge.",
+      "usedBy": ["website"], "console": "https://github.com/corner-bakery/bakery-site/actions",
+      "status": { "type": "gh-workflow", "repo": "corner-bakery/bakery-site", "workflow": "CI" }
+    },
+    {
+      "id": "till-sync", "name": "Till sync", "what": "Copies the day's till sales into the order database every evening.",
+      "usedBy": ["counter"], "console": "https://till.example/admin",
+      "status": { "type": "none" }
+    }
   ],
   "automations": [
-    { "id": "morning-bake-list", "name": "Morning bake list", "what": "Prints tomorrow's bake list from the pre-orders at 6 pm." },
-    { "id": "stock-reminder", "name": "Stock reminder", "what": "Opens a ticket when flour or butter runs below two days of stock." }
+    {
+      "id": "morning-bake-list", "name": "Morning bake list", "what": "Prints tomorrow's bake list from the pre-orders at 6 pm.",
+      "trigger": "every day at 18:00", "kind": "launchd",
+      "status": [
+        { "type": "launchctl", "label": "com.cornerbakery.bake-list" },
+        { "type": "log-tail", "path": "logs/bake-list.log", "okPattern": "printed", "failPattern": "error|failed", "maxAgeMin": 1500 }
+      ],
+      "docs": "docs/bake-list.md"
+    },
+    {
+      "id": "oven-watch", "name": "Oven watch", "what": "Every 10 minutes, checks the oven temperature log and pages the baker if it drops.",
+      "trigger": "every 10 min", "kind": "cron",
+      "status": { "type": "json-file", "path": "~/.bakery/oven-watch.json", "field": "at", "okField": "ok", "maxAgeMin": 25 }
+    },
+    {
+      "id": "stock-reminder", "name": "Stock reminder", "what": "Opens a ticket when flour or butter runs below two days of stock.",
+      "trigger": "inside the oven watch, once a day", "kind": "inside", "group": "Inside the oven watch",
+      "status": { "type": "mtime", "path": "~/.bakery/stock-reminder.date", "maxAgeMin": 1500 }
+    },
+    {
+      "id": "no-raw-flour", "name": "Allergen check", "what": "Refuses a menu change that drops an allergen line.",
+      "trigger": "before every commit", "kind": "hook", "status": { "type": "none" }
+    },
+    {
+      "id": "site-tests", "name": "Site tests", "what": "Runs the website tests on every pull request.",
+      "trigger": "every pull request", "kind": "ci",
+      "status": { "type": "gh-workflow", "repo": "corner-bakery/bakery-site", "workflow": "CI" }
+    }
   ]
 }

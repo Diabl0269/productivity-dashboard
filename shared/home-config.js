@@ -12,12 +12,13 @@
 import {
   isPlainObject, shown, str, strOrNull, strList, regex, rect, id as checkId, unknownKeys, objList,
 } from './home-config-check.js';
+import { normAutomations, normServices, normLifecycle } from './home-config-runs.js';
 
 import { applyPages } from './home-pages-config.js';
 
 export const HOME_CONFIG_VERSION = 1;
 
-const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'fallback', 'pages', 'page'];
+const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'lifecycle', 'fallback', 'pages', 'page'];
 const LEGACY_KEYS = ['repos', 'groups', 'keywordProjects', 'areas', 'cables', 'fallback', 'pages', 'page'];
 const GROUP_KEYS = ['id', 'name', 'what', 'areas', 'keywordProjects', 'box', 'page', 'covers'];
 const BOX_KEYS = ['id', 'name', 'what', 'lanes', 'match', 'projects', 'box', 'page', 'covers', 'parts'];
@@ -135,27 +136,6 @@ function normCables(raw, errors, ids) {
   }).filter(Boolean);
 }
 
-/** services[] and automations[]: { id, name, what } now; any other keys are kept for later tickets. */
-function normEntries(raw, key, errors) {
-  const seen = new Set();
-  return objList(raw, key, '', errors).map((e, i) => {
-    const where = `${key}[${i}]`;
-    if (!isPlainObject(e)) {
-      errors.push(`${where}: should be an object with "id", "name" and "what", got ${shown(e)}; skipped.`);
-      return null;
-    }
-    const eid = checkId(e, where, errors);
-    if (eid === null) return null;
-    const here = `${key.replace(/s$/, '')} "${eid}"`;
-    if (seen.has(eid)) {
-      errors.push(`${here}: the id "${eid}" is used twice in "${key}"; the second is skipped.`);
-      return null;
-    }
-    seen.add(eid);
-    return { ...e, id: eid, name: nameOf(e, here, errors, eid), what: str(e, 'what', here, errors) };
-  }).filter(Boolean);
-}
-
 /**
  * repos[]: each entry is a text path or { name, path }; anything else is reported and skipped.
  * Paths are resolved later (server/home/repos.js), not here.
@@ -254,8 +234,9 @@ export function normalizeHomeConfig(raw) {
     groups: groups.filter(Boolean),
     cables: normCables(raw, errors, ctx.ids),
     decorations,
-    services: legacy ? [] : normEntries(raw, 'services', errors),
-    automations: legacy ? [] : normEntries(raw, 'automations', errors),
+    services: legacy ? [] : normServices(raw, errors, ctx.ids),
+    automations: legacy ? [] : normAutomations(raw, errors),
+    lifecycle: legacy ? null : normLifecycle(raw, errors),
     fallback: null,
     legacy,
   };
