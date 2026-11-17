@@ -4,7 +4,7 @@
 
 import { openEpicReadiness } from '../../shared/epic-ready.js';
 import {
-  ticketRows, filterRows, sortRows, groupRows, countByState, STATES,
+  ticketRows, filterRows, sortRows, groupRows, countByState, stateMatches, STATES,
 } from '../../shared/home-ticket-rows.js';
 import {
   DEFAULT_TICKET_VIEW, parseTicketParams, ticketParamsString, hasTicketParams, withTicketParams,
@@ -80,7 +80,7 @@ export function computeModel(ctx, vs, { place = true, folds = new Set() } = {}) 
   const counts = countByState(noState);
   counts.all = showDone ? noState.length : noState.length - counts.done;
   const wanted = vs.states.length ? new Set(vs.states) : null;
-  const shown = sortRows(noState.filter(r => (!wanted || wanted.has(r.state)) && (showDone || r.state !== 'done')), vs.sort, vs.dir);
+  const shown = sortRows(noState.filter(r => (!wanted || stateMatches(r, wanted)) && (showDone || r.state !== 'done')), vs.sort, vs.dir);
   const total = placeSet ? filterRows(rows, { ...common, states: vs.states, showDone: vs.showDone }).length : shown.length;
   const groups = groupRows(shown, vs.group);
   const items = [];
