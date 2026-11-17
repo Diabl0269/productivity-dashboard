@@ -152,6 +152,15 @@ See `memory.example/` for the expected format.
 - Same data from the CLI: `ch tasks runplan` (`[running]` marks in-progress cards, `‖` a card that runs alongside the one above)
 - Start on a card also opens the Claude desktop app on a new Claude Code session with the card's `/ship-task` command typed in (a `claude://code/new` link; the app has no model parameter, so pick the model there). Set `claudeSessionFolder` in `config.json` to choose the folder it opens in.
 
+### Home Tab
+
+One project on one page: an Overview, a Map of the project's places you can zoom into, Lanes, a Tickets
+table and How it runs (automations and services), with an inspector, a usage chip and a running-work strip.
+Each project describes its map in its own `home.config.json`; start from `home.config.example.json` (a
+made-up bakery). Full guide: [docs/home-page.md](docs/home-page.md).
+
+![Home tab, Map view of the example bakery](docs/screenshots/home.png)
+
 ### Memory Viewer
 - Browse all memory files organized by directory
 - View detailed content of people, projects, and context files

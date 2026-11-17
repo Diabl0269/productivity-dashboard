@@ -1,14 +1,9 @@
 // home-registry.js — the one list of Home features. Each feature is its own module that registers
 // itself on import (registerHomeView / registerInspectorTab / registerTopBarItem / registerStripItem,
 // from home-state.js). To add one: create the module, then add ONE import line below.
-// Placeholders stay listed: a real registration with the same id (or, for the top bar, any real item
-// in the same slot) replaces its placeholder whatever the import order.
-//
-// The planned features have a reserved line each, kept apart by blank lines so tickets built in
-// parallel merge cleanly: uncomment yours (keep the file name, or rename it on that line). Anything
-// else goes at the end, one line per feature.
+// Every zone now has its real feature (the PRO116 placeholders were removed in PRO127); home-state.js still
+// lets a `placeholder: true` registration give way to a real one, for a zone a later feature reserves.
 
-import './home-placeholders.js'; // PRO116: quiet stand-ins until each feature lands
 
 import './home-overview-view.js'; // PRO129: Overview view (key 1, id 'overview')
 

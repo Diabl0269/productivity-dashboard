@@ -971,12 +971,11 @@ const server = http.createServer(async (req, res) => {
       if (!isAssetRequest && url.pathname.startsWith('/dashboard/')) {
         const spaIndex = path.join(ROOT, 'dashboard', 'index.html');
         if (fs.existsSync(spaIndex)) {
-          res.writeHead(200, {
-            ...corsHeaders,
-            'Content-Type': 'text/html',
-            'Cache-Control': 'no-store',
+          // PRO127: the <base> goes into the HTML itself so nested routes load ./styles and ./js from /dashboard/
+          import('./server/spa-index.js').then(({ withBase }) => {
+            res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/html', 'Cache-Control': 'no-store' });
+            res.end(withBase(fs.readFileSync(spaIndex, 'utf8'), url.pathname));
           });
-          fs.createReadStream(spaIndex).pipe(res);
           return;
         }
       }

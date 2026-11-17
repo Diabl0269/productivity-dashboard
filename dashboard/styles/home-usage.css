@@ -3,7 +3,7 @@
 
 .hu-chip {
   display: inline-flex; align-items: center; gap: 7px; flex: none; max-width: 100%;
-  min-width: 36ch; justify-content: flex-start; /* room for the longest text: a changing number never moves its neighbours */
+  min-width: 30ch; justify-content: flex-start; /* room for the longest text: a changing number never moves its neighbours */
   font: inherit; font-size: 12px; font-weight: 600; color: var(--text-primary); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 3px 12px 3px 10px; cursor: pointer; white-space: nowrap;
   font-variant-numeric: tabular-nums; line-height: 1.2;
@@ -64,5 +64,6 @@
 .hu-usd { min-width: 6ch; text-align: right; font-weight: 600; }
 .hu-foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 @media (max-width: 900px) { .hu-chip { min-width: 0; } }
+.hu-chip[aria-busy="true"] .hu-text { color: var(--text-tertiary); font-weight: 500; }
 .hu-copy { align-self: flex-start; margin-top: 4px; font: inherit; font-size: 12px; font-family: var(--font-mono); color: var(--text-primary); background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px 8px; cursor: pointer; }
 .hu-copy:hover { border-color: var(--text-secondary); }

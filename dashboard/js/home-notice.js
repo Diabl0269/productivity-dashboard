@@ -28,7 +28,7 @@ function setupCard(project) {
     : 'No project has a home config yet, so Home cannot draw a map or group the work.'));
   const steps = el('ol', 'hm-steps');
   const s1 = el('li');
-  s1.append('Copy ', el('code', '', EXAMPLE_FILE), ' (in the dashboard folder) next to your project and name it ', el('code', '', 'home.config.json'), '.');
+  s1.append('Copy ', el('code', '', EXAMPLE_FILE), ' (in the tracker\'s own folder, next to serve.js) to your project and name it ', el('code', '', 'home.config.json'), '.');
   const s2 = el('li', '', 'Describe your groups and areas in it.');
   const s3 = el('li');
   s3.append('Add it to your tracker ', el('code', '', 'config.json'), ':');

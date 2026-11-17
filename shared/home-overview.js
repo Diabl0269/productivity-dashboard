@@ -11,7 +11,10 @@
  * readinessById  Map of epic id -> epicReadiness row (shared/epic-ready.js openEpicReadiness)
  * running        the /api/home/running answer (shared/running.js computeRunning), or null
  * now            ms
- * extras         { epicIds?: Set|null (the selected place's epics), placeName?, nextStart? (computeNextStart's
+ * extras         { epicIds?: Set|null (home-scope: the selected place's epics, else the project's ids), projectIds? (the
+ *                  project's ids, for "Where the work is", which keeps the whole map), placeName? (only
+ *                  when a place is selected), noteScope? (only when a place is selected), noteProjects? (Set: the
+ *                  project family a free note must be in), nextStart? (computeNextStart's
  *                  answer), where? ({ group, area, part } selected), health? (home-health-data getHealth()),
  *                  rows? (rows per card, default 5) }
  *
@@ -93,15 +96,18 @@ function needsYou(doc, keep, rows) {
 
 // ===== Running now: the running answer (shared/running.js computeRunning), as the strip's panel shows it. =====
 
+// "Running" is live work only (working, waiting on CI, waiting on you), as the Tickets view and the strip count it;
+// idle items (a worktree or a recent commit, nothing live) are listed after it and counted apart.
 function runningNow(running, epicIds, rows) {
-  const all = (running?.running || []).filter(i => !epicIds || (i.epicId != null && epicIds.has(i.epicId)));
+  const all = (running?.running || []).filter(i => !epicIds || epicIds.has(i.epicId || i.id));
   const counts = {};
   for (const i of all) counts[i.state] = (counts[i.state] || 0) + 1;
+  const live = all.filter(i => i.state !== 'idle').length;
   const items = all.map(i => ({
     key: `t-${i.id}`, kind: 'running', id: i.id, title: i.title || '', state: i.state, since: i.since || null,
     line: (i.sources || []).join(' + '), epicId: i.epicId || null, target: { view: 'lanes', ticket: i.id },
   }));
-  return { count: all.length, counts, known: !!running, ...cut(items, rows), target: { view: 'lanes', focus: 'running' } };
+  return { count: live, idle: all.length - live, counts, known: !!running, ...cut(items, rows), target: { view: 'lanes', focus: 'running' } };
 }
 
 // ===== On the agenda: computeNextStart() (its next epic and time), the Ready epics of openEpicReadiness() in
@@ -216,16 +222,17 @@ function finished(doc, ix, keep, now, rows) {
 // ===== Where the work is: epicIdsForBox() per area (shared/home-areas.js), open epics = openEpicReadiness() rows,
 // running = epics with an item in the running answer. =====
 
-function places(config, doc, readinessById, running, selected) {
+function places(config, doc, readinessById, running, selected, keep) {
   if (!config?.groups?.length) return { groups: [], max: 0 };
-  const open = new Set(readinessById ? readinessById.keys() : []);
-  const live = new Set((running?.running || []).map(i => i.epicId).filter(Boolean));
+  const open = new Set([...(readinessById ? readinessById.keys() : [])].filter(keep));
+  const liveEpics = new Set((running?.running || []).filter(i => i.state !== 'idle').map(i => i.epicId).filter(Boolean));
   let max = 0;
   const groups = config.groups.map(g => {
     const areas = (g.areas || []).map(a => {
       const ids = [...epicIdsForBox(config, doc, a.id)].filter(id => open.has(id));
+      const live = ids.filter(id => liveEpics.has(id));
       max = Math.max(max, ids.length);
-      return { id: a.id, name: a.name || a.id, open: ids.length, running: ids.filter(id => live.has(id)).length, selected: selected.has(a.id), target: { view: 'map', where: a.id } };
+      return { id: a.id, name: a.name || a.id, open: ids.length, running: live.length, selected: selected.has(a.id), target: { view: 'map', where: a.id } };
     });
     return { id: g.id, name: g.name || g.id, open: areas.reduce((n, a) => n + a.open, 0), running: areas.reduce((n, a) => n + a.running, 0), selected: selected.has(g.id), areas, target: { view: 'map', where: g.id } };
   });
@@ -235,10 +242,12 @@ function places(config, doc, readinessById, running, selected) {
 // ===== Open notes: pendingReviewNotes() (shared/review-notes.js), newest first. =====
 
 // Each row is the note's own words, its ticket the quiet second line; a free note (PRO121) has no ticket
-// and stays in when no place is picked or its place / lane is inside the picked one (`scope`: { ids, lanes }).
-function notes(doc, keep, scope, filtered) {
+// and stays in when its project is the Home project's family (`projects`, PRO127) and no place is picked or its
+// place / lane is inside the picked one (`scope`: { ids, lanes }).
+function notes(doc, keep, scope, filtered, projects) {
   const all = [];
-  const inScope = n => !filtered || (scope && (scope.ids?.has(n.where) || (n.area && scope.lanes?.has(n.area))));
+  const inScope = n => (!projects || projects.has(n.project))
+    && (!filtered || (scope && (scope.ids?.has(n.where) || (n.area && scope.lanes?.has(n.area)))));
   for (const t of pendingReviewNotes(doc)) {
     const free = t.id === FREE_ID;
     if (free ? !inScope(t.notes[0] || {}) : !keep(t.id)) continue;
@@ -258,14 +267,17 @@ function notes(doc, keep, scope, filtered) {
 function health(h) {
   if (!h || typeof h !== 'object') return { lines: [] };
   const lines = [];
-  for (const [kind, one] of [['automations', 'automation'], ['services', 'service']]) {
-    const c = h[kind];
-    if (!c || typeof c !== 'object') continue;
-    for (const [word, n] of Object.entries(c)) {
-      if (word === 'ok' || !Number.isFinite(n) || n <= 0) continue;
-      lines.push({ key: `${kind}-${word}`, kind: 'health', text: `${plural(n, one)} ${word}`, target: { view: 'how-it-runs', focus: kind } });
-    }
+  // Only what needs a look, in the strip's words (home-health-data.js healthLine): an automation late, failed or off;
+  // a service that is not ok is "down". "unknown" and "checking" are not problems (a job with no status source is
+  // unknown by design), so they never light this card.
+  const n = v => (Number.isFinite(v) && v > 0 ? v : 0);
+  const a = h.automations && typeof h.automations === 'object' ? h.automations : {};
+  for (const word of ['failed', 'late', 'off']) {
+    if (n(a[word])) lines.push({ key: `automations-${word}`, kind: 'health', text: `${plural(a[word], 'automation')} ${word}`, target: { view: 'how-it-runs', focus: 'automations' } });
   }
+  const s = h.services && typeof h.services === 'object' ? h.services : {};
+  const down = n(s.failed) + n(s.late) + n(s.off) + n(s.down);
+  if (down) lines.push({ key: 'services-down', kind: 'health', text: `${plural(down, 'service')} down`, target: { view: 'how-it-runs', focus: 'services' } });
   for (const [i, p] of (Array.isArray(h.problems) ? h.problems : []).entries()) {
     const text = typeof p === 'string' ? p : p?.text;
     if (text) lines.push({ key: `problem-${i}`, kind: 'health', text, target: { view: 'how-it-runs' } });
@@ -292,19 +304,38 @@ export function summaryOf({ place, needs, running, ready, next }) {
 
 export function overviewModel(doc, config, readinessById, running, now, extras = {}) {
   const ix = index(doc);
+  // The ids that narrow every card (shared/home-scope.js): the selected place's epics, else the project's epics and
+  // its tickets under no epic. A ticket is kept when it or a ticket above it is in the set.
   const epicIds = extras.epicIds || null;
-  const keep = id => !epicIds || epicIds.has(epicOfId(ix.byId, id));
+  const keeper = (set) => {
+    const kept = new Map();
+    return (id) => {
+      if (!set) return true;
+      if (kept.has(id)) return kept.get(id);
+      const seen = new Set();
+      let ok = false;
+      for (let t = ix.byId.get(id); t && !seen.has(t.id); t = t.parentId ? ix.byId.get(t.parentId) : null) {
+        seen.add(t.id);
+        if (set.has(t.id)) { ok = true; break; }
+      }
+      kept.set(id, ok);
+      return ok;
+    };
+  };
+  const keep = keeper(epicIds);
+  // "Where the work is" always shows the whole map, so only the project narrows it, never the place.
+  const keepProject = keeper(extras.projectIds || null);
   const rows = extras.rows || OVERVIEW_ROWS;
   const w = extras.where || {};
   const selected = new Set([w.group, w.area, w.part].filter(Boolean));
   const model = {
-    place: epicIds ? (extras.placeName || null) : null,
+    place: extras.placeName || null,
     needsYou: needsYou(doc, keep, rows),
     running: runningNow(running, epicIds, rows),
     agenda: agenda(doc, ix, readinessById, running, keep, extras.nextStart, now, rows),
     finished: finished(doc, ix, keep, now, rows),
-    places: places(config, doc, readinessById, running, selected),
-    notes: notes(doc, keep, extras.noteScope, !!epicIds),
+    places: places(config, doc, readinessById, running, selected, keepProject),
+    notes: notes(doc, keep, extras.noteScope, !!extras.noteScope, extras.noteProjects || null),
     health: health(extras.health),
   };
   model.summary = summaryOf({

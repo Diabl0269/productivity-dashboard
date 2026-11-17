@@ -10,7 +10,7 @@
  *   prs:      { [branchOrUrl]: { url, state, checks: 'pending'|'passing'|'failing'|null } },
  *   now,                                                                   ms
  * }
- * opts = { liveSessionMinutes: 20, recentCommitHours: 6, staleDays: 7, project? }
+ * opts = { liveSessionMinutes: 20, recentCommitHours: 6, staleDays: 7, project?, scope? (home-scope.js projectScope; wins over project) }
  *
  * Rules (ported from a handbook-map prototype):
  *  - ticket ids are found with ID_RE in branch names and session prompts (the caller extracts the session ids
@@ -70,7 +70,8 @@ export function computeRunning(doc, inputs = {}, opts = {}) {
     grew = false;
     for (const p of doc?.meta?.projects || []) if (p?.parentId && family.has(p.parentId) && !family.has(p.id)) { family.add(p.id); grew = true; }
   }
-  const inProject = t => !o.project || family.has(t.project);
+  // `scope` (shared/home-scope.js projectScope) is the Home page's rule; without it, the project family only.
+  const inProject = t => (o.scope ? o.scope.hasId(t.id) : !o.project || family.has(t.project));
   const epicOf = t => {
     const seen = new Set();
     let c = t;

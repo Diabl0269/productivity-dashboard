@@ -2,6 +2,8 @@
    Same surfaces, chips, radii and type scale as the Plan page (run-plan.css); base.css tokens only. */
 
 #homePanel { overflow: hidden; min-height: 0; }
+/* PRO127: on Home the shared status toast sits above the bottom strip instead of over it. */
+body:has(#homePanel.active) .status-bar { bottom: calc(var(--space-6) + 44px); }
 .hm-root {
   --hm-insp-w: 320px;
   --hm-motion: 180ms;
@@ -22,10 +24,13 @@
 /* ── Top bar ── */
 /* Three columns so the view switch stays centred whatever the sides hold */
 .hm-top {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;
+  /* The right column never gets less than its content (search, note, usage), so it never clips; the left gives way
+     first and the view switch stays centred whenever both sides fit (PRO127). */
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: 12px;
   padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface-1);
 }
 .hm-top-left, .hm-slots { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.hm-top-left { container: hm-left / inline-size; }
 .hm-slots { justify-content: flex-end; gap: 6px; }
 .hm-slot { display: flex; align-items: center; gap: 6px; }
 .hm-slot:empty { display: none; }
@@ -34,6 +39,7 @@
 .hm-select {
   font: inherit; font-size: 13px; font-weight: 600; color: var(--text-primary); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; width: auto; max-width: 170px; flex: none; cursor: pointer;
+  field-sizing: content; /* as wide as the chosen project, not the longest option */
 }
 .hm-select:hover { border-color: var(--text-secondary); }
 
@@ -46,6 +52,8 @@
 .hm-where-path { display: flex; min-width: 0; white-space: nowrap; }
 .hm-where-up { color: var(--text-secondary); flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hm-where-up::after { content: " ›\00a0"; }
+/* A short left column keeps the place's own name whole and drops its parent (still in the chip's title). */
+@container hm-left (max-width: 400px) { .hm-where-up { display: none; } }
 .hm-where-name { font-weight: 600; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hm-where-clear {
   flex: none; width: 22px; height: 22px; border-radius: 50%; border: 0; background: transparent; color: var(--text-secondary);

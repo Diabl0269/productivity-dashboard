@@ -18,6 +18,7 @@ import { resolveRepos } from '../../server/home/repos.js';
 import { readTasksDoc } from '../../shared/tasks-files.js';
 import { normalizeTasksDoc } from '../lib/schema.js';
 import { computeRunning } from '../../shared/running.js';
+import { projectScope } from '../../shared/home-scope.js';
 import { collectRunningInputs } from '../lib/running-inputs.js';
 
 /** Absolute repo paths of a project's home config (the shared loader and resolver), or [] when there is none. */
@@ -72,7 +73,9 @@ export default async function cmdRunning(argv) {
   const now = Date.now();
   const doc = normalizeTasksDoc(readTasksDoc(dataRoot()));
   const inputs = await collectRunningInputs({ repos, now });
-  const result = computeRunning(doc, inputs, values.project ? { project: values.project } : {});
+  // The Home page's scope rule (shared/home-scope.js), so this list and Home's running numbers agree.
+  const scope = values.project ? projectScope(loadProjectHomeConfig(dataRoot(), values.project).config, doc, values.project) : null;
+  const result = computeRunning(doc, inputs, values.project ? { project: values.project, scope } : {});
   if (values.json) { jsonOut(result); return; }
   for (const line of runningLines(result, doc, now)) print(line);
 }

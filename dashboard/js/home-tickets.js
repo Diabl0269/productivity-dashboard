@@ -8,8 +8,8 @@
 // `/` jumps to the filter box from anywhere in Home's Tickets view; Esc in the box clears it, then leaves it.
 
 import { registerHomeView } from './home-state.js';
+import { selectedPlaceName } from './home-where.js';
 import { onRunning } from './home-running-data.js';
-import { boxOfWhere } from '../../shared/home-config.js';
 import { STATES } from '../../shared/home-ticket-rows.js';
 import { defaultDir, ticketParamsString, hasTicketParams } from '../../shared/home-ticket-params.js';
 import { computeModel, loadViewState, saveViewState, writeUrl } from './home-tickets-data.js';
@@ -96,9 +96,7 @@ function render(root, ctx) {
     if (!root.isConnected) return;
     const model = computeModel(ctx, inst.vs, { folds: inst.folds });
     inst.model = model;
-    const w = ctx.selection();
-    const box = ctx.config() ? boxOfWhere(ctx.config(), w) : null;
-    const placeName = box && (w.group || w.area || w.part) ? box.name : '';
+    const placeName = selectedPlaceName(ctx);
     bar.paint(inst.vs, model, { placeName, filtersOn: filtersOn(inst.vs) });
     table.paintSort(inst.vs.sort, inst.vs.dir);
     table.setItems(model.items, { anim, reset });

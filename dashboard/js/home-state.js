@@ -169,11 +169,14 @@ function sameWhere(a, b) {
 }
 
 /** Switch project: the selection belongs to the old map, so it is cleared. */
+const placeByProject = new Map(); // project -> the box id selected there (this visit), PRO127
+
 export function setProject(slug) {
   if (!slug || slug === state.project) return;
+  if (state.project) placeByProject.set(state.project, selectedBoxId());
   state.project = slug;
   state.where = EMPTY_WHERE;
-  state.pendingWhere = null;
+  state.pendingWhere = placeByProject.get(slug) || null; // resolved by setHomeData once the config is in
   state.home = null;
   notify({ type: 'project' });
   sync();

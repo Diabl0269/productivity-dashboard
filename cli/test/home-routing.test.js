@@ -112,3 +112,23 @@ test('home-state: the selection waits for the config, is kept across views, and 
   assert.ok(events.includes('view') && events.includes('selection') && events.includes('config'));
   off();
 });
+
+test('home-state: each project keeps its own selected place across a switch (PRO127)', async () => {
+  mockWindow('/dashboard/home/map', '');
+  const s = await import('../../dashboard/js/home-state.js');
+  const cfg = (area) => normalizeHomeConfig({ version: 1, groups: [{ id: `g-${area}`, name: 'G', areas: [{ id: area, name: area }] }] }).config;
+  s.applyHomeRoute({ homeView: 'map', homeProject: 'bakery' });
+  s.setHomeData({ project: 'bakery', config: cfg('oven'), errors: [] });
+  s.setSelection('oven');
+  s.setProject('garden');
+  assert.equal(s.selectedBoxId(), null); // a new project starts with no place
+  s.setHomeData({ project: 'garden', config: cfg('beds'), errors: [] });
+  s.setSelection('beds');
+  s.setProject('bakery');
+  assert.equal(s.homeRouteState().where, 'oven'); // waits for bakery's config, already in the address
+  s.setHomeData({ project: 'bakery', config: cfg('oven'), errors: [] });
+  assert.equal(s.selectedBoxId(), 'oven');
+  s.setProject('garden');
+  s.setHomeData({ project: 'garden', config: cfg('beds'), errors: [] });
+  assert.equal(s.selectedBoxId(), 'beds');
+});

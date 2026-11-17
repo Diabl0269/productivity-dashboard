@@ -52,10 +52,15 @@ export function projectFamily(doc, project) {
 
 export function mapScope(config, doc, { project = null } = {}) {
   const family = projectFamily(doc, project);
+  // PRO127: a title word claims another project's epic only when the group lists the projects its words may
+  // claim (`keywordProjects`); otherwise a loose word ("label", "proof") pulls in unrelated projects' epics.
+  const listsKeywordProjects = new Set((config?.groups || []).filter(g => Array.isArray(g.keywordProjects)).map(g => g.id));
   return (epic, where = boxForEpic(config, epic)) => {
     if (!where.area) return false;
     if (!family) return true;
-    return family.has(epic.project) || where.matchedBy !== 'fallback';
+    if (family.has(epic.project)) return true;
+    if (where.matchedBy === 'title') return listsKeywordProjects.has(where.group);
+    return where.matchedBy !== 'fallback';
   };
 }
 

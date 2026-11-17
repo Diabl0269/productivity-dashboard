@@ -151,7 +151,8 @@ export function paintWhere() {
   if (on) {
     // The place's own name stays readable; its parents shrink first when space is short.
     refs.wherePath.textContent = '';
-    if (names.length > 1) refs.wherePath.appendChild(el('span', 'hm-where-up', names.slice(0, -1).join(' › ')));
+    // Only the nearest parent: "Timeline › Audio clips" reads; a three-level chain does not fit the bar (title has it).
+    if (names.length > 1) refs.wherePath.appendChild(el('span', 'hm-where-up', names[names.length - 2]));
     refs.wherePath.appendChild(el('span', 'hm-where-name', names[names.length - 1] || ''));
   }
   refs.where.dataset.on = on ? 'true' : 'false';

@@ -12,21 +12,24 @@
 .hm-pal-trigger[aria-expanded="true"] { border-color: var(--accent); color: var(--text-primary); }
 .hm-pal-trigger svg { flex: none; }
 .hm-pal-trigger-text { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Top bar budget: the slots column shares the row with the view switch, so it degrades in a fixed order as the
-   window narrows (widths are fixed per step, so a changing number never moves its neighbours):
-   1. under 1800 px the search button is an icon + the key;  2. under 1500 px the usage chip is clipped to a short form;
-   3. under 1100 px the view tabs lose their number hints (their titles keep them). Nothing overlaps. */
+/* Top bar budget (PRO127): the right column is never narrower than its content (home.css), so the bar degrades in
+   a fixed order as the window narrows, whole words only (widths are fixed per step, so a changing number never
+   moves its neighbours): 1. under 1500 px the usage chip drops its reset time (" · resets Tue 13:00", kept in the
+   popover); 2. under 1200 px the search button is an icon + the key and the view tabs lose their number hints
+   (their titles keep them). Nothing overlaps from 1000 px up. */
 .hm-slots .hm-slot, .hm-slots .hm-slot-item { min-width: 0; }
 .hm-pal-trigger { min-width: 0; max-width: 100%; }
-.hm-slot[data-slot="search"] .hm-pal-trigger { width: 210px; }
-@media (max-width: 1799px) {
+.hm-slot[data-slot="search"] .hm-pal-trigger { width: 170px; }
+@media (min-width: 1800px) { .hm-slot[data-slot="search"] .hm-pal-trigger { width: 210px; } }
+@media (max-width: 1499px) {
+  .hm-slot[data-slot="usage"] .hu-chip { min-width: 17ch; }
+  .hu-rest { display: none; }
+}
+@media (max-width: 1199px) {
   .hm-slot[data-slot="search"] .hm-pal-trigger { width: auto; padding-right: 6px; cursor: pointer; }
   .hm-pal-trigger-text { display: none; }
 }
-@media (max-width: 1499px) {
-  .hm-slot[data-slot="usage"] .hu-chip { min-width: 0; width: 16ch; }
-}
-@media (max-width: 1099px) {
+@media (max-width: 1199px) {
   .hm-view-tab { padding: 5px 9px; gap: 0; }
   .hm-view-tab .hm-key { display: none; }
 }

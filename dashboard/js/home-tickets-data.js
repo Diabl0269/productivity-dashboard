@@ -10,7 +10,7 @@ import {
   DEFAULT_TICKET_VIEW, parseTicketParams, ticketParamsString, hasTicketParams, withTicketParams,
 } from '../../shared/home-ticket-params.js';
 import { getRunning } from './home-running-data.js';
-import { selectedEpicIds } from './home-where.js';
+import { selectedEpicIds, projectScopeOf } from './home-where.js';
 
 // ===== rows =====
 
@@ -57,8 +57,22 @@ export const lastBuildMs = () => cache.ms;
  * @param {{ place?: boolean, folds?: Set<string> }} [opts] place: narrow by the map selection (default true)
  * @returns {{ rows, counts, shown, total, groups, items, lanes, models, placeName }}
  */
-export function computeModel(ctx, vs, { place = true, folds = new Set() } = {}) {
+let scoped = { rows: null, scope: null, out: [] };
+
+/** The rows of the Home project only (shared/home-scope.js, the rule every Home view uses). */
+function projectRows(ctx) {
   const rows = getRows(ctx);
+  const scope = projectScopeOf(ctx);
+  if (!scope) return rows;
+  if (scoped.rows !== rows || scoped.scope !== scope) {
+    const out = rows.filter(r => scope.hasId(r.id));
+    scoped = { rows, scope, out, lanes: [...new Set(out.map(r => r.lane).filter(Boolean))].sort((a, b) => a.localeCompare(b)) };
+  }
+  return scoped.out;
+}
+
+export function computeModel(ctx, vs, { place = true, folds = new Set() } = {}) {
+  const rows = projectRows(ctx);
   const placeSet = place ? selectedEpicIds(ctx) : null;
   const common = { text: vs.text, types: vs.types, lane: vs.lane, model: vs.model, label: vs.label };
   const showDone = vs.showDone || vs.states.includes('done');
@@ -77,7 +91,8 @@ export function computeModel(ctx, vs, { place = true, folds = new Set() } = {}) 
     items.push({ kind: 'group', key: `g:${gk}`, foldKey: gk, groupKey: g.key, label: g.label, count: g.rows.length, counts: g.counts, collapsed });
     if (!collapsed) for (const row of g.rows) items.push({ kind: 'row', key: `r:${row.id}`, row });
   }
-  return { rows, counts, shown, total, groups, items, lanes: cache.lanes, models: cache.models, all: rows.length };
+  // the lane filter lists the project's lanes only
+  return { rows, counts, shown, total, groups, items, lanes: projectScopeOf(ctx) ? scoped.lanes : cache.lanes, models: cache.models, all: rows.length };
 }
 
 export { STATES };
