@@ -10,6 +10,32 @@ project's map) is kept across every view and in the address, so a link opens the
 
 Views, in order, with their number keys: Overview (1), Map (2), Lanes (3), Tickets (4), How it runs (5).
 Arrows move inside the view switch and the inspector tabs.
+
+- **Overview (1)**: one sentence ("In Mixer: 1 thing needs you. 3 running, 2 ready.") and cards: Needs you,
+  Running now, On the agenda, Finished lately, Open notes, Where the work is, Health. Every row opens its ticket.
+- **Map (2)**: the project drawn as boxes, from groups down to an area's parts, with live counts and dots.
+- **Lanes (3)**: the Plan page's For you, Ready, Auto queue and lanes, narrowed to the selected place. Ticking a
+  check, the Auto switch and Alt+arrow moves in the Auto queue save exactly as on the Plan tab (same code).
+- **Tickets (4)**: one table of every ticket (below).
+- **How it runs (5)**: the life of a note as a flow, then every automation and service with its state.
+
+The **inspector** on the right has tabs: Notes (open notes of the place, `N` writes one), Work (the place's
+epics), Tickets (its open tickets by state) and How it works (the place's handbook page). The **top bar** holds
+the project switcher, the selected place (its name; the parent too when there is room; `×` clears it), the
+view switch, search (`⌘K`), Note (`N`) and the usage chip (this week's cost; click for the details). The
+**strip** at the bottom says what is for you, any health problem (click: How it runs, problems only) and what
+is running (click: the running panel). Under 1500 px wide the usage chip drops its reset time, under 1200 px
+the search button shows only its icon; nothing clips.
+
+### Which tickets a project shows
+
+One rule, `shared/home-scope.js`, for every view, tab, strip item, `GET /api/home/running` and
+`ch tasks running --project`: an epic is the project's when its project is the Home project or one of its
+sub-projects, or when an area of the map claims it by lane or `projects` (or by a `match` word, only when the
+group lists `keywordProjects`). A ticket is in when its epic is, or, with no epic, when its own project is.
+A selected place narrows that further to the place's epics. Free notes follow their own `project`.
+"Running" always means live work (working, waiting on CI, waiting on you); idle work is listed but not
+counted, so the Overview card, the strip, the Map dots, the Tickets "Running" chip and the CLI agree.
 The Map (2) lays itself out for the window at every level (it does not use `box`): click or `Enter` zooms into a box, `Esc`/`Backspace` zooms out, `Home` goes to the top; an area's epics on none of its parts show in a dashed "Whole area" box, and the inspector's Work tab lists the selected place's epics (code: `dashboard/js/home-map*.js`, numbers: `shared/home-map-stats.js`).
 
 ## Keys and the palette
@@ -78,6 +104,18 @@ each one lives, by project slug (absolute paths only, `.json` files only):
 ```json
 "home": { "bakery": "/Users/you/code/bakery/home.config.json" }
 ```
+
+### Use it for another project in five steps
+
+1. Copy [`home.config.example.json`](../home.config.example.json) (a made-up bakery) into the project's
+   repo as `home.config.json`.
+2. Set `title` and `repos` (folders relative to the file), then draw `groups` > `areas` > `parts` with the
+   `lanes` each place owns; add `match` words only for titles the lanes miss.
+3. Point the tracker at it: `"home": { "bakery": "/abs/path/home.config.json" }` in the tracker's `config.json`.
+4. Open `/dashboard/home/map?hproject=bakery`: problems in the file are listed above the view; epics no area
+   claims sit in the `fallback` area (`unmatchedEpics`), give them a lane or a place.
+5. Add `automations` and `services` with a `status` reader each, and a `page` per box for How it works.
+   Each project keeps its own view, place and ticket filters.
 
 A project without an entry shows a "Set up this project" card. Start from
 [`home.config.example.json`](../home.config.example.json) (a made-up bakery). Problems in the file
@@ -183,7 +221,7 @@ group), so such a file needs no change.
 `shared/home-areas.js` puts every epic in one area (and in one of its parts, when a part claims it). The
 first rule that fits wins: (1) an area whose `lanes` hold the epic's lane; (2) an area whose `match` fits the
 epic's title, only when the epic's project is in the area's group `keywordProjects` (a group without the key
-allows every project); (3) an area whose `projects` hold the epic's project; (4) the `fallback` area. Areas
+allows every project, but then only the Home project's own epics count as on its map); (3) an area whose `projects` hold the epic's project; (4) the `fallback` area. Areas
 are tried in the order of the file (groups first to last, areas first to last). Epics that reach rule 4 are
 listed by `unmatchedEpics`, so the map's owner can give them a place.
 
@@ -290,8 +328,8 @@ config change. For selection changes, subscribe. `ctx` gives:
 | `redraw()` | draw this view, tab or item again in place |
 | `subscribe(fn)` | `fn({ type })` for `view`, `selection`, `project`, `config`, `tasks`; returns unsubscribe, and ends by itself when the view is left |
 
-A placeholder (registered with `placeholder: true`) gives way to the real registration with the same
-id; for the top bar, any real item replaces the placeholder of its slot.
+A registration with `placeholder: true` gives way to the real one with the same id (for the top bar, any
+real item replaces the placeholder of its slot), so a later feature can reserve a zone first.
 
 ## Server routes
 
@@ -310,7 +348,9 @@ every 15 s while the Home tab shows (`getRunning`, `onRunning`, `runningFor`, `e
 (`selectedEpicIds`, `ticketInSelection`). The "Running now" strip item and its panel are
 `dashboard/js/home-running-strip.js`.
 
-`server/home/project-config.js` loads a project's config for any route that needs it.
+`GET /api/home/usage?project=<slug>` returns this week's usage meter; it is cached 60 s, and an older
+answer is returned at once (`stale: true`) while a fresh one is read behind it, so only the first read
+after a server start waits on the transcripts.
 
 Handbook pages (routes in `server/home/page-routes.js`, spread into the table with one line):
 `GET /api/home/page?project=&box=` returns `{ box, name, page, title, updated, covers, markdown, imageBase,
