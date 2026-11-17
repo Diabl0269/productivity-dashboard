@@ -102,3 +102,18 @@ test('the exclusive state is unchanged: a flagged running ticket still counts as
   assert.equal(a1.needsYou, true);
   assert.equal(countByState(rows).running, 1);
 });
+
+test('PRO131: the Needs you chip and its filtered list equal the count when flagged tickets are running or in review', () => {
+  // The 36-vs-38 drift: tickets that need you but whose one state is running / in review were dropped by the
+  // exclusive state filter. Every call site must agree on the same fixture, with live work in the mix.
+  const doc = fixture();
+  const readiness = Object.fromEntries(openEpicReadiness(doc).map(r => [r.id, r]));
+  const rows = ticketRows(doc, config, readiness, { A1: { state: 'working' }, Q1: { state: 'waiting on CI' } });
+  const total = needsYou(doc).count;
+  assert.equal(total, 7);
+  assert.equal(rows.find(r => r.id === 'R1').state, 'in review');
+  const only = filterRows(rows, { states: new Set(['needs you']), showDone: false });
+  assert.equal(only.length, total);
+  assert.deepEqual(only.map(r => r.id).sort(), [...needsYou(doc).ids].sort());
+  assert.equal(countByState(filterRows(rows, { showDone: true }))['needs you'], total);
+});
