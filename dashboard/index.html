@@ -7,6 +7,7 @@
        (e.g. /dashboard/projects/foo) still load CSS/JS from /dashboard/… -->
   <script>
     (function () {
+      if (document.querySelector('base')) return; // the server wrote it (server/spa-index.js)
       var m = location.pathname.match(/^(.*\/dashboard)\/?/);
       var el = document.createElement('base');
       el.href = (m ? m[1] : '/dashboard') + '/';
