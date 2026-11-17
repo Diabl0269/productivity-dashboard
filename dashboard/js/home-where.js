@@ -8,9 +8,11 @@
 //   ticketInSelection(ctx, ticket) -> true when no place is selected, or the ticket's epic is in it.
 //                                     `ticket` is { id, epicId?, parentId? } (a running item, or a tracker ticket).
 //   ticketInScope(ctx, ticket)     -> ticketInSelection and inside the Home project
+//   selectedPlaceName(ctx)         -> the selected place's name ('Timeline & arrangement'), or '' (one helper for every view)
 
 import { epicIdsForBox } from '../../shared/home-areas.js';
 import { projectScope, narrowTo } from '../../shared/home-scope.js';
+import { boxOfWhere } from '../../shared/home-config.js';
 
 const cache = new WeakMap(); // doc -> { config, project, scope, byBox: Map(box id -> Set) }; a refresh starts empty
 
@@ -38,6 +40,13 @@ export function selectedEpicIds(ctx) {
   // A place's epics, kept to this project: the fallback area would otherwise pull in every other project's epics.
   if (!hit.byBox.has(boxId)) hit.byBox.set(boxId, narrowTo(epicIdsForBox(config, ctx.doc(), boxId), hit.scope));
   return hit.byBox.get(boxId);
+}
+
+export function selectedPlaceName(ctx) {
+  const w = ctx.selection?.() || {};
+  const config = ctx.config?.();
+  if (!config || !(w.group || w.area || w.part)) return '';
+  return boxOfWhere(config, w)?.name || '';
 }
 
 export function scopeIds(ctx) {

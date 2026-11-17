@@ -8,10 +8,9 @@
 // address); else ./home-where.js selectedEpicIds(ctx), the selected place; else the Home project's tickets.
 
 import { registerHomeView, registerStripItem, setView } from './home-state.js';
-import { boxOfWhere } from '../../shared/home-config.js';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { scopePlan, scopeForYou, scopeLine, scopeTest, scopeNotes, epicsFromSearch } from '../../shared/plan-scope.js';
-import { selectedEpicIds, projectScopeOf, scopeIds } from './home-where.js';
+import { selectedEpicIds, projectScopeOf, scopeIds, selectedPlaceName } from './home-where.js';
 import { asksFromState } from './asks-strip.js';
 import { interpretationsFromState } from './interpretation-card.js';
 import { fillEpicEstimates } from './ticket-cost-ui.js';
@@ -30,18 +29,13 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 let forcedIds = null; // the last ?hmEpics= set, until Clear
 
 /** "Kitchen › Oven" style name of the selected place, or ''. */
-function placeName(ctx) {
-  const config = ctx.config?.();
-  const box = config && boxOfWhere(config, ctx.selection?.() || {});
-  return box?.name || '';
-}
 
 /** The epics to show: { set: Set<string>, place, forced } or null for everything. */
 function placeScope(ctx) {
   forcedIds = epicsFromSearch(window.location.search) || forcedIds;
   if (forcedIds) return { set: forcedIds, place: 'the linked epics', forced: true };
   const set = selectedEpicIds(ctx) || null;
-  if (set) return { set, place: placeName(ctx) || 'the selected place', forced: false };
+  if (set) return { set, place: selectedPlaceName(ctx) || 'the selected place', forced: false };
   // No place: the Home project's tickets (shared/home-scope.js, the rule of every Home view); no "Showing" line.
   const project = projectScopeOf(ctx)?.ids || null;
   return project ? { set: project, place: null, forced: false } : null;

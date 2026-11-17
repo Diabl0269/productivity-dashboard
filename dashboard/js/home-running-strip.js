@@ -4,10 +4,9 @@
 // Esc, a click elsewhere or the same button again closes it the same way back.
 // Data: home-running-data.js (15 s poll). The panel is built once; refreshes only update it in place.
 
-import { registerStripItem, getHomeConfig, selectedBoxId } from './home-state.js';
+import { registerStripItem } from './home-state.js';
 import { getRunning, onRunning, startRunning, refreshRunning } from './home-running-data.js';
-import { selectedEpicIds, ticketInSelection } from './home-where.js';
-import { boxPath } from '../../shared/home-areas.js';
+import { selectedEpicIds, ticketInSelection, selectedPlaceName } from './home-where.js';
 import { syncRows, howLong } from './home-running-rows.js';
 import { activeMainTab } from './state.js';
 
@@ -24,11 +23,6 @@ function el(tag, className, text) {
   return node;
 }
 
-function placeName(ctx) {
-  const id = selectedBoxId();
-  const path = id ? boxPath(getHomeConfig(), id) : [];
-  return path.length ? path[path.length - 1].name : '';
-}
 
 /** What the selection leaves of the answer: { all, shown, epics: [{id, state, lastTouched}] }. */
 function narrow(ctx) {
@@ -49,7 +43,7 @@ function titleOf(ctx, id) {
 
 function paintSummary(inst, ctx) {
   const { data, all, shown } = narrow(ctx);
-  const name = placeName(ctx);
+  const name = selectedPlaceName(ctx);
   const s = inst.summary;
   s.textContent = '';
   if (!data) { s.appendChild(el('span', 'hm-muted', 'Checking...')); return; }
@@ -90,7 +84,7 @@ function paintPanel(inst, ctx) {
   const { data } = narrow(ctx);
   syncRows(inst.list, inst.rows, items, ctx);
   syncRows(inst.quietList, inst.quietRows, quiet, ctx);
-  const name = placeName(ctx);
+  const name = selectedPlaceName(ctx);
   inst.empty.hidden = !data || items.length > 0;
   inst.empty.textContent = name
     ? `Nothing is running in ${name}. Press Esc to look at everything.`

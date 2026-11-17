@@ -11,10 +11,9 @@
 //   'hm:open' on document, detail { view, focus }: a card asked a view to show one part (e.g. Lanes' For you).
 //   'hm:note' on document, detail { where }: "Add a note" opens the note box (home-notes.js).
 
-import { registerHomeView, setView, selectedBoxId, getHomeConfig } from './home-state.js';
+import { registerHomeView, setView, selectedBoxId } from './home-state.js';
 import { getRunning, onRunning, startRunning, refreshRunningIfStale } from './home-running-data.js';
-import { selectedEpicIds, scopeIds, projectScopeOf } from './home-where.js';
-import { boxPath } from '../../shared/home-areas.js';
+import { selectedEpicIds, scopeIds, projectScopeOf, selectedPlaceName } from './home-where.js';
 import { openEpicReadiness } from '../../shared/epic-ready.js';
 import { overviewModel } from '../../shared/home-overview.js';
 import { placeScope } from './home-notes-tab.js';
@@ -62,11 +61,6 @@ function readinessOf(doc) {
   return r;
 }
 
-function placeName() {
-  const id = selectedBoxId();
-  const path = id ? boxPath(getHomeConfig(), id) : [];
-  return path.length ? path[path.length - 1].name : '';
-}
 
 // ===== following a link =====
 
@@ -145,7 +139,7 @@ function paintAll(inst) {
   probeHealth(inst.paint);
   refreshNextStart(inst.paint);
   const m = overviewModel(doc, ctx.config(), readinessOf(doc), running, now, {
-    epicIds, projectIds: projectScopeOf(ctx)?.ids || null, placeName: placeIds ? placeName() : null, where: ctx.selection(), nextStart, health: health?.getHealth?.() || null,
+    epicIds, projectIds: projectScopeOf(ctx)?.ids || null, placeName: placeIds ? selectedPlaceName(ctx) : null, where: ctx.selection(), nextStart, health: health?.getHealth?.() || null,
     noteScope: placeIds ? placeScope(ctx.config(), ctx.selection()) : null,
     noteProjects: projectScopeOf(ctx)?.family || null,
   });
