@@ -147,6 +147,7 @@ function paintAll(inst) {
   const m = overviewModel(doc, ctx.config(), readinessOf(doc), running, now, {
     epicIds, projectIds: projectScopeOf(ctx)?.ids || null, placeName: placeIds ? placeName() : null, where: ctx.selection(), nextStart, health: health?.getHealth?.() || null,
     noteScope: placeIds ? placeScope(ctx.config(), ctx.selection()) : null,
+    noteProjects: projectScopeOf(ctx)?.family || null,
   });
   paintSummary(inst, m);
   const place = m.place;

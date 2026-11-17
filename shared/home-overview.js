@@ -13,7 +13,8 @@
  * now            ms
  * extras         { epicIds?: Set|null (home-scope: the selected place's epics, else the project's ids), projectIds? (the
  *                  project's ids, for "Where the work is", which keeps the whole map), placeName? (only
- *                  when a place is selected), noteScope? (only when a place is selected), nextStart? (computeNextStart's
+ *                  when a place is selected), noteScope? (only when a place is selected), noteProjects? (Set: the
+ *                  project family a free note must be in), nextStart? (computeNextStart's
  *                  answer), where? ({ group, area, part } selected), health? (home-health-data getHealth()),
  *                  rows? (rows per card, default 5) }
  *
@@ -241,10 +242,12 @@ function places(config, doc, readinessById, running, selected, keep) {
 // ===== Open notes: pendingReviewNotes() (shared/review-notes.js), newest first. =====
 
 // Each row is the note's own words, its ticket the quiet second line; a free note (PRO121) has no ticket
-// and stays in when no place is picked or its place / lane is inside the picked one (`scope`: { ids, lanes }).
-function notes(doc, keep, scope, filtered) {
+// and stays in when its project is the Home project's family (`projects`, PRO127) and no place is picked or its
+// place / lane is inside the picked one (`scope`: { ids, lanes }).
+function notes(doc, keep, scope, filtered, projects) {
   const all = [];
-  const inScope = n => !filtered || (scope && (scope.ids?.has(n.where) || (n.area && scope.lanes?.has(n.area))));
+  const inScope = n => (!projects || projects.has(n.project))
+    && (!filtered || (scope && (scope.ids?.has(n.where) || (n.area && scope.lanes?.has(n.area)))));
   for (const t of pendingReviewNotes(doc)) {
     const free = t.id === FREE_ID;
     if (free ? !inScope(t.notes[0] || {}) : !keep(t.id)) continue;
@@ -332,7 +335,7 @@ export function overviewModel(doc, config, readinessById, running, now, extras =
     agenda: agenda(doc, ix, readinessById, running, keep, extras.nextStart, now, rows),
     finished: finished(doc, ix, keep, now, rows),
     places: places(config, doc, readinessById, running, selected, keepProject),
-    notes: notes(doc, keep, extras.noteScope, !!extras.noteScope),
+    notes: notes(doc, keep, extras.noteScope, !!extras.noteScope, extras.noteProjects || null),
     health: health(extras.health),
   };
   model.summary = summaryOf({

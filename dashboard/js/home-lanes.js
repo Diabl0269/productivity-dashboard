@@ -60,7 +60,7 @@ function clearForced(redraw) {
 
 let mounted = null; // { root, ctx, page, cleanup: [] } of the mounted Lanes view
 let pendingSection = null; // a section to scroll to after the next draw (from the strip)
-let lastNextStart = '';
+let lastNextStart = { key: '', text: '' }; // per project and place, so a switch never shows another's line
 
 /** A section of the view; the nav scrolls to it and focuses it (each block inside keeps the Plan tab's own heading). */
 function section(id, label) {
@@ -131,10 +131,10 @@ function renderScopeLine(ctx, scope, shown, total) {
 }
 
 /** The next-start line keeps its last text while it asks again, so a poll does not shift the page. */
-function nextStartLine() {
-  const p = renderNextStartLine();
-  if (!p.textContent && lastNextStart) p.textContent = lastNextStart;
-  new MutationObserver(() => { lastNextStart = p.textContent; }).observe(p, { childList: true, characterData: true, subtree: true });
+function nextStartLine(key, shows) {
+  const p = renderNextStartLine(shows);
+  if (!p.textContent && lastNextStart.key === key) p.textContent = lastNextStart.text;
+  new MutationObserver(() => { lastNextStart = { key, text: p.textContent }; }).observe(p, { childList: true, characterData: true, subtree: true });
   return p;
 }
 
@@ -173,7 +173,7 @@ function draw(root, ctx, page, { animate = false } = {}) {
   wrap.appendChild(ready);
 
   const auto = section('auto', 'Auto queue');
-  auto.appendChild(nextStartLine());
+  auto.appendChild(nextStartLine(`${ctx.project?.() || ''}|${scope?.place || ''}`, shows));
   auto.appendChild(renderPlanAutoQueue(page, whole.readiness || [], shows));
   wrap.appendChild(auto);
 

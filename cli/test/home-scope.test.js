@@ -104,3 +104,25 @@ test('How it runs: "Being built" counts live work only and names idle work in it
   const loose = lifecycleSnapshot(doc(), { running: [{ id: 'L1', state: 'working' }, { id: 'L2', state: 'working' }] }, { epicIds: s.ids, now: NOW });
   assert.deepEqual(loose.running.items.map(i => i.id), ['L1']);
 });
+
+test('a title word claims another project\'s epic only when its group lists keywordProjects (PRO127)', () => {
+  const d = doc();
+  const words = (keywordProjects) => normalizeHomeConfig({
+    version: 1,
+    groups: [{ id: 'shop', name: 'Shop', ...(keywordProjects ? { keywordProjects } : {}), areas: [{ id: 'seeds', name: 'Seeds', match: 'seed' }, { id: 'rest', name: 'Rest' }] }],
+    fallback: 'rest',
+  }).config;
+  assert.ok(!projectScope(words(null), d, 'bakery').epics.has('E4')); // "Seed order" is garden's: a loose word does not take it
+  assert.ok(projectScope(words(['garden']), d, 'bakery').epics.has('E4')); // the group says garden's titles are fair game
+});
+
+test('Overview open notes: a free note of another project stays out (PRO127)', () => {
+  const d = doc();
+  d.meta.freeNotes = [
+    { n: 1, state: 'new', kind: 'fix', text: 'Crumbs on the till', project: 'bakery', at: '2026-03-09T09:00:00Z' },
+    { n: 2, state: 'new', kind: 'idea', text: 'Plant basil', project: 'garden', at: '2026-03-09T10:00:00Z' },
+  ];
+  const s = projectScope(config, d, 'bakery');
+  const m = overviewModel(d, config, new Map(), null, NOW, { epicIds: s.ids, projectIds: s.ids, noteProjects: s.family });
+  assert.deepEqual(m.notes.items.map(i => i.title), ['Crumbs on the till']);
+});

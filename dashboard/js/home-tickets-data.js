@@ -64,7 +64,10 @@ function projectRows(ctx) {
   const rows = getRows(ctx);
   const scope = projectScopeOf(ctx);
   if (!scope) return rows;
-  if (scoped.rows !== rows || scoped.scope !== scope) scoped = { rows, scope, out: rows.filter(r => scope.hasId(r.id)) };
+  if (scoped.rows !== rows || scoped.scope !== scope) {
+    const out = rows.filter(r => scope.hasId(r.id));
+    scoped = { rows, scope, out, lanes: [...new Set(out.map(r => r.lane).filter(Boolean))].sort((a, b) => a.localeCompare(b)) };
+  }
   return scoped.out;
 }
 
@@ -88,7 +91,8 @@ export function computeModel(ctx, vs, { place = true, folds = new Set() } = {}) 
     items.push({ kind: 'group', key: `g:${gk}`, foldKey: gk, groupKey: g.key, label: g.label, count: g.rows.length, counts: g.counts, collapsed });
     if (!collapsed) for (const row of g.rows) items.push({ kind: 'row', key: `r:${row.id}`, row });
   }
-  return { rows, counts, shown, total, groups, items, lanes: cache.lanes, models: cache.models, all: rows.length };
+  // the lane filter lists the project's lanes only
+  return { rows, counts, shown, total, groups, items, lanes: projectScopeOf(ctx) ? scoped.lanes : cache.lanes, models: cache.models, all: rows.length };
 }
 
 export { STATES };

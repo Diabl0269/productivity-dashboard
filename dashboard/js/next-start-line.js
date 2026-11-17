@@ -8,13 +8,16 @@ function el(tag, className, text) {
   return node;
 }
 
-/** A status paragraph that fills itself in; a failed or missing server leaves it empty (hidden). */
-export function renderNextStartLine() {
+/**
+ * A status paragraph that fills itself in; a failed or missing server leaves it empty (hidden).
+ * `shows(epicId)` (optional, Home's Lanes, PRO127): the line stays empty when the next epic is outside the view.
+ */
+export function renderNextStartLine(shows) {
   const p = el('p', 'rp-aq-next');
   p.setAttribute('role', 'status');
   fetch('/api/next-start', { cache: 'no-store' })
     .then(r => (r.ok ? r.json() : null))
-    .then(out => { if (out && out.line) p.textContent = out.line; })
+    .then(out => { if (out && out.line && (!shows || !out.next?.epic || shows(out.next.epic))) p.textContent = out.line; })
     .catch(() => { /* no server behind the page (file:// or demo): no line */ });
   return p;
 }

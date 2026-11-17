@@ -9,7 +9,7 @@ import { noteArea } from '../../shared/review-filing.js';
 import { laneDisplayName } from '../../shared/run-plan.js';
 import { boxOfWhere, findWhere } from '../../shared/home-config.js';
 import { lanesForBox } from '../../shared/home-areas.js';
-import { ticketInSelection } from './home-where.js';
+import { ticketInSelection, projectScopeOf } from './home-where.js';
 import { reviewNoteRow } from './review-notes-ui.js';
 import { commitReviewChange } from './task-detail.js';
 
@@ -52,7 +52,7 @@ function placeName(config, note) {
 }
 
 /** Open notes in scope: [{ note, holder, ticketId?, place, lane }]. */
-export function openNotesIn(doc, config, scope, findTask) {
+export function openNotesIn(doc, config, scope, findTask, project = null) {
   const out = [];
   const docTask = (id) => {
     for (const s of doc?.sections || []) { const t = (s.tasks || []).find(x => x.id === id); if (t) return t; }
@@ -62,13 +62,14 @@ export function openNotesIn(doc, config, scope, findTask) {
   for (const entry of pendingReviewNotes(doc)) {
     if (entry.type === 'free') {
       const note = entry.notes[0];
+      if (project && !project.family.has(note.project)) continue; // PRO127: the Home project's notes only
       if (scope && !(scope.ids.has(note.where) || (note.area && scope.lanes.has(note.area)))) continue;
       out.push({ note, holder, place: placeName(config, note), lane: note.area || null });
       continue;
     }
     const task = findTask(entry.id);
     const dt = docTask(entry.id);
-    if (!task || !dt) continue;
+    if (!task || !dt || (project && !project.hasId(entry.id))) continue;
     for (const note of entry.notes) {
       const lane = noteArea(doc, dt, note);
       // A ticket's note is in the place when its epic is (home-where.js, as every Home view), else by lane.
@@ -140,7 +141,7 @@ function renderNotesTab(root, ctx) {
     }
     return null;
   };
-  const items = openNotesIn(doc, config, scope, findTask);
+  const items = openNotesIn(doc, config, scope, findTask, projectScopeOf(ctx));
   const head = el('div', 'hn-head');
   head.appendChild(el('h3', 'hm-insp-title', `Open notes (${items.length})`));
   const add = el('button', 'hn-add', 'New note');
@@ -159,7 +160,8 @@ function renderNotesTab(root, ctx) {
   } else {
     root.appendChild(el('p', 'hm-muted hn-empty', 'No open notes here. Press N to write one.'));
   }
-  const filed = freeNotes(doc).filter(n => n && n.state === 'filed' && n.filed
+  const project = projectScopeOf(ctx);
+  const filed = freeNotes(doc).filter(n => n && n.state === 'filed' && n.filed && (!project || project.family.has(n.project))
     && (!scope || scope.ids.has(n.where) || (n.area && scope.lanes.has(n.area)))).reverse();
   if (filed.length) filedFold(ctx, root, filed);
 }
