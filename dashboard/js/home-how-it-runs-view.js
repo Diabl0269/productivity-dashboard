@@ -33,6 +33,11 @@ function selectedEpicIds(ctx) {
   try { return whereMod?.selectedEpicIds?.(ctx) ?? null; } catch { return null; }
 }
 
+/** The place's epics, else the Home project's ids (home-where.js scopeIds), or null. */
+function scopeIds(ctx) {
+  try { return whereMod?.scopeIds?.(ctx) ?? null; } catch { return null; }
+}
+
 /** The live running answer ({ running: [...] }), or null when the running data is not available. */
 function liveRunning() {
   try { return runningMod?.getRunning?.() ?? null; } catch { return null; }
@@ -71,7 +76,7 @@ function render(root, ctx) {
   root.append(flowHost, runsHost);
 
   const flow = buildFlow(flowHost, ctx, {
-    scope: () => ({ epicIds: selectedEpicIds(ctx) }),
+    scope: () => ({ epicIds: scopeIds(ctx) }),
     live: liveRunning,
     placeNote: () => placeNote(ctx),
   });

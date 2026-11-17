@@ -5,13 +5,13 @@
 //
 // The place filter comes from ONE function, placeScope(): `?hmEpics=ID1,ID2` in the address forces a
 // set (a link or test hook; kept for the session until Clear, even when a tab switch drops it from the
-// address); else ./home-where.js selectedEpicIds(ctx), the selected place; else none.
+// address); else ./home-where.js selectedEpicIds(ctx), the selected place; else the Home project's tickets.
 
 import { registerHomeView, registerStripItem, setView } from './home-state.js';
 import { boxOfWhere } from '../../shared/home-config.js';
 import { computeRunPlan } from '../../shared/run-plan.js';
 import { scopePlan, scopeForYou, scopeLine, scopeTest, scopeNotes, epicsFromSearch } from '../../shared/plan-scope.js';
-import { selectedEpicIds } from './home-where.js';
+import { selectedEpicIds, projectScopeOf, scopeIds } from './home-where.js';
 import { asksFromState } from './asks-strip.js';
 import { interpretationsFromState } from './interpretation-card.js';
 import { fillEpicEstimates } from './ticket-cost-ui.js';
@@ -41,7 +41,10 @@ function placeScope(ctx) {
   forcedIds = epicsFromSearch(window.location.search) || forcedIds;
   if (forcedIds) return { set: forcedIds, place: 'the linked epics', forced: true };
   const set = selectedEpicIds(ctx) || null;
-  return set ? { set, place: placeName(ctx) || 'the selected place', forced: false } : null;
+  if (set) return { set, place: placeName(ctx) || 'the selected place', forced: false };
+  // No place: the Home project's tickets (shared/home-scope.js, the rule of every Home view); no "Showing" line.
+  const project = projectScopeOf(ctx)?.ids || null;
+  return project ? { set: project, place: null, forced: false } : null;
 }
 
 /** Drop ?hmEpics= from the address (keeps the rest) and draw again. */
@@ -159,7 +162,7 @@ function draw(root, ctx, page, { animate = false } = {}) {
   const readyCount = (plan.readiness || []).filter(r => r.ready).length;
 
   wrap.appendChild(renderNav(wrap, { foryou: forYouCount, ready: readyCount, auto: autoCount, lanes: plan.lanes.length }));
-  if (scope) wrap.appendChild(renderScopeLine(ctx, scope, (plan.readiness || []).length, (whole.readiness || []).length));
+  if (scope?.place) wrap.appendChild(renderScopeLine(ctx, scope, (plan.readiness || []).length, (whole.readiness || []).length));
 
   const forYou = section('foryou', 'For you');
   forYou.appendChild(renderReview(page, review, plan.openChecks || [], asks, interps));
@@ -177,13 +180,13 @@ function draw(root, ctx, page, { animate = false } = {}) {
   const lanes = section('lanes', 'Lanes');
   lanes.appendChild(el('h2', 'hl-lanes-title', `Lanes (${plan.lanes.length})`));
   if (!plan.lanes.length) {
-    lanes.appendChild(el('p', 'rp-empty', set ? 'No lane has work in this place.' : 'No epic is in progress or Ready, and none is pinned.'));
+    lanes.appendChild(el('p', 'rp-empty', scope?.place ? 'No lane has work in this place.' : 'No epic is in progress or Ready, and none is pinned.'));
   } else {
     lanes.appendChild(renderRules(plan));
     lanes.appendChild(renderLegend());
     if (plan.totals) {
       const totals = renderTotals(plan.totals);
-      if (set) totals.textContent = `Whole project: ${totals.textContent}`; // a check on the whole plan, not this place
+      if (set) totals.textContent = `All projects: ${totals.textContent}`; // a check on the whole plan, not this view
       lanes.appendChild(totals);
     }
     lanes.appendChild(renderTracks(page, plan.lanes, plan.picks));
@@ -272,9 +275,15 @@ registerStripItem({
   id: 'for-you',
   render(root, ctx) {
     const state = ctx.state();
-    const asks = state?.tasks ? asksFromState(state) : [];
+    // Same scope as every Home view (the place, else the project), so this count matches Overview's Needs you.
+    const set = scopeIds(ctx);
+    const shows = set ? scopeTest(ctx.doc(), set) : () => true;
+    const asks = state?.tasks ? asksFromState(state).filter(a => (a.ids || [a.id]).some(shows)) : [];
     let reviews = 0;
-    try { reviews = state?.tasks ? (computeRunPlan(ctx.doc()).review || []).length + interpretationsFromState(state).length : 0; } catch { reviews = 0; }
+    try {
+      reviews = state?.tasks ? (computeRunPlan(ctx.doc()).review || []).filter(r => shows(r.id)).length
+        + interpretationsFromState(state).filter(i => shows(i.id)).length : 0;
+    } catch { reviews = 0; }
     const btn = el('button', 'hl-strip-btn');
     btn.type = 'button';
     btn.dataset.hmKey = 'strip-for-you';

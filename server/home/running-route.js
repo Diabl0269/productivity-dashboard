@@ -10,6 +10,7 @@
 import { loadProjectHomeConfig, SLUG_RE } from './project-config.js';
 import { resolveRepos } from './repos.js';
 import { computeRunning } from '../../shared/running.js';
+import { projectScope } from '../../shared/home-scope.js';
 import { readTasksDoc } from '../../shared/tasks-files.js';
 import { normalizeTasksDoc } from '../../cli/lib/schema.js';
 import {
@@ -59,7 +60,7 @@ export async function buildRunning(dataRoot, slug, now = Date.now(), collect = c
   let result = EMPTY;
   try {
     const doc = normalizeTasksDoc(readTasksDoc(dataRoot));
-    result = computeRunning(doc, inputs, home.project ? { project: home.project } : {});
+    result = computeRunning(doc, inputs, home.project ? { project: home.project, scope: projectScope(home.config, doc, home.project) } : {});
   } catch (e) {
     warnings.push(`The tracker's tasks could not be read (${e.message}).`);
   }

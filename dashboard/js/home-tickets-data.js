@@ -10,7 +10,7 @@ import {
   DEFAULT_TICKET_VIEW, parseTicketParams, ticketParamsString, hasTicketParams, withTicketParams,
 } from '../../shared/home-ticket-params.js';
 import { getRunning } from './home-running-data.js';
-import { selectedEpicIds } from './home-where.js';
+import { selectedEpicIds, projectScopeOf } from './home-where.js';
 
 // ===== rows =====
 
@@ -57,8 +57,19 @@ export const lastBuildMs = () => cache.ms;
  * @param {{ place?: boolean, folds?: Set<string> }} [opts] place: narrow by the map selection (default true)
  * @returns {{ rows, counts, shown, total, groups, items, lanes, models, placeName }}
  */
-export function computeModel(ctx, vs, { place = true, folds = new Set() } = {}) {
+let scoped = { rows: null, scope: null, out: [] };
+
+/** The rows of the Home project only (shared/home-scope.js, the rule every Home view uses). */
+function projectRows(ctx) {
   const rows = getRows(ctx);
+  const scope = projectScopeOf(ctx);
+  if (!scope) return rows;
+  if (scoped.rows !== rows || scoped.scope !== scope) scoped = { rows, scope, out: rows.filter(r => scope.hasId(r.id)) };
+  return scoped.out;
+}
+
+export function computeModel(ctx, vs, { place = true, folds = new Set() } = {}) {
+  const rows = projectRows(ctx);
   const placeSet = place ? selectedEpicIds(ctx) : null;
   const common = { text: vs.text, types: vs.types, lane: vs.lane, model: vs.model, label: vs.label };
   const showDone = vs.showDone || vs.states.includes('done');

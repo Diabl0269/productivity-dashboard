@@ -80,6 +80,7 @@ function epicIdOf(ix, id) {
 function inScope(ix, id, scope) {
   const set = scope?.epicIds;
   if (!set) return true;
+  if (set.has(id)) return true; // a ticket under no epic that the project's scope names (shared/home-scope.js)
   const e = epicIdOf(ix, id);
   return !!e && set.has(e);
 }
@@ -160,6 +161,7 @@ function done(doc, scope) {
 }
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const countOf = (stage, rows) => (stage.countOf ? stage.countOf(rows) : rows.length);
 
 // ===== the stages =====
 
@@ -190,9 +192,11 @@ export const DEFAULT_STAGES = Object.freeze([
     what: 'A session builds, tests and proves the work in its own copy, then opens a PR.',
     source: 'Tickets with a live session, a worktree, a recent commit or an autorun run right now ("ch tasks running").',
     items: (doc, live, scope) => running(doc, live, scope),
+    countOf: rows => rows.filter(r => r.state !== 'idle').length,
     detail: (doc, live, scope) => {
       const rows = running(doc, live, scope);
       if (!rows) return 'running data unavailable';
+      // The count is live work only (shared/home-overview.js, the strip, Tickets); idle work is named here.
       const parts = RUNNING_STATES.map(s => [rows.filter(r => r.state === s.id).length, s.label]).filter(([n]) => n);
       return parts.length ? parts.map(([n, l]) => `${n} ${l}`).join(' · ') : 'nothing running';
     },
@@ -220,7 +224,7 @@ export const DEFAULT_STAGES = Object.freeze([
   },
 ].map(s => Object.freeze({
   ...s,
-  count: (doc, live, scope) => { const rows = s.items(doc, live, scope); return rows === null ? null : rows.length; },
+  count: (doc, live, scope) => { const rows = s.items(doc, live, scope); return rows === null ? null : countOf(s, rows); },
 })));
 
 /**
@@ -253,7 +257,7 @@ export function lifecycleSnapshot(doc, live = null, scope = {}, stages = DEFAULT
   const out = {};
   for (const s of stages) {
     const items = s.items(doc, live, scope);
-    out[s.id] = { count: items === null ? null : items.length, detail: s.detail(doc, live, scope), items: items || [] };
+    out[s.id] = { count: items === null ? null : countOf(s, items), detail: s.detail(doc, live, scope), items: items || [] };
   }
   return out;
 }

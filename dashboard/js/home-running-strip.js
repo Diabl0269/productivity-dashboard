@@ -53,7 +53,9 @@ function paintSummary(inst, ctx) {
   const s = inst.summary;
   s.textContent = '';
   if (!data) { s.appendChild(el('span', 'hm-muted', 'Checking...')); return; }
-  if (name) s.appendChild(el('span', 'hm-run-scope', `${name}: ${shown.length} of ${all.length}`));
+  // "x of y" counts live work only (not idle), the rule of every Home view and of `ch tasks running`.
+  const live = list => list.filter(i => i.state !== 'idle').length;
+  if (name) s.appendChild(el('span', 'hm-run-scope', `${name}: ${live(shown)} of ${live(all)} running`));
   const counts = STATES.map(st => [st, shown.filter(i => i.state === st).length]).filter(([, n]) => n > 0);
   if (!counts.length) {
     s.appendChild(el('span', 'hm-muted', name ? 'nothing running here' : 'Nothing running'));

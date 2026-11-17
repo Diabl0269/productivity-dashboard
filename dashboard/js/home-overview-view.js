@@ -13,7 +13,7 @@
 
 import { registerHomeView, setView, selectedBoxId, getHomeConfig } from './home-state.js';
 import { getRunning, onRunning, startRunning, refreshRunningIfStale } from './home-running-data.js';
-import { selectedEpicIds } from './home-where.js';
+import { selectedEpicIds, scopeIds, projectScopeOf } from './home-where.js';
 import { boxPath } from '../../shared/home-areas.js';
 import { openEpicReadiness } from '../../shared/epic-ready.js';
 import { overviewModel } from '../../shared/home-overview.js';
@@ -139,13 +139,14 @@ function paintAll(inst) {
   const { ctx } = inst;
   const now = Date.now();
   const doc = ctx.doc();
-  const epicIds = selectedEpicIds(ctx);
+  const placeIds = selectedEpicIds(ctx);
+  const epicIds = scopeIds(ctx); // the place's epics, else the project's (shared/home-scope.js)
   const running = getRunning();
   probeHealth(inst.paint);
   refreshNextStart(inst.paint);
   const m = overviewModel(doc, ctx.config(), readinessOf(doc), running, now, {
-    epicIds, placeName: placeName(), where: ctx.selection(), nextStart, health: health?.getHealth?.() || null,
-    noteScope: epicIds ? placeScope(ctx.config(), ctx.selection()) : null,
+    epicIds, projectIds: projectScopeOf(ctx)?.ids || null, placeName: placeIds ? placeName() : null, where: ctx.selection(), nextStart, health: health?.getHealth?.() || null,
+    noteScope: placeIds ? placeScope(ctx.config(), ctx.selection()) : null,
   });
   paintSummary(inst, m);
   const place = m.place;
@@ -163,7 +164,7 @@ function paintAll(inst) {
   tick(r.count, m.running.count);
   const words = { working: 'working', 'waiting-ci': 'waiting on CI', 'waiting-you': 'waiting on you', idle: 'idle' };
   setSub(r, Object.entries(m.running.counts).map(([s, k]) => `${k} ${words[s] || s}`).join(', '));
-  empty(r, m.running.count === 0, !m.running.known ? 'Checking what is running...' : place ? `Nothing is running in ${place}.` : 'Nothing is running right now.');
+  empty(r, m.running.items.length === 0, !m.running.known ? 'Checking what is running...' : place ? `Nothing is running in ${place}.` : 'Nothing is running right now.');
   fillRows(r, rowSpecs(m.running.items, now), ctx);
   setMore(r, m.running.more);
 
@@ -185,7 +186,7 @@ function paintAll(inst) {
   tick(f.count, m.finished.rowsAre === 'epics' ? m.finished.epics : m.finished.count);
   const fe = m.finished.epics;
   const ft = m.finished.tickets;
-  setSub(f, m.finished.rowsAre === 'epics' ? `${fe === 1 ? 'epic' : 'epics'} in 7 days, and ${ft} ${ft === 1 ? 'ticket' : 'tickets'}` : `${m.finished.count === 1 ? 'ticket' : 'tickets'} in 7 days`);
+  setSub(f, m.finished.rowsAre === 'epics' ? `${fe === 1 ? 'epic' : 'epics'} and ${ft} ${ft === 1 ? 'ticket' : 'tickets'}, 7 days` : `${m.finished.count === 1 ? 'ticket' : 'tickets'} in 7 days`);
   empty(f, m.finished.count === 0, place ? `Nothing in ${place} closed in the last 7 days.` : 'Nothing closed in the last 7 days.');
   syncDays(f, m.finished.days, ctx, now);
   setMore(f, m.finished.more, m.finished.rowsAre === 'epics' ? 'more epics' : 'more');
