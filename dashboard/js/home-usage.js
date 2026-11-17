@@ -7,7 +7,7 @@
 // The popover lives on <body> (the top bar clips overflow) and uses base.css tokens only; styles: home-usage.css.
 
 import { registerTopBarItem } from './home-state.js';
-import { chipText, chipLevel, paceSentence, fmtMoney, resetLabel } from '../../shared/usage-meter.js';
+import { chipParts, chipLevel, paceSentence, fmtMoney, resetLabel } from '../../shared/usage-meter.js';
 
 const REFRESH_MS = 60e3;
 const CLOSE_MS = 130;
@@ -86,7 +86,9 @@ function paintChip() {
     chip.title = st.error ? 'The usage numbers could not be read.' : 'Reading this week\'s usage';
     return;
   }
-  text.textContent = chipText(m);
+  const parts = chipParts(m);
+  text.textContent = parts.main;
+  text.appendChild(el('span', 'hu-rest', parts.rest)); // hidden when the top bar is narrow (home-palette.css)
   chip.dataset.level = chipLevel(m);
   chip.dataset.stale = st.error ? 'true' : 'false';
   chip.title = `${m.source === 'set by you' ? `Set by you at ${hm(Date.parse(m.setAt))}` : m.source === 'estimated' ? 'Estimated from cost this week' : 'No percent yet'}, as of ${hm(Date.parse(m.asOf))}. Click for the details.`;

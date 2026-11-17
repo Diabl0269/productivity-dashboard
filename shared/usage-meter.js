@@ -225,11 +225,18 @@ export const fmtMoney = money;
 
 /** The chip: percent and reset, or words under an active limit hit, or dollars and reset when there is no percent. Never above 100%. */
 export function chipText(m) {
+  const p = chipParts(m);
+  return `${p.main}${p.rest}`;
+}
+
+/** The chip's text in two parts, so a narrow top bar can drop the reset time whole instead of cutting a word:
+ *  { main: "$412 this week", rest: " · resets Tue 13:00" }. */
+export function chipParts(m) {
   const reset = resetLabel(Date.parse(m.resetsAt));
-  if (m.pctUsed === null && m.limitHit) return `${m.limitHit.kind} limit hit · resets ${resetLabel(Date.parse(m.limitHit.resetsAt))}`;
+  if (m.pctUsed === null && m.limitHit) return { main: `${m.limitHit.kind} limit hit`, rest: ` · resets ${resetLabel(Date.parse(m.limitHit.resetsAt))}` };
   return m.pctUsed === null
-    ? `${money(m.costThisWeekUSD)} this week · resets ${reset}`
-    : `${m.source === 'estimated' ? 'about ' : ''}${Math.round(m.pctUsed)}% of the week used · resets ${reset}`;
+    ? { main: `${money(m.costThisWeekUSD)} this week`, rest: ` · resets ${reset}` }
+    : { main: `${m.source === 'estimated' ? 'about ' : ''}${Math.round(m.pctUsed)}% of the week used`, rest: ` · resets ${reset}` };
 }
 
 /** Chip colour: amber over 75%, red over 90% or under an active hit; an estimate with no hit stays neutral. */
