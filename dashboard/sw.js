@@ -30,6 +30,7 @@ const SHELL = [
   './styles/home-notes.css',
   './styles/home-runs.css',
   './styles/home-palette.css',
+  './styles/home-tickets.css',
   './js/main.js',
 ];
 

@@ -16,7 +16,7 @@ import './home-placeholders.js'; // PRO116: quiet stand-ins until each feature l
 
 import './home-lanes.js'; // PRO118: Lanes view (key 3, id 'lanes')
 
-// import './home-tickets-view.js'; // PRO119: Tickets view (key 4, id 'tickets')
+import './home-tickets.js'; // PRO119: Tickets view (key 4, id 'tickets') and the inspector's Tickets tab
 
 import './home-how-it-runs-view.js'; // PRO122: How it runs view (key 5, id 'how-it-runs')
 
