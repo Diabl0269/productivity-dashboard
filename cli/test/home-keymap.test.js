@@ -8,7 +8,6 @@ import {
   BUILTIN_KEYS, GO_KEYS, keyTable, findKeyClashes, chordFromEvent, formatChord, groupKeyRows,
 } from '../../shared/home-keymap.js';
 import { homeViews } from '../../dashboard/js/home-state.js';
-import '../../dashboard/js/home-placeholders.js';
 import { registerHomeCommand, homeCommands } from '../../dashboard/js/home-commands.js';
 import { keysBlock, withKeys, DOC } from '../../scripts/home-keys-doc.js';
 
