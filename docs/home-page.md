@@ -10,6 +10,7 @@ project's map) is kept across every view and in the address, so a link opens the
 
 Views, in order, with their number keys: Overview (1), Map (2), Lanes (3), Tickets (4), How it runs (5).
 Arrows move inside the view switch and the inspector tabs.
+The Map (2) lays itself out for the window at every level (it does not use `box`): click or `Enter` zooms into a box, `Esc`/`Backspace` zooms out, `Home` goes to the top; an area's epics on none of its parts show in a dashed "Whole area" box, and the inspector's Work tab lists the selected place's epics (code: `dashboard/js/home-map*.js`, numbers: `shared/home-map-stats.js`).
 
 ## Keys and the palette
 

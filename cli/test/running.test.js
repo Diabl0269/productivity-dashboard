@@ -175,6 +175,14 @@ test('--project: other projects\' tickets and epics are left out', () => {
   assert.deepEqual(Object.keys(r.epics), []);
 });
 
+test('--project counts the project\'s sub-projects too (meta.projects parentId), not its siblings', () => {
+  const doc = mk({ 'in-progress': [task('BKR1', { project: 'alpha' }), task('BKR2', { project: 'alpha-web' }), task('BKR3', { project: 'alpha-web-cart' }), task('BKR4', { project: 'beta' })] });
+  doc.meta.projects = [{ id: 'alpha' }, { id: 'alpha-web', parentId: 'alpha' }, { id: 'alpha-web-cart', parentId: 'alpha-web' }, { id: 'beta' }];
+  const r = run(doc, { sessions: [session(['BKR1', 'BKR2', 'BKR3', 'BKR4'])] }, { project: 'alpha' });
+  assert.deepEqual(r.running.map(i => i.id).sort(), ['BKR1', 'BKR2', 'BKR3']);
+  assert.deepEqual(run(doc, { sessions: [session(['BKR1', 'BKR2'])] }, { project: 'alpha-web' }).running.map(i => i.id), ['BKR2']);
+});
+
 test('empty and odd inputs never throw', () => {
   const doc = mk({ todo: [task('BKR1')] });
   assert.deepEqual(computeRunning(doc, {}, {}).running, []);
