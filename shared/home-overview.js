@@ -28,6 +28,7 @@ import { autoQueueOrder } from './epic-ready.js';
 import { formatWhen } from './next-start.js';
 import { pendingReviewNotes, FREE_ID } from './review-notes.js';
 import { epicIdsForBox } from './home-areas.js';
+import { needsYou as sharedNeedsYou } from './home-needs-you.js';
 
 export const OVERVIEW_ROWS = 4; // four lines a card keeps the whole Overview on a laptop screen
 export const FINISHED_DAYS = 7;
@@ -85,13 +86,21 @@ function needsYou(doc, keep, rows) {
     if (!keep(i.id)) continue;
     items.push({ key: `reading-${i.id}-${i.key}`, kind: 'reading', id: i.id, title: bare(i.title), line: `Is this reading right? ${i.text}`, at: i.at || '', target: { view: 'lanes', ticket: i.id } });
   }
-  const forYou = items.length;
+  const n = sharedNeedsYou(doc, keep, { plan });
+  // A ticket counted only for checks to tick has no card above; give it one so every counted ticket is listed.
+  const listed = new Set(items.map(i => i.id));
+  for (const c of n.checkRows) {
+    if (listed.has(c.id)) continue;
+    listed.add(c.id);
+    items.push({ key: `review-${c.id}`, kind: 'review', id: c.id, title: bare(c.title), line: `${c.checks.total - c.checks.done} of ${plural(c.checks.total, 'check')} to do`, at: c.enteredAt || '', target: { view: 'lanes', ticket: c.id } });
+  }
   items.sort(byAtAsc);
   const picks = (plan.picks || []).filter(p => p.stage === 'pick' && keep(p.id)).map(p => ({
     key: `pick-${p.id}`, kind: 'pick', id: p.id, title: bare(p.title), line: 'Pick an option on its design board', at: '', target: { view: 'lanes', ticket: p.id },
   }));
   const all = [...items, ...picks];
-  return { count: all.length, forYou, picks: picks.length, ...cut(all, rows), target: { view: 'lanes', focus: 'for-you' } };
+  // The number is the shared rule (shared/home-needs-you.js), the same in every view; the cards stay one per item.
+  return { count: n.count, decisions: n.decisions, reviews: n.reviews, ...cut(all, rows), target: { view: 'lanes', focus: 'for-you' } };
 }
 
 // ===== Running now: the running answer (shared/running.js computeRunning), as the strip's panel shows it. =====

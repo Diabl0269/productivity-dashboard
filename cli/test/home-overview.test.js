@@ -68,7 +68,8 @@ function model(doc = bakery(), extras = {}, run = running) {
 test('Needs you: reviews, questions and readings, oldest first, each a link', () => {
   const n = model().needsYou;
   assert.equal(n.count, 2);
-  assert.equal(n.forYou, 2);
+  assert.equal(n.decisions, 1); // the question; the review is the other one
+  assert.equal(n.reviews, 1);
   // the question (asked 09:00) waits longer than the review (shipped 12:00 the same day)
   assert.deepEqual(n.items.map(i => [i.kind, i.id]), [['question', 'T2'], ['review', 'T4']]);
   assert.equal(n.items[1].line, '1 of 2 checks to do');

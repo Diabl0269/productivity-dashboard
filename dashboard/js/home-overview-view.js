@@ -149,7 +149,7 @@ function paintAll(inst) {
   // Needs you
   const n = inst.needs;
   tick(n.count, m.needsYou.count);
-  setSub(n, m.needsYou.picks ? `${m.needsYou.forYou} for you, ${m.needsYou.picks} design ${m.needsYou.picks === 1 ? 'pick' : 'picks'}` : '');
+  setSub(n, m.needsYou.count ? `${m.needsYou.decisions} to decide, ${m.needsYou.reviews} to review` : '');
   empty(n, m.needsYou.count === 0, place ? `Nothing in ${place} is waiting on you.` : 'Nothing is waiting on you.');
   fillRows(n, rowSpecs(m.needsYou.items, now), ctx);
   setMore(n, m.needsYou.more);

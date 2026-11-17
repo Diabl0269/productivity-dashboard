@@ -149,7 +149,10 @@ test('every row has exactly one of the known states', () => {
 test('countByState counts every state and the total', () => {
   const c = countByState(rowsOf());
   assert.equal(c.all, 15);
-  assert.equal(STATES.reduce((n, s) => n + c[s], 0), 15);
+  // 'needs you' counts the flag (PRO130), which can overlap another state, so the exclusive states are summed apart from it
+  const rows = rowsOf();
+  assert.equal(STATES.filter(s => s !== 'needs you').reduce((n, s) => n + c[s], 0) + rows.filter(r => r.state === 'needs you').length, 15);
+  assert.equal(c['needs you'], rows.filter(r => r.needsYou).length);
   assert.equal(c.done, 2);
   assert.equal(c['in review'], 2); // BK30 and BK31: its open check does not make it "needs you" in review
 });

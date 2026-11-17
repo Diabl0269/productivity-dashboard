@@ -265,13 +265,17 @@ covers: [bakery-orders/till/**, bakery-orders/receipts.js]
 - **Read it on a phone**: a page is only a file; ask a Claude session to "publish `<page path>` as a private
   artifact" and open the link. The tracker has no publish code.
 
+## Needs you
+
+"Needs you" is one number, the same in Overview, the Lanes For you count, the bottom strip and the Tickets "Needs you" chip (rule: `shared/home-needs-you.js`). The unit is the ticket: the unique tickets with a review card, an open question (every ticket of a grouped question), a reading to confirm, a design pick at the pick stage, or a check to tick on open work. It splits into decisions (questions, readings, picks) and reviews (shipped work, checks), shown as "N to decide, M to review". In Tickets it is a flag on the row, not a state, so a running ticket can carry it and the Running count does not change.
+
 ## Tickets view
 
 The Tickets view (key 4, `/dashboard/home/tickets`) is one dense table of every ticket in the project, and the inspector's Tickets tab lists the selected place's open tickets by state. The rules live in `shared/home-ticket-rows.js`.
 
 **States, first match wins:**
 - **running**: a session is working on it, waiting on CI, or waiting on you. An idle session is only a quiet "idle" mark.
-- **needs you**: an open question or reading to confirm, or a check to tick, by the Plan page's rule (a ticket already in Ready for review stays "in review").
+- **needs you**: an open question or reading to confirm, or a check to tick, by the Plan page's rule (a ticket already in Ready for review stays "in review"). The Needs you chip counts and filters by the flag above, which also covers review cards, picks and running tickets.
 - **in review**: in the Ready for review column.
 - **ready**: its epic is Ready and the ticket is free to run, by the Plan page's rule.
 - **waiting**: in To do or In progress but not free to run; hover the chip to see why.

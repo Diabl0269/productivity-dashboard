@@ -12,6 +12,10 @@
  * (or a Map) for the OPEN epics, from `openEpicReadiness` in shared/epic-ready.js: the one "is it Ready" rule
  * the Plan page uses. `running` is `byTicket` of GET /api/home/running ({ [ticketId]: { state, pr? } }).
  *
+ * `needsYou` (PRO130) is a flag on every row, true when the ticket is in the shared Needs you rule
+ * (shared/home-needs-you.js: the same number as Overview and Lanes). It is not a state: a running ticket can carry it.
+ * The "needs you" chip filters and counts by the flag.
+ *
  * One state per ticket, first match wins:
  *   running    live work now (state words: working, waiting on CI, waiting on you)
  *   needs you  an open ask or interpretation, or a check to tick by the Plan page's rule (checksOnOpenWork: not in review or done)
@@ -29,6 +33,7 @@ import { unsentNotes } from './review-notes.js';
 import { boxForEpic, boxPath } from './home-areas.js';
 import { checksOnOpenWork } from './review.js';
 import { needsTalLinesByEpic } from './needs-tal-lines.js';
+import { needsYou as sharedNeedsYou } from './home-needs-you.js';
 
 export const STATES = ['running', 'needs you', 'in review', 'ready', 'waiting', 'later', 'done'];
 export const GROUPS = ['none', 'place', 'epic', 'state', 'lane'];
@@ -102,6 +107,8 @@ export function ticketRows(doc, config, readinessById, running) {
 
   // Checks to tick: the Plan page's own list (checksOnOpenWork), so a ticket already in review stays "in review".
   const checksBy = new Map(checksOnOpenWork(doc, { lines: needsTalLinesByEpic(doc) }).map(c => [c.id, c.checks.total - c.checks.done]));
+
+  const needIds = sharedNeedsYou(doc).ids;
 
   const boxCache = new Map();
   const placeOf = (owner) => {
@@ -180,6 +187,7 @@ export function ticketRows(doc, config, readinessById, running) {
       placeName: place.placeName,
       state,
       stateWhy,
+      needsYou: needIds.has(t.id),
       model: modelOf(t),
       labels: labelsOf(t).filter(l => !/^model:/i.test(l)),
       updated: t.updated || t.created || '',
@@ -207,6 +215,11 @@ function haystack(r) {
   return h;
 }
 
+/** A row passes a state filter by its one state, or, for the "needs you" chip, by its needsYou flag. */
+export function stateMatches(r, states) {
+  return (states.has('needs you') && !!r.needsYou) || (r.state !== 'needs you' && states.has(r.state));
+}
+
 const asSet = v => (v instanceof Set ? v : new Set(Array.isArray(v) ? v : v ? [v] : []));
 
 /**
@@ -221,7 +234,7 @@ export function filterRows(rows, f = {}) {
   const showDone = !!f.showDone || states.has('done');
   return rows.filter((r) => {
     if (r.state === 'done' && !showDone) return false;
-    if (states.size && !states.has(r.state)) return false;
+    if (states.size && !stateMatches(r, states)) return false;
     if (types.size && !types.has(r.type)) return false;
     if (place && !(r.epicId !== null && place.has(r.epicId))) return false;
     if (f.lane && r.lane !== f.lane) return false;
@@ -268,7 +281,10 @@ export function sortRows(rows, key = 'id', dir = 'asc') {
 export function countByState(rows) {
   const counts = { all: rows.length };
   for (const s of STATES) counts[s] = 0;
-  for (const r of rows) counts[r.state] += 1;
+  for (const r of rows) {
+    if (r.state !== 'needs you') counts[r.state] += 1;
+    if (r.needsYou) counts['needs you'] += 1; // a flag, so it can overlap Running and In review
+  }
   return counts;
 }
 

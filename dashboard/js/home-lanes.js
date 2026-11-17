@@ -8,11 +8,9 @@
 // address); else ./home-where.js selectedEpicIds(ctx), the selected place; else the Home project's tickets.
 
 import { registerHomeView, registerStripItem, setView } from './home-state.js';
-import { computeRunPlan } from '../../shared/run-plan.js';
 import { scopePlan, scopeForYou, scopeLine, scopeTest, scopeNotes, epicsFromSearch } from '../../shared/plan-scope.js';
+import { needsYou } from '../../shared/home-needs-you.js';
 import { selectedEpicIds, projectScopeOf, scopeIds, selectedPlaceName } from './home-where.js';
-import { asksFromState } from './asks-strip.js';
-import { interpretationsFromState } from './interpretation-card.js';
 import { fillEpicEstimates } from './ticket-cost-ui.js';
 import { renderNextStartLine } from './next-start-line.js';
 import { createPlanCtx, preparePlan, renderPlanAutoQueue, renderPlanReady, restoreAutoFocus } from './run-plan-page.js';
@@ -150,8 +148,8 @@ function draw(root, ctx, page, { animate = false } = {}) {
   const plan = scopePlan(whole, page.doc, set);
   const { asks, interps } = scopeForYou(page.doc, set, allAsks, allInterps);
   const review = plan.review || [];
-  const forYouCount = review.length + asks.length + interps.length;
   const shows = set ? scopeTest(page.doc, set) : undefined;
+  const forYouCount = needsYou(page.doc, shows, { plan: whole }).count; // the one Needs you rule (PRO130)
   const autoCount = (whole.readiness || []).filter(r => r.auto && (!shows || shows(r.id))).length;
   const readyCount = (plan.readiness || []).filter(r => r.ready).length;
 
@@ -272,18 +270,14 @@ registerStripItem({
     // Same scope as every Home view (the place, else the project), so this count matches Overview's Needs you.
     const set = scopeIds(ctx);
     const shows = set ? scopeTest(ctx.doc(), set) : () => true;
-    const asks = state?.tasks ? asksFromState(state).filter(a => (a.ids || [a.id]).some(shows)) : [];
-    let reviews = 0;
-    try {
-      reviews = state?.tasks ? (computeRunPlan(ctx.doc()).review || []).filter(r => shows(r.id)).length
-        + interpretationsFromState(state).filter(i => shows(i.id)).length : 0;
-    } catch { reviews = 0; }
+    let n = { count: 0, decisions: 0, reviews: 0 };
+    try { if (state?.tasks) n = needsYou(ctx.doc(), shows); } catch { /* stays 0 */ }
     const btn = el('button', 'hl-strip-btn');
     btn.type = 'button';
     btn.dataset.hmKey = 'strip-for-you';
-    btn.append(el('span', 'hm-strip-label', 'For you'), el('span', 'hm-strip-count hl-strip-count', String(asks.length)));
-    btn.appendChild(el('span', 'hm-strip-note', `${asks.length === 1 ? 'decision' : 'decisions'} · ${reviews} to review`));
-    btn.setAttribute('aria-label', `For you: ${asks.length} decision${asks.length === 1 ? '' : 's'} and ${reviews} to review. Open the Lanes view at For you`);
+    btn.append(el('span', 'hm-strip-label', 'For you'), el('span', 'hm-strip-count hl-strip-count', String(n.count)));
+    btn.appendChild(el('span', 'hm-strip-note', `${n.decisions} ${n.decisions === 1 ? 'decision' : 'decisions'} · ${n.reviews} to review`));
+    btn.setAttribute('aria-label', `For you: ${n.count} in all, ${n.decisions} decision${n.decisions === 1 ? '' : 's'} and ${n.reviews} to review. Open the Lanes view at For you`);
     btn.addEventListener('click', () => {
       if (mounted) { scrollToSection(mounted.root.querySelector('.hl') || mounted.root, 'foryou'); return; }
       pendingSection = 'foryou';
