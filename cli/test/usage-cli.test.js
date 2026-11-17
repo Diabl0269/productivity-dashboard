@@ -146,3 +146,23 @@ test('GET /api/home/usage: the meter, cached for 60 s, a bad slug is a 400, the 
   assert.equal((await call('/api/home/usage?project=../x')).status, 400);
   assert.equal((await call('/api/home/usage?project=demo')).body.perRunning.length, 0); // not a demo ticket: filtered
 });
+
+test('GET /api/home/usage: past 60 s the old answer comes back at once and a fresh one is read behind it (PRO127)', async (t) => {
+  const { dir } = home();
+  process.env.CH_HOME = dir;
+  const { handleHomeRoute } = await import('../../server/home-routes.js');
+  const call = u => new Promise(resolve => {
+    const res = { headersSent: false, writeHead(s) { this.status = s; this.headersSent = true; }, end(x) { resolve({ status: this.status, body: JSON.parse(x) }); } };
+    handleHomeRoute({ method: 'GET' }, res, new URL(u, 'http://x'), { dataRoot: dir });
+  });
+  const u = '/api/home/usage?project=stale-check';
+  assert.equal((await call(u)).body.cached, false);
+  const realNow = Date.now;
+  t.after(() => { Date.now = realNow; });
+  Date.now = () => realNow() + 61e3;
+  const stale = (await call(u)).body;
+  assert.equal(stale.cached, true);
+  assert.equal(stale.stale, true);
+  for (let i = 0; i < 50 && (await call(u)).body.stale; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal((await call(u)).body.stale, false); // the background read landed
+});

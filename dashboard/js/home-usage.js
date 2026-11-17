@@ -31,6 +31,7 @@ async function load(force) {
   if (st.loading) return;
   if (!force && st.body && st.project === project && Date.now() - st.fetchedAt < REFRESH_MS) return;
   st.loading = true;
+  st.chip?.setAttribute('aria-busy', String(!st.body || st.project !== project)); // quiet skeleton, first read only
   try {
     const res = await fetch(`/api/home/usage${project ? `?project=${encodeURIComponent(project)}` : ''}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(String(res.status));
@@ -42,6 +43,7 @@ async function load(force) {
     st.error = true;
   } finally {
     st.loading = false;
+    st.chip?.removeAttribute('aria-busy');
   }
   paintChip();
   if (st.pop) paintPopover();
