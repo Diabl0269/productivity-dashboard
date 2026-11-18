@@ -147,6 +147,22 @@ function readinessIn(ix, epic) {
     };
   });
 
+  // An umbrella (an open ticket with open tickets under it) is worked through its subtasks: a run on it takes
+  // its next open subtask. So it is runnable only while one of them is, and runs on their top tier. Without
+  // this, an umbrella whose subtasks all wait on Tal still reads runnable and autorun restarts it for nothing
+  // (2026-11-18, restart-without-progress).
+  const childById = new Map(children.map(c => [c.id, c]));
+  for (const c of children) {
+    const subs = descendantIds(c.id, childrenOf).map(id => childById.get(id)).filter(Boolean);
+    if (!subs.length || !c.runnable) continue;
+    const free = subs.filter(s => s.runnable);
+    if (!free.length) {
+      c.runnable = false;
+      c.why = `its subtasks wait: ${subs.map(s => `${s.id} ${s.why}`).join('; ')}`;
+    } else if (free.some(s => s.model === 'opus')) c.model = 'opus';
+    else if (!c.model && free.some(s => s.model === 'sonnet')) c.model = 'sonnet';
+  }
+
   const runnable = children.filter(c => c.runnable);
   // Parked: the only open tickets under the epic sit in backlog (PRO72).
   const parked = children.length > 0 && children.every(c => c.section === 'backlog') ? children.map(c => c.id) : [];

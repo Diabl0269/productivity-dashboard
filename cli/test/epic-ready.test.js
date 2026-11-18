@@ -328,3 +328,22 @@ test('PRO114: emptyLaterEpics lists open later/future epics with no open non-epi
   });
   assert.deepEqual(emptyLaterEpics(doc).map(r => r.id), ['L1', 'L4']);
 });
+
+test('umbrella: runnable only while one of its open subtasks is, on their top tier', () => {
+  const waiting = mk({ todo: [epic('E1', { labels: ['auto'] }),
+    task('U1', { parentId: 'E1', labels: ['model:sonnet'] }),
+    task('S1', { parentId: 'U1', labels: ['model:opus'], waitingOn: 'Tal: merge PR' }),
+    task('S2', { parentId: 'U1', blockedBy: ['S1'] })] });
+  const r = ready(waiting, 'E1');
+  const u = r.children.find(c => c.id === 'U1');
+  assert.equal(u.runnable, false);
+  assert.equal(u.why, 'its subtasks wait: S1 waiting on Tal: merge PR; S2 blocked by S1');
+  assert.equal(r.ready, false);
+
+  const free = mk({ todo: [epic('E1'),
+    task('U1', { parentId: 'E1', labels: ['model:sonnet'] }),
+    task('S1', { parentId: 'U1', labels: ['model:opus'] })] });
+  const u2 = ready(free, 'E1').children.find(c => c.id === 'U1');
+  assert.equal(u2.runnable, true);
+  assert.equal(u2.model, 'opus');
+});
