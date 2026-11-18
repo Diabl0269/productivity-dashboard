@@ -168,6 +168,14 @@ test('addAsk / resolveAsk / askLines; bad input refused', () => {
   assert.ok(askErrors({ asks: [{ n: 1, text: '', at: AT, state: 'nope' }] }, 'x').length >= 2);
 });
 
+test('addAsk refuses a question whose text is a kill command (FRO1942)', () => {
+  const task = { id: 'T1' };
+  assert.throws(() => addAsk(task, { details: D, text: 'Can you kill five stuck test processes? Run: kill 90081 96728' }), /kill command/);
+  assert.throws(() => addAsk(task, { details: `${D} Run: kill -9 1234`, text: 'Stuck test?' }), /kill command/);
+  addAsk(task, { details: D, text: 'Should the skill kill stalled runs?', now: AT });
+  assert.equal(task.asks.length, 1);
+});
+
 test('asks with a date come first, soonest first, then oldest', () => {
   const doc = { sections: [{ id: 'todo', tasks: [
     { id: 'A', asks: [{ n: 1, at: '2026-01-01T00:00:00Z', text: 'old', state: 'open' }] },
