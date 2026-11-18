@@ -97,7 +97,7 @@ import cmdNextStart from './tasks-next-start.js';
 import cmdRunning from './tasks-running.js';
 import cmdSweepIdle from './tasks-sweep-idle.js';
 import cmdAutomations from './tasks-automations.js';
-import { readinessLabel, parkedEpics, emptyLaterEpics, parkedAfterClosing, openEpicReadiness } from '../../shared/epic-ready.js';
+import { readinessLabel, parkedEpics, emptyLaterEpics, parkedAfterClosing, openEpicReadiness, dependencyLoops, reviewFollowUpLoop } from '../../shared/epic-ready.js';
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
@@ -757,6 +757,11 @@ function cmdAdd(argv) {
     loggedMinutes = parseLoggedMinutes(values['log-time'], '--log-time');
   }
 
+  // PRO133: a follow-up for a still-open ticket must not land in an epic that waits on that ticket's epic.
+  if (values['review-of'] && values.parent) {
+    const loop = reviewFollowUpLoop(doc, values['review-of'], values.parent);
+    if (loop) printErr(`warning: ${values.parent} waits on the epic of ${values['review-of']} (${loop.sourceEpic}), which is not done: this follow-up could never start. File it under ${loop.sourceEpic} instead (--parent ${loop.sourceEpic}) and add --add-blocked-by <new id> to ${values['review-of']} if it must come first`);
+  }
   const parentRef = values.parent || values['review-of'];
   const resolved = resolveCreateProject({
     project: values.project,
@@ -2538,6 +2543,10 @@ function cmdLint(argv) {
   // PRO114: a "later" epic with nothing open under it is clutter.
   for (const r of emptyLaterEpics(doc)) printErr(`lint: warning: epic ${r.id} is an empty later bucket (nothing open under it); close it: ch tasks done ${r.id}`);
 
+  // PRO133: tickets and epics that wait on each other in a loop can never run.
+  const loops = dependencyLoops(doc);
+  for (const l of loops) printErr(`lint: warning: Not ready: loop ${l.path.join(' -> ')}`);
+
   // Reviews are Tal's: a ticket that went review -> done within minutes was probably closed by a session.
   for (const t of doc.sections.filter(s => s.id === 'done').flatMap(s => s.tasks)) {
     if (reviewClosedTooFast(t)) printErr(`lint: warning: ${t.id} went review -> done within ${REVIEW_DONE_FAST_MS / 60000} minutes; Tal may not have reviewed it`);
@@ -2564,7 +2573,7 @@ function cmdLint(argv) {
       return;
     }
     if (values.json) {
-      jsonOut({ valid: true, errors: [], duplicateIds: [], epicsWithoutLane: noLane.map(t => t.id), epicsWithoutModel: openEpicsWithoutModel(doc).map(t => t.id), parkedEpics: parked.map(r => r.id) });
+      jsonOut({ valid: true, errors: [], duplicateIds: [], epicsWithoutLane: noLane.map(t => t.id), epicsWithoutModel: openEpicsWithoutModel(doc).map(t => t.id), parkedEpics: parked.map(r => r.id), dependencyLoops: loops });
       return;
     }
     ok('lint: valid (no errors)');

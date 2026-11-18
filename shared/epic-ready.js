@@ -105,6 +105,129 @@ function descendantIds(epicId, childrenOf) {
   return out;
 }
 
+/**
+ * PRO133: loops in "what must finish first". A ticket waits on its own open `blockedBy`, on the open
+ * `blockedBy` of every ancestor (its epic cannot start before those), and anything with open tickets
+ * under it only finishes when they do. A cycle in that graph means nothing in it can ever run
+ * (2026-11-18, FRO1750: blocked by FRO2071, which sat in FRO2046, which waited on FRO1594, FRO1750's epic).
+ * Returns Map<id, id[]> of waits-on edges between open tickets.
+ */
+function waitEdges(ix) {
+  const { byId, sectionOf, childrenOf } = ix;
+  const open = id => byId.has(id) && !FINISHED.has(sectionOf.get(id));
+  const edges = new Map();
+  for (const t of byId.values()) {
+    if (!open(t.id)) continue;
+    const out = new Set((t.blockedBy || []).filter(open));
+    for (let p = t.parentId, hops = 0; p && byId.has(p) && hops < 50; p = byId.get(p).parentId, hops++) {
+      for (const b of byId.get(p).blockedBy || []) if (open(b)) out.add(b);
+    }
+    for (const d of descendantIds(t.id, childrenOf)) if (open(d)) out.add(d);
+    out.delete(t.id);
+    edges.set(t.id, [...out]);
+  }
+  return edges;
+}
+
+/** Strongly connected groups of size > 1 (Tarjan), each as a Set of ids. */
+function loopGroups(edges) {
+  let n = 0;
+  const idx = new Map(), low = new Map(), onStack = new Set(), stack = [], groups = [];
+  const visit = v => {
+    idx.set(v, n); low.set(v, n); n++; stack.push(v); onStack.add(v);
+    for (const w of edges.get(v) || []) {
+      if (!edges.has(w)) continue;
+      if (!idx.has(w)) { visit(w); low.set(v, Math.min(low.get(v), low.get(w))); }
+      else if (onStack.has(w)) low.set(v, Math.min(low.get(v), idx.get(w)));
+    }
+    if (low.get(v) === idx.get(v)) {
+      const g = new Set();
+      let w;
+      do { w = stack.pop(); onStack.delete(w); g.add(w); } while (w !== v);
+      if (g.size > 1) groups.push(g);
+    }
+  };
+  for (const v of edges.keys()) if (!idx.has(v)) visit(v);
+  return groups;
+}
+
+const loopCache = new WeakMap();
+function loopIndex(ix) {
+  let li = loopCache.get(ix);
+  if (!li) {
+    const edges = waitEdges(ix);
+    const groupOf = new Map();
+    for (const g of loopGroups(edges)) for (const id of g) groupOf.set(id, g);
+    li = { edges, groupOf };
+    loopCache.set(ix, li);
+  }
+  return li;
+}
+
+/** The shortest wait cycle through `id` as ids ending back at `id` (["A","B","A"]), or null when `id` is in no loop. */
+function loopPathFrom(ix, id) {
+  const { edges, groupOf } = loopIndex(ix);
+  const g = groupOf.get(id);
+  if (!g) return null;
+  const prev = new Map([[id, null]]);
+  const queue = [id];
+  while (queue.length) {
+    const v = queue.shift();
+    for (const w of edges.get(v) || []) {
+      if (!g.has(w)) continue;
+      if (w === id) {
+        const chain = [];
+        for (let x = v; x !== null; x = prev.get(x)) chain.unshift(x);
+        return [...chain, id];
+      }
+      if (!prev.has(w)) { prev.set(w, v); queue.push(w); }
+    }
+  }
+  return null;
+}
+
+/** Every open ticket that sits in a wait loop: [{ id, path }] with the cycle written from that ticket. Document order. */
+export function dependencyLoops(doc) {
+  const ix = indexDoc(doc);
+  const { groupOf } = loopIndex(ix);
+  const out = [];
+  for (const id of ix.byId.keys()) {
+    if (groupOf.has(id)) out.push({ id, path: loopPathFrom(ix, id) });
+  }
+  return out;
+}
+
+/**
+ * PRO133: a follow-up filed for review of `sourceId` under `parentId` (an epic or ticket) can never run when
+ * the source is still open and that parent's epic waits, at any depth, on the source's epic (or on the
+ * source). Returns { sourceEpic } (the epic to file under instead) or null.
+ */
+export function reviewFollowUpLoop(doc, sourceId, parentId) {
+  const ix = indexDoc(doc);
+  const { byId, sectionOf } = ix;
+  if (!byId.has(sourceId) || FINISHED.has(sectionOf.get(sourceId)) || !parentId || !byId.has(parentId)) return null;
+  const epicOfId = id => {
+    for (let t = byId.get(id), hops = 0; t && hops < 50; t = byId.get(t.parentId), hops++) if (t.type === 'epic') return t;
+    return null;
+  };
+  const sourceEpic = epicOfId(sourceId);
+  const targetEpic = epicOfId(parentId);
+  if (!sourceEpic || !targetEpic || sourceEpic.id === targetEpic.id) return null;
+  const open = id => byId.has(id) && !FINISHED.has(sectionOf.get(id));
+  const seen = new Set([targetEpic.id]);
+  const stack = [targetEpic.id];
+  while (stack.length) {
+    for (const b of byId.get(stack.pop()).blockedBy || []) {
+      if (!open(b) || seen.has(b)) continue;
+      if (b === sourceEpic.id || b === sourceId) return { sourceEpic: sourceEpic.id };
+      seen.add(b);
+      const be = epicOfId(b);
+      if (be) stack.push(be.id);
+    }
+  }
+  return null;
+}
+
 function readinessIn(ix, epic) {
   const { byId, sectionOf, childrenOf } = ix;
   const sectionId = sectionOf.get(epic.id) || null;
@@ -125,7 +248,9 @@ function readinessIn(ix, epic) {
     const blockedBy = openBlockers(t);
     const held = labelsOf(t).filter(l => HELD_LABELS.includes(l));
     let why = null;
-    if (isPickGate(t)) why = isDesignPick(t) ? 'your pick' : 'your co-task';
+    const loop = loopPathFrom(ix, t.id);
+    if (loop && RUNNABLE_SECTIONS.has(sec) && !isPickGate(t)) why = `loop ${loop.join(' -> ')}`;
+    else if (isPickGate(t)) why = isDesignPick(t) ? 'your pick' : 'your co-task';
     else if (!RUNNABLE_SECTIONS.has(sec)) why = `in ${sec}`;
     else if (t.blocked) why = 'marked blocked';
     else if (waitUntilDate(t)) why = `waits until ${waitUntilDate(t)}`;
@@ -186,7 +311,9 @@ function readinessIn(ix, epic) {
     addReason('parked', parked, `waits on ${parked.join(', ')} in backlog`);
   } else if (!runnable.length && !reasons.length) {
     const held = children.filter(c => /^held:/.test(c.why || ''));
-    if (!children.length) addReason('empty', [], 'nothing open to run');
+    const looped = children.find(c => /^loop /.test(c.why || ''));
+    if (looped) addReason('loop', looped.why.replace(/^loop /, '').split(' -> '), looped.why);
+    else if (!children.length) addReason('empty', [], 'nothing open to run');
     else if (held.length === children.length) addReason('held', [], 'every open ticket is held for your go-ahead');
     else addReason('none-free', [], 'no ticket is free to run');
   }
@@ -353,6 +480,7 @@ export function plainReasonText(reason, parked = []) {
       ? `Not ready: its only ticket, ${ids[0]}, is in backlog; move it to To do`
       : `Not ready: its only tickets, ${joinWords(ids)}, are in backlog; move one to To do`;
   }
+  if ((m = /^loop (.+)$/.exec(reason))) return `Never runs: ${m[1]} wait on each other in a loop; file the follow-up under the first ticket's epic`;
   if ((m = /^waits on your pick (\S+)$/.exec(reason))) return `Waits for your design pick on ${m[1]}`;
   if ((m = /^waits on your co-task (\S+)$/.exec(reason))) return `Waits for your co-task ${m[1]}`;
   if ((m = /^waits on (.+)$/.exec(reason))) return `Waits on ${joinWords(m[1].split(/,\s*/))} to finish`;

@@ -103,6 +103,15 @@ function findEpic(all, lane, project, sections, extra) {
   return null;
 }
 
+/** The epic of a still-open (todo / in-progress) source ticket when that epic is open and no "later" bucket; else null. */
+function ownEpicWhileOpen(all, doc, task) {
+  if (isFreeSource(task) || task.type === 'epic') return null;
+  const row = all.find(r => r.task === task);
+  if (!row || !['todo', 'in-progress'].includes(row.section)) return null;
+  const own = epicOf(doc, task);
+  return own && OPEN_SECTIONS.includes(own.section) && !isLater(own.task) ? own : null;
+}
+
 /**
  * Where every unsent note would go. `ticket` limits it to one noted ticket.
  * Returns { groups: [{ area, epic: { id|null, title, section, isNew, project }, items:
@@ -147,6 +156,12 @@ export function planFiling(doc, { ticket } = {}) {
         unrouted.push({ handle, reason: 'needs an area' });
         continue;
       }
+    } else if (note.kind !== 'idea' && ownEpicWhileOpen(all, doc, task)) {
+      // PRO133: the note's ticket is still open (todo / in-progress), so a follow-up its own build may wait on must sit
+      // under the ticket's own epic: "the next epic of the area" can wait on this epic and could never run.
+      const own = ownEpicWhileOpen(all, doc, task);
+      epic = { id: own.task.id, title: own.task.title, section: own.section, isNew: false, project: own.task.project || null };
+      key = `own|${own.task.id}`;
     } else if (note.kind === 'idea') {
       const hit = findEpic(all, area, project, OPEN_SECTIONS, t => isLater(t) || t.title === `${laneDisplayName(area)}: later`);
       epic = hit
