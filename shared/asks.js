@@ -104,6 +104,11 @@ export function waitsOnTal(task) {
   return typeof task?.waitingOn === 'string' && TAL_RE.test(task.waitingOn);
 }
 
+/** A question whose text is a `kill <pid>` (or pkill/killall) command: a run kills a stuck process itself after telling its owner (FRO1942). */
+export function isKillCommandText(text) {
+  return /(?:^|[\s:`])(?:kill(?:\s+-\w+)?\s+\d{2,}|pkill\s+\S|killall\s+\S)/i.test(String(text ?? ''));
+}
+
 /** A question that asks Tal to judge taste ("taste: ..."): a check, never an ask. */
 export function isTasteText(text) {
   return /^\s*taste\s*:/i.test(String(text ?? ''));
@@ -167,6 +172,9 @@ export function parseOption(input, i = 0) {
 export function addAsk(task, {
   text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, now = new Date().toISOString(),
 } = {}) {
+  if (isKillCommandText(text) || isKillCommandText(details)) {
+    throw new Error('a kill command is not a question for Tal: tell the session that owns the stuck process, then kill it yourself by pid (never pkill/killall) and note it on the ticket');
+  }
   if (isTasteText(text)) {
     throw new Error('a taste question is a check, not an ask: put it on the review as --check "<what to judge>" with --check-video / --check-audio / --check-project, or as an Unverified "needs-tal: taste: <text> | video=<path>" line');
   }
