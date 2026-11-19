@@ -23,7 +23,7 @@ A modular, local-first productivity dashboard designed for [Claude Code](https:/
 | Theme | None | Dark-first design with light mode toggle |
 | Views | Single view | Board view + list view |
 | Overview | None | Sprint tracker, deadlines, blocked count, estimate total, deep links to Tasks |
-| Automation | None | Daily summary (Claude Desktop scheduled tasks / optional scripts) |
+| Automation | None | Daily summary (LaunchAgents running OpenCode — see Automations) |
 | Config | Hardcoded | External `config.json` (links, sprints, WIP limits, Slack) |
 | Global Memory | None | Global sidebar tab under Memory — view/edit Claude's cross-project memory |
 
@@ -181,6 +181,32 @@ made-up bakery). Full guide: [docs/home-page.md](docs/home-page.md).
 - Dark theme is the default; toggle to light in the top-right corner
 - Preference saved to localStorage
 - Both themes share a single design-token system (`dashboard/styles/base.css`)
+
+## Automations (LaunchAgents running OpenCode)
+
+Recurring jobs (`daily-summary`, `weekly-performance-review`, `ai-ideas-watcher`, `insights`) run as macOS LaunchAgents
+`local.opencode.<id>` that call `scripts/launchagents/run-job.sh`, which runs
+`opencode-cli run --auto --format json --title "<id> <date>" "<prompt pointing at .agents/skills/<id>/SKILL.md>"`
+and writes the session id to `~/Library/Logs/opencode-automations/<id>.last.json`.
+
+```bash
+REPO_ROOT="/path/to/checkout" OPENCODE_MODEL="provider/model" node scripts/launchagents/install.mjs [--dry-run] [--no-load] [--uninstall] [--only id,id]
+```
+
+The installer copies any missing skill prompt from `~/.copilot/scheduled-tasks/<id>/` into `.agents/skills/<id>/`, writes the plists
+(`plutil`-linted) and loads them with `launchctl bootout` + `bootstrap gui/$UID`. Jobs and schedules live in `scripts/launchagents/jobs.json`.
+
+The dashboard **Automations** tab (`/dashboard/automations`) manages *any* LaunchAgent: schedule, program arguments, environment, the
+script it runs, Run now, Enable/Disable, log tail, and Open session (opencode/copilot: opens the app; claude/codex: Terminal resume;
+other: the log file). API: `server/automations-routes.js` (`/api/automations*`, local-origin only).
+
+| Env var | Purpose |
+|---|---|
+| `LAUNCH_AGENTS_DIR` | LaunchAgents directory (default `~/Library/LaunchAgents`) |
+| `AUTOMATION_LOG_DIR` | Logs and `<id>.last.json` sidecars (default `~/Library/Logs/opencode-automations`) |
+| `REPO_ROOT` | Checkout the jobs run in (installer; default this repo) |
+| `OPENCODE_CLI`, `OPENCODE_MODEL` | opencode binary / model for `run-job.sh` (model unset by default) |
+| `LAUNCHCTL_BIN`, `PLUTIL_BIN`, `OPEN_BIN`, `OSASCRIPT_BIN`, `LAUNCHD_UID` | Overrides for tests |
 
 ## Daily Automation (macOS LaunchAgent)
 

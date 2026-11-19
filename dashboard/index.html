@@ -67,6 +67,7 @@
   <link rel="stylesheet" href="./styles/mobile.css">
   <link rel="stylesheet" href="./styles/run-plan.css">
   <link rel="stylesheet" href="./styles/metrics.css">
+  <link rel="stylesheet" href="./styles/automations.css">
   <link rel="stylesheet" href="./styles/home.css">
   <link rel="stylesheet" href="./styles/home-lanes.css">
   <link rel="stylesheet" href="./styles/home-running.css">
@@ -119,6 +120,7 @@
         <button id="settingsTabBtn" role="tab" aria-selected="false" aria-controls="settingsPanel">Settings</button>
         <button id="metricsTabBtn" role="tab" aria-selected="false" aria-controls="metricsPanel">Metrics</button>
         <button id="homeTabBtn" role="tab" aria-selected="false" aria-controls="homePanel">Home</button>
+        <button id="automationsTabBtn" role="tab" aria-selected="false" aria-controls="automationsPanel">Automations</button>
       </div>
       <div class="view-toggle" id="taskViewToggle" style="display: none;">
         <button id="boardViewBtn" class="active">Board</button>
@@ -411,6 +413,11 @@
   <!-- METRICS TAB PANEL -->
   <div class="tab-panel" id="metricsPanel" role="tabpanel" aria-labelledby="metricsTabBtn">
     <div class="mc-root" id="metricsMain"></div>
+  </div>
+
+  <!-- AUTOMATIONS TAB PANEL (LaunchAgents manager; js/automations-view.js) -->
+  <div class="tab-panel" id="automationsPanel" role="tabpanel" aria-labelledby="automationsTabBtn">
+    <div class="au-root" id="automationsMain"></div>
   </div>
 
   <!-- HOME TAB PANEL (js/home-view.js builds the four zones; features register in js/home-registry.js) -->
