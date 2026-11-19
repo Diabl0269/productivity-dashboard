@@ -7,8 +7,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const hasPlutil = spawnSync('plutil', ['-help']).status === 0;
 
-test('install.mjs writes lint-clean plists into a temp dir without loading', () => {
+test('install.mjs writes lint-clean plists into a temp dir without loading', { skip: !hasPlutil && 'plutil is only available on macOS' }, () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'la-inst-'));
   const env = { ...process.env, HOME: tmp, LAUNCH_AGENTS_DIR: path.join(tmp, 'agents'), AUTOMATION_LOG_DIR: path.join(tmp, 'logs'), REPO_ROOT: repo, COPILOT_TASKS_DIR: path.join(tmp, 'none') };
   const r = spawnSync(process.execPath, ['scripts/launchagents/install.mjs', '--no-load', '--only', 'daily-summary'], { cwd: repo, env, encoding: 'utf8' });

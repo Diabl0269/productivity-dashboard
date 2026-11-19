@@ -10,6 +10,7 @@ import { handleAutomationsRoute } from '../../server/automations-routes.js';
 
 let tmp, srv, base;
 const label = 'local.opencode.demo';
+const hasPlutil = spawnSync('plutil', ['-help']).status === 0;
 
 function readBody(req) {
   return new Promise(r => { let s = ''; req.on('data', c => { s += c; }); req.on('end', () => r(s)); });
@@ -20,7 +21,8 @@ const api = async (method, p, body) => {
 };
 const calls = () => fs.existsSync(path.join(tmp, 'calls.log')) ? fs.readFileSync(path.join(tmp, 'calls.log'), 'utf8').trim().split('\n') : [];
 
-before(async () => {
+before(async t => {
+  if (!hasPlutil) { t.skip('plutil is only available on macOS'); return; }
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-'));
   fs.mkdirSync(path.join(tmp, 'agents'));
   fs.mkdirSync(path.join(tmp, 'logs'));
@@ -45,7 +47,7 @@ before(async () => {
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${srv.address().port}`;
 });
-after(() => { srv.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
+after(() => { srv?.close(); if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); });
 
 test('GET lists the plist with schedule, state, script, tool and last session', async () => {
   const { status, body } = await api('GET', '/api/automations');
