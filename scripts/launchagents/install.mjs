@@ -18,6 +18,7 @@ const flag = f => argv.includes(f);
 const only = argv.includes('--only') ? argv[argv.indexOf('--only') + 1].split(',') : null;
 const repoRoot = path.resolve(process.env.REPO_ROOT || path.join(here, '..', '..'));
 const jobs = JSON.parse(fs.readFileSync(path.join(here, 'jobs.json'), 'utf8')).filter(j => !only || only.includes(j.id));
+const installHome = process.env.AUTOMATION_HOME_DIR || os.homedir();
 const copilotTasks = process.env.COPILOT_TASKS_DIR || path.join(os.homedir(), '.copilot', 'scheduled-tasks');
 
 export function promptFor(id) {
@@ -27,7 +28,13 @@ export function promptFor(id) {
 export function buildPlist(job, { root = repoRoot, model = process.env.OPENCODE_MODEL, logs = logDir() } = {}) {
   const label = LABEL_PREFIX + job.id;
   const env = { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin', AUTOMATION_LOG_DIR: logs };
-  if (model) env.OPENCODE_MODEL = model;
+  const harness = job.harness || process.env.AUTOMATION_HARNESS;
+  if (harness) env.AUTOMATION_HARNESS = harness;
+  const prefix = harness === 'claude' ? 'CLAUDE' : harness === 'copilot' ? 'COPILOT' : 'OPENCODE';
+  const selectedModel = job.model || model;
+  if (selectedModel) env[`${prefix}_MODEL`] = selectedModel;
+  if (job.agent) env[`${prefix}_AGENT`] = job.agent;
+  if (job.effort) env[`${prefix}_EFFORT`] = job.effort;
   return {
     Label: label,
     ProgramArguments: ['/bin/bash', path.join(root, 'scripts', 'launchagents', 'run-job.sh'), job.id, promptFor(job.id)],
@@ -52,6 +59,12 @@ function syncSkill(id) {
 
 async function main() {
   const dir = launchAgentsDir();
+  const installedRunner = path.join(installHome, 'Library', 'Application Support', 'opencode-automations', 'run-job.sh');
+  if (!flag('--dry-run') && !flag('--uninstall')) {
+    fs.mkdirSync(path.dirname(installedRunner), { recursive: true });
+    fs.copyFileSync(path.join(here, 'run-job.sh'), installedRunner);
+    fs.chmodSync(installedRunner, 0o755);
+  }
   for (const job of jobs) {
     const plist = buildPlist(job);
     const file = path.join(dir, `${plist.Label}.plist`);

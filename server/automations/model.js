@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { calendarEntries, formatSchedule } from '../../shared/automation-schedule.js';
+import { recordedRuns } from './history.js';
 
 export const LABEL_PREFIX = 'local.opencode.';
 const TEXT_MAX = 256 * 1024;
@@ -69,5 +70,6 @@ export function buildModel(p, file, { loaded, disabled } = {}) {
     script,
     tool: detectTool(args, script?.content, p.Label),
     lastSession: readSidecar(p.Label),
+    recentRuns: recordedRuns(p.Label),
   };
 }

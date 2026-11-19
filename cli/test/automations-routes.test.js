@@ -36,6 +36,7 @@ before(async () => {
   assert.equal(spawnSync('plutil', ['-convert', 'xml1', '-o', path.join(tmp, 'agents', `${label}.plist`), src]).status, 0);
   fs.writeFileSync(path.join(tmp, 'logs', 'demo.log'), 'line1\nline2\n');
   fs.writeFileSync(path.join(tmp, 'logs', 'demo.last.json'), JSON.stringify({ sessionID: 'ses_abc', exitCode: 0 }));
+  fs.writeFileSync(path.join(tmp, 'logs', 'demo.runs.jsonl'), `${JSON.stringify({ sessionID: 'ses_old', startedAt: '2026-01-01T00:00:00Z', exitCode: 0 })}\n${JSON.stringify({ sessionID: 'ses_abc', startedAt: '2026-01-02T00:00:00Z', exitCode: 0 })}\n`);
   Object.assign(process.env, { LAUNCH_AGENTS_DIR: path.join(tmp, 'agents'), AUTOMATION_LOG_DIR: path.join(tmp, 'logs'), LAUNCHCTL_BIN: mock });
   srv = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -55,6 +56,7 @@ test('GET lists the plist with schedule, state, script, tool and last session', 
   assert.equal(a.tool, 'opencode');
   assert.match(a.script.content, /opencode-cli run/);
   assert.equal(a.lastSession.sessionID, 'ses_abc');
+  assert.equal(a.recentRuns.length, 2);
 });
 
 test('PUT rewrites schedule + script, lints, and reloads', async () => {

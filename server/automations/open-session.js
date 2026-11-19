@@ -13,9 +13,9 @@ function terminal(cmd) {
   return run(process.env.OSASCRIPT_BIN || 'osascript', ['-e', script]);
 }
 
-export async function openSession(label) {
+export async function openSession(label, sessionID = null) {
   const a = await getAutomation(label);
-  const id = a.lastSession?.sessionID;
+  const id = sessionID || a.lastSession?.sessionID;
   if (id && !ID_RE.test(id)) return { done: 'none', note: 'Stored session id looks invalid' };
   switch (a.tool) {
     case 'opencode': {

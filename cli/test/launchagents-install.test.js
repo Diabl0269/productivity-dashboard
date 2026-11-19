@@ -10,7 +10,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 test('install.mjs writes lint-clean plists into a temp dir without loading', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'la-inst-'));
-  const env = { ...process.env, LAUNCH_AGENTS_DIR: path.join(tmp, 'agents'), AUTOMATION_LOG_DIR: path.join(tmp, 'logs'), REPO_ROOT: repo, COPILOT_TASKS_DIR: path.join(tmp, 'none') };
+  const env = { ...process.env, HOME: tmp, LAUNCH_AGENTS_DIR: path.join(tmp, 'agents'), AUTOMATION_LOG_DIR: path.join(tmp, 'logs'), REPO_ROOT: repo, COPILOT_TASKS_DIR: path.join(tmp, 'none') };
   const r = spawnSync(process.execPath, ['scripts/launchagents/install.mjs', '--no-load', '--only', 'daily-summary'], { cwd: repo, env, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   const file = path.join(tmp, 'agents', 'local.opencode.daily-summary.plist');
@@ -21,6 +21,19 @@ test('install.mjs writes lint-clean plists into a temp dir without loading', () 
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+test('install configures the selected harness runtime fields', async () => {
+  const { buildPlist } = await awaitImportInstall();
+  const plist = buildPlist({ id: 'demo', schedule: [], harness: 'claude', model: 'sonnet', agent: 'reviewer', effort: 'high' }, { root: repo, logs: '/tmp/logs' });
+  assert.equal(plist.EnvironmentVariables.AUTOMATION_HARNESS, 'claude');
+  assert.equal(plist.EnvironmentVariables.CLAUDE_MODEL, 'sonnet');
+  assert.equal(plist.EnvironmentVariables.CLAUDE_AGENT, 'reviewer');
+  assert.equal(plist.EnvironmentVariables.CLAUDE_EFFORT, 'high');
+});
+
+function awaitImportInstall() {
+  return import('../../scripts/launchagents/install.mjs');
+}
+
 test('run-job.sh records the session id and exit code in the sidecar', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'la-run-'));
   const cli = path.join(tmp, 'fake-cli');
@@ -30,5 +43,7 @@ test('run-job.sh records the session id and exit code in the sidecar', () => {
   const last = JSON.parse(fs.readFileSync(path.join(tmp, 'demo.last.json'), 'utf8'));
   assert.equal(last.sessionID, 'ses_TEST123');
   assert.equal(last.exitCode, 3);
+  const history = fs.readFileSync(path.join(tmp, 'demo.runs.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(history.at(-1).sessionID, 'ses_TEST123');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
