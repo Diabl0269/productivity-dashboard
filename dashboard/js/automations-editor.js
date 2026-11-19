@@ -113,9 +113,14 @@ export function buildEditor(a, capabilities = { harnesses: [] }) {
     const existing = {
       model: currentEnv[keys.model] || '', agent: currentEnv[keys.agent] || '', effort: currentEnv[keys.effort] || '',
     };
-    model.replaceChildren(...choiceSelect(selected?.models || [], existing.model).children);
-    agent.replaceChildren(...choiceSelect(selected?.agents || [], existing.agent).children);
-    effort.replaceChildren(...choiceSelect(selected?.efforts || [], existing.effort).children);
+    const setChoices = (select, values, value) => {
+      select.replaceChildren();
+      for (const option of choiceSelect(values, value).options) select.appendChild(option.cloneNode(true));
+      select.value = value || '';
+    };
+    setChoices(model, selected?.models || [], existing.model);
+    setChoices(agent, selected?.agents || [], existing.agent);
+    setChoices(effort, selected?.efforts || [], existing.effort);
     controls.hidden = !selected;
   };
   harness.addEventListener('change', paintRuntime); paintRuntime();

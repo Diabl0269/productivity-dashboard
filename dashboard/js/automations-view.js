@@ -5,7 +5,7 @@ import { buildEditor } from './automations-editor.js';
 import { showStatus } from './state.js';
 
 const TOOL_LABEL = { opencode: 'OpenCode', copilot: 'Copilot', claude: 'Claude', codex: 'Codex', other: 'Other' };
-const state = { list: [], selected: null, built: false, root: null, error: null, editor: null, log: null, capabilities: { harnesses: [] }, runs: [] };
+const state = { list: [], selected: null, built: false, root: null, error: null, editor: null, log: null, capabilities: { harnesses: [] }, runs: [], editorKey: null, editorDirty: false };
 
 function el(tag, className, text) {
   const n = document.createElement(tag);
@@ -44,7 +44,7 @@ function renderTable() {
     tr.appendChild(el('td', null, a.scheduleText));
     const st = el('td'); st.appendChild(el('span', `au-state au-state-${a.state.replace(' ', '-')}`, a.state)); tr.appendChild(st);
     tr.appendChild(el('td', null, lastRunText(a)));
-    const open = () => { state.selected = a.label; state.log = null; state.runs = []; render(); loadRuns(a); };
+    const open = () => { state.selected = a.label; state.log = null; state.runs = []; state.editor = null; state.editorDirty = false; state.editorKey = null; render(); loadRuns(a); };
     tr.addEventListener('click', open);
     tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
     body.appendChild(tr);
@@ -79,13 +79,15 @@ function renderDetail(a) {
   box.appendChild(el('p', 'au-meta', `${a.path}${a.lastSession?.sessionID ? ` · last session ${a.lastSession.sessionID}` : ''}`));
   if (a.error) { box.appendChild(el('p', 'au-error', a.error)); return box; }
 
-  state.editor = buildEditor(a, state.capabilities);
+  if (!state.editor || state.editorKey !== a.label || !state.editorDirty) state.editor = buildEditor(a, state.capabilities);
+  state.editorKey = a.label;
+  state.editor.node.addEventListener('change', () => { state.editorDirty = true; }, { capture: true });
   box.appendChild(state.editor.node);
 
   const bar = el('div', 'au-actions');
   const button = (text, cls, fn) => { const b = el('button', `au-btn ${cls || ''}`, text); b.type = 'button'; b.addEventListener('click', fn); bar.appendChild(b); };
   const L = encodeURIComponent(a.label);
-  button('Save', 'au-btn-primary', () => act(a.label, () => api('PUT', `/${L}`, state.editor.collect()), 'Saved and reloaded'));
+  button('Save', 'au-btn-primary', () => act(a.label, () => api('PUT', `/${L}`, state.editor.collect()), 'Saved and reloaded').then(out => { if (out) { state.editor = null; state.editorDirty = false; state.editorKey = null; render(); } }));
   button('Run now', '', () => act(a.label, () => api('POST', `/${L}/run`), 'Started'));
   button(a.state === 'disabled' ? 'Enable' : 'Disable', '', () => act(a.label, () => api('POST', `/${L}/toggle`, { enabled: a.state === 'disabled' }), a.state === 'disabled' ? 'Enabled' : 'Disabled'));
   button('View log', '', () => showLog(a, 'stdout'));
