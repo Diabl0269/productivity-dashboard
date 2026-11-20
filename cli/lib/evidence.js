@@ -178,12 +178,16 @@ function defaultLaunch(cmd, args) {
 /**
  * Open a saved project: `open -a <newest build> <bundle>`, or plain `open <bundle>` when no app is
  * configured or found. `launch(cmd, args)` is injectable. Throws { status } on a bad path.
+ * AGE162: with a `branch` and no relPath, opens that branch's build alone (404 when no app is configured).
  * @returns {Promise<{ ok: true, app: string|null, builtAt: string|null }>}
  */
 export async function openProject({ dataRoot, relPath, apps = [], branch, launch = defaultLaunch }) {
-  const bundle = resolveEvidence(dataRoot, relPath, 'project');
+  // AGE162: a held check with no saved project opens just the branch's build (no bundle).
+  if (!relPath && !branch) throw Object.assign(new Error('path is required'), { status: 400 });
+  const bundle = relPath ? resolveEvidence(dataRoot, relPath, 'project') : null;
   const picked = pickReviewApp(apps, branch);
-  await launch('open', picked ? ['-a', picked.app, bundle] : [bundle]);
+  if (!bundle && !picked) throw Object.assign(new Error('no app build is configured (reviewProjectApps in config.json)'), { status: 404 });
+  await launch('open', picked ? (bundle ? ['-a', picked.app, bundle] : ['-a', picked.app]) : [bundle]);
   const out = { ok: true, app: picked ? picked.app : null, builtAt: picked ? picked.builtAt : null };
   if (picked?.branch) out.branch = picked.branch;
   if (branch && (!picked || picked.branchMissing)) out.branchMissing = branch;
@@ -198,12 +202,13 @@ export async function handleOpenProject({ origin, host, bodyText, dataRoot, apps
   if (!originAllowed(origin, host)) return { status: 403, json: { error: 'cross-origin request refused' } };
   let body;
   try { body = JSON.parse(bodyText || '{}'); } catch { return { status: 400, json: { error: 'invalid JSON' } }; }
-  if (!body || typeof body.path !== 'string') return { status: 400, json: { error: 'path is required' } };
+  const hasBranch = !!body && ((typeof body.branch === 'string' && body.branch.trim()) || (typeof body.pr === 'string' && body.pr));
+  if (!body || (typeof body.path !== 'string' && !hasBranch)) return { status: 400, json: { error: 'path is required' } };
   try {
     // PRO101: an unmerged PR's branch ({ branch }, or { pr } resolved by `branchOf`) picks that branch's build.
     let branch = typeof body.branch === 'string' ? body.branch.trim() : '';
     if (!branch && typeof body.pr === 'string' && body.pr && branchOf) branch = String((await branchOf(body.pr)) || '').trim();
-    const out = await openProject({ dataRoot, relPath: body.path, apps: apps ?? readReviewApps(dataRoot), branch, launch });
+    const out = await openProject({ dataRoot, relPath: typeof body.path === 'string' ? body.path : undefined, apps: apps ?? readReviewApps(dataRoot), branch, launch });
     return { status: 200, json: out };
   } catch (e) {
     return { status: e.status || 500, json: { error: e.message } };

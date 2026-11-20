@@ -10,7 +10,7 @@ import { unsentNotes } from '../../shared/review-notes.js';
 import { toggleTaskComplete } from './tasks-list.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
 import { checkBuildChip, noProjectNote } from './check-build-ui.js';
-import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl } from './check-evidence.js';
+import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl, openBranchButton } from './check-evidence.js';
 import { heldPrChip } from './held-pr-ui.js';
 import { idButton } from './ticket-id-button.js';
 import { toggleReviewCheck, commitReviewChange } from './task-detail.js';
@@ -83,7 +83,10 @@ export function renderCheckGrid(ctx, task) {
       badge.title = av.note;
       what.appendChild(badge);
     }
-    const branchChip = heldPrChip(c, projectButtons);
+    // AGE162: a held check with no project still gets Open project (the branch's build); the chip owns it.
+    const branchButton = c.heldPr && !c.project ? openBranchButton(c.heldPr) : null;
+    if (branchButton) { what.appendChild(document.createTextNode(' ')); what.appendChild(branchButton); }
+    const branchChip = heldPrChip(c, branchButton ? [...projectButtons, branchButton] : projectButtons);
     if (branchChip) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(branchChip);

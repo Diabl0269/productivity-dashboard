@@ -111,6 +111,8 @@ const CHECK_OWNER_RULES = [
   ['opening older or saved projects is a compatibility check you can run yourself', /\bproject saved (before|with|in)\b|\bopen (a|an|the) (saved|older|previous|old) (project|patch|file)\b|\b(older|previous|old) (project|build|version|release)s?\b/i],
   ['regressions are yours to check with tests', /\bregress(ion|ions)?\b|\bstill works?\b/i],
   ['VoiceOver checks are yours to run (see the accessibility notes)', /voice ?over/i],
+  ['a check that waits on a merge is yours: merge the PR (when the gate allows), run what it needs yourself and attach the result; while the merge is held, use --held-pr "<why>" --try-steps "<steps>"', /\b(?:after|once|when)\s+(?:the\s+)?(?:PR|pull request)\b[^.]{0,20}\b(?:merges?|merged|lands?|landed)\b|^\s*(?:[A-Za-z]{2,6}\d+:\s*)?After\b[^.:]{0,60}\bmerges?\b/i],
+  ['a "Try on branch" check needs exact steps: pass --held-pr "<why>" --try-steps "<steps and what to see>"', /^\s*(?:[A-Za-z]{2,6}\d+:\s*)?Try on branch\s+\S+?\s*(?:,?\s*then say merge or not)?\s*\.?\s*$/i],
   ['a design pick is a Co-task: pick ticket, so it shows in the Design round lane, not a check', /\b(pick|answer|choose)\b[^.]{0,60}\bboard\b|\bboard\b[^.]{0,30}\b(pick|answer|choose)\b/i],
 ];
 

@@ -33,7 +33,7 @@
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
- *              [--held-pr "<why>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr; adds the check 'Try on branch X, then say merge or not', which takes the project and video of the review's other checks)
+ *              [--held-pr "<why>" --try-steps "<steps>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr with --try-steps (AGE162, 40+ chars); adds the check 'Try on branch X: <steps>', which takes the project and video of the review's other checks)
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
  *              [--result-json '<json>'] [--file-left] [--design-link URL] [--json]   (ship a ticket into "Ready for review")
  *              [--ask "<question for Tal>"]... [--ask-by YYYY-MM-DD]   (PRO73: each --ask shows in the Plan page's For you list; PRO86: a needs-tal: taste: line becomes a check)
@@ -1079,6 +1079,7 @@ function cmdReview(argv) {
     'allow-check-owner': { type: 'boolean' },
     'allow-parked': { type: 'string' },
     'held-pr':     { type: 'string' },
+    'try-steps':   { type: 'string' },
     'add-link':    { type: 'string', multiple: true },
     'link-label':  { type: 'string', multiple: true },
     'clear-unverified':   { type: 'boolean' },
@@ -1105,8 +1106,9 @@ function cmdReview(argv) {
     const today = todayStr();
     const moved = [];
     for (const child of children) {
+      // AGE162: a held "Try on branch" check was gated when it was filed (older ones carry the generic text); skip it here.
       const checkItems = (child.checks || []).filter(c => !c.checked).map(c => ({ text: c.text, project: c.project, video: c.video, audio: c.audio, noVideo: c.noVideo, agentVerified: c.agentVerified, heldPr: c.heldPr }));
-      assertChecksAreTals(checkItems, values['allow-check-owner']);
+      assertChecksAreTals(checkItems.filter(c => !(c.heldPr && /^Try on branch\b/i.test(c.text))), values['allow-check-owner']);
       const rolled = rollUpIntoEpic(doc, child, checkItems);
       reviewSection.tasks = reviewSection.tasks.filter(t => t.id !== child.id);
       appendHistory(child, { event: 'moved', from: REVIEW_SECTION, to: 'done' });
@@ -1130,7 +1132,7 @@ function cmdReview(argv) {
   }
 
   const id = positionals[0];
-  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>"] [--ask "<question>" --ask-details "<at least 60 chars>"]... [--same-judgement | --not-same "<why>"] [--add-link URL]');
+  if (!id) die('usage: ch tasks review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."] [--unverified/--risk/--fixed/--opened "..."]... (--check "..."... [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]... | --no-checks "<reason>") [--result-json \'<json>\'] [--clear-unverified] [--resolve-unverified N] [--force] [--held-pr "<why>" --try-steps "<steps>"] [--ask "<question>" --ask-details "<at least 60 chars>"]... [--same-judgement | --not-same "<why>"] [--add-link URL]');
 
   let base = {};
   if (values['result-json'] !== undefined) {
@@ -1240,13 +1242,17 @@ function cmdReview(argv) {
 
   // PRO70: an open PR blocks review unless --held-pr says why (adds the "try on branch" check).
   const newLinks = (values['add-link'] || []).map((url, i) => ({ url, ...((values['link-label'] || [])[i] ? { label: values['link-label'][i] } : {}) }));
-  const pr = openPrGate({ id, heldPr: values['held-pr'], links: [...(task.links || []), ...newLinks] });
+  const pr = openPrGate({ id, heldPr: values['held-pr'], trySteps: values['try-steps'], links: [...(task.links || []), ...newLinks] });
   if (pr.error) die(pr.error);
   pr.warnings.forEach(w => printErr(`review: warning: ${w}`));
+  if (values['try-steps'] !== undefined && !pr.held) die('--try-steps goes with --held-pr (a PR held open on purpose)');
   {
     // FRO1979: the held check inherits the project/video of the review's other checks (else the ticket's own).
     const own = checkItems.length ? checkItems.slice() : (task.checks || []);
-    checkItems.push(...pr.checks.map(text => inheritHeldCheckEvidence({ text }, own)));
+    const held = pr.checks.map(text => inheritHeldCheckEvidence({ text }, own));
+    // AGE162: the steps go through the same owner gate as any check ("run the eval" is refused).
+    assertChecksAreTals(held, values['allow-check-owner']);
+    checkItems.push(...held);
   }
   if (pr.held) {
     task.heldPr = pr.held;

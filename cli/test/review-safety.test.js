@@ -102,8 +102,13 @@ const REFUSED = [
   'FRO1361: Open a project saved before this change: its unison sound is unchanged.',
   'FRO1291: Turn VoiceOver on, press Cmd+Up',
   'FRO1305: Run a scenario with Tools/ui-verify/run.py against an older build',
+  'BAC94: After PR #243 merges: run the techno groove prompt 3 times',
+  'Once the PR merges, open the Mixer panel',
+  'Try on branch bac107-x, then say merge or not',
 ];
 const ALLOWED = [
+  'Try on branch bac107-x: open project, in the Mixer panel press Play on the Reverb card: one Mix knob',
+  'In the Mixer panel, merge two tracks and listen',
   'FRO1171: Add a Filter, hold a note and drag Cutoff slowly up from the bottom',
   'FRO734: Click + Track, type osc: only Oscillator rows remain',
   'Press Run and the arp starts',
