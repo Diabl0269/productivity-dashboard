@@ -316,10 +316,32 @@ export const noProjectReasonError = (v, label = 'noProject') => {
  * PRO100: every check a review files carries a project to open or says why it has none.
  * `items` are normalized checks ({ text, project?, noProject? }); returns the refusal text, or null.
  */
+const SOUND_CHECK_RE = /\b(sound|sounds|loudness|loud|louder|quieter|quiet|hear|listen|audio|dB)\b/i;
+const SOUND_NO_PROJECT_REASON_RE = /any .{0,40}(patch|project|song|preset) works|no saved project|\bdeploy/i;
+
+/**
+ * BAC118: a sound check is a recipe, not a check, when its no-project reason says "any patch works",
+ * "no saved project involved" or "needs a deploy" and it has no audio attached: Tal would have to
+ * build the setup himself. Returns an error string, or null.
+ */
+export function soundCheckNoProjectProblem(items) {
+  const bad = [];
+  (items || []).forEach((c, i) => {
+    if (c && !c.project && c.noProject && !c.audio && SOUND_CHECK_RE.test(c.text || '')
+      && SOUND_NO_PROJECT_REASON_RE.test(c.noProject)) bad.push({ n: i + 1, text: c.text, why: c.noProject });
+  });
+  if (!bad.length) return null;
+  return `${bad.length} sound check(s) say there is no project ("any patch works", "no saved project", "needs a deploy") and carry no audio:\n`
+    + bad.map(b => `  - check ${b.n}: "${b.text}" (reason: ${b.why})`).join('\n')
+    + '\nRun the check yourself: build the state, attach the saved project (--check-project N=<path>) and the render Tal must hear '
+    + '(--check-audio N=<path>). A check waiting on an undeployed API is not a check yet: run it against the local API or hold it. '
+    + '(--force "<why>" overrides and is recorded on the ticket.)';
+}
+
 export function checkProjectGateProblem(items) {
   const bare = [];
   (items || []).forEach((c, i) => { if (c && !c.project && !c.noProject) bare.push({ n: i + 1, text: c.text }); });
-  if (!bare.length) return null;
+  if (!bare.length) return soundCheckNoProjectProblem(items);
   return `${bare.length} check(s) have neither a project nor a reason, and Tal opens every check from the Plan page:\n`
     + bare.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
     + '\nAttach the saved project the check was rendered from (--check-project N=<path>, N = the check number above), '

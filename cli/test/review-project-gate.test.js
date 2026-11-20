@@ -129,3 +129,24 @@ test('plan data: the dashboard keeps noProject, and a check\'s build info carrie
   assert.equal(checkBuildInfo(checks[1], null, { kind: 'current' }), null, 'no build info: nothing');
   assert.equal(checkBuildInfo(checks[0], build, { kind: 'current' }), null, 'no project: nothing');
 });
+
+test('BAC118: a sound check with an "any patch works" / "no saved project" / "needs a deploy" reason and no audio is refused', () => {
+  const home = makeHome();
+  for (const [text, why] of [
+    ['Play the same chord on Basic Shapes then Bell: both sound equally loud', 'any wavetable patch works, no saved project involved'],
+    ['Listen to the song the next prompt makes: is the crow louder?', 'reads a server-side setting after the next API deploy'],
+  ]) {
+    const r = run([...base, '--check', text, '--check-no-project', `1=${why}`], home);
+    assert.notEqual(r.status, 0, why);
+    assert.match(r.stderr, /sound check\(s\) say there is no project/);
+    assert.match(r.stderr, /--check-audio N=<path>/);
+  }
+  assert.equal((taskOf(home, 'T1').checks || []).length, 0, 'nothing written');
+});
+
+test('BAC118: the same reason is fine on a non-sound check, and a sound check with a project or audio passes', () => {
+  assert.equal(checkProjectGateProblem([{ text: 'The Settings tab shows the new row', noProject: 'any patch works, no project' }]), null);
+  assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', project: P }]), null);
+  assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', noProject: 'any patch works', audio: 'T1/a.wav' }]), null);
+  assert.match(checkProjectGateProblem([{ text: 'Is the bell chord quieter?', noProject: 'needs a deploy first' }]), /sound check/);
+});
