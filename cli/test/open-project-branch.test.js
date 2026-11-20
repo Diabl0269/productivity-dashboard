@@ -81,6 +81,67 @@ test('openProject / handleOpenProject: branch or pr picks the branch build; a mi
   await assert.rejects(openProject({ dataRoot: home, relPath: 'T1/one/none.agsproj', apps: [], branch: 'x', launch }), { status: 404 });
 });
 
+test('AGE162: no path + branch opens the branch build alone; no path and no branch/pr is 400; no apps is 404', async () => {
+  const home = makeHome();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-apps-'));
+  const main = makeApp(dir, 'main/Agent Synth.app', 0);
+  const wt = makeApp(dir, 'build-ci-local/feat-demo/Agent Synth.app', 3);
+  const calls = [];
+  const launch = async (cmd, args) => { calls.push([cmd, args]); };
+  const base = { host: 'localhost:3000', dataRoot: home, apps: [main, wt], launch };
+  let r = await handleOpenProject({ ...base, bodyText: JSON.stringify({ branch: 'feat/demo', pr: PR }) });
+  assert.equal(r.status, 200);
+  assert.deepEqual(calls[0], ['open', ['-a', wt]]);
+  assert.equal(r.json.branch, 'feat/demo');
+  r = await handleOpenProject({ ...base, bodyText: JSON.stringify({ branch: 'feat/gone' }) });
+  assert.equal(r.json.branchMissing, 'feat/gone');
+  assert.deepEqual(calls[1], ['open', ['-a', main]]);
+  assert.equal((await handleOpenProject({ ...base, bodyText: '{}' })).status, 400);
+  assert.equal((await handleOpenProject({ ...base, bodyText: JSON.stringify({ branch: ' ' }) })).status, 400);
+  r = await handleOpenProject({ ...base, apps: [], bodyText: JSON.stringify({ branch: 'feat/demo' }) });
+  assert.equal(r.status, 404);
+  assert.match(r.json.error, /no app build is configured/);
+});
+
+test('AGE162: dashboard openProject(null) sends no path; openBranchButton and the MERGED removal', async () => {
+  const bodies = [];
+  const fetchFn = async (_u, o) => { bodies.push(JSON.parse(o.body)); return { ok: true, json: async () => ({ app: null }) }; };
+  await dashOpenProject(null, { fetchFn, toast() {}, held: { pr: PR, branch: 'feat/demo' } });
+  assert.deepEqual(bodies[0], { branch: 'feat/demo', pr: PR });
+
+  const mkEl = () => ({ className: '', textContent: '', title: '', removed: false, attrs: {}, listeners: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(e, f) { this.listeners[e] = f; }, remove() { this.removed = true; } });
+  globalThis.document = { createElement: mkEl };
+  let state = 'OPEN';
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ state, branch: 'feat/late' }) });
+  const { openBranchButton } = await import('../../dashboard/js/check-evidence.js');
+  const { heldPrChip } = await import('../../dashboard/js/held-pr-ui.js');
+  const held = { pr: 'https://github.com/example/demo/pull/11', branch: '' };
+  const btn = openBranchButton(held);
+  assert.equal(btn.textContent, 'Open project');
+  assert.equal(btn.attrs['aria-label'], 'Open the build of its PR branch (no saved project)');
+  assert.equal(btn.branchOnly, true);
+  assert.equal(btn.held, held);
+  const proj = { title: 'orig' };
+  const chip = heldPrChip({ heldPr: held }, [btn, proj]);
+  assert.equal(btn.title, 'Open the build of its PR branch (no saved project)');
+  assert.match(proj.title, /needs a build of branch/);
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(btn.title, 'Open the build of branch feat/late (no saved project)');
+  assert.equal(btn.removed, false);
+
+  state = 'MERGED';
+  const pr9 = 'https://github.com/example/demo/pull/9';
+  const btn2 = openBranchButton({ pr: pr9, branch: 'b' });
+  const proj2 = { title: 'orig' };
+  heldPrChip({ heldPr: { pr: pr9, branch: 'b' } }, [btn2, proj2]);
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(btn2.removed, true);
+  assert.equal(proj2.title, 'orig');
+  assert.equal(proj2.held, null);
+  assert.equal(chip.removed, false);
+  delete globalThis.fetch; delete globalThis.document;
+});
+
 test('dashboard openProject sends the held branch and pr only when given', async () => {
   const bodies = [];
   const fetchFn = async (_u, o) => { bodies.push(JSON.parse(o.body)); return { ok: true, json: async () => ({ app: null }) }; };
