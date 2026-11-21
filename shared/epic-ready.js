@@ -228,7 +228,42 @@ export function reviewFollowUpLoop(doc, sourceId, parentId) {
   return null;
 }
 
-function readinessIn(ix, epic) {
+const softCache = new WeakMap();
+/**
+ * PRO138: an epic that blocks another is satisfied "softly" when everything open under it waits only on Tal
+ * (no runnable ticket, none in progress): the blocked epic may start, the blocker's work needs a human first.
+ * Needs at least one open ticket under it. `visiting` holds the epics being evaluated up the chain: a blocker
+ * already in it is a dependency cycle and stays a hard blocker.
+ */
+function isSoftBlocker(ix, blockerId, visiting) {
+  const b = ix.byId.get(blockerId);
+  if (!b || b.type !== 'epic' || visiting.has(blockerId)) return false;
+  // A blocker that itself waits (through other open blockers) on an epic being evaluated is a cycle: hard.
+  const seen = new Set();
+  for (const stack = [blockerId]; stack.length;) {
+    const id = stack.pop();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const x of ix.byId.get(id)?.blockedBy || []) {
+      if (visiting.has(x)) return false;
+      if (ix.byId.has(x) && !FINISHED.has(ix.sectionOf.get(x))) stack.push(x);
+    }
+  }
+  let memo = softCache.get(ix);
+  if (!memo) { memo = new Map(); softCache.set(ix, memo); }
+  if (!memo.has(blockerId)) {
+    const kids = readinessIn(ix, b, visiting).children;
+    memo.set(blockerId, kids.length > 0 && kids.every(c => !c.runnable && c.section !== 'in-progress'));
+  }
+  return memo.get(blockerId);
+}
+
+function readinessIn(ix, epic, visiting = new Set()) {
+  visiting.add(epic.id);
+  try { return readinessCore(ix, epic, visiting); } finally { visiting.delete(epic.id); }
+}
+
+function readinessCore(ix, epic, visiting) {
   const { byId, sectionOf, childrenOf } = ix;
   const sectionId = sectionOf.get(epic.id) || null;
   const blockerOpen = id => byId.has(id) && !FINISHED.has(sectionOf.get(id));
@@ -300,10 +335,15 @@ function readinessIn(ix, epic) {
   };
   if (!['todo', 'in-progress'].includes(sectionId)) addReason(sectionId === 'backlog' ? 'backlog' : 'section', [], `in ${sectionId === 'backlog' ? 'backlog' : sectionId}`);
   if (LATER_TITLE.test(String(epic.title || ''))) addReason('later-bucket', [], 'a later bucket');
-  const epicBlockers = openBlockers(epic);
+  const allBlockers = openBlockers(epic);
+  const softBlockers = allBlockers.filter(b => isSoftBlocker(ix, b, visiting));
+  const epicBlockers = allBlockers.filter(b => !softBlockers.includes(b));
   if (epicBlockers.length) addReason('epic-blocker', epicBlockers, `waits on ${epicBlockers.join(', ')}`);
   if (epic.blocked) addReason('blocked', [], 'marked blocked');
-  for (const p of gatePicks) {
+  // PRO138: a pick or co-task gates only the tickets that wait on it (they are not runnable already); the epic as
+  // a whole waits on it only when nothing else is free to run.
+  const waitingPicks = runnable.length ? gatePicks.map(p => p.id) : [];
+  for (const p of runnable.length ? [] : gatePicks) {
     const pick = isDesignPick(p);
     addReason(pick ? 'pick' : 'co-task', [p.id], `waits on your ${pick ? 'pick' : 'co-task'} ${p.id}`);
   }
@@ -334,6 +374,8 @@ function readinessIn(ix, epic) {
     reasonDetails,
     parked,
     promotable,
+    softBlockers,
+    waitingPicks,
     auto: isAuto(epic),
     priority: autoPriorityOf(epic),
     autoRank: autoRankOf(epic),
