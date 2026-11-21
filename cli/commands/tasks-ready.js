@@ -11,6 +11,7 @@ import { parse } from '../lib/args.js';
 import { print, jsonOut } from '../lib/output.js';
 import { load, save, sectionById, todayStr } from '../lib/tasks-store.js';
 import { appendHistory } from '../lib/schema.js';
+import { closeIfReviewComplete, reviewReadyToClose } from '../../shared/review.js';
 import { openEpicReadiness, readinessLabel, autoQueueOrder, withAutoLabel, isAuto, LATER_TITLE } from '../../shared/epic-ready.js';
 
 /** PRO138: can a backlog ticket under this epic move to todo (the epic is open and not a later bucket)? Mirrors PRO108 in shared/review-filing.js. */
@@ -31,6 +32,17 @@ export function moveTicketToTodo(doc, task, from, note) {
 function applyAuto(doc, { dryRun }) {
   const lines = [];
   const find = id => { for (const sec of doc.sections) { const t = sec.tasks.find(x => x.id === id); if (t) return { t, sec }; } return null; };
+  // Finished reviews first: every check ticked and nothing else held (the tick paths close these too; this sweeps old ones).
+  for (const sec of doc.sections.filter(x => x.id === 'review')) {
+    for (const t of [...sec.tasks]) {
+      if (!reviewReadyToClose(t, 'review')) continue;
+      if (dryRun) { lines.push(`closed ${t.id}: every check ticked`); continue; }
+      const c = closeIfReviewComplete(doc, t, { note: 'every check ticked (ready --apply-auto)' });
+      if (!c) continue;
+      lines.push(`closed ${t.id}: every check ticked`);
+      for (const e of c.epics) lines.push(`closed ${e.id}: last open ticket closed (now ${e.to})`);
+    }
+  }
   for (const r of openEpicReadiness(doc)) {
     if (!epicIsOpenForWork({ title: r.title }, r.section) || !r.promotable.length) continue;
     for (const id of r.promotable) {

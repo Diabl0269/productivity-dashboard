@@ -13,6 +13,7 @@
 
 import { hasUnsentNotes, unsentNotes } from './review-notes.js';
 import { LATER_TITLE } from './epic-ready.js';
+import { isNeedsTalLine } from './proof-gate.js';
 
 export const REVIEW_SECTION = 'review';
 export const REVIEW_SECTION_NAME = 'Ready for review';
@@ -37,6 +38,36 @@ export function checkProgress(task) {
  */
 export function reviewComplete(task, sectionId, { ticked }) {
   return sectionId === REVIEW_SECTION && !!ticked && allChecksTicked(task) && !hasUnsentNotes(task);
+}
+
+/**
+ * PRO138: has a ticket in `sectionId` nothing left for Tal, whichever way its last check got ticked (a tick, an
+ * answered ask that links the check, a bulk sweep)? At least one check, all ticked, no unsent review note, no open
+ * ask, no open subtask and no unresolved `needs-tal:` Unverified line. Plain `tried:` lines and `left` lines do not hold it.
+ */
+export function reviewReadyToClose(task, sectionId) {
+  return sectionId === REVIEW_SECTION && (task?.checks || []).length > 0 && allChecksTicked(task)
+    && !hasUnsentNotes(task)
+    && !(task.asks || []).some(a => a && a.state === 'open')
+    && !(task.subtasks || []).some(st => st && !st.checked)
+    && !(task.result?.unverified || []).some(isNeedsTalLine);
+}
+
+/**
+ * PRO138: the one close for every tick path. When `task` sits in review and reviewReadyToClose, move it to done
+ * (history event, optional `note`), roll its epic up and unpin what closed. Mutates `doc`.
+ * Returns null when nothing moved, else { id, epics: [{ id, from, to }], unpinned: [ids] }.
+ */
+export function closeIfReviewComplete(doc, task, { now = new Date().toISOString(), note } = {}) {
+  const row = task ? findRow(doc, task.id) : null;
+  if (!row || !reviewReadyToClose(row.task, row.section)) return null;
+  const epicId = epicOf(doc, row.task)?.task.id;
+  if (!moveBetween(doc, row.task, REVIEW_SECTION, 'done', now)) return null;
+  if (note) row.task.history[row.task.history.length - 1].note = note;
+  const epics = rollUpAfterClose(doc, epicId, { now });
+  const gone = new Set(epicsToUnpin(doc, row.task));
+  for (const m of epics) for (const e of epicsToUnpin(doc, findRow(doc, m.id).task)) gone.add(e);
+  return { id: row.task.id, epics, unpinned: unpinFromPlan(doc, [...gone]) };
 }
 
 /**
@@ -182,6 +213,20 @@ const CHECK_EVIDENCE_RULES = [
     needs: 'project',
     re: /\bask (?:the |an? )?(?:ai|assistant|chatbot|claude)\b|\bmake (?:me )?an? ai[- ](?:song|project|patch|track|preset)\b|\bgenerate\b[^.]{0,50}\bwith (?:the )?(?:ai|assistant)\b|\b(?:ai|assistant)[- ]generated\b|\bprompt (?:the )?(?:ai|assistant)\b/i,
   },
+  {
+    // PRO138 (BAC106): Tal only listens. A check that has him prompt, run, re-run or generate an AI song or eval, or waits on a deploy,
+    // is the session's job: render the song itself and attach the audio or project.
+    reason: 'Tal only listens: render the song yourself and attach its audio/project (analytics/ai-evals/make-listen-clip.mjs)',
+    needs: 'listen',
+    re: new RegExp([
+      String.raw`\bafter (?:the|this) next (?:[\w-]+ ){0,2}(?:deploy|deployment|release)\b`,
+      String.raw`\b(?:re-?run|run|try|send)\s+(?:the\s+)?[a-z]+(?:-[a-z0-9]+)+\s+(?:solo\s+)?(?:prompt|eval|song)\b`,
+      String.raw`\bre-?run\s+[a-z]+(?:-[a-z0-9]+){2,}\b`,
+      String.raw`\b(?:run|re-?run) the [\w-]+ (?:solo )?prompt\b`,
+      String.raw`\bgenerate\s+(?:an?|the|some|another)?\s*(?:[\w-]+\s+){0,3}(?:song|track|patch|preset|groove|beat|bassline|melody)\b`,
+      String.raw`\bask (?:it |the ai |the assistant |claude )?for (?:an?|the|some)\s+(?:[\w-]+\s+){0,3}(?:song|track|patch|preset|groove|beat|bassline|melody)\b`,
+    ].join('|'), 'i'),
+  },
 ];
 
 /**
@@ -200,6 +245,7 @@ export function checkOwnerProblem(text, evidence = {}) {
     if (!re.test(t)) continue;
     if (needs === true && attached) continue;
     if (needs === 'project' && ev.project) continue;
+    if (needs === 'listen' && (ev.project || ev.audio)) continue;
     return reason;
   }
   return null;

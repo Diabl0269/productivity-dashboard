@@ -39,7 +39,7 @@ import {
   evidencePathError, videoPathError, audioPathError, projectPathError, tidyEvidencePath, epicOf,
 } from './review.js';
 import { addReviewNote } from './review-notes.js';
-import { epicsToUnpin, unpinFromPlan } from './review.js';
+import { epicsToUnpin, unpinFromPlan, closeIfReviewComplete } from './review.js';
 import { planFiling, applyFiling } from './review-filing.js';
 
 export const ASK_STATES = ['open', 'answered', 'done', 'dismissed', 'parked'];
@@ -634,7 +634,7 @@ function moveToBacklog(doc, id, now) {
  */
 export function answerAsk(doc, id, key, { action, reply = '', newId, now = new Date().toISOString(), by = 'Tal', isLive } = {}) {
   const { members, options } = askCardOf(doc, id, key);
-  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [], closed: [], unpinned: [] };
+  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [], closed: [], closedByChecks: [], unpinned: [] };
   const toFile = [];
   let filedTo = ''; // the one note this answer became (twins share it)
   for (const m of members) {
@@ -654,6 +654,14 @@ export function answerAsk(doc, id, key, { action, reply = '', newId, now = new D
       out.unpinned.push(...unpinFromPlan(doc, epicsToUnpin(doc, row.task))); // a closed epic leaves the day plan
     }
     if (r.file) toFile.push(m.id);
+  }
+  // PRO138: ticking a linked check can finish a review (FRO2043, FRO2090 sat in review with every check ticked).
+  for (const id of new Set(out.ticked.map(t => t.id))) {
+    const closed = closeIfReviewComplete(doc, flat(doc).find(r => r.task.id === id)?.task, { now, note: 'every check ticked' });
+    if (!closed) continue;
+    out.closed.push(id);
+    out.unpinned.push(...closed.unpinned);
+    out.closedByChecks.push(id);
   }
   for (const tid of toFile) {
     const plan = planFiling(doc, { ticket: tid });
