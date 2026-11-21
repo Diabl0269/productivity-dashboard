@@ -89,7 +89,7 @@
 
 import { parse } from '../lib/args.js';
 import cmdNext from './tasks-next.js';
-import cmdReady from './tasks-ready.js';
+import cmdReady, { epicIsOpenForWork, moveTicketToTodo } from './tasks-ready.js';
 import cmdPages from './tasks-pages.js';
 import { cmdNotesPrep, cmdNotesReport } from './tasks-notes-prep.js';
 import { isFreeAdd, isFreeHandleArg, cmdFreeNoteAdd, cmdFreeNoteChange, freeEntryLine } from './tasks-free-notes.js';
@@ -1556,6 +1556,7 @@ function cmdUpdate(argv) {
     'edit-subtask':  { type: 'string' },  // N (1-based); pairs with --subtask-text
     'subtask-text':  { type: 'string' },
     'add-check':     { type: 'string', multiple: true },
+    'allow-check-owner': { type: 'boolean' },
     'check-check':   { type: 'string' },  // N (1-based) as string
     'uncheck-check': { type: 'string' },
     'verify-check':  { type: 'string' },   // N (1-based): record an agent verification (never ticks)
@@ -1615,6 +1616,7 @@ function cmdUpdate(argv) {
 
   const wasChecked = task.checked;
   let changed = false;
+  let parentPromoted = null;
   const promoting = values['promote-subtask'] !== undefined;
   if (!promoting && values['promote-parent'] !== undefined) die('--promote-parent requires --promote-subtask N');
   if (promoting && values['clear-parent']) die('--clear-parent changes this ticket\'s parent; it cannot be combined with --promote-subtask');
@@ -1668,6 +1670,12 @@ function cmdUpdate(argv) {
     }
     task.parentId = values.parent;
     changed = true;
+    // PRO138: a backlog ticket moved under an open epic is runnable work there (mirrors PRO108 in shared/review-filing.js).
+    const newEpic = findTask(doc, values.parent);
+    if (taskSection.id === 'backlog' && newEpic && epicIsOpenForWork(newEpic.task, newEpic.section.id)) {
+      moveTicketToTodo(doc, task, taskSection);
+      parentPromoted = newEpic.task.id;
+    }
   }
   if (values.uncheck) {
     task.checked = false;
@@ -2084,6 +2092,7 @@ function cmdUpdate(argv) {
   }
   if (values['add-check'] && values['add-check'].length) {
     if (!Array.isArray(task.checks)) task.checks = [];
+    assertChecksAreTals(values['add-check'].map(text => ({ text })), values['allow-check-owner']);
     for (const text of values['add-check']) {
       task.checks.push({ text, checked: false, addedAt: new Date().toISOString() });
     }
@@ -2191,6 +2200,7 @@ function cmdUpdate(argv) {
     return;
   }
   if (heldByNotes) print(`${heldByNotes} review note(s) unsent: ch tasks notes --ticket ${id}`);
+  if (parentPromoted) print(`moved ${id} backlog -> todo: its new epic ${parentPromoted} is open`);
   ok(`updated ${id}${spawned ? ` (spawned ${spawned.id})` : ''}${movedToDone ? ' (all checks ticked: moved to done)' : ''}${promoted ? ` (created ${promoted.id} from subtask ${values['promote-subtask']})` : ''}${epicNote(rolledEpics)}${unpinNote(unpinned)}${pinned ? ' (pinned to the plan)' : ''}`);
 }
 
@@ -3064,7 +3074,8 @@ Subcommands:
           that is not in-progress and was not pinned by hand with --pin; task history records no hand pins, so hand pins are
           remembered in meta.dailyPlan.handPinnedIds)
   runplan [--json]
-  ready [--json] [--auto]   every open epic as Ready or Not ready (reasons), and Auto; --auto = Ready and Auto only (read-only)
+  ready [--json] [--auto] [--apply-auto [--dry-run]]   every open epic as Ready or Not ready (reasons), and Auto; --auto = Ready and Auto only (read-only);
+                --apply-auto moves parked backlog tickets under open epics to todo, then adds auto to Ready epics (never one with no-auto); --dry-run writes nothing
   next-start [--json] [--live A,B] [--manual-busy N] [--now <iso>]   which Ready Auto epic autorun starts next, and when or why none (read-only)
   running [--json] [--repo <path>]... [--project <slug>]   which tickets have live work now (sessions, worktrees, recent commits, autorun): state, age, epic, PR; then stale and idle epics (read-only)
   automations [--project <slug>] [--json]   every automation and outside service in the project's home config: ok/late/failed/off/unknown, last and next run (read-only)

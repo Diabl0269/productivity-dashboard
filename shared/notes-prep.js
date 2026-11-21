@@ -166,7 +166,7 @@ export function applyAuto(doc, report, { now = new Date().toISOString() } = {}) 
   for (const e of report.epics) {
     if (!e.candidate) continue;
     const t = rows(doc).find(r => r.task.id === e.id)?.task;
-    if (!t || labelsOf(t).includes(AUTO_LABEL)) continue;
+    if (!t || labelsOf(t).includes(AUTO_LABEL) || labelsOf(t).includes('no-auto')) continue;
     t.labels = withAutoLabel(t.labels, true);
     t.updated = now.slice(0, 10);
     done.push(e.id);
