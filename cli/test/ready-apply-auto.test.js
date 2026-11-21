@@ -42,13 +42,13 @@ test('update --parent: a backlog ticket under an open epic moves to todo; a late
 
 const autoDoc = () => mk({
   todo: [
-    epic('T11'), epic('T12'), task('T2', { parentId: 'T12' }),
+    epic('T11', { labels: ['auto'] }), epic('T19'), epic('T12'), task('T2', { parentId: 'T12' }),
     epic('T13', { labels: ['no-auto'] }), task('T3', { parentId: 'T13' }),
     epic('T14', { title: 'Later work' }),
     epic('T16', { blockedBy: ['T17'] }), task('T5', { parentId: 'T16' }),
     epic('T17'), task('T18', { parentId: 'T17', waitingOn: 'Tal' }),
   ],
-  backlog: [task('T1', { parentId: 'T11' }), task('T4', { parentId: 'T14' })],
+  backlog: [task('T1', { parentId: 'T11' }), task('T4', { parentId: 'T14' }), task('T6', { parentId: 'T19' })],
 });
 
 test('ready --apply-auto --dry-run prints the changes and writes nothing', () => {
@@ -57,16 +57,16 @@ test('ready --apply-auto --dry-run prints the changes and writes nothing', () =>
   const r = ch(h, 'tasks', 'ready', '--apply-auto', '--dry-run');
   assert.equal(r.status, 0, r.err);
   assert.match(r.out, /dry run: promoted T1 under T11/);
-  assert.match(r.out, /dry run: auto added T11/);
+  assert.doesNotMatch(r.out, /T6|T19/, 'a parked ticket under a hand-run epic stays parked');
   assert.equal(fs.readFileSync(path.join(h, 'tasks.json'), 'utf8'), before);
 });
 
-test('ready --apply-auto promotes parked tickets, labels Ready epics, skips no-auto and later buckets', () => {
+test('ready --apply-auto promotes parked tickets under auto epics, labels Ready epics, skips no-auto and later buckets', () => {
   const h = home(autoDoc());
   const r = ch(h, 'tasks', 'ready', '--apply-auto');
   assert.equal(r.status, 0, r.err);
   assert.match(r.out, /promoted T1 under T11/);
-  assert.match(r.out, /auto added T11/);
+  assert.doesNotMatch(r.out, /T6|T19/, 'a parked ticket under a hand-run epic stays parked');
   assert.match(r.out, /auto added T12/);
   assert.match(r.out, /auto added T16/, 'T16 waits only softly on T17');
   assert.doesNotMatch(r.out, /T13/);
@@ -74,6 +74,7 @@ test('ready --apply-auto promotes parked tickets, labels Ready epics, skips no-a
   assert.equal(find(h, 'T1').s, 'todo');
   assert.match(find(h, 'T1').t.notes.at(-1).text, /^Promoted from backlog: parked under open epic T11/);
   assert.equal(find(h, 'T4').s, 'backlog');
+  assert.equal(find(h, 'T6').s, 'backlog');
   assert.ok(find(h, 'T11').t.labels.includes('auto'));
   assert.ok(!(find(h, 'T13').t.labels || []).includes('auto'));
   assert.ok(!(find(h, 'T14').t.labels || []).includes('auto'));

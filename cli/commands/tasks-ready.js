@@ -44,7 +44,9 @@ function applyAuto(doc, { dryRun }) {
     }
   }
   for (const r of openEpicReadiness(doc)) {
-    if (!epicIsOpenForWork({ title: r.title }, r.section) || !r.promotable.length) continue;
+    // Only under an auto epic: a parked ticket under a hand-run epic is parked on purpose (BAC1 staging waits on a
+    // first paying customer), and promoting it would make that epic look Ready and take `auto` below.
+    if (!r.auto || !epicIsOpenForWork({ title: r.title }, r.section) || !r.promotable.length) continue;
     for (const id of r.promotable) {
       const f = find(id);
       if (!f || f.sec.id !== 'backlog') continue;
