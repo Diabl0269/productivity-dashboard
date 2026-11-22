@@ -65,7 +65,10 @@ export function parseRoute() {
   const rawTab = segments[0] || 'overview';
   // Legacy: /dashboard/global-memory → /dashboard/memory/global
   // Legacy: /dashboard/runplan → /dashboard/plan
-  const tab = rawTab === 'global-memory' ? 'memory' : rawTab === 'runplan' ? 'plan' : rawTab;
+  const tab = rawTab === 'global-memory' ? 'memory'
+    : rawTab === 'runplan' ? 'plan'
+      : rawTab === 'automations' ? 'home'
+        : rawTab;
   const route = { tab: MAIN_TABS.has(tab) ? tab : 'overview' };
 
   if (route.tab === 'tasks') {
@@ -93,16 +96,18 @@ export function parseRoute() {
   } else if (route.tab === 'settings' && segments[1]) {
     route.settingsSubtab = decodeURIComponent(segments[1]);
   } else if (route.tab === 'home') {
-    Object.assign(route, parseHomeRoute(segments));
+    Object.assign(route, parseHomeRoute(rawTab === 'automations' ? ['home', 'how-it-runs'] : segments));
   }
 
   return route;
 }
 
-/** /dashboard/home/<view>?where=<box id>&hproject=<slug> -> { homeView?, where?, homeProject? }. */
+/** /dashboard/home/<view>[/edit/<automation>]?where=<box id>&hproject=<slug>. */
 function parseHomeRoute(segments) {
   const out = {};
   if (segments[1]) out.homeView = decodeURIComponent(segments[1]);
+  if (segments[2] === 'defaults') out.automationDefaults = true;
+  if (segments[2] === 'edit' && segments[3]) out.automationId = decodeURIComponent(segments[3]);
   const params = new URLSearchParams(window.location.search || '');
   const where = params.get(HOME_QUERY.where);
   const project = params.get(HOME_QUERY.project);
@@ -134,6 +139,8 @@ export function buildPath(route) {
     parts.push(encodeURIComponent(route.settingsSubtab));
   } else if (tab === 'home' && route.homeView) {
     parts.push(encodeURIComponent(route.homeView));
+    if (route.automationDefaults) parts.push('defaults');
+    else if (route.automationId) parts.push('edit', encodeURIComponent(route.automationId));
   }
 
   if (parts.length === 0) return `${base}/`;

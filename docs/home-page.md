@@ -176,6 +176,21 @@ An **automation**:
 | `group` | the heading it is listed under; by default from `kind`: Scheduled jobs, Inside another job, Hooks, CI, By hand |
 | `status` | where its last run can be read: one source or a list of sources (below); left out = no status |
 | `docs` | a web address or file path about it |
+| `run` | editable LaunchAgent settings: `schedule`, `harness`, `model`, `effort`, `cli`, `arguments`, `runner`, `skill`, `prompt` and `enabled` |
+| `automationDefaults` | project-wide `harness`, `model`, `effort`, `cli`, `arguments`, `runner`, `skill` and `prompt` defaults for jobs without an override |
+
+The `harness` is `opencode`, `claude`, `codex`, `copilot`, or `custom`, and must be explicitly configured along with `cli`.
+The installer never chooses a provider silently. The selected harness controls the non-interactive
+command shape; `cli` may be a command on `PATH` or an absolute path, and `arguments` appends additional argv values before the
+prompt. `model` and `effort` remain optional because each harness supports a different set of model controls; `effort`
+is not injected as a flag unless the selected CLI documents one, in which case add it through `arguments`.
+
+Click **Edit** on an automation row to change its description and, for a `launchd` automation, its local schedule,
+harness, model, effort, CLI executable, extra arguments, runner path, skill, optional full prompt and enabled switch. Click **Defaults** above
+the list to change inherited values for the whole project. The editor has a shareable address:
+`/dashboard/home/how-it-runs/edit/<automation-id>?hproject=<project>`. Cancel, Close and browser Back return to the
+table without writing; Save validates the whole change, updates the mapped `home.config.json` atomically and
+reloads only that LaunchAgent. `/dashboard/automations` is a short link to the same table.
 
 A **service**: `usedBy` (the group, area or part ids that use it), `console` (the https address of its
 console, shown as an Open console button), `status` (one source or a list) and `cost` (text, or
@@ -207,7 +222,9 @@ counts.
 Server: `GET /api/home/automations?project=<slug>` and `GET /api/home/services?project=<slug>` answer each
 entry with its `result` (`{ lastRun, ok, late, nextRun?, detail, off?, sources }`); results are cached for
 60 s and the readers run in parallel, so a slow one answers `{ checking: true }` and fills in on the next
-request.
+request. `PUT /api/home/automation?project=<slug>` accepts `{ id, description?, schedule?, model?, skill?,
+prompt?, enabled? }`, validates it and saves one automation. Runtime changes invoke the local LaunchAgent
+installer without a shell; a reload failure rolls the config file back.
 
 ### The older flat shape
 

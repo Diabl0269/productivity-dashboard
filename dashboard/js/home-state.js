@@ -16,6 +16,10 @@ import { findWhere } from '../../shared/home-config.js';
 export const TOP_BAR_SLOTS = ['search', 'palette', 'note', 'usage'];
 export const DEFAULT_HOME_VIEW = 'overview';
 
+const HOME_VIEW_ALIASES = Object.freeze({ automations: 'how-it-runs' });
+
+function resolveHomeViewId(id) { return HOME_VIEW_ALIASES[id] || id; }
+
 const views = new Map();
 const inspectorTabs = new Map();
 const topBarItems = new Map();
@@ -66,7 +70,7 @@ export function registerStripItem(def) {
 
 /** Registered views, ordered by key. */
 export function homeViews() { return [...views.values()].sort((a, b) => a.key - b.key); }
-export function homeView(id) { return views.get(id) || null; }
+export function homeView(id) { return views.get(resolveHomeViewId(id)) || null; }
 export function inspectorTabList() { return [...inspectorTabs.values()]; }
 /** Items of one top bar slot; any real item there hides the slot's placeholder, whatever its id. */
 export function topBarItemsIn(slot) {
@@ -85,6 +89,8 @@ const state = {
   where: EMPTY_WHERE,
   pendingWhere: null, // a ?where= id waiting for the config to load
   home: null, // the /api/home answer for `project`: { config, errors, missing, path, projects, ... }
+  automationId: null,
+  automationDefaults: false,
   loading: false,
 };
 
@@ -111,7 +117,8 @@ export function setHomeUrlSync(fn) { urlSync = fn; }
 function sync() { urlSync?.(); }
 
 export function getHomeView() {
-  return views.has(state.view) ? state.view : (views.has(DEFAULT_HOME_VIEW) ? DEFAULT_HOME_VIEW : homeViews()[0]?.id || DEFAULT_HOME_VIEW);
+  const id = resolveHomeViewId(state.view);
+  return views.has(id) ? id : (views.has(DEFAULT_HOME_VIEW) ? DEFAULT_HOME_VIEW : homeViews()[0]?.id || DEFAULT_HOME_VIEW);
 }
 export function getProject() { return state.project; }
 export function getHomeData() { return state.home; }
@@ -131,6 +138,7 @@ export function selectedBoxId() {
 export function hasSelection() { return !!selectedBoxId(); }
 
 export function setView(id) {
+  id = resolveHomeViewId(id);
   if (!views.has(id) || id === getHomeView()) return;
   state.view = id;
   notify({ type: 'view' });
@@ -208,13 +216,34 @@ export function setHomeData(data) {
 
 // ===== routing (routing.js reads and applies these through main.js) =====
 
-/** The Home part of the route: { homeView, where, homeProject }. */
+/** The Home part of the route, including an optional automation editor. */
 export function homeRouteState() {
   return {
     homeView: getHomeView(),
+    automationId: state.automationId || undefined,
+    automationDefaults: state.automationDefaults || undefined,
     where: selectedBoxId() || state.pendingWhere || undefined,
     homeProject: state.project || undefined,
   };
+}
+
+export function getAutomationId() { return state.automationId; }
+export function isEditingAutomationDefaults() { return state.automationDefaults; }
+
+export function editAutomationDefaults(on = true) {
+  state.automationDefaults = !!on;
+  if (state.automationDefaults) state.automationId = null;
+  notify({ type: 'automation' });
+  sync();
+}
+
+export function editAutomation(id) {
+  const next = id ? String(id) : null;
+  if (state.automationId === next) return;
+  state.automationDefaults = false;
+  state.automationId = next;
+  notify({ type: 'automation' });
+  sync();
 }
 
 /** Apply a parsed route (from the URL or Back/Forward) without writing the URL again. */
@@ -228,6 +257,11 @@ export function applyHomeRoute(route) {
   const view = route.homeView || DEFAULT_HOME_VIEW;
   const viewChanged = view !== state.view;
   state.view = view;
+  const nextAutomation = route.homeView === 'how-it-runs' && route.automationId ? route.automationId : null;
+  const nextDefaults = route.homeView === 'how-it-runs' && route.automationDefaults === true;
+  const automationChanged = nextAutomation !== state.automationId || nextDefaults !== state.automationDefaults;
+  state.automationId = nextDefaults ? null : nextAutomation;
+  state.automationDefaults = nextDefaults;
   const before = selectedBoxId();
   if (route.where) {
     const found = findWhere(getHomeConfig(), route.where);
@@ -238,6 +272,7 @@ export function applyHomeRoute(route) {
   }
   if (state.project !== prevProject) notify({ type: 'project' });
   if (viewChanged) notify({ type: 'view' });
+  if (automationChanged) notify({ type: 'automation' });
   if (selectedBoxId() !== before) notify({ type: 'selection' });
 }
 

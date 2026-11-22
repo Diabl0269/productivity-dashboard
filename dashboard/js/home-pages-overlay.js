@@ -20,7 +20,7 @@ function reducedMotion() {
  * A modal shell: scrim + card with a title bar and a body.
  * @returns {{ dialog, body, close() }}
  */
-function shell({ title, className, trigger, wide }) {
+export function shell({ title, className, trigger, wide }) {
   const dialog = el('dialog', `hp-dialog ${className}`);
   dialog.setAttribute('aria-label', title);
   const scrim = el('div', 'hp-scrim');
@@ -63,6 +63,14 @@ function shell({ title, className, trigger, wide }) {
   dialog.classList.add('hp-in');
   body.focus({ preventScroll: true });
   return { dialog, body, tools, close };
+}
+
+/** A modal form dialog on the same shell. `build(body, close)` fills it; `onClose()` runs once it is gone. */
+export function openDialog({ title, trigger, className = 'hp-form', build, onClose }) {
+  const s = shell({ title, className, trigger, wide: false });
+  if (onClose) s.dialog.addEventListener('close', onClose, { once: true });
+  build(s.body, s.close);
+  return s;
 }
 
 /** Show a page in the centred reading overlay. `build(root, close)` fills it with the rendered page. */

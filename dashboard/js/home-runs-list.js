@@ -6,6 +6,7 @@
 
 import { healthState, HEALTH_STATES, relTime, GROUP_ORDER } from '../../shared/home-config-runs.js';
 import { getRuns, onHealth, getHealth } from './home-health-data.js';
+import { editAutomation, editAutomationDefaults } from './home-state.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -58,6 +59,14 @@ function makeRow(kind, entry, ctx) {
     consoleLink.rel = 'noopener noreferrer';
     consoleLink.dataset.hmKey = `console-${entry.id}`;
     line.appendChild(consoleLink);
+  }
+  if (kind === 'automations') {
+    const edit = el('button', 'hr-btn hr-edit-btn', 'Edit');
+    edit.type = 'button';
+    edit.dataset.hmKey = `edit-${entry.id}`;
+    edit.setAttribute('aria-label', `Edit ${entry.name}`);
+    edit.addEventListener('click', () => { editAutomation(entry.id); });
+    line.appendChild(edit);
   }
   line.append(fold, tip);
   const body = el('div', 'hr-fold');
@@ -165,7 +174,13 @@ export function buildRuns(host, ctx, src) {
     h.id = `hrTitle-${kind}`;
     const summary = el('span', 'hr-summary');
     head.append(h, summary);
-    if (kind === 'automations') head.appendChild(filterWrap);
+    if (kind === 'automations') {
+      const defaults = el('button', 'hr-btn hr-defaults-btn', 'Defaults');
+      defaults.type = 'button';
+      defaults.dataset.hmKey = 'automation-defaults';
+      defaults.addEventListener('click', () => editAutomationDefaults(true));
+      head.append(defaults, filterWrap);
+    }
     const introP = el('p', 'hr-sub', intro);
     const empty = el('div', 'hr-empty');
     const groups = el('div', 'hr-groups');

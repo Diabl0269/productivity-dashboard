@@ -13,12 +13,13 @@ import {
   isPlainObject, shown, str, strOrNull, strList, regex, rect, id as checkId, unknownKeys, objList,
 } from './home-config-check.js';
 import { normAutomations, normServices, normLifecycle } from './home-config-runs.js';
+import { normDefaults } from './automation-run.js';
 
 import { applyPages } from './home-pages-config.js';
 
 export const HOME_CONFIG_VERSION = 1;
 
-const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'lifecycle', 'fallback', 'pages', 'page'];
+const TOP_KEYS = ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'automationDefaults', 'lifecycle', 'fallback', 'pages', 'page'];
 const LEGACY_KEYS = ['repos', 'groups', 'keywordProjects', 'areas', 'cables', 'fallback', 'pages', 'page'];
 const GROUP_KEYS = ['id', 'name', 'what', 'areas', 'keywordProjects', 'box', 'page', 'covers'];
 const BOX_KEYS = ['id', 'name', 'what', 'lanes', 'match', 'projects', 'box', 'page', 'covers', 'parts'];
@@ -236,6 +237,7 @@ export function normalizeHomeConfig(raw) {
     decorations,
     services: legacy ? [] : normServices(raw, errors, ctx.ids),
     automations: legacy ? [] : normAutomations(raw, errors),
+    automationDefaults: legacy ? null : normDefaults(raw.automationDefaults, errors),
     lifecycle: legacy ? null : normLifecycle(raw, errors),
     fallback: null,
     legacy,

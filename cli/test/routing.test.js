@@ -40,6 +40,15 @@ test('parseRoute: tasks list view', async () => {
   assert.equal(buildPath(route), '/dashboard/tasks/list');
 });
 
+test('parseRoute: automations alias opens Home How it runs', async () => {
+  mockWindow('/dashboard/automations');
+  const { parseRoute, buildPath } = await import('../../dashboard/js/routing.js');
+  const route = parseRoute();
+  assert.equal(route.tab, 'home');
+  assert.equal(route.homeView, 'how-it-runs');
+  assert.equal(buildPath(route), '/dashboard/home/how-it-runs');
+});
+
 test('parseRoute: settings subtab', async () => {
   mockWindow('/dashboard/settings/ticket-types');
   const { parseRoute } = await import('../../dashboard/js/routing.js');
