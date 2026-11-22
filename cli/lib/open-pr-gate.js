@@ -15,6 +15,23 @@ const MIN_STEPS = 40;
 const PR_LABEL = /^\s*PR\s*#\d+/i;
 const PR_URL = /github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+/i;
 
+/** WEB38: wording of a taste judgement ("whether these ... are the ones you want", "do you like ..."). */
+export const TASTE_QUESTION = /\bwhether\b|\bare the ones you want\b|\bdo you like\b|\blook right\b|\bwhich (one|of)\b/i;
+const TRY_ON_BRANCH = /^\s*Try on branch\b/i;
+
+/** WEB38: the first check (text or {text}) that already holds the taste judgement, ignoring the auto "Try on branch" check. */
+export function tasteCheckIn(checks) {
+  for (const c of checks || []) {
+    const t = typeof c === 'string' ? c : c?.text;
+    if (typeof t === 'string' && !TRY_ON_BRANCH.test(t) && TASTE_QUESTION.test(t)) return t;
+  }
+  return null;
+}
+
+/** WEB39: tickets of these projects need a command and a URL in --try-steps. */
+const hasCommand = (s) => /`[^`\n]+`/.test(s);
+const hasUrl = (s) => /https?:\/\//i.test(s);
+
 /** Links that name a pull request: label 'PR #n' or a github.com/.../pull/n URL. */
 export function prLinks(links) {
   return (links || []).filter(l => l && l.url && (PR_LABEL.test(l.label || '') || PR_URL.test(l.url)));
@@ -36,7 +53,7 @@ export function ghPrState(url) {
  * Decide what a review does about the ticket's PR links.
  * @returns {{ error: string|null, warnings: string[], checks: string[], held: object|null }}
  */
-export function openPrGate({ id, links, heldPr, trySteps, state = ghPrState }) {
+export function openPrGate({ id, links, heldPr, trySteps, state = ghPrState, checks, project }) {
   const out = { error: null, warnings: [], checks: [], held: null };
   const why = typeof heldPr === 'string' ? heldPr.trim() : '';
   const steps = typeof trySteps === 'string' ? trySteps.trim() : '';
@@ -61,11 +78,23 @@ export function openPrGate({ id, links, heldPr, trySteps, state = ghPrState }) {
       out.error = `--held-pr needs --try-steps "<exact steps on branch ${s.branch || '<branch>'} and what Tal should see>", e.g. --try-steps "Open project, in the Mixer panel press Play on the Reverb card: the tail should fade out in about 2 s"`;
       return out;
     }
+    if (project === 'website' && !(hasCommand(steps) && hasUrl(steps))) {
+      out.error = `--try-steps on a website ticket needs a runnable command (in backticks) and the URL to open. Start the branch's site with \`scripts/launch-web-branch.sh ${s.branch || '<branch>'}\` (it prints the URL), e.g. --try-steps "Site started with \`scripts/launch-web-branch.sh ${s.branch || 'feat/x'}\`, open http://localhost:4321/account: the plan card shows the new price"`;
+      return out;
+    }
+    const taste = tasteCheckIn(checks);
+    if (taste) {
+      out.error = `${id}: the ticket already has a check for the taste part ("${taste.slice(0, 80)}"), so the held-PR check would repeat it. A merge decision belongs on a card: ch tasks ask ${id} "<merge question naming the PR and the live effect>" --option "A: Merge" --option "B: Keep held" --details "<60+ chars>" --merge-pr ${url} --same-judgement`;
+      return out;
+    }
     out.checks.push(`Try on branch ${s.branch || url}: ${steps}`);
     out.held = { reason: why, pr: url, branch: s.branch, at: new Date().toISOString() };
   }
   return out;
 }
+
+/** WEB40: why a website/backend check has no synth music project. */
+export const NO_SYNTH_PROJECT = { website: 'website page, no synth project', backend: 'backend, no synth project' };
 
 /**
  * FRO1979: the auto-added "Try on branch X" check has no evidence of its own, so it takes the first
@@ -73,11 +102,13 @@ export function openPrGate({ id, links, heldPr, trySteps, state = ghPrState }) {
  * other checks: Plan then shows Open project (in the branch's build) and Play video on it too.
  * `siblings` are the checks the call passed, or the ticket's own when it passed none.
  */
-export function inheritHeldCheckEvidence(item, siblings) {
+export function inheritHeldCheckEvidence(item, siblings, opts = {}) {
   const from = (siblings || []).filter(c => c && c !== item);
   const project = from.find(c => c.project);
   const noProject = from.find(c => c.noProject);
-  if (project) item.project = project.project;
+  const reason = NO_SYNTH_PROJECT[opts?.project];
+  if (reason) item.noProject = reason; // WEB40: a website/backend check never inherits a synth project
+  else if (project) item.project = project.project;
   else if (noProject) item.noProject = noProject.noProject;
   const video = from.find(c => c.video);
   const noVideo = from.find(c => c.noVideo);

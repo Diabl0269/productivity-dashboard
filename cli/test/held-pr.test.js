@@ -181,3 +181,11 @@ test('review --held-pr with no new checks: the held check takes the ticket own c
   assert.equal(held.project, 'old.agsproj');
   assert.equal(held.video, 'old.mp4');
 });
+
+// WEB40: website/backend checks never inherit a synth project.
+test('inheritHeldCheckEvidence: a website or backend ticket gets noProject, not the sibling project', () => {
+  const sib = [{ text: 'a', project: 'p/one.agsproj' }];
+  assert.deepEqual(inheritHeldCheckEvidence({ text: 'h' }, sib, { project: 'website' }), { text: 'h', noProject: 'website page, no synth project' });
+  assert.deepEqual(inheritHeldCheckEvidence({ text: 'h' }, sib, { project: 'backend' }), { text: 'h', noProject: 'backend, no synth project' });
+  assert.equal(inheritHeldCheckEvidence({ text: 'h' }, sib, { project: 'agentsynth' }).project, 'p/one.agsproj');
+});
