@@ -150,3 +150,16 @@ test('BAC118: the same reason is fine on a non-sound check, and a sound check wi
   assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', noProject: 'any patch works', audio: 'T1/a.wav' }]), null);
   assert.match(checkProjectGateProblem([{ text: 'Is the bell chord quieter?', noProject: 'needs a deploy first' }]), /sound check/);
 });
+
+test('WEB40: a bare check on a website ticket passes the project gate with an auto noProject', () => {
+  const home = makeHome();
+  const f = path.join(home, 'tasks.json');
+  const doc = JSON.parse(fs.readFileSync(f, 'utf8'));
+  doc.sections.flatMap(s => s.tasks).find(t => t.id === 'T1').project = 'website';
+  fs.writeFileSync(f, JSON.stringify(doc));
+  const r = run([...base, '--check', 'bare'], home);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(taskOf(home, 'T1').checks[0].noProject, 'website page, no synth project');
+  const other = makeHome();
+  assert.notEqual(run([...base, '--check', 'bare'], other).status, 0);
+});

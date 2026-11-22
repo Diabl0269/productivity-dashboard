@@ -137,7 +137,7 @@ import {
 } from '../../shared/review-notes.js';
 import { planFiling, applyFiling, pendingAnswers } from '../../shared/review-filing.js';
 import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
-import { openPrGate, inheritHeldCheckEvidence } from '../lib/open-pr-gate.js';
+import { openPrGate, inheritHeldCheckEvidence, NO_SYNTH_PROJECT } from '../lib/open-pr-gate.js';
 import { reviewOverlap, applyLinks, ticketAndEpic } from '../lib/ask-overlap.js';
 import { addAsk, askByError, askLines, countAsks, asksNotice, openAskBlock } from '../../shared/asks.js';
 import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
@@ -1150,9 +1150,6 @@ function cmdReview(argv) {
   const checkItems = reviewCheckItems(base, values);
   const checkTexts = checkItems.map(c => c.text);
   assertChecksAreTals(checkItems, values['allow-check-owner']);
-  // PRO100: every --check carries a project to open or says why it has none (taste lines and held-PR checks added later are exempt).
-  // (CH_NO_CHECK_PROJECT_GATE=1 switches it off: for this repo's own fixture tests, not for sessions.)
-  const projectProblem = process.env.CH_NO_CHECK_PROJECT_GATE === '1' ? null : checkProjectGateProblem(checkItems);
 
   const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
   let result = null;
@@ -1182,6 +1179,11 @@ function cmdReview(argv) {
 
   const doc = load();
   const { task, section: fromSection } = resolveTask(doc, id, values.section);
+  // WEB40: website/backend checks have no synth project; fill the reason instead of failing the gate.
+  if (NO_SYNTH_PROJECT[task.project]) for (const c of checkItems) if (!c.project && !c.noProject) c.noProject = NO_SYNTH_PROJECT[task.project];
+  // PRO100: every --check carries a project to open or says why it has none (taste lines and held-PR checks added later are exempt).
+  // (CH_NO_CHECK_PROJECT_GATE=1 switches it off: for this repo's own fixture tests, not for sessions.)
+  const projectProblem = process.env.CH_NO_CHECK_PROJECT_GATE === '1' ? null : checkProjectGateProblem(checkItems);
   if (tasteChecks.length) {
     const added = foldTasteChecks(tasteChecks, [...checkItems, ...(task.checks || []), ...(epicOf(doc, task)?.task.checks || [])]);
     checkItems.push(...added);
@@ -1242,16 +1244,17 @@ function cmdReview(argv) {
 
   // PRO70: an open PR blocks review unless --held-pr says why (adds the "try on branch" check).
   const newLinks = (values['add-link'] || []).map((url, i) => ({ url, ...((values['link-label'] || [])[i] ? { label: values['link-label'][i] } : {}) }));
-  const pr = openPrGate({ id, heldPr: values['held-pr'], trySteps: values['try-steps'], links: [...(task.links || []), ...newLinks] });
+  const pr = openPrGate({ id, heldPr: values['held-pr'], trySteps: values['try-steps'], links: [...(task.links || []), ...newLinks], project: task.project, checks: [...checkItems, ...(task.checks || [])] });
   if (pr.error) die(pr.error);
   pr.warnings.forEach(w => printErr(`review: warning: ${w}`));
   if (values['try-steps'] !== undefined && !pr.held) die('--try-steps goes with --held-pr (a PR held open on purpose)');
   {
     // FRO1979: the held check inherits the project/video of the review's other checks (else the ticket's own).
     const own = checkItems.length ? checkItems.slice() : (task.checks || []);
-    const held = pr.checks.map(text => inheritHeldCheckEvidence({ text }, own));
+    const held = pr.checks.map(text => inheritHeldCheckEvidence({ text }, own, { project: task.project }));
     // AGE162: the steps go through the same owner gate as any check ("run the eval" is refused).
-    assertChecksAreTals(held, values['allow-check-owner']);
+    // WEB39: the launch command a website ticket must carry is setup for Tal's look, not a task for Tal, so it is not judged.
+    assertChecksAreTals(held.map(h => ({ ...h, text: h.text.replace(/`scripts\/launch-web-branch\.sh[^`]*`/g, 'the branch site') })), values['allow-check-owner']);
     checkItems.push(...held);
   }
   if (pr.held) {

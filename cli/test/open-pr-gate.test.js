@@ -144,3 +144,46 @@ test('AGE162: CLI refuses missing steps, steps without a held PR, and owner-gate
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /waits on a merge is yours/);
 });
+
+// WEB38: the taste judgement already sits in a check, so a held review must not add a second one.
+const asProject = (home, project) => {
+  const f = path.join(home, 'tasks.json');
+  const doc = JSON.parse(fs.readFileSync(f, 'utf8'));
+  doc.sections.flatMap(s => s.tasks).find(t => t.id === 'T1').project = project;
+  fs.writeFileSync(f, JSON.stringify(doc));
+};
+const OPEN_ST = () => ({ state: 'OPEN', branch: 'b' });
+
+test('WEB38: held review with a taste check is refused and points at ch tasks ask --merge-pr', () => {
+  const home = makeHome([{ url: PR, label: 'PR #42' }]);
+  const r = run(['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'Look at whether these three cards are the ones you want', '--held-pr', 'real-Mac look', '--try-steps', STEPS], home, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /already has a check for the taste part/);
+  assert.match(r.stderr, /ch tasks ask T1 .*--merge-pr .*--same-judgement/);
+  const ok = run([...base, '--held-pr', 'real-Mac look', '--try-steps', STEPS], makeHome([{ url: PR, label: 'PR #42' }]), fakeGh(open));
+  assert.equal(ok.status, 0, ok.stderr);
+});
+
+test('WEB38: openPrGate sees a taste check in the stored checks too, ticked or open, but not the auto one', () => {
+  const args = { id: 'T1', links: [{ url: PR }], heldPr: 'why', trySteps: STEPS, state: OPEN_ST };
+  assert.match(openPrGate({ ...args, checks: [{ text: 'Do you like the new header?', checked: true }] }).error, /taste part/);
+  assert.equal(openPrGate({ ...args, checks: [{ text: 'Try on branch b: see whether it looks fine' }, { text: 'Open the panel: label reads Gain' }] }).error, null);
+});
+
+// WEB39: website tickets need a runnable command and a URL.
+test('WEB39: website held review needs a backtick command and a URL in --try-steps', () => {
+  const plain = makeHome([{ url: PR, label: 'PR #42' }]); asProject(plain, 'website');
+  const r = run([...base, '--held-pr', 'why', '--try-steps', STEPS], plain, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /scripts\/launch-web-branch\.sh feat\/demo-branch/);
+  const good = makeHome([{ url: PR, label: 'PR #42' }]); asProject(good, 'website');
+  const steps = 'Site started with `scripts/launch-web-branch.sh feat/x`, open http://localhost:4321/account: the plan card shows the price';
+  const ok = run([...base, '--held-pr', 'why', '--try-steps', steps], good, fakeGh(open));
+  assert.equal(ok.status, 0, ok.stderr);
+});
+
+test('WEB39: other projects keep plain-words try-steps', () => {
+  const g = { id: 'T1', links: [{ url: PR }], heldPr: 'why', trySteps: STEPS, state: OPEN_ST };
+  assert.equal(openPrGate({ ...g, project: 'agentsynth' }).error, null);
+  assert.match(openPrGate({ ...g, project: 'website' }).error, /launch-web-branch/);
+});
