@@ -27,6 +27,7 @@ const CH_SCRIPT = path.resolve(__dirname, '../../ch');
 
 const AT = '2026-03-01T10:00:00.000Z';
 const D = 'Open the Reverb panel on the master bus and compare the setting before and after; it decides the default.';
+const DL = `${D} Board: https://claude.ai/artifact/BtoY6LyNmK69dgZtBah24Y`; // FRO2118: a design ask carries its board link
 const result = (extra) => ({ at: AT, shipped: ['did it'], ci: 'all passed', ...extra });
 
 /** A small doc: an epic in review whose child is done, plus standalone tickets. */
@@ -214,7 +215,7 @@ test('CLI: ask -> asks -> answer / dismiss round-trip, decision on the ticket', 
   const prevState = process.env.AUTORUN_STATE_DIR;
   process.env.AUTORUN_STATE_DIR = stateDir;
   t.after(() => { if (prevState === undefined) delete process.env.AUTORUN_STATE_DIR; else process.env.AUTORUN_STATE_DIR = prevState; });
-  let r = runCli(['tasks', 'ask', 'T1', 'Keep the old layout?', '--details', D, '--ask-by', '2026-03-10'], dir);
+  let r = runCli(['tasks', 'ask', 'T1', 'Keep the old layout?', '--details', DL, '--ask-by', '2026-03-10'], dir);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /1 ask for Tal is on the Plan page/);
   r = runCli(['tasks', 'ask', 'T2', 'Second question?', '--details', D], dir);
@@ -524,8 +525,8 @@ test('addAsk: a question about something seen or heard needs media; ui / audio l
   assert.throws(() => addAsk(t, { text: 'Which one?', details: D, labels: ['ui'] }), need);
   assert.throws(() => addAsk(t, { text: 'Which one?', details: D, labels: ['Audio'] }), need);
   assert.doesNotThrow(() => addAsk(t, { text: 'Which one?', details: D, labels: ['backend'] }));
-  assert.ok(addAsk(t, { text: 'Does the glow look right?', details: D, media: { project: 'X1/a.agsproj' } }).media.project);
-  assert.ok(addAsk(t, { text: 'Which one?', details: D, labels: ['ui'], media: { image: 'X1/a.png' } }));
+  assert.ok(addAsk(t, { text: 'Does the glow look right?', details: DL, media: { project: 'X1/a.agsproj' } }).media.project);
+  assert.ok(addAsk(t, { text: 'Which one?', details: DL, labels: ['ui'], media: { image: 'X1/a.png' } }));
 });
 
 test('addAsk: a merge ask linked to its check card needs neither details nor media', () => {
@@ -546,13 +547,13 @@ test('CLI: ask refused without details or media, accepted with them; a ui ticket
   r = runCli(['tasks', 'ask', 'T1', 'Does the glow look right?', '--details', D], dir);
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /--video, --audio, --image, --project or --board/);
-  r = runCli(['tasks', 'ask', 'T1', 'Does the glow look right?', '--details', D, '--project', 'T1/a.agsproj'], dir);
+  r = runCli(['tasks', 'ask', 'T1', 'Does the glow look right?', '--details', DL, '--project', 'T1/a.agsproj'], dir);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(readTask(dir, 'T1').asks[0].details, D);
+  assert.equal(readTask(dir, 'T1').asks[0].details, DL);
   writeTask(dir, 'T2', { labels: ['ui'] });
   r = runCli(['tasks', 'ask', 'T2', 'Ship it?', '--details', D], dir);
   assert.match(r.stderr, /--video, --audio, --image, --project or --board/, 'ui label');
-  r = runCli(['tasks', 'ask', 'T2', 'Ship it?', '--details', D, '--project', 'T1/a.agsproj'], dir);
+  r = runCli(['tasks', 'ask', 'T2', 'Ship it?', '--details', DL, '--project', 'T1/a.agsproj'], dir);
   assert.equal(r.status, 0, r.stderr);
 });
 
@@ -578,4 +579,32 @@ test('older stored asks without details stay valid', () => {
   const t = { id: 'X1', asks: [{ n: 1, at: AT, text: 'Old question?', state: 'open' }] };
   assert.deepEqual(askErrors(t, 'X1'), []);
   assert.equal(cleanAsks(t).asks.length, 1);
+});
+
+// FRO2118: an ask about a design carries the board or artifact link (Tal 2026-11-20 on FRO2078's round 3 ask).
+test('addAsk: a design ask needs the board or artifact link; with --board, --link or a URL in details it is accepted', () => {
+  const Q = 'Build module layout B round 3 as drawn (Sync word button, EQ chip strip, lane margins and headers)?';
+  const NO_LINK = 'On the Module design language board, round 3 table at the top and the six module cards below it: check the Sync button, the EQ chip strip and the OUT header.';
+  const mk = (labels) => ({ id: 'T9', title: 'x', labels });
+  // The text names layout, so even with a project attached and no ui label it is refused without a link.
+  assert.throws(() => addAsk(mk([]), { text: Q, details: NO_LINK, media: { project: 'T9/p.agsproj' } }), /link to the board or artifact/);
+  assert.throws(() => addAsk(mk(['ui']), { text: 'Keep this shortcut?', details: NO_LINK.replace(/board|design|layout|look/gi, 'thing'), labels: ['ui'], media: { image: 'T9/a.png' } }), /link to the board or artifact/);
+  const board = 'https://claude.ai/artifact/BtoY6LyNmK69dgZtBah24Y';
+  assert.equal(addAsk(mk([]), { text: Q, details: NO_LINK, media: { board } }).media.board, board);
+  const viaLink = addAsk(mk([]), { text: Q, details: NO_LINK, link: board });
+  assert.match(viaLink.details, new RegExp(`Link: ${board}`));
+  assert.doesNotThrow(() => addAsk(mk([]), { text: Q, details: `${NO_LINK} Board: ${board}` }));
+  assert.throws(() => addAsk(mk([]), { text: Q, details: NO_LINK, link: 'not a url' }), /--link must be a URL/);
+  // A plain, non-design question needs no link.
+  assert.doesNotThrow(() => addAsk(mk([]), { text: 'Rename the export flag?', details: D }));
+});
+
+test('CLI: ask on a ui ticket without a design link is refused with the board-link message; --link accepts it', () => {
+  const dir = homeWithEvidence(['T1/p.agsproj']);
+  const Q = 'Build module layout B round 3 as drawn?';
+  let r = runCli(['tasks', 'ask', 'T1', Q, '--details', D, '--project', 'T1/p.agsproj'], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /link to the board or artifact/);
+  r = runCli(['tasks', 'ask', 'T1', Q, '--details', D, '--project', 'T1/p.agsproj', '--link', 'https://claude.ai/artifact/BtoY6LyNmK69dgZtBah24Y'], dir);
+  assert.equal(r.status, 0, r.stderr);
 });
