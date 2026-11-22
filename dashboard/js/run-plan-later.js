@@ -3,6 +3,7 @@
 // one plain line saying why and what would make it ready. Cards come from shared/run-plan.js
 // (`lane.laterEpics`); nothing here can start them.
 
+import { copyText, refinePrompt } from './run-plan-util.js';
 import { renderReasonBlock } from './run-plan-reasons.js';
 
 function el(tag, className, text) {
@@ -28,9 +29,24 @@ function laterCard(card, idButton, redraw, folds) {
   const row = el('div', 'rp-row');
   row.appendChild(idButton(card.id));
   row.appendChild(el('span', `rp-chip rp-chip-${card.state}`, card.state === 'backlog' ? 'In backlog' : 'Not ready'));
+  if (card.unrefined) row.appendChild(el('span', 'rp-chip rp-chip-unrefined', 'Not refined'));
   article.appendChild(row);
   article.appendChild(el('div', 'rp-title', card.title));
   renderReasonBlock(card, idButton, redraw, folds).forEach(n => article.appendChild(n));
+  if (card.unrefined) {
+    const prompt = refinePrompt(card);
+    const refine = el('button', 'rp-btn rp-refine', 'Copy refine prompt');
+    refine.type = 'button';
+    refine.title = prompt;
+    refine.setAttribute('aria-label', `Copy the refine prompt for ${card.id}`);
+    refine.addEventListener('click', async () => {
+      const ok = await copyText(prompt);
+      refine.textContent = ok ? 'Copied' : 'Copy blocked';
+    });
+    const actions = el('div', 'rp-actions');
+    actions.appendChild(refine);
+    article.appendChild(actions);
+  }
   return article;
 }
 

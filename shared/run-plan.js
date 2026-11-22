@@ -8,7 +8,7 @@
 import { checksOnOpenWork, reviewQueue } from './review.js';
 import { needsTalLinesByEpic } from './needs-tal-lines.js';
 import { isDesignPick, isPickGate } from './pick-gate.js';
-import { openEpicReadiness, epicIdsForLanes, plainReasonLine } from './epic-ready.js';
+import { openEpicReadiness, epicIdsForLanes, plainReasonLine, isStubEpic } from './epic-ready.js';
 
 export { isDesignPick, isPickGate };
 
@@ -301,6 +301,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     model: modelOf(byId.get(epicId)),
     inProgress: info.get(epicId).inProgress,
     step: 0,
+    ...(isStubEpic(byId.get(epicId)) ? { unrefined: true } : {}),
   });
 
   /**
@@ -350,6 +351,7 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
     model: modelOf(byId.get(r.id)),
     inProgress: false,
     step: 0,
+    ...(isStubEpic(byId.get(r.id)) ? { unrefined: true } : {}),
   });
 
   const lanes = laneNames.map(lane => {
@@ -380,7 +382,13 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
 
       if (phase === 'later') {
         const needs = joinList([...crossLane, ...laterSameLane, ...(pickText ? [pickText] : [])]);
-        later.push(card(id, 'later', false, i.work.length, needs ? `Needs ${needs}` : 'Needs the card before it'));
+        const rd = readinessById.get(id);
+        const isReady = !!(rd && rd.ready);
+        const isAuto = !!(rd && rd.auto);
+        const why = isReady && needs
+          ? `Ready${isAuto ? ' · Auto' : ''}: starts when ${needs} finish${/ and |,/.test(needs) ? '' : 'es'}`
+          : needs ? `Needs ${needs}` : 'Needs the card before it';
+        later.push({ ...card(id, 'later', false, i.work.length, why), ready: isReady, auto: isAuto });
       } else if (phase === 'partial') {
         now.push(card(id, 'partial', false, i.freeWork.length, `Stops at ${pickText}`));
         later.push(card(id, 'later', true, i.gatedWork.length, `Needs ${pickText}`));

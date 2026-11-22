@@ -31,6 +31,11 @@ export function waitUntilDate(t, nowMs = Date.now()) {
   }
   return null;
 }
+/** PRO144: an epic still on File review's stub description (not refined into a real In plain words section). */
+export function isStubEpic(task) {
+  const d = String((task && task.description) || '');
+  return d.includes('Created by File review') && /fixes and design picks noted during reviews land here/i.test(d);
+}
 const RUNNABLE_SECTIONS = new Set(['todo', 'in-progress']);
 
 /** Auto-queue priorities, first to run first. Stored on the epic as `autoPriority` (the ticket's own `priority` stays low/medium/high). */
