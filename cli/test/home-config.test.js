@@ -50,7 +50,7 @@ test('every box comes back with the full v1 shape and defaults', () => {
   assert.deepEqual(config.groups[0].areas[0], {
     id: 'a', name: 'A', lanes: [], match: null, projects: [], box: null, page: null, covers: [], parts: [],
   });
-  assert.deepEqual(Object.keys(config), ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'lifecycle', 'fallback', 'legacy']);
+  assert.deepEqual(Object.keys(config), ['version', 'title', 'repos', 'groups', 'cables', 'decorations', 'services', 'automations', 'automationDefaults', 'lifecycle', 'fallback', 'legacy']);
 });
 
 test('the older flat shape is nested under its groups, with no problems', () => {

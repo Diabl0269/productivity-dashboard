@@ -16,6 +16,8 @@ import usageRoute from './home/usage-route.js';
 import pageRoutes from './home/page-routes.js';
 import automationsRoute from './home/automations-route.js';
 import servicesRoute from './home/services-route.js';
+import automationEditRoute from './home/automation-edit-route.js';
+import automationDefaultsRoute from './home/automation-defaults-route.js';
 
 const routes = [
   configRoute, // GET /api/home?project=<slug> -> the project's home.config.json, validated
@@ -23,6 +25,8 @@ const routes = [
   usageRoute, // GET /api/home/usage?project=<slug> -> this week's usage meter
   ...pageRoutes, // GET /api/home/page, /api/home/pages, /api/home/page-file: handbook pages (PRO126)
   automationsRoute, // GET /api/home/automations?project=<slug> -> each automation with its last run (60 s cache)
+  automationEditRoute, // PUT /api/home/automation?project=<slug> -> edit one automation, reinstall its LaunchAgent when needed
+  automationDefaultsRoute, // PUT /api/home/automation-defaults?project=<slug> -> project-wide model/effort/runner defaults
   servicesRoute, // GET /api/home/services?project=<slug> -> each outside service with its status (60 s cache)
 ];
 

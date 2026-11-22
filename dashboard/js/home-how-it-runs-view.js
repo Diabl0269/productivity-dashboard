@@ -10,6 +10,7 @@ import { registerHomeView, registerStripItem, setView } from './home-state.js';
 import { boxOfWhere } from '../../shared/home-config.js';
 import { buildFlow } from './home-lifecycle.js';
 import { buildRuns } from './home-runs-list.js';
+import { createAutomationEditor } from './home-automation-editor.js';
 import { loadRuns, getRuns, onHealth, getHealth, healthLine, askProblems, takeProblemsAsk } from './home-health-data.js';
 
 function el(tag, className, text) {
@@ -81,7 +82,8 @@ function render(root, ctx) {
     placeNote: () => placeNote(ctx),
   });
   const runs = buildRuns(runsHost, ctx, { serviceScope: () => placeBoxIds(ctx) });
-  const rec = { flow, runs, offs: [] };
+  const editor = createAutomationEditor(ctx);
+  const rec = { flow, runs, offs: [], editor };
   mounted.set(root, rec);
 
   const showProblems = () => {
@@ -91,10 +93,14 @@ function render(root, ctx) {
   };
   rec.offs.push(onHealth(showProblems));
   showProblems();
-  ctx.subscribe((e) => {
+  rec.offs.push(onHealth(() => editor.sync()));
+  editor.sync();
+  rec.offs.push(ctx.subscribe((e) => {
+    if (e.type === 'automation' || e.type === 'config') editor.sync();
     if (e.type === 'selection') { flow.update(); runs.update(); }
     if (e.type === 'project') loadRuns(ctx.project());
-  });
+    if (e.type === 'config' && getRuns().project !== ctx.project()) loadRuns(ctx.project());
+  }));
   optionalReady.then(() => {
     if (!root.isConnected) return;
     if (runningMod?.onRunning) {
@@ -131,6 +137,7 @@ registerHomeView({
   dispose(root) {
     const rec = mounted.get(root);
     if (!rec) return;
+    rec.editor?.dispose();
     rec.flow.dispose();
     rec.runs.dispose();
     rec.offs.splice(0).forEach(off => off());

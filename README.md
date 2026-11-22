@@ -159,8 +159,11 @@ See `memory.example/` for the expected format.
 
 One project on one page: an Overview, a Map of the project's places you can zoom into, Lanes, a Tickets
 table and How it runs (automations and services), with an inspector, a usage chip and a running-work strip.
-Each project describes its map in its own `home.config.json`; start from `home.config.example.json` (a
-made-up bakery). Full guide: [docs/home-page.md](docs/home-page.md).
+Automation rows have an **Edit** panel for schedule, model, skill, prompt, enabled state and description. Its URL
+keeps the project and automation (`/dashboard/home/how-it-runs/edit/<id>?hproject=<slug>`), and
+`/dashboard/automations` opens the table directly. Each project describes its map in its own
+`home.config.json`; start from `home.config.example.json` (a made-up bakery). Full guide:
+[docs/home-page.md](docs/home-page.md).
 
 ![Home tab, Map view of the example bakery](docs/screenshots/home.png)
 
