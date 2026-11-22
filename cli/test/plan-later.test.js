@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { computeRunPlan, totalsLine, UNASSIGNED_LANE } from '../../shared/run-plan.js';
-import { openEpicReadiness, plainReasonLine } from '../../shared/epic-ready.js';
+import { openEpicReadiness, plainReasonLine, isStubEpic } from '../../shared/epic-ready.js';
 import { autoQueue } from '../../shared/auto-queue.js';
 import { computeNextStart } from '../../shared/next-start.js';
 import { textWithIdButtons } from '../../dashboard/js/run-plan-reason-text.js';
@@ -187,4 +187,45 @@ test('ch tasks runplan prints the same totals line, and --json carries totals', 
   const out = (...a) => { const r = ch(...a); assert.equal(r.status, 0, r.stderr); return r.stdout; };
   assert.equal(out().split('\n')[0], 'All 4 open epics are shown (3 finished ones are not)');
   assert.deepEqual(JSON.parse(out('--json')).totals, { openEpics: 4, shown: 4, hiddenFinished: 3, missing: [] });
+});
+
+// PRO144: a Ready epic that sits in a lane's `later` list says it is Ready (and Auto); stub epics say so.
+test('a Ready auto epic waiting on an epic in another lane says Ready · Auto: starts when ...', () => {
+  const doc = mk({
+    'in-progress': [epic('A1', { lane: 'mixer' })],
+    todo: [
+      task('TA1', { parentId: 'A1', waitingOn: 'Tal' }),
+      epic('B1', { lane: 'canvas', labels: ['model:sonnet', 'auto'], blockedBy: ['A1'] }), task('TB1', { parentId: 'B1' }),
+    ],
+  });
+  const plan = computeRunPlan(doc);
+  const card = plan.lanes.find(l => l.lane === 'canvas').later.find(c => c.id === 'B1');
+  assert.ok(card, 'B1 is in canvas later');
+  assert.equal(card.ready, true);
+  assert.equal(card.auto, true);
+  assert.match(card.why, /^Ready · Auto: starts when A1 finishes/);
+});
+
+test('a not-ready later card keeps Needs / Waits on wording and no ready flag', () => {
+  const plan = computeRunPlan(fixture());
+  const e5 = plan.lanes.flatMap(l => [...l.later, ...l.laterEpics]).find(c => c.id === 'E5');
+  assert.ok(e5);
+  assert.ok(!e5.ready);
+  assert.ok(e5.why && !/^Ready/.test(e5.why), e5.why);
+});
+
+test('isStubEpic: File-review stub description gets unrefined, a real one does not', () => {
+  const STUB = 'Created by File review. Fixes and design picks noted during reviews land here.';
+  const doc = mk({
+    todo: [
+      epic('S1', { description: STUB }), task('TS1', { parentId: 'S1' }),
+      epic('R1', { lane: 'canvas' }), task('TR1', { parentId: 'R1' }),
+    ],
+  });
+  assert.equal(isStubEpic({ description: STUB }), true);
+  assert.equal(isStubEpic({ description: PLAIN }), false);
+  const cards = computeRunPlan(doc).lanes.flatMap(l => [...l.now, ...l.later, ...l.laterEpics]);
+  assert.ok(cards.filter(c => c.id === 'S1').every(c => c.unrefined === true));
+  assert.ok(cards.some(c => c.id === 'S1'));
+  assert.ok(cards.filter(c => c.id === 'R1').every(c => !c.unrefined));
 });

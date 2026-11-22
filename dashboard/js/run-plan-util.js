@@ -110,3 +110,8 @@ export function makeToast(id) {
     timer = setTimeout(() => toast.classList.remove('show'), 1600);
   };
 }
+
+/** PRO144: the prompt that refines a File-review stub epic. */
+export function refinePrompt(card) {
+  return `Refine epic ${card.id} (${card.title}): rewrite its stub description into a real In plain words section from its child tickets, then run /ship-task ${card.id}`;
+}
