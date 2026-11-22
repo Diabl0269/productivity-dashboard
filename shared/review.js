@@ -508,7 +508,7 @@ export function resultLines(result) {
   return lines;
 }
 
-function flat(doc) {
+export function flat(doc) {
   const rows = [];
   for (const section of doc?.sections || []) {
     for (const task of section.tasks || []) rows.push({ task, section: section.id });

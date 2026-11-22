@@ -3,10 +3,10 @@
 import { onTabSwitch } from './search.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
-export let activeMainTab = 'overview'; // overview | tasks | search | projects | plan | memory | settings | metrics | home
+export let activeMainTab = 'overview'; // overview | tasks | search | projects | plan | checks | memory | settings | metrics | home
 
 const MAIN_TAB_ORDER = [
-  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings', 'metrics', 'home',
+  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings', 'metrics', 'home', 'checks',
 ];
 
 // Externally-configured tabs (config.json externalTabs) register themselves here so
@@ -20,7 +20,7 @@ export function registerExternalTab(id, refs) {
 
 const MAIN_TAB_BTN_IDS = [
   'overviewTabBtn', 'tasksTabBtn', 'searchTabBtn', 'projectsTabBtn',
-  'runPlanTabBtn', 'memoryTabBtn', 'settingsTabBtn', 'metricsTabBtn', 'homeTabBtn',
+  'runPlanTabBtn', 'memoryTabBtn', 'settingsTabBtn', 'metricsTabBtn', 'homeTabBtn', 'checksTabBtn',
 ];
 
 const MOD_KEY_LABEL = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
@@ -31,7 +31,7 @@ function initTabShortcutBadges() {
     if (!btn || btn.querySelector('.tab-shortcut')) return;
     const kbd = document.createElement('kbd');
     kbd.className = 'tab-shortcut';
-    kbd.textContent = `${MOD_KEY_LABEL}${i + 1}`;
+    kbd.textContent = `${MOD_KEY_LABEL}${(i + 1) % 10}`; // the 10th tab (Checks) is ⌘0
     kbd.setAttribute('aria-hidden', 'true');
     btn.appendChild(kbd);
   });
@@ -126,6 +126,7 @@ export function switchMainTab(tab, opts = {}) {
   const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
   const runPlanTabBtn = document.getElementById('runPlanTabBtn');
+  const checksTabBtn = document.getElementById('checksTabBtn');
   const metricsTabBtn = document.getElementById('metricsTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
   const settingsTabBtn = document.getElementById('settingsTabBtn');
@@ -134,6 +135,7 @@ export function switchMainTab(tab, opts = {}) {
   const searchPanel = document.getElementById('searchPanel');
   const projectsPanel = document.getElementById('projectsPanel');
   const runPlanPanel = document.getElementById('runPlanPanel');
+  const checksPanel = document.getElementById('checksPanel');
   const metricsPanel = document.getElementById('metricsPanel');
   const memoryPanel = document.getElementById('memoryPanel');
   const settingsPanel = document.getElementById('settingsPanel');
@@ -153,6 +155,7 @@ export function switchMainTab(tab, opts = {}) {
     { btn: searchTabBtn, id: 'search' },
     { btn: projectsTabBtn, id: 'projects' },
     { btn: runPlanTabBtn, id: 'plan' },
+    { btn: checksTabBtn, id: 'checks' },
     { btn: metricsTabBtn, id: 'metrics' },
     { btn: memoryTabBtn, id: 'memory' },
     { btn: settingsTabBtn, id: 'settings' },
@@ -170,6 +173,7 @@ export function switchMainTab(tab, opts = {}) {
   if (searchPanel) searchPanel.classList.toggle('active', tab === 'search');
   if (projectsPanel) projectsPanel.classList.toggle('active', tab === 'projects');
   if (runPlanPanel) runPlanPanel.classList.toggle('active', tab === 'plan');
+  if (checksPanel) checksPanel.classList.toggle('active', tab === 'checks');
   if (metricsPanel) metricsPanel.classList.toggle('active', tab === 'metrics');
   memoryPanel.classList.toggle('active', tab === 'memory');
   if (settingsPanel) settingsPanel.classList.toggle('active', tab === 'settings');
@@ -229,6 +233,10 @@ export function switchMainTab(tab, opts = {}) {
     import('./run-plan-view.js').then(m => m.renderRunPlanView()).catch(() => {});
   }
 
+  if (tab === 'checks') {
+    import('./checks-view.js').then(m => m.renderChecksView()).catch(() => {});
+  }
+
   if (tab === 'metrics') {
     import('./metrics-view.js').then(m => m.onMetricsTabShow()).catch(() => {});
   }
@@ -255,6 +263,7 @@ export function initStateListeners() {
   const searchTabBtn = document.getElementById('searchTabBtn');
   const projectsTabBtn = document.getElementById('projectsTabBtn');
   const runPlanTabBtn = document.getElementById('runPlanTabBtn');
+  const checksTabBtn = document.getElementById('checksTabBtn');
   const metricsTabBtn = document.getElementById('metricsTabBtn');
   const memoryTabBtn = document.getElementById('memoryTabBtn');
   const settingsTabBtn = document.getElementById('settingsTabBtn');
@@ -264,6 +273,7 @@ export function initStateListeners() {
   if (searchTabBtn) searchTabBtn.addEventListener('click', () => switchMainTab('search'));
   if (projectsTabBtn) projectsTabBtn.addEventListener('click', () => switchMainTab('projects'));
   if (runPlanTabBtn) runPlanTabBtn.addEventListener('click', () => switchMainTab('plan'));
+  if (checksTabBtn) checksTabBtn.addEventListener('click', () => switchMainTab('checks'));
   if (metricsTabBtn) metricsTabBtn.addEventListener('click', () => switchMainTab('metrics'));
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
@@ -272,7 +282,8 @@ export function initStateListeners() {
   document.addEventListener('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     if (isTypingTarget(e.target)) return;
-    const n = parseInt(e.key, 10);
+    const k = parseInt(e.key, 10);
+    const n = k === 0 ? 10 : k; // ⌘0 is the 10th tab; the first nine keep their keys
     if (n >= 1 && n <= MAIN_TAB_ORDER.length) {
       e.preventDefault();
       switchMainTab(MAIN_TAB_ORDER[n - 1]);

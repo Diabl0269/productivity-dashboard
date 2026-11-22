@@ -134,6 +134,9 @@ See `memory.example/` for the expected format.
 - Add, rename, reorder, or remove types in Settings → Ticket Types (saved to `tasks.json`)
 - Colors flow onto cards, parent chips, and the detail/create modals
 
+### Checks Tab
+- Lists every ticket that still has a check (or a needs-tal line) only you can tick, as the same check rows the Plan page shows, oldest first, with the checks open. **Hide finished** (on by default, remembered in the browser) hides tickets whose checks are all ticked; turn it off to see them, and the ones that closed in the last 7 days. Arrow Up/Down, Home and End move between tickets. Data: `shared/open-checks.js`.
+
 ### Plan Tab
 - Shows which pinned epics (`ch tasks plan --pin <id>`; epics with a lane pin themselves and unpin once their last ticket closes) can be launched now, as horizontal lanes that run side by side (set an epic's lane with `ch tasks update <id> --lane <slug>`); cards in a lane run left to right
 - A card or review item whose ticket has a link labelled `Thread` (`ch tasks update <id> --add-link <thread url> --link-label Thread`) shows an **Open thread** link to the Claude thread working on it

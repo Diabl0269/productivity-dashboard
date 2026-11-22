@@ -25,6 +25,7 @@ import { setKeyboardCallbacks, initTaskKeyboard } from './task-keyboard.js';
 import { initTaskTimer, setTimerCallbacks } from './task-timer.js';
 import { setProjectsViewCallbacks, refreshProjectsView } from './projects-view.js';
 import { setRunPlanStateGetter, refreshRunPlanView } from './run-plan-view.js';
+import { setChecksStateGetter, refreshChecksView } from './checks-view.js';
 import { refreshAsks } from './asks-strip.js';
 import { setBackupCallbacks, initTasksBackup } from './tasks-backup.js';
 import { computeNextTaskId, appendHistory } from './task-fields.js';
@@ -59,6 +60,7 @@ export function renderTasks() {
   refreshOverviewTaskWidgets({ tasks: taskState.tasks, meta: taskState.meta });
   refreshProjectsView();
   refreshRunPlanView();
+  refreshChecksView();
   if (document.getElementById('homePanel')?.classList.contains('active')) {
     import('./home-view.js').then(m => m.refreshHomeView()).catch(() => {}); // Home keeps focus and scroll
   }
@@ -322,6 +324,7 @@ export function initTasks() {
   setTimerCallbacks({ stateFn: () => taskState, renderFn: () => renderTasks });
   setProjectsViewCallbacks({ stateFn: () => taskState, renderFn: () => renderTasks });
   setRunPlanStateGetter(() => taskState);
+  setChecksStateGetter(() => taskState);
   initTaskTimer();
   initTasksBackup();
 

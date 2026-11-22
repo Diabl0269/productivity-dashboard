@@ -66,6 +66,7 @@
   <link rel="stylesheet" href="./styles/projects.css">
   <link rel="stylesheet" href="./styles/mobile.css">
   <link rel="stylesheet" href="./styles/run-plan.css">
+  <link rel="stylesheet" href="./styles/checks.css">
   <link rel="stylesheet" href="./styles/metrics.css">
   <link rel="stylesheet" href="./styles/home.css">
   <link rel="stylesheet" href="./styles/home-lanes.css">
@@ -115,6 +116,7 @@
         <button id="searchTabBtn" role="tab" aria-selected="false" aria-controls="searchPanel">Search</button>
         <button id="projectsTabBtn" role="tab" aria-selected="false" aria-controls="projectsPanel">Projects</button>
         <button id="runPlanTabBtn" role="tab" aria-selected="false" aria-controls="runPlanPanel">Plan</button>
+        <button id="checksTabBtn" role="tab" aria-selected="false" aria-controls="checksPanel">Checks</button>
         <button id="memoryTabBtn" role="tab" aria-selected="false" aria-controls="memoryPanel">Memory</button>
         <button id="settingsTabBtn" role="tab" aria-selected="false" aria-controls="settingsPanel">Settings</button>
         <button id="metricsTabBtn" role="tab" aria-selected="false" aria-controls="metricsPanel">Metrics</button>
@@ -406,6 +408,11 @@
   <!-- PLAN TAB PANEL -->
   <div class="tab-panel" id="runPlanPanel" role="tabpanel" aria-labelledby="runPlanTabBtn">
     <div class="rp-root" id="runPlanMain"></div>
+  </div>
+
+  <!-- CHECKS TAB PANEL -->
+  <div class="tab-panel" id="checksPanel" role="tabpanel" aria-labelledby="checksTabBtn">
+    <div class="ck-root" id="checksMain"></div>
   </div>
 
   <!-- METRICS TAB PANEL -->
