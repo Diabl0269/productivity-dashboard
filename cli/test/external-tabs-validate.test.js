@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidEntry, slugify } from '../../dashboard/js/external-tabs-validate.js';
+import { externalTabUrl, isValidEntry, slugify } from '../../dashboard/js/external-tabs-validate.js';
 
 test('isValidEntry: accepts a well-formed iframe entry', () => {
   assert.equal(isValidEntry({ label: 'Status page', url: 'https://example.com', mode: 'iframe' }), true);
@@ -34,6 +34,16 @@ test('isValidEntry: rejects non-object entries', () => {
   assert.equal(isValidEntry(null), false);
   assert.equal(isValidEntry('https://example.com'), false);
   assert.equal(isValidEntry(42), false);
+});
+
+test('externalTabUrl: aligns loopback iframe hosts while preserving port and path', () => {
+  assert.equal(externalTabUrl('http://127.0.0.1:4188/settings', 'http://localhost:3000/dashboard/'), 'http://localhost:4188/settings');
+  assert.equal(externalTabUrl('http://localhost:4188/', 'http://127.0.0.1:3000/dashboard/'), 'http://127.0.0.1:4188/');
+});
+
+test('externalTabUrl: leaves non-loopback and non-loopback-parent URLs unchanged', () => {
+  assert.equal(externalTabUrl('https://example.com/app', 'http://localhost:3000/'), 'https://example.com/app');
+  assert.equal(externalTabUrl('http://127.0.0.1:4188/', 'https://dashboard.example.com/'), 'http://127.0.0.1:4188/');
 });
 
 test('slugify: lowercases, dashes, and appends the index', () => {

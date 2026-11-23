@@ -3,6 +3,21 @@
 
 export const VALID_EXTERNAL_TAB_MODES = new Set(['iframe', 'link']);
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost']);
+
+/** Keep loopback embeds same-site by matching the dashboard host spelling. */
+export function externalTabUrl(url, pageUrl = window.location.href) {
+  try {
+    const target = new URL(url, pageUrl);
+    const page = new URL(pageUrl);
+    if (!LOOPBACK_HOSTS.has(target.hostname) || !LOOPBACK_HOSTS.has(page.hostname)) return url;
+    target.hostname = page.hostname;
+    return target.href;
+  } catch {
+    return url;
+  }
+}
+
 /** @param {unknown} entry */
 export function isValidEntry(entry) {
   return !!entry
