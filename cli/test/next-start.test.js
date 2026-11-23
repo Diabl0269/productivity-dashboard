@@ -112,6 +112,18 @@ test('usage limit: reports the reset time and starts at the first check after it
   assert.equal(past.next.atKind, 'tick');
 });
 
+test('usage limit: the tick\'s own gate time wins over the metrics limit hits (AGE207)', () => {
+  const doc = mk({ todo: [epic('E1'), task('T1', { parentId: 'E1' })] });
+  const until = Date.parse('2026-11-16T09:00:00Z');
+  const hit = { kind: 'session', atMs: NOW - 60e3, resetsAtMs: Date.parse('2026-11-12T14:00:00Z'), lostMin: null };
+  const out = computeNextStart({ ...base, doc, limitHits: [hit], tickGate: { name: 'limit', label: 'usage limit', until: new Date(until).toISOString(), waiting: true } });
+  assert.equal(out.next.atKind, 'reset');
+  assert.ok(out.next.atMs >= until && out.next.atMs < until + 30 * 60e3, 'first tick at or after the dispatcher\'s own hold');
+  assert.match(out.line, /waits until the usage limit lifts/);
+  // A lifted or non-limit gate leaves the old rules.
+  assert.match(computeNextStart({ ...base, doc, limitHits: [hit], tickGate: { name: 'busy' } }).line, /session usage limit resets/);
+});
+
 test('weekly pace stop: waits for the weekly reset (Tuesday 11:00 UTC)', () => {
   const doc = mk({ todo: [epic('E1'), task('T1', { parentId: 'E1' })] });
   const out = computeNextStart({ ...base, doc, weekCostUSD: 900, weekUSD: 1000 });
