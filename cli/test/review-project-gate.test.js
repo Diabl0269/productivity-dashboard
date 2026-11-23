@@ -147,7 +147,7 @@ test('BAC118: a sound check with an "any patch works" / "no saved project" / "ne
 test('BAC118: the same reason is fine on a non-sound check, and a sound check with a project or audio passes', () => {
   assert.equal(checkProjectGateProblem([{ text: 'The Settings tab shows the new row', noProject: 'any patch works, no project' }]), null);
   assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', project: P }]), null);
-  assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', noProject: 'any patch works', audio: 'T1/a.wav' }]), null);
+  // FRO2259: audio alone is no longer enough, an ear check ships its project (see the test below).
   assert.match(checkProjectGateProblem([{ text: 'Is the bell chord quieter?', noProject: 'needs a deploy first' }]), /sound check/);
 });
 
@@ -162,4 +162,25 @@ test('WEB40: a bare check on a website ticket passes the project gate with an au
   assert.equal(taskOf(home, 'T1').checks[0].noProject, 'website page, no synth project');
   const other = makeHome();
   assert.notEqual(run([...base, '--check', 'bare'], other).status, 0);
+});
+
+test('FRO2259 (check-tal-should-not-get): a sound check with no project is refused even with audio attached', () => {
+  const p = checkProjectGateProblem([{ text: 'Hear the bell chord', noProject: 'plays on any patch', audio: 'T1/a.wav' }]);
+  assert.match(p, /ear check ships its project/);
+  assert.match(p, /check 1: "Hear the bell chord"/);
+  assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', project: P, audio: 'T1/a.wav' }]), null);
+  assert.equal(checkProjectGateProblem([{ text: 'The Settings tab shows the new row', noProject: 'reads a setting' }]), null);
+});
+
+test('FRO2260 (proof-misses-claim): a check that says two, both or ours then the reference needs two attachments', () => {
+  for (const text of ['Play both clips and say which is wider', 'Compare the two tracks', 'Play ours then the reference at A3']) {
+    assert.match(checkProjectGateProblem([{ text, project: P }]), /nothing to compare/, text);
+    assert.match(checkProjectGateProblem([{ text, noProject: 'no project, just the layout' }]), /nothing to compare/, text);
+  }
+  assert.equal(checkProjectGateProblem([{ text: 'Play both clips and say which is wider', project: P, audio: 'T1/a.wav' }]), null);
+  assert.equal(checkProjectGateProblem([{ text: 'Play both clips', project: P, video: 'T1/a.mp4' }]), null);
+  // the split form: each side carries its own attachments and the words do not promise two in one check
+  assert.equal(checkProjectGateProblem([
+    { text: 'Ours, Unison 7: play it, then the Reference check next to it', project: P, audio: 'T1/o.wav' },
+    { text: 'Reference, Unison 7: the pair of the check above', project: P, audio: 'T1/r.wav' }]), null);
 });

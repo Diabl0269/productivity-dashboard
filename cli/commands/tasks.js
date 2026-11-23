@@ -3102,6 +3102,8 @@ Subcommands:
          refuses checks a session should verify itself (CI green, running commands/evals/scripts, older projects, regressions, VoiceOver, measured results): put those in --tests;
          also refuses "nothing to check" texts (use --no-checks), file paths in a check without an attached project/video/audio (attach it),
          and AI-generated-content checks without --check-project (create the project with the AI yourself)
+         and sound checks without --check-project (an ear check ships its project), and checks saying "two", "both" or "ours then the reference"
+         with fewer than two attachments (attach both sides, or split into two adjacent checks that name each other as the pair)
          needs at least one --check (or checks in --result-json / already on the ticket) unless --no-checks "<reason>" says why
          there is nothing to check; refuses unchecked subtasks unless --force
          ship a ticket to "Ready for review": records the result and the checks to tick;
