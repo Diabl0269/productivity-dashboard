@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_STAGES, LIFECYCLE_STAGE_IDS, applyLifecycleConfig, lifecycleEdges, lifecycleSnapshot, waitingSessionIds,
+  DEFAULT_STAGES, LIFECYCLE_STAGE_IDS, applyLifecycleConfig, lifecycleEdges, lifecycleSnapshot, waitingSessionIds, stageTarget,
 } from '../../shared/lifecycle.js';
 import { countUnsentNotes } from '../../shared/review-notes.js';
 import { openEpicReadiness } from '../../shared/epic-ready.js';
@@ -152,4 +152,16 @@ test('AGE199: every arrow says what travels on it; a "waits on" arrow runs from 
   // Without the question step there is no side step and so no way back.
   const noAsks = lifecycleEdges(applyLifecycleConfig(DEFAULT_STAGES, { stages: [{ id: 'asks', hide: true }] }), live);
   assert.equal(noAsks.some(e => e.kind === 'wait' || e.kind === 'side'), false);
+});
+
+test('AGE199: a click on a stage goes to its job row, else its page, else opens the items panel', () => {
+  const stages = applyLifecycleConfig(DEFAULT_STAGES, { stages: [
+    { id: 'ready', job: 'autorun', page: 'pages/workspace.md' },
+    { id: 'asks', page: 'pages/workspace.md' },
+  ] });
+  const by = id => stages.find(s => s.id === id);
+  assert.deepEqual(stageTarget(by('ready')), { kind: 'job', job: 'autorun' }); // the job wins over the page
+  assert.deepEqual(stageTarget(by('asks')), { kind: 'page', page: 'pages/workspace.md' });
+  assert.deepEqual(stageTarget(by('done')), { kind: 'panel' });
+  assert.deepEqual(stageTarget(null), { kind: 'panel' });
 });
