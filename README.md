@@ -46,10 +46,24 @@ cp -r memory.example/ memory/
 
 # Start the dashboard
 node serve.js
-# Open http://localhost:3000/dashboard/
+# Open http://127.0.0.1:3000/dashboard/
 ```
 
-**Prerequisites:** Node.js v14+ and a modern browser.
+**Prerequisites:** Node.js v14+ and a modern browser. The server binds to loopback only.
+
+### Start at login (macOS)
+
+```bash
+node scripts/dashboard-daemon.mjs enable
+node scripts/dashboard-daemon.mjs status
+node scripts/dashboard-daemon.mjs disable
+```
+
+The LaunchAgent starts at login, restarts after a crash, and logs to
+`~/Library/Logs/productivity-dashboard/`. Re-run `enable` after moving the checkout or switching
+Node versions. To apply server-side changes, re-run `enable`; static HTML/CSS/JS changes are served
+directly and only need a browser refresh. If `CH_HOME` is set, the daemon preserves that data root.
+Set `DASHBOARD_PORT` when enabling on a non-default port.
 
 ## Configuration
 

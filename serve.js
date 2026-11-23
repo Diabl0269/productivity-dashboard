@@ -991,6 +991,6 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Dashboard: http://localhost:${PORT}/dashboard/`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`Dashboard: http://127.0.0.1:${PORT}/dashboard/`);
 });

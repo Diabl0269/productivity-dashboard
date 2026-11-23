@@ -17,7 +17,7 @@ Thank you for your interest in contributing to the Claude Code Productivity Dash
    ```bash
    node serve.js
    ```
-5. Open http://localhost:3000/dashboard/ in your browser
+5. Open http://127.0.0.1:3000/dashboard/ in your browser
 
 ## Project Structure
 
@@ -26,6 +26,8 @@ dashboard/
   js/         # ES modules — each file owns one feature
   styles/     # CSS files — one per feature area
   index.html  # Single-page app shell
+scripts/
+  dashboard-daemon.mjs  # macOS LaunchAgent install/status/disable
 serve.js      # Zero-dependency Node.js dev server
 ```
 
