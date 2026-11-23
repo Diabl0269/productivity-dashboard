@@ -5,7 +5,7 @@
 
 import { registerExternalTab, switchMainTab } from './state.js';
 import { registerRoutableTab, openTicketById } from './routing.js';
-import { isValidEntry, slugify } from './external-tabs-validate.js';
+import { externalTabUrl, isValidEntry, slugify } from './external-tabs-validate.js';
 
 /**
  * Read `window.dashboardConfig.externalTabs`, validate each entry, and wire up a tab
@@ -34,6 +34,7 @@ export function initExternalTabs() {
       return;
     }
 
+    const url = externalTabUrl(entry.url);
     const id = slugify(entry.label, index);
     const btn = document.createElement('button');
     btn.id = `${id}TabBtn`;
@@ -44,9 +45,9 @@ export function initExternalTabs() {
 
     if (entry.mode === 'link') {
       btn.classList.add('external-tab-btn-link');
-      btn.title = `Opens ${entry.url} in a new tab`;
+      btn.title = `Opens ${url} in a new tab`;
       btn.addEventListener('click', () => {
-        window.open(entry.url, '_blank', 'noopener,noreferrer');
+        window.open(url, '_blank', 'noopener,noreferrer');
       });
       tabToggle.appendChild(btn);
       return;
@@ -69,7 +70,7 @@ export function initExternalTabs() {
     iframe.title = entry.label;
     // Load on first visit, not at dashboard start: the embedded page can be slow to build and
     // must not delay every other tab. Kept alive afterwards, so closing a modal never reloads it.
-    const load = () => { if (!iframe.src) iframe.src = entry.url; };
+    const load = () => { if (!iframe.src) iframe.src = url; };
     new MutationObserver(() => { if (panel.classList.contains('active')) load(); })
       .observe(panel, { attributes: true, attributeFilter: ['class'] });
     embeds.add(iframe);

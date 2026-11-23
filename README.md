@@ -46,10 +46,24 @@ cp -r memory.example/ memory/
 
 # Start the dashboard
 node serve.js
-# Open http://localhost:3000/dashboard/
+# Open http://127.0.0.1:3000/dashboard/
 ```
 
-**Prerequisites:** Node.js v14+ and a modern browser.
+**Prerequisites:** Node.js v14+ and a modern browser. The server binds to loopback only.
+
+### Start at login (macOS)
+
+```bash
+node scripts/dashboard-daemon.mjs enable
+node scripts/dashboard-daemon.mjs status
+node scripts/dashboard-daemon.mjs disable
+```
+
+The LaunchAgent starts at login, restarts after a crash, and logs to
+`~/Library/Logs/productivity-dashboard/`. Re-run `enable` after moving the checkout or switching
+Node versions. To apply server-side changes, re-run `enable`; static HTML/CSS/JS changes are served
+directly and only need a browser refresh. If `CH_HOME` is set, the daemon preserves that data root.
+Set `DASHBOARD_PORT` when enabling on a non-default port.
 
 ## Configuration
 
@@ -82,8 +96,10 @@ Controls Overview widgets and soft WIP limits. Copy `config.example.json` and cu
 - `externalTabs` — adds extra tab buttons pointing at any URL you run yourself (a local
   dashboard, an internal tool, etc.). Each entry is `{ label, url, mode }`: `mode:
   "iframe"` embeds the URL in the main area (with its own deep-linkable tab route),
-  `mode: "link"` opens it in a new browser tab instead. Malformed entries (missing
-  `label`/`url`, or an unrecognized `mode`) are skipped. Omit the key for no extra tabs.
+  `mode: "link"` opens it in a new browser tab instead. Loopback iframe URLs automatically
+  use the dashboard's hostname (`localhost` or `127.0.0.1`) so browsers treat the dashboard and
+  embedded app as same-site. Malformed entries (missing `label`/`url`, or an unrecognized
+  `mode`) are skipped. Omit the key for no extra tabs.
 
 Full task CLI and `tasks.json` field reference: [`cli/README.md`](cli/README.md).
 ### CLAUDE.md
