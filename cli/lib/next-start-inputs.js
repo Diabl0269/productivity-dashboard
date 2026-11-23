@@ -75,6 +75,7 @@ export async function nextStartNow({ now = Date.now(), overrides = {} } = {}) {
     liveEpics: fresh && Array.isArray(tick.liveEpics) ? tick.liveEpics : [],
     manualBusy: fresh && Number.isFinite(tick.manualBusy) ? tick.manualBusy : 0,
     lastTickMs: fresh ? lastTickMs : null,
+    tickGate: fresh && tick.gate && typeof tick.gate === 'object' ? tick.gate : null,
     tickMin,
     weekCostUSD,
     weekUSD,

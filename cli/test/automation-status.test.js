@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {
-  readStatus, readEntryStatus, joinStatus, lastLine, calendarTimes, nextCalendarRun, expandPath, clearGhCache, toMs,
+  readStatus, readEntryStatus, joinStatus, lastLine, calendarTimes, nextCalendarRun, expandPath, clearGhCache, toMs, waitingFrom,
 } from '../lib/automation-status.js';
 import { httpUrlProblem, healthState, summarizeHealth, relTime } from '../../shared/home-config-runs.js';
 
@@ -210,6 +210,38 @@ test('a reader that hangs answers "no answer" at its timeout; an unknown type ne
   });
   assert.match((await readStatus({ type: 'teleport' })).detail, /unknown status type/);
   assert.match((await readStatus({ type: 'none' })).detail, /no live status/);
+});
+
+test('a gated dispatcher tick reads as waiting with its reason and time, not late and not a problem (AGE207)', async () => {
+  const dir = tmp();
+  const now = new Date(2026, 5, 15, 12, 0).getTime(); // local times: the text is in this computer's zone
+  const until = new Date(2026, 5, 15, 14, 0).toISOString(); // 14:00 local today
+  fs.writeFileSync(path.join(dir, 'tick.json'), JSON.stringify({ at: new Date(now - 5 * MIN).toISOString(), intervalMin: 10, gate: { name: 'limit', label: 'usage limit', detail: 'account usage limit until ...', until, waiting: true } }));
+  // The log repeats an unchanged SKIP line only once an hour, so its tail is 70 min old while the tick itself is on time.
+  fs.writeFileSync(path.join(dir, 'autorun.log'), `${new Date(now - 70 * MIN).toISOString()} SKIP gate=limit account usage limit until ...\n`);
+  const entry = { status: [
+    { type: 'log-tail', path: 'autorun.log', okPattern: 'START|SKIP', maxAgeMin: 25 },
+    { type: 'json-file', path: 'tick.json', field: 'at', reasonField: 'gate', maxAgeMin: 25 },
+  ] };
+  const e = await readEntryStatus(entry, { baseDir: dir, now });
+  assert.equal(healthState(e), 'waiting');
+  assert.equal(e.late, false);
+  assert.equal(e.waiting.text, 'usage limit until 14:00');
+  assert.equal(e.waiting.until, until);
+  assert.match(e.detail, /waiting: usage limit until 14:00/);
+  const sum = summarizeHealth([{ id: 'autorun', name: 'Autorun tick', result: e }]);
+  assert.equal(sum.counts.waiting, 1);
+  assert.deepEqual(sum.problems, [], 'waiting is not a problem');
+  // A heartbeat that is itself late is not trusted to say why: late again.
+  const old = await readEntryStatus(entry, { baseDir: dir, now: now + 60 * MIN });
+  assert.equal(healthState(old), 'late');
+  // A gate that is not a hold (busy: runs are live) is ok, and a hold whose time passed says nothing.
+  assert.equal(waitingFrom({ name: 'busy', label: 'busy', waiting: false }, now), null);
+  assert.equal(waitingFrom({ name: 'limit', label: 'usage limit', until: new Date(now - MIN).toISOString(), waiting: true }, now), null);
+  assert.equal(waitingFrom({ name: 'off', label: 'switched off', until: null, waiting: true }, now).text, 'switched off');
+  assert.match(waitingFrom({ name: 'spend', label: 'weekly spend cap', until: new Date(2026, 5, 16, 13, 0).toISOString(), waiting: true }, now).text, /^weekly spend cap until Tue 13:00$/);
+  // A failure still wins over waiting.
+  assert.equal(healthState(joinStatus([{ ok: false, late: false }, { ok: null, late: false, waiting: { text: 'x' } }], now)), 'failed');
 });
 
 test('joining sources: newest run, a failure wins, late, off, next run from the interval', async () => {

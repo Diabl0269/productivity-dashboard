@@ -203,7 +203,7 @@ it cannot tell (the chip is then "unknown").
 | `type` | Needs | Reads |
 | --- | --- | --- |
 | `mtime` | `path`; `match` (a folder's entries to count, by name pattern, e.g. `^\\.git$`) | the newest change of a file or folder; with `match`, only the matching entries (so other writers to the folder do not hide a stopped job) |
-| `json-file` | `path`; `field` (a time, default `at`, dots for nested keys), `okField` | a time and an ok/failed field of a JSON file |
+| `json-file` | `path`; `field` (a time, default `at`, dots for nested keys), `okField`, `reasonField` | a time and an ok/failed field of a JSON file; `reasonField` points at `{ label, detail, until, waiting }` (the autorun tick's `gate`) |
 | `log-tail` | `path`; `okPattern`, `failPattern` | the last non-empty line of a log and the time it starts with (else the file's time) |
 | `launchctl` | `label` | `launchctl print gui/<uid>/<label>`: loaded or not, last exit code, run interval or calendar times (the next run). The dashboard server must run outside a sandbox for this. |
 | `gh-workflow` | `repo` (`owner/name`), `workflow` (its name) | the last run through the `gh` command, cached for a minute |
@@ -213,14 +213,16 @@ it cannot tell (the chip is then "unknown").
 Any source can add `maxAgeMin`: a last run older than that many minutes makes the chip "late". Services
 take `gh-workflow`, `http`, `json-file` or `none`. The chip is **ok** (ran, nothing failed), **late**,
 **failed** (a failed exit, a fail pattern, a red CI run, a service that does not answer), **off**
-(launchd does not know the job) or **unknown**. With several sources, a failure wins and the newest run
-counts.
+(launchd does not know the job), **waiting** or **unknown**. With several sources, a failure wins and the newest run
+counts. **Waiting** (AGE207): a source that is on time says the job holds its work for a reason (`reasonField` with
+`waiting: true`), e.g. the autorun tick during a usage limit; the row then reads "waiting: usage limit until 14:00",
+it is not a problem, and the other sources' lateness is ignored (a late heartbeat itself is still late).
 
 `lifecycle` relabels or hides steps of the flow: `{ "stages": [{ "id": "ready", "label": "Queued" },
 { "id": "filed", "hide": true }] }`. Step ids: `note`, `filed`, `ready`, `running`, `asks`, `review`, `done`.
 
 Server: `GET /api/home/automations?project=<slug>` and `GET /api/home/services?project=<slug>` answer each
-entry with its `result` (`{ lastRun, ok, late, nextRun?, detail, off?, sources }`); results are cached for
+entry with its `result` (`{ lastRun, ok, late, nextRun?, detail, off?, waiting?, sources }`); results are cached for
 60 s and the readers run in parallel, so a slow one answers `{ checking: true }` and fills in on the next
 request. `PUT /api/home/automation?project=<slug>` accepts `{ id, description?, schedule?, model?, skill?,
 prompt?, enabled? }`, validates it and saves one automation. Runtime changes invoke the local LaunchAgent

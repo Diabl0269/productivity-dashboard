@@ -143,6 +143,7 @@
 .hr-state-ok { color: var(--hr-ok); }
 .hr-state-late { color: var(--hr-late); background: color-mix(in srgb, var(--hr-late) 12%, transparent); }
 .hr-state-failed { color: var(--hr-failed); background: color-mix(in srgb, var(--hr-failed) 12%, transparent); }
+.hr-state-waiting { color: var(--text-secondary); background: var(--surface-3); }
 .hr-state-off { color: var(--text-secondary); background: var(--surface-3); }
 .hr-state-unknown { color: var(--text-tertiary); border-style: dashed; }
 .hr-state-checking { color: var(--hr-checking); animation: hr-pulse 1.2s ease-in-out infinite; }
