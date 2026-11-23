@@ -44,6 +44,7 @@ const run = (args, home, bin) => {
 };
 const taskOf = (home, id) => JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).sections.flatMap(s => s.tasks).find(t => t.id === id);
 const base = ['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'Open the panel: the label reads Gain'];
+const STEPS = 'Open project, in the Mixer panel press Play on the Reverb card: the tail fades out in 2 s';
 const open = '{"state":"OPEN","headRefName":"feat/demo-branch"}';
 
 test('prLinks reads the PR label or a /pull/n URL only', () => {
@@ -56,15 +57,16 @@ test('open PR: review refused, nothing written', () => {
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /still open/);
   assert.match(r.stderr, /--held-pr/);
+  assert.match(r.stderr, /--try-steps/);
   assert.notEqual(taskOf(home, 'T1').checked, true);
 });
 
 test('open PR + --held-pr: accepted, adds the try-on-branch check and records the reason', () => {
   const home = makeHome([{ url: PR, label: 'PR #42' }]);
-  const r = run([...base, '--held-pr', 'waiting on a real-Mac check'], home, fakeGh(open));
+  const r = run([...base, '--held-pr', 'waiting on a real-Mac check', '--try-steps', STEPS], home, fakeGh(open));
   assert.equal(r.status, 0, r.stderr);
   const t = taskOf(home, 'T1');
-  assert.ok(t.checks.some(c => c.text === 'Try on branch feat/demo-branch, then say merge or not'));
+  assert.ok(t.checks.some(c => c.text === `Try on branch feat/demo-branch: ${STEPS}`));
   assert.equal(t.heldPr.reason, 'waiting on a real-Mac check');
   assert.equal(t.heldPr.branch, 'feat/demo-branch');
   assert.match(run(['tasks', 'get', 'T1'], home, fakeGh(open)).stdout, /PR held open: waiting on a real-Mac check/);
@@ -110,6 +112,78 @@ test('no PR link: gh is never asked', () => {
 
 test('openPrGate with an injected state function', () => {
   const g = openPrGate({ id: 'T1', links: [{ url: PR }], heldPr: 'why', state: () => ({ state: 'OPEN', branch: 'b' }) });
-  assert.equal(g.error, null);
-  assert.deepEqual(g.checks, ['Try on branch b, then say merge or not']);
+  assert.match(g.error, /--try-steps/);
+  const ok = openPrGate({ id: 'T1', links: [{ url: PR }], heldPr: 'why', trySteps: STEPS, state: () => ({ state: 'OPEN', branch: 'b' }) });
+  assert.equal(ok.error, null);
+  assert.deepEqual(ok.checks, [`Try on branch b: ${STEPS}`]);
+});
+
+test('AGE162: held PR without good --try-steps is refused (missing, short, generic)', () => {
+  const state = () => ({ state: 'OPEN', branch: 'b' });
+  for (const trySteps of [undefined, '', 'try it out', 'Try on branch b, then say merge or not and look at the Mixer panel', 'x'.repeat(39)]) {
+    const g = openPrGate({ id: 'T1', links: [{ url: PR }], heldPr: 'why', trySteps, state });
+    assert.match(g.error, /--held-pr needs --try-steps/, String(trySteps));
+    assert.deepEqual(g.checks, []);
+  }
+  assert.equal(openPrGate({ id: 'T1', links: [{ url: PR }], heldPr: 'why', trySteps: 'x'.repeat(40), state }).error, null);
+});
+
+test('AGE162: CLI refuses missing steps, steps without a held PR, and owner-gated steps', () => {
+  const home = makeHome([{ url: PR, label: 'PR #42' }]);
+  let r = run([...base, '--held-pr', 'waiting on a real-Mac check'], home, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--held-pr needs --try-steps/);
+  r = run([...base, '--held-pr', 'why', '--try-steps', 'Run the eval on the techno groove prompt three times and compare scores'], home, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /these checks are yours/);
+  const none = makeHome();
+  r = run([...base, '--try-steps', STEPS], none, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--try-steps goes with --held-pr/);
+  r = run(['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'After PR #1 merges: run the prompt 3 times'], none, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /waits on a merge is yours/);
+});
+
+// WEB38: the taste judgement already sits in a check, so a held review must not add a second one.
+const asProject = (home, project) => {
+  const f = path.join(home, 'tasks.json');
+  const doc = JSON.parse(fs.readFileSync(f, 'utf8'));
+  doc.sections.flatMap(s => s.tasks).find(t => t.id === 'T1').project = project;
+  fs.writeFileSync(f, JSON.stringify(doc));
+};
+const OPEN_ST = () => ({ state: 'OPEN', branch: 'b' });
+
+test('WEB38: held review with a taste check is refused and points at ch tasks ask --merge-pr', () => {
+  const home = makeHome([{ url: PR, label: 'PR #42' }]);
+  const r = run(['tasks', 'review', 'T1', '--shipped', 'a', '--check', 'Look at whether these three cards are the ones you want', '--held-pr', 'real-Mac look', '--try-steps', STEPS], home, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /already has a check for the taste part/);
+  assert.match(r.stderr, /ch tasks ask T1 .*--merge-pr .*--same-judgement/);
+  const ok = run([...base, '--held-pr', 'real-Mac look', '--try-steps', STEPS], makeHome([{ url: PR, label: 'PR #42' }]), fakeGh(open));
+  assert.equal(ok.status, 0, ok.stderr);
+});
+
+test('WEB38: openPrGate sees a taste check in the stored checks too, ticked or open, but not the auto one', () => {
+  const args = { id: 'T1', links: [{ url: PR }], heldPr: 'why', trySteps: STEPS, state: OPEN_ST };
+  assert.match(openPrGate({ ...args, checks: [{ text: 'Do you like the new header?', checked: true }] }).error, /taste part/);
+  assert.equal(openPrGate({ ...args, checks: [{ text: 'Try on branch b: see whether it looks fine' }, { text: 'Open the panel: label reads Gain' }] }).error, null);
+});
+
+// WEB39: website tickets need a runnable command and a URL.
+test('WEB39: website held review needs a backtick command and a URL in --try-steps', () => {
+  const plain = makeHome([{ url: PR, label: 'PR #42' }]); asProject(plain, 'website');
+  const r = run([...base, '--held-pr', 'why', '--try-steps', STEPS], plain, fakeGh(open));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /scripts\/launch-web-branch\.sh feat\/demo-branch/);
+  const good = makeHome([{ url: PR, label: 'PR #42' }]); asProject(good, 'website');
+  const steps = 'Site started with `scripts/launch-web-branch.sh feat/x`, open http://localhost:4321/account: the plan card shows the price';
+  const ok = run([...base, '--held-pr', 'why', '--try-steps', steps], good, fakeGh(open));
+  assert.equal(ok.status, 0, ok.stderr);
+});
+
+test('WEB39: other projects keep plain-words try-steps', () => {
+  const g = { id: 'T1', links: [{ url: PR }], heldPr: 'why', trySteps: STEPS, state: OPEN_ST };
+  assert.equal(openPrGate({ ...g, project: 'agentsynth' }).error, null);
+  assert.match(openPrGate({ ...g, project: 'website' }).error, /launch-web-branch/);
 });

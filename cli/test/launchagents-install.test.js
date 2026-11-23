@@ -3,32 +3,55 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { buildPlist, installJob, jobFromEntry } from '../../scripts/launchagents/lib.mjs';
 
-const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-
-test('install.mjs writes lint-clean plists into a temp dir without loading', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'la-inst-'));
-  const env = { ...process.env, LAUNCH_AGENTS_DIR: path.join(tmp, 'agents'), AUTOMATION_LOG_DIR: path.join(tmp, 'logs'), REPO_ROOT: repo, COPILOT_TASKS_DIR: path.join(tmp, 'none') };
-  const r = spawnSync(process.execPath, ['scripts/launchagents/install.mjs', '--no-load', '--only', 'daily-summary'], { cwd: repo, env, encoding: 'utf8' });
-  assert.equal(r.status, 0, r.stderr);
-  const file = path.join(tmp, 'agents', 'local.opencode.daily-summary.plist');
-  assert.equal(spawnSync('plutil', ['-lint', file]).status, 0);
-  const json = JSON.parse(spawnSync('plutil', ['-convert', 'json', '-o', '-', file], { encoding: 'utf8' }).stdout);
-  assert.equal(json.StartCalendarInterval.length, 5);
-  assert.equal(json.WorkingDirectory, repo);
-  fs.rmSync(tmp, { recursive: true, force: true });
+test('buildPlist escapes values and writes model, schedule and prompt as plist arguments', () => {
+  const dirs = { supportDir: '/support', launchDir: '/launch', logDir: '/logs' };
+  const xml = buildPlist({
+    id: 'daily-summary', schedule: { hour: 8, minute: 5, weekdays: [1, 3] },
+    harness: 'opencode', cli: 'opencode', model: 'github-copilot/mai-code-2', skill: 'daily-summary', prompt: 'Run <safe> & stop',
+  }, { repoRoot: '/repo & docs', dirs });
+  assert.match(xml, /github-copilot\/mai-code-2/);
+  assert.match(xml, /Run &lt;safe&gt; &amp; stop/);
+  assert.match(xml, /\/repo &amp; docs/);
+  assert.match(xml, /<key>Weekday<\/key><integer>1<\/integer>/);
 });
 
-test('run-job.sh records the session id and exit code in the sidecar', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'la-run-'));
-  const cli = path.join(tmp, 'fake-cli');
-  fs.writeFileSync(cli, '#!/bin/sh\necho \'{"sessionID":"ses_TEST123"}\'\nexit 3\n', { mode: 0o755 });
-  const env = { ...process.env, OPENCODE_CLI: cli, AUTOMATION_LOG_DIR: tmp };
-  spawnSync('/bin/bash', ['scripts/launchagents/run-job.sh', 'demo', 'prompt'], { cwd: repo, env });
-  const last = JSON.parse(fs.readFileSync(path.join(tmp, 'demo.last.json'), 'utf8'));
-  assert.equal(last.sessionID, 'ses_TEST123');
-  assert.equal(last.exitCode, 3);
-  fs.rmSync(tmp, { recursive: true, force: true });
+test('buildPlist uses generic harness configuration', () => {
+  const xml = buildPlist({ id: 'daily-summary', schedule: { hour: 8, minute: 0 }, harness: 'claude', cli: 'claude', model: 'sonnet', arguments: ['--permission-mode', 'bypassPermissions'] }, { repoRoot: '/repo', dirs: { home: '/Users/test', supportDir: '/support', launchDir: '/launch', logDir: '/logs' } });
+  assert.match(xml, /AUTOMATION_HARNESS<\/key><string>claude/);
+  assert.match(xml, /AUTOMATION_CLI<\/key><string>claude/);
+  assert.match(xml, /AUTOMATION_MODEL<\/key><string>sonnet/);
+  assert.match(xml, /--permission-mode\nbypassPermissions/);
+});
+
+test('buildPlist rejects missing harness or cli rather than defaulting to OpenCode', () => {
+  const dirs = { home: '/Users/test', supportDir: '/support', launchDir: '/launch', logDir: '/logs' };
+  assert.throws(() => buildPlist({ id: 'daily-summary', schedule: { hour: 8, minute: 0 }, cli: 'agent' }, { repoRoot: '/repo', dirs }), /needs both harness and cli/);
+  assert.throws(() => buildPlist({ id: 'daily-summary', schedule: { hour: 8, minute: 0 }, harness: 'custom' }, { repoRoot: '/repo', dirs }), /needs both harness and cli/);
+});
+
+test('jobFromEntry defaults model and enabled but preserves explicit runtime settings', () => {
+  const job = jobFromEntry({ id: 'daily-summary', kind: 'launchd', run: { schedule: { hour: 7, minute: 15 }, model: 'github-copilot/mai-code-2-flash', enabled: false } });
+  assert.equal(job.model, 'github-copilot/mai-code-2-flash');
+  assert.equal(job.enabled, false);
+  assert.deepEqual(job.schedule, { hour: 7, minute: 15 });
+});
+
+test('installJob unloads disabled jobs and does not bootstrap them', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'launchagent-install-'));
+  const repoRoot = path.join(home, 'repo');
+  fs.mkdirSync(repoRoot);
+  const runner = path.join(home, 'run-job.sh');
+  fs.writeFileSync(runner, '#!/bin/bash\nexit 0\n');
+  const calls = [];
+  const result = installJob({ id: 'daily-summary', schedule: { hour: 8, minute: 58 }, harness: 'custom', cli: '/opt/agent', enabled: false }, {
+    repoRoot, runnerSource: runner, home,
+    exec(file, args) { calls.push([file, args]); },
+  });
+  assert.equal(result.loaded, false);
+  assert.ok(calls.some(([, args]) => args[0] === 'bootout'));
+  assert.ok(calls.some(([, args]) => args[2]?.includes('local.opencode.daily-summary.plist')));
+  assert.ok(!calls.some(([, args]) => args[0] === 'bootstrap'));
+  assert.ok(fs.existsSync(result.plistPath));
 });

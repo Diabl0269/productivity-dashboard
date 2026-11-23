@@ -129,3 +129,58 @@ test('plan data: the dashboard keeps noProject, and a check\'s build info carrie
   assert.equal(checkBuildInfo(checks[1], null, { kind: 'current' }), null, 'no build info: nothing');
   assert.equal(checkBuildInfo(checks[0], build, { kind: 'current' }), null, 'no project: nothing');
 });
+
+test('BAC118: a sound check with an "any patch works" / "no saved project" / "needs a deploy" reason and no audio is refused', () => {
+  const home = makeHome();
+  for (const [text, why] of [
+    ['Play the same chord on Basic Shapes then Bell: both sound equally loud', 'any wavetable patch works, no saved project involved'],
+    ['Listen to the song the next prompt makes: is the crow louder?', 'reads a server-side setting after the next API deploy'],
+  ]) {
+    const r = run([...base, '--check', text, '--check-no-project', `1=${why}`], home);
+    assert.notEqual(r.status, 0, why);
+    assert.match(r.stderr, /sound check\(s\) say there is no project/);
+    assert.match(r.stderr, /--check-audio N=<path>/);
+  }
+  assert.equal((taskOf(home, 'T1').checks || []).length, 0, 'nothing written');
+});
+
+test('BAC118: the same reason is fine on a non-sound check, and a sound check with a project or audio passes', () => {
+  assert.equal(checkProjectGateProblem([{ text: 'The Settings tab shows the new row', noProject: 'any patch works, no project' }]), null);
+  assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', project: P }]), null);
+  // FRO2259: audio alone is no longer enough, an ear check ships its project (see the test below).
+  assert.match(checkProjectGateProblem([{ text: 'Is the bell chord quieter?', noProject: 'needs a deploy first' }]), /sound check/);
+});
+
+test('WEB40: a bare check on a website ticket passes the project gate with an auto noProject', () => {
+  const home = makeHome();
+  const f = path.join(home, 'tasks.json');
+  const doc = JSON.parse(fs.readFileSync(f, 'utf8'));
+  doc.sections.flatMap(s => s.tasks).find(t => t.id === 'T1').project = 'website';
+  fs.writeFileSync(f, JSON.stringify(doc));
+  const r = run([...base, '--check', 'bare'], home);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(taskOf(home, 'T1').checks[0].noProject, 'website page, no synth project');
+  const other = makeHome();
+  assert.notEqual(run([...base, '--check', 'bare'], other).status, 0);
+});
+
+test('FRO2259 (check-tal-should-not-get): a sound check with no project is refused even with audio attached', () => {
+  const p = checkProjectGateProblem([{ text: 'Hear the bell chord', noProject: 'plays on any patch', audio: 'T1/a.wav' }]);
+  assert.match(p, /ear check ships its project/);
+  assert.match(p, /check 1: "Hear the bell chord"/);
+  assert.equal(checkProjectGateProblem([{ text: 'Hear the bell chord', project: P, audio: 'T1/a.wav' }]), null);
+  assert.equal(checkProjectGateProblem([{ text: 'The Settings tab shows the new row', noProject: 'reads a setting' }]), null);
+});
+
+test('FRO2260 (proof-misses-claim): a check that says two, both or ours then the reference needs two attachments', () => {
+  for (const text of ['Play both clips and say which is wider', 'Compare the two tracks', 'Play ours then the reference at A3']) {
+    assert.match(checkProjectGateProblem([{ text, project: P }]), /nothing to compare/, text);
+    assert.match(checkProjectGateProblem([{ text, noProject: 'no project, just the layout' }]), /nothing to compare/, text);
+  }
+  assert.equal(checkProjectGateProblem([{ text: 'Play both clips and say which is wider', project: P, audio: 'T1/a.wav' }]), null);
+  assert.equal(checkProjectGateProblem([{ text: 'Play both clips', project: P, video: 'T1/a.mp4' }]), null);
+  // the split form: each side carries its own attachments and the words do not promise two in one check
+  assert.equal(checkProjectGateProblem([
+    { text: 'Ours, Unison 7: play it, then the Reference check next to it', project: P, audio: 'T1/o.wav' },
+    { text: 'Reference, Unison 7: the pair of the check above', project: P, audio: 'T1/r.wav' }]), null);
+});

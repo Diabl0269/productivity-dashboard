@@ -8,7 +8,7 @@ import { idButton } from './ticket-id-button.js';
 import { buildAutoToggle } from './epic-ready-ui.js';
 import { renderLaterFold } from './run-plan-later.js';
 import { renderReasonBlock } from './run-plan-reasons.js';
-import { el, plainTitle, truncate, threadAnchor, reviewOfNote, copyText } from './run-plan-util.js';
+import { el, plainTitle, truncate, threadAnchor, reviewOfNote, copyText, refinePrompt } from './run-plan-util.js';
 
 const STATE_LABEL = { backlog: 'In backlog', ready: 'Ready now', partial: 'Partly ready', later: 'Later', notready: 'Not ready', pick: 'Your pick' };
 const LANE_COLORS = 4; // --rp-c1..4; the design lane uses the pick colour
@@ -47,6 +47,10 @@ function renderCard(ctx, card, phase) {
   row.appendChild(running
     ? el('span', 'rp-chip rp-chip-running', 'In progress')
     : el('span', `rp-chip rp-chip-${card.state}`, coTasks ? 'Your to-do' : (STATE_LABEL[card.state] || card.state)));
+  if (card.state === 'later' && card.ready) {
+    row.appendChild(el('span', 'rp-chip rp-chip-ready', card.auto ? 'Ready · Auto' : 'Ready'));
+  }
+  if (card.unrefined) row.appendChild(el('span', 'rp-chip rp-chip-unrefined', 'Not refined'));
   if (card.model) row.appendChild(el('span', 'rp-chip rp-chip-model', `Orchestrator: ${card.model}`));
   article.appendChild(row);
 
@@ -95,6 +99,18 @@ function renderCard(ctx, card, phase) {
       ctx.toast(ok ? (card.isPrompt ? 'Copied the design prompt' : `Copied: ${card.command}`) : `Copy blocked: ${card.command}`);
     });
     actions.appendChild(copy);
+  }
+  if (card.unrefined) {
+    const prompt = refinePrompt(card);
+    const refine = el('button', 'rp-btn rp-refine', 'Copy refine prompt');
+    refine.type = 'button';
+    refine.title = prompt;
+    refine.setAttribute('aria-label', `Copy the refine prompt for ${card.id}`);
+    refine.addEventListener('click', async () => {
+      const ok = await copyText(prompt);
+      ctx.toast(ok ? `Copied the refine prompt for ${card.id}` : `Copy blocked: ${prompt}`);
+    });
+    actions.appendChild(refine);
   }
   const progress = readProgress();
   let state = progress[key] || '';

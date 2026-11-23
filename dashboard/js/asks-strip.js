@@ -9,7 +9,7 @@
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
 import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep, closesAfterAnswer, ANSWER_CLOSE_LINE } from '../../shared/asks.js';
-import { epicsToUnpin } from '../../shared/review.js';
+import { epicsToUnpin, reviewReadyToClose } from '../../shared/review.js';
 import { idButton } from './ticket-id-button.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
@@ -80,6 +80,7 @@ const handleOf = (card) => card.members.map(m => `${m.id}#${m.key}`).join('+');
 /** Apply one answer to every ticket on the card, then park / file / save. */
 function applyAnswer(state, card, action, reply, redraw) {
   const touched = [];
+  const tickedOwners = [];
   const park = [];
   const file = [];
   let filedTo = ''; // the one note this answer became (twin tickets share it)
@@ -97,6 +98,7 @@ function applyAnswer(state, card, action, reply, redraw) {
         for (const t of tickLinkedChecks(id => findTicket(state, id)?.task, r, { now: new Date().toISOString() })) {
           const owner = findTicket(state, t.id)?.task;
           if (owner && !touched.includes(owner)) touched.push(owner);
+          if (owner && !tickedOwners.includes(owner)) tickedOwners.push(owner);
         }
       }
       if (r.park) park.push(found.task);
@@ -131,6 +133,11 @@ function applyAnswer(state, card, action, reply, redraw) {
         daily.carriedIds = (daily.carriedIds || []).filter(x => !gone.has(x));
       }
     }
+  }
+  // PRO138: a linked check this answer ticked can finish a review on another ticket (shared rule: reviewReadyToClose).
+  for (const owner of tickedOwners) {
+    const found = findTicket(state, owner.id);
+    if (found && reviewReadyToClose(found.task, found.section)) moveTask(owner.id, 'done', 0, { skipRender: true });
   }
   touched.forEach(t => commitReviewChange(t));
   if (file.length) {

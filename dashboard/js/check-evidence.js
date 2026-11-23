@@ -56,7 +56,7 @@ export async function openProject(project, { toast = showEvidenceToast, fetchFn 
     const resp = await fetchFn('/api/open-project', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(held?.pr || held?.branch ? { path: project, branch: held.branch || '', pr: held.pr || '' } : { path: project }),
+      body: JSON.stringify({ ...(project ? { path: project } : {}), ...(held?.pr || held?.branch ? { branch: held.branch || '', pr: held.pr || '' } : {}) }),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(data.error || `Could not open the project (HTTP ${resp.status})`);
@@ -81,6 +81,17 @@ export function openProjectButton(project, label) {
   btn.title = `Open ${project} in the newest build`;
   // PRO101: held-pr-ui sets `btn.held` ({ pr, branch }) while the PR is unmerged and clears it on MERGED.
   btn.addEventListener('click', () => openProject(project, { held: btn.held }));
+  return btn;
+}
+
+/** AGE162: "Open project" for a held check with no saved project: opens the build of its PR branch, no project. */
+export function openBranchButton(held) {
+  const where = held?.branch ? `branch ${held.branch}` : 'its PR branch';
+  const btn = button('Open project', `Open the build of ${where} (no saved project)`);
+  btn.title = `Open the build of ${where} (no saved project)`;
+  btn.held = held;
+  btn.branchOnly = true;
+  btn.addEventListener('click', () => openProject(null, { held: btn.held }));
   return btn;
 }
 

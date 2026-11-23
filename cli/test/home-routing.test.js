@@ -27,6 +27,25 @@ test('parseRoute: /dashboard/home/<view>?where=&hproject=', async () => {
   assert.equal(buildSearchForRoute(route), '?where=oven&hproject=bakery');
 });
 
+test('parseRoute: automation editor keeps its id and project', async () => {
+  mockWindow('/dashboard/home/how-it-runs/edit/daily-summary', '?hproject=bakery');
+  const { parseRoute, buildPath, buildSearchForRoute } = await import('../../dashboard/js/routing.js');
+  const route = parseRoute();
+  assert.equal(route.tab, 'home');
+  assert.equal(route.homeView, 'how-it-runs');
+  assert.equal(route.automationId, 'daily-summary');
+  assert.equal(buildPath(route), '/dashboard/home/how-it-runs/edit/daily-summary');
+  assert.equal(buildSearchForRoute(route), '?hproject=bakery');
+});
+
+test('parseRoute: automation defaults keeps a stable path', async () => {
+  mockWindow('/dashboard/home/how-it-runs/defaults', '?hproject=bakery');
+  const { parseRoute, buildPath } = await import('../../dashboard/js/routing.js');
+  const route = parseRoute();
+  assert.equal(route.automationDefaults, true);
+  assert.equal(buildPath(route), '/dashboard/home/how-it-runs/defaults');
+});
+
 test('parseRoute: /dashboard/home alone, no view and no place', async () => {
   mockWindow('/dashboard/home');
   const { parseRoute, buildPath, buildSearchForRoute } = await import('../../dashboard/js/routing.js');
@@ -106,9 +125,10 @@ test('home-state: the selection waits for the config, is kept across views, and 
   assert.equal(s.selectedBoxId(), 'kitchen');
   s.clearSelection();
   assert.equal(s.hasSelection(), false);
-  assert.deepEqual(s.homeRouteState(), { homeView: 'v1', where: undefined, homeProject: 'bakery' });
-  s.applyHomeRoute({ homeView: 'v1', where: 'ghost' });
+  assert.deepEqual(s.homeRouteState(), { homeView: 'v1', automationId: undefined, automationDefaults: undefined, where: undefined, homeProject: 'bakery' });
+  s.applyHomeRoute({ homeView: 'how-it-runs', where: 'ghost', automationId: 'daily-summary' });
   assert.equal(s.setHomeData({ project: 'bakery', config, errors: [] }), 'ghost');
+  assert.equal(s.homeRouteState().automationId, 'daily-summary');
   assert.ok(events.includes('view') && events.includes('selection') && events.includes('config'));
   off();
 });

@@ -117,3 +117,12 @@ test('PRO131: the Needs you chip and its filtered list equal the count when flag
   assert.deepEqual(only.map(r => r.id).sort(), [...needsYou(doc).ids].sort());
   assert.equal(countByState(filterRows(rows, { showDone: true }))['needs you'], total);
 });
+
+test('PRO134: the Lanes nav and the strip make the same call: a precomputed plan and none give the same count, per scope', async () => {
+  const { computeRunPlan } = await import('../../shared/run-plan.js');
+  const doc = fixture();
+  for (const place of [null, new Set(['E2']), new Set(['E1'])]) {
+    const keep = scopeTest(doc, place);
+    assert.equal(needsYou(doc, keep, { plan: computeRunPlan(doc) }).count, needsYou(doc, keep).count);
+  }
+});

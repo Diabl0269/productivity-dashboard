@@ -13,6 +13,7 @@
 
 import { hasUnsentNotes, unsentNotes } from './review-notes.js';
 import { LATER_TITLE } from './epic-ready.js';
+import { isNeedsTalLine } from './proof-gate.js';
 
 export const REVIEW_SECTION = 'review';
 export const REVIEW_SECTION_NAME = 'Ready for review';
@@ -37,6 +38,36 @@ export function checkProgress(task) {
  */
 export function reviewComplete(task, sectionId, { ticked }) {
   return sectionId === REVIEW_SECTION && !!ticked && allChecksTicked(task) && !hasUnsentNotes(task);
+}
+
+/**
+ * PRO138: has a ticket in `sectionId` nothing left for Tal, whichever way its last check got ticked (a tick, an
+ * answered ask that links the check, a bulk sweep)? At least one check, all ticked, no unsent review note, no open
+ * ask, no open subtask and no unresolved `needs-tal:` Unverified line. Plain `tried:` lines and `left` lines do not hold it.
+ */
+export function reviewReadyToClose(task, sectionId) {
+  return sectionId === REVIEW_SECTION && (task?.checks || []).length > 0 && allChecksTicked(task)
+    && !hasUnsentNotes(task)
+    && !(task.asks || []).some(a => a && a.state === 'open')
+    && !(task.subtasks || []).some(st => st && !st.checked)
+    && !(task.result?.unverified || []).some(isNeedsTalLine);
+}
+
+/**
+ * PRO138: the one close for every tick path. When `task` sits in review and reviewReadyToClose, move it to done
+ * (history event, optional `note`), roll its epic up and unpin what closed. Mutates `doc`.
+ * Returns null when nothing moved, else { id, epics: [{ id, from, to }], unpinned: [ids] }.
+ */
+export function closeIfReviewComplete(doc, task, { now = new Date().toISOString(), note } = {}) {
+  const row = task ? findRow(doc, task.id) : null;
+  if (!row || !reviewReadyToClose(row.task, row.section)) return null;
+  const epicId = epicOf(doc, row.task)?.task.id;
+  if (!moveBetween(doc, row.task, REVIEW_SECTION, 'done', now)) return null;
+  if (note) row.task.history[row.task.history.length - 1].note = note;
+  const epics = rollUpAfterClose(doc, epicId, { now });
+  const gone = new Set(epicsToUnpin(doc, row.task));
+  for (const m of epics) for (const e of epicsToUnpin(doc, findRow(doc, m.id).task)) gone.add(e);
+  return { id: row.task.id, epics, unpinned: unpinFromPlan(doc, [...gone]) };
 }
 
 /**
@@ -111,6 +142,8 @@ const CHECK_OWNER_RULES = [
   ['opening older or saved projects is a compatibility check you can run yourself', /\bproject saved (before|with|in)\b|\bopen (a|an|the) (saved|older|previous|old) (project|patch|file)\b|\b(older|previous|old) (project|build|version|release)s?\b/i],
   ['regressions are yours to check with tests', /\bregress(ion|ions)?\b|\bstill works?\b/i],
   ['VoiceOver checks are yours to run (see the accessibility notes)', /voice ?over/i],
+  ['a check that waits on a merge is yours: merge the PR (when the gate allows), run what it needs yourself and attach the result; while the merge is held, use --held-pr "<why>" --try-steps "<steps>"', /\b(?:after|once|when)\s+(?:the\s+)?(?:PR|pull request)\b[^.]{0,20}\b(?:merges?|merged|lands?|landed)\b|^\s*(?:[A-Za-z]{2,6}\d+:\s*)?After\b[^.:]{0,60}\bmerges?\b/i],
+  ['a "Try on branch" check needs exact steps: pass --held-pr "<why>" --try-steps "<steps and what to see>"', /^\s*(?:[A-Za-z]{2,6}\d+:\s*)?Try on branch\s+\S+?\s*(?:,?\s*then say merge or not)?\s*\.?\s*$/i],
   ['a design pick is a Co-task: pick ticket, so it shows in the Design round lane, not a check', /\b(pick|answer|choose)\b[^.]{0,60}\bboard\b|\bboard\b[^.]{0,30}\b(pick|answer|choose)\b/i],
 ];
 
@@ -180,6 +213,20 @@ const CHECK_EVIDENCE_RULES = [
     needs: 'project',
     re: /\bask (?:the |an? )?(?:ai|assistant|chatbot|claude)\b|\bmake (?:me )?an? ai[- ](?:song|project|patch|track|preset)\b|\bgenerate\b[^.]{0,50}\bwith (?:the )?(?:ai|assistant)\b|\b(?:ai|assistant)[- ]generated\b|\bprompt (?:the )?(?:ai|assistant)\b/i,
   },
+  {
+    // PRO138 (BAC106): Tal only listens. A check that has him prompt, run, re-run or generate an AI song or eval, or waits on a deploy,
+    // is the session's job: render the song itself and attach the audio or project.
+    reason: 'Tal only listens: render the song yourself and attach its audio/project (analytics/ai-evals/make-listen-clip.mjs)',
+    needs: 'listen',
+    re: new RegExp([
+      String.raw`\bafter (?:the|this) next (?:[\w-]+ ){0,2}(?:deploy|deployment|release)\b`,
+      String.raw`\b(?:re-?run|run|try|send)\s+(?:the\s+)?[a-z]+(?:-[a-z0-9]+)+\s+(?:solo\s+)?(?:prompt|eval|song)\b`,
+      String.raw`\bre-?run\s+[a-z]+(?:-[a-z0-9]+){2,}\b`,
+      String.raw`\b(?:run|re-?run) the [\w-]+ (?:solo )?prompt\b`,
+      String.raw`\bgenerate\s+(?:an?|the|some|another)?\s*(?:[\w-]+\s+){0,3}(?:song|track|patch|preset|groove|beat|bassline|melody)\b`,
+      String.raw`\bask (?:it |the ai |the assistant |claude )?for (?:an?|the|some)\s+(?:[\w-]+\s+){0,3}(?:song|track|patch|preset|groove|beat|bassline|melody)\b`,
+    ].join('|'), 'i'),
+  },
 ];
 
 /**
@@ -198,6 +245,7 @@ export function checkOwnerProblem(text, evidence = {}) {
     if (!re.test(t)) continue;
     if (needs === true && attached) continue;
     if (needs === 'project' && ev.project) continue;
+    if (needs === 'listen' && (ev.project || ev.audio)) continue;
     return reason;
   }
   return null;
@@ -316,10 +364,68 @@ export const noProjectReasonError = (v, label = 'noProject') => {
  * PRO100: every check a review files carries a project to open or says why it has none.
  * `items` are normalized checks ({ text, project?, noProject? }); returns the refusal text, or null.
  */
+const SOUND_CHECK_RE = /\b(sound|sounds|loudness|loud|louder|quieter|quiet|hear|listen|audio|dB)\b/i;
+const SOUND_NO_PROJECT_REASON_RE = /any .{0,40}(patch|project|song|preset) works|no saved project|\bdeploy/i;
+
+/**
+ * BAC118: a sound check is a recipe, not a check, when its no-project reason says "any patch works",
+ * "no saved project involved" or "needs a deploy" and it has no audio attached: Tal would have to
+ * build the setup himself. Returns an error string, or null.
+ */
+export function soundCheckNoProjectProblem(items) {
+  const bad = [];
+  (items || []).forEach((c, i) => {
+    if (c && !c.project && c.noProject && !c.audio && SOUND_CHECK_RE.test(c.text || '')
+      && SOUND_NO_PROJECT_REASON_RE.test(c.noProject)) bad.push({ n: i + 1, text: c.text, why: c.noProject });
+  });
+  if (!bad.length) return null;
+  return `${bad.length} sound check(s) say there is no project ("any patch works", "no saved project", "needs a deploy") and carry no audio:\n`
+    + bad.map(b => `  - check ${b.n}: "${b.text}" (reason: ${b.why})`).join('\n')
+    + '\nRun the check yourself: build the state, attach the saved project (--check-project N=<path>) and the render Tal must hear '
+    + '(--check-audio N=<path>). A check waiting on an undeployed API is not a check yet: run it against the local API or hold it. '
+    + '(--force "<why>" overrides and is recorded on the ticket.)';
+}
+
+/**
+ * FRO2259 (kind check-tal-should-not-get): an ear check ships its project. A sound check with no project
+ * is refused whatever its no-project reason says, audio or not: Tal must be able to open and play it.
+ */
+export function soundCheckNeedsProjectProblem(items) {
+  const bad = [];
+  (items || []).forEach((c, i) => {
+    if (c && !c.project && SOUND_CHECK_RE.test(c.text || '')) bad.push({ n: i + 1, text: c.text });
+  });
+  if (!bad.length) return null;
+  return `${bad.length} sound check(s) carry no project, and an ear check ships its project so Tal can open it and press play:\n`
+    + bad.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
+    + '\nBuild or find the project that plays it, prove it yourself (render it and read the numbers), attach it with '
+    + '--check-project N=<path> and the render with --check-audio N=<path>. (--force "<why>" overrides and is recorded on the ticket.)';
+}
+
+const TWO_SIDED_RE = /\b(two|both)\b|\bours?\b.{0,30}\bthen\b.{0,30}\breference\b/i;
+const attachmentCount = c => ['project', 'video', 'audio'].filter(k => c && c[k]).length;
+
+/**
+ * FRO2260 (kind proof-misses-claim): a check whose text says "two", "both" or "ours then the reference"
+ * promises two things to compare, so it must carry two attachments (e.g. a project and a clip, or split it
+ * into two adjacent checks that each carry theirs and name the other as their pair).
+ */
+export function twoSidedCheckProblem(items) {
+  const bad = [];
+  (items || []).forEach((c, i) => {
+    if (c && TWO_SIDED_RE.test(c.text || '') && attachmentCount(c) < 2) bad.push({ n: i + 1, text: c.text });
+  });
+  if (!bad.length) return null;
+  return `${bad.length} check(s) say "two", "both" or "ours then the reference" but carry fewer than two attachments, so there is nothing to compare:\n`
+    + bad.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
+    + '\nAttach both sides (project + --check-audio N=<path>, or --check-video), or split it into two adjacent checks, one per side, '
+    + 'each naming the other as its pair and carrying its own attachment. (--force "<why>" overrides and is recorded on the ticket.)';
+}
+
 export function checkProjectGateProblem(items) {
   const bare = [];
   (items || []).forEach((c, i) => { if (c && !c.project && !c.noProject) bare.push({ n: i + 1, text: c.text }); });
-  if (!bare.length) return null;
+  if (!bare.length) return soundCheckNoProjectProblem(items) || soundCheckNeedsProjectProblem(items) || twoSidedCheckProblem(items);
   return `${bare.length} check(s) have neither a project nor a reason, and Tal opens every check from the Plan page:\n`
     + bare.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
     + '\nAttach the saved project the check was rendered from (--check-project N=<path>, N = the check number above), '
@@ -438,7 +544,7 @@ export function resultLines(result) {
   return lines;
 }
 
-function flat(doc) {
+export function flat(doc) {
   const rows = [];
   for (const section of doc?.sections || []) {
     for (const task of section.tasks || []) rows.push({ task, section: section.id });

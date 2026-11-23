@@ -39,7 +39,7 @@ import {
   evidencePathError, videoPathError, audioPathError, projectPathError, tidyEvidencePath, epicOf,
 } from './review.js';
 import { addReviewNote } from './review-notes.js';
-import { epicsToUnpin, unpinFromPlan } from './review.js';
+import { epicsToUnpin, unpinFromPlan, closeIfReviewComplete } from './review.js';
 import { planFiling, applyFiling } from './review-filing.js';
 
 export const ASK_STATES = ['open', 'answered', 'done', 'dismissed', 'parked'];
@@ -82,6 +82,9 @@ export const ASK_DETAILS_MIN = 60;
 // A question about something seen or heard needs the thing to judge (PRO91).
 const SEEN_HEARD_RE = /\b(sound|sounds|hear|heard|listen|look|looks|see|seen|feel|feels|colou?r|visual|loud|mix)\b/i;
 const MEDIA_LABELS = ['ui', 'audio'];
+// FRO2118: an ask about a design (ui ticket, or its words name layout, look, board, design or colours) carries the board or artifact link.
+const DESIGN_WORDS_RE = /\b(layouts?|looks?|boards?|designs?|colou?rs?)\b/i;
+const ANY_URL_RE = /https?:\/\/[^\s)]+/i;
 export const MEDIA_KINDS = ['video', 'audio', 'image', 'project', 'board'];
 // A design board is a claude.ai artifact link, not a file under $CH_HOME/evidence.
 const BOARD_URL_RE = /^https:\/\/claude\.ai\/(code\/)?artifact\/[A-Za-z0-9-]+/;
@@ -170,7 +173,7 @@ export function parseOption(input, i = 0) {
  * empty question, a bad date, PR URL, option, recommendation or media path, or a taste question.
  */
 export function addAsk(task, {
-  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, now = new Date().toISOString(),
+  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, link, now = new Date().toISOString(),
 } = {}) {
   if (isKillCommandText(text) || isKillCommandText(details)) {
     throw new Error('a kill command is not a question for Tal: tell the session that owns the stuck process, then kill it yourself by pid (never pkill/killall) and note it on the ticket');
@@ -191,7 +194,11 @@ export function addAsk(task, {
   }
   const rec = recommend != null && recommend !== '' ? String(recommend).trim().toUpperCase() : '';
   if (rec && !keys.has(rec)) throw new Error(`--recommend ${rec} is not one of the options (${[...keys].join(', ') || 'none given'})`);
-  const det = details != null ? String(details).trim() : '';
+  let det = details != null ? String(details).trim() : '';
+  if (link != null && String(link).trim()) {
+    if (!/^https?:\/\/\S+$/i.test(String(link).trim())) throw new Error(`--link must be a URL (the design board or artifact link): ${String(link).trim()}`);
+    det = `${det}${det ? '\n' : ''}Link: ${String(link).trim()}`;
+  }
   if (det.length > DETAILS_MAX) throw new Error(`--details must be at most ${DETAILS_MAX} characters`);
   const m = {};
   for (const kind of MEDIA_KINDS) {
@@ -215,6 +222,11 @@ export function addAsk(task, {
     || (labels || []).some(l => MEDIA_LABELS.includes(String(l).toLowerCase()));
   if (!exempt && seenHeard && !Object.keys(m).length) {
     throw new Error('a question about something seen or heard needs the thing to judge: --video, --audio, --image, --project or --board');
+  }
+  const designAsk = (labels || []).some(l => String(l).toLowerCase() === 'ui')
+    || [text, details, ...opts.map(o => o.text)].some(t => DESIGN_WORDS_RE.test(String(t ?? '')));
+  if (!exempt && designAsk && !m.board && !ANY_URL_RE.test(det)) {
+    throw new Error('a question about a design needs the link to the board or artifact it is about: add --board <claude.ai artifact url> or --link <url> (or put the URL in --details), so the answer lands on the right card');
   }
   if (!Array.isArray(task.asks)) task.asks = [];
   const n = task.asks.reduce((mx, a) => Math.max(mx, Number(a?.n) || 0), 0) + 1;
@@ -634,7 +646,7 @@ function moveToBacklog(doc, id, now) {
  */
 export function answerAsk(doc, id, key, { action, reply = '', newId, now = new Date().toISOString(), by = 'Tal', isLive } = {}) {
   const { members, options } = askCardOf(doc, id, key);
-  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [], closed: [], unpinned: [] };
+  const out = { question: '', state: '', resolved: [], parked: [], filed: [], unrouted: [], ticked: [], closed: [], closedByChecks: [], unpinned: [] };
   const toFile = [];
   let filedTo = ''; // the one note this answer became (twins share it)
   for (const m of members) {
@@ -654,6 +666,14 @@ export function answerAsk(doc, id, key, { action, reply = '', newId, now = new D
       out.unpinned.push(...unpinFromPlan(doc, epicsToUnpin(doc, row.task))); // a closed epic leaves the day plan
     }
     if (r.file) toFile.push(m.id);
+  }
+  // PRO138: ticking a linked check can finish a review (FRO2043, FRO2090 sat in review with every check ticked).
+  for (const id of new Set(out.ticked.map(t => t.id))) {
+    const closed = closeIfReviewComplete(doc, flat(doc).find(r => r.task.id === id)?.task, { now, note: 'every check ticked' });
+    if (!closed) continue;
+    out.closed.push(id);
+    out.unpinned.push(...closed.unpinned);
+    out.closedByChecks.push(id);
   }
   for (const tid of toFile) {
     const plan = planFiling(doc, { ticket: tid });

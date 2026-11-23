@@ -170,3 +170,22 @@ test('the evidence response serves a wav with an audio content type and ranges',
   assert.equal(out.headers['Content-Type'], 'audio/wav');
   assert.equal(evidenceVideoResponse({ dataRoot: home, relPath: 'T1/missing.wav' }).status, 404);
 });
+
+// PRO138 (BAC106): Tal only listens; checks that make him prompt or generate an AI song, or wait on a deploy, are the session's job.
+const LISTEN_TEXTS = [
+  'BAC76: After the next API deploy, run the s-crow solo prompt and listen to the bass',
+  'After the next API deploy, ask for a funky groove and hear whether the bass sits',
+  're-run f-odd-ten-minutes and listen to whether the ending resolves',
+  'generate a euphoric trance song and listen to the build',
+];
+
+test('checks that make Tal prompt or generate an AI song are refused unless audio or a project is attached', () => {
+  for (const text of LISTEN_TEXTS) {
+    const why = checkOwnerProblem(text);
+    assert.match(why || '', /^Tal only listens: render the song yourself and attach its audio\/project \(analytics\/ai-evals\/make-listen-clip\.mjs\)$/, text);
+    assert.equal(checkOwnerProblem(text, { audio: 'X/y.wav' }), null, `audio lifts: ${text}`);
+    assert.equal(checkOwnerProblem(text, { project: 'X/a.agsproj' }), null, `project lifts: ${text}`);
+    assert.ok(checkOwnerProblem(text, { video: 'X/v.mp4' }), `video does not lift: ${text}`);
+  }
+  assert.equal(checkOwnerProblem('Press Run and listen: the song starts at the first bar'), null);
+});

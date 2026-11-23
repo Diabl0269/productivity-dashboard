@@ -2,7 +2,7 @@
  * cli/commands/tasks-asks.js
  * Decisions a session leaves for Tal, shown in the Plan page's "For you" list (PRO73, PRO86):
  *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
- *       [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
+ *       [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--link <url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
  *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
  *   answer <id> <key> --reopen [--json]   put a dismissed / answered question back to open (PRO107)
@@ -63,6 +63,7 @@ export async function cmdAsk(argv) {
     image: { type: 'string' },
     project: { type: 'string' },
     board: { type: 'string' },
+    link: { type: 'string' },
     'same-as': { type: 'string' },
     'same-judgement': { type: 'boolean' },
     'not-same': { type: 'string' },
@@ -100,7 +101,7 @@ export async function cmdAsk(argv) {
   try {
     ask = addAsk(task, {
       text, by: values['ask-by'], mergePr: values['merge-pr'], options: values.option, recommend: values.recommend,
-      details: values.details, media, sameAs: values['same-as'], checkRefs, notSame: values['not-same'],
+      details: values.details, link: values.link, media, sameAs: values['same-as'], checkRefs, notSame: values['not-same'],
       labels: labelsOf(doc, task),
     });
   } catch (e) { die(`ask: ${e.message}`); }
@@ -177,7 +178,7 @@ export async function cmdAnswer(argv) {
   ok(`${ids} ask ${out.state}${out.resolved.some(r => r.decision) ? ' (decision recorded)' : ''}; no longer waiting on Tal`);
   for (const pid of out.parked) print(`parked ${pid}: moved to backlog`);
   for (const uid of out.unpinned) print(`unpinned ${uid} from the plan`);
-  for (const cid of out.closed) print(`closed ${cid}: its last ask was answered; the notes run files the answer`);
+  for (const cid of out.closed) print(out.closedByChecks.includes(cid) ? `closed ${cid}: every check ticked` : `closed ${cid}: its last ask was answered; the notes run files the answer`);
   for (const t of out.ticked) print(`ticked ${t.id} check: ${t.text}`);
   for (const f of out.filed) print(`filed follow-up ${f.id} from ${f.handle} (the ticket was done)`);
   if (out.unrouted.length) printErr(`answer: ${out.unrouted.join(', ')} needs an area before it can be filed (Plan page Notes, or ch tasks notes send)`);

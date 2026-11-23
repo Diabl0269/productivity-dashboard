@@ -194,7 +194,7 @@ test('answerAsk ticks linked checks across tickets; resolveAsk reports them; sch
     { id: 'T2', checks: [] },
   ] }] };
   const t1 = doc.sections[0].tasks[0];
-  addAsk(t1, { text: 'Does it look right?', details: DETAILS, media: { image: 'T1/a.png' }, checkRefs: [{ id: 'T1', text: 'looks right' }], notSame: 'n', now: '2026-01-01T00:00:00.000Z' });
+  addAsk(t1, { text: 'Does it look right?', details: `${DETAILS} Board: https://claude.ai/artifact/BtoY6LyNmK69dgZtBah24Y`, media: { image: 'T1/a.png' }, checkRefs: [{ id: 'T1', text: 'looks right' }], notSame: 'n', now: '2026-01-01T00:00:00.000Z' });
   assert.deepEqual(askErrors(t1, 'T1'), []);
   const cleaned = cleanAsks(t1).asks[0];
   assert.deepEqual(cleaned.checkRefs, [{ id: 'T1', text: 'looks right' }]);
@@ -205,7 +205,7 @@ test('answerAsk ticks linked checks across tickets; resolveAsk reports them; sch
   assert.equal(t1.checks[0].checkedNote, 'answered on question 1: yes');
   // the dashboard path: resolveAsk + tickLinkedChecks on its own tickets
   const t = { id: 'T3', checks: [{ text: 'c', checked: false }] };
-  addAsk(t, { text: 'Is it fine to look at?', details: DETAILS, media: { image: 'T3/a.png' }, checkRefs: [{ id: 'T3', text: 'c' }] });
+  addAsk(t, { text: 'Is it fine to look at?', details: `${DETAILS} Board: https://claude.ai/artifact/BtoY6LyNmK69dgZtBah24Y`, media: { image: 'T3/a.png' }, checkRefs: [{ id: 'T3', text: 'c' }] });
   const r = resolveAsk(t, '1', { action: 'done', reply: '' });
   assert.equal(tickLinkedChecks(id => (id === 'T3' ? t : null), r).length, 1);
   assert.equal(t.checks[0].checkedNote, 'answered on question 1: done');

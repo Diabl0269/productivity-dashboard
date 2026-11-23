@@ -48,6 +48,11 @@ function clearForced(redraw) {
   redraw();
 }
 
+/** The one call both For you counts (the Lanes nav and the strip) make: same rule, same arguments (PRO134). */
+function forYouNeeds(doc, shows) {
+  return needsYou(doc, shows);
+}
+
 // ===== the view =====
 
 let mounted = null; // { root, ctx, page, cleanup: [] } of the mounted Lanes view
@@ -149,7 +154,7 @@ function draw(root, ctx, page, { animate = false } = {}) {
   const { asks, interps } = scopeForYou(page.doc, set, allAsks, allInterps);
   const review = plan.review || [];
   const shows = set ? scopeTest(page.doc, set) : undefined;
-  const forYouCount = needsYou(page.doc, shows, { plan: whole }).count; // the one Needs you rule (PRO130)
+  const forYouCount = forYouNeeds(page.doc, shows).count; // the one Needs you rule (PRO130), same call as the strip (PRO134)
   const autoCount = (whole.readiness || []).filter(r => r.auto && (!shows || shows(r.id))).length;
   const readyCount = (plan.readiness || []).filter(r => r.ready).length;
 
@@ -268,10 +273,11 @@ registerStripItem({
   render(root, ctx) {
     const state = ctx.state();
     // Same scope as every Home view (the place, else the project), so this count matches Overview's Needs you.
-    const set = scopeIds(ctx);
+    // While Lanes is open it is the scope Lanes shows (a linked ?hmEpics= set included), so the strip equals the page's For you (PRO134).
+    const set = mounted ? (placeScope(ctx)?.set || null) : scopeIds(ctx);
     const shows = set ? scopeTest(ctx.doc(), set) : () => true;
     let n = { count: 0, decisions: 0, reviews: 0 };
-    try { if (state?.tasks) n = needsYou(ctx.doc(), shows); } catch { /* stays 0 */ }
+    try { if (state?.tasks) n = forYouNeeds(ctx.doc(), shows); } catch { /* stays 0 */ }
     const btn = el('button', 'hl-strip-btn');
     btn.type = 'button';
     btn.dataset.hmKey = 'strip-for-you';

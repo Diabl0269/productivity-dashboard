@@ -7,6 +7,7 @@
 
 import { isPlainObject, shown, str, strOrNull, strList, regex, id as checkId, unknownKeys, objList } from './home-config-check.js';
 import { LIFECYCLE_STAGE_IDS } from './lifecycle.js';
+import { normRun } from './automation-run.js';
 
 export const AUTOMATION_KINDS = ['launchd', 'cron', 'hook', 'ci', 'skill', 'file', 'inside'];
 export const AUTOMATION_STATUS_TYPES = ['json-file', 'log-tail', 'launchctl', 'gh-workflow', 'mtime', 'none'];
@@ -200,8 +201,10 @@ export function normAutomations(raw, errors) {
       else errors.push(`${here}: "kind" should be one of ${AUTOMATION_KINDS.join(', ')}, got ${shown(e.kind)}; ignored.`);
     }
     const group = strOrNull(e, 'group', here, errors);
+    const run = normRun(e.run, here, errors);
     return {
       ...out,
+      ...(run ? { run } : {}),
       trigger: str(e, 'trigger', here, errors),
       kind,
       group: group || (kind ? KIND_GROUPS[kind] : 'Other'),

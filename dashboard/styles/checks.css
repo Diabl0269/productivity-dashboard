@@ -1,0 +1,27 @@
+/* Checks tab (PRO143): tickets with a check only you can tick. Rows reuse the Plan page's review cards (run-plan.css). */
+
+#checksPanel { overflow: auto; min-height: 0; }
+.ck-root { max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; display: flex; flex-direction: column; gap: 18px; color: var(--text-primary); width: 100%; box-sizing: border-box; }
+.ck-title { margin: 0; font-size: 20px; font-weight: 600; }
+.ck-hint { margin: -10px 0 0; font-size: 13px; color: var(--text-secondary); }
+.ck-toolbar { display: flex; align-items: center; gap: 12px; }
+.ck-switch { margin-left: 0; }
+.ck-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ck-empty { margin: 0; }
+
+/* A ticket whose checks are all ticked: shown only with Hide finished off, quieter than the rest. */
+.ck-finished { opacity: .7; }
+.ck-finished-chip { color: var(--text-secondary); }
+
+/* Nothing pops: a row leaves by fading and collapsing, and one that appears fades in. */
+.ck-root .rp-review-item { transition: opacity 160ms ease-out; }
+.ck-root .rp-review-item.ck-leaving {
+  opacity: 0; max-height: 0 !important; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
+  overflow: hidden; pointer-events: none;
+  transition: opacity 180ms ease-out, max-height 180ms ease-out, margin 180ms ease-out, padding 180ms ease-out;
+}
+.ck-root .rp-review-item.ck-entering { opacity: 0; transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-root .rp-review-item, .ck-root .rp-review-item.ck-leaving, .ck-root .rp-review-item.ck-entering { transition: none !important; }
+}

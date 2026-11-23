@@ -34,6 +34,11 @@ export function heldPrProjectTitle(held) {
   return `This project needs a build of branch ${held.branch || 'the PR'}; main does not have the change yet`;
 }
 
+/** AGE162: the tooltip for the Open project button of a held check that has no saved project. */
+export function heldPrBranchTitle(held) {
+  return `Open the build of ${held.branch ? `branch ${held.branch}` : 'its PR branch'} (no saved project)`;
+}
+
 /**
  * The chip for `check` (null when it has no heldPr). `buttons` are Open project buttons (the check's
  * group header's) whose tooltip is replaced while the PR is unmerged.
@@ -59,17 +64,19 @@ function heldChip(held, buttons) {
   const was = new Map();
   // PRO101: while unmerged, Open project asks for the PR's branch build; MERGED clears it (newest main build again).
   const live = { pr: held.pr, branch: held.branch };
-  for (const b of buttons) { was.set(b, b.title); b.title = heldPrProjectTitle(held); b.held = live; }
+  const titleOf = (b, h) => (b.branchOnly ? heldPrBranchTitle(h) : heldPrProjectTitle(h));
+  for (const b of buttons) { was.set(b, b.title); b.title = titleOf(b, held); b.held = live; }
   prInfoOnce(held.pr).then(({ state, branch }) => {
     if (state === 'MERGED') {
       chip.remove();
-      for (const [b, title] of was) { b.title = title; b.held = null; }
+      // AGE162: a branch-only button has nothing to open on main (no project), so it goes.
+      for (const [b, title] of was) { if (b.branchOnly) { b.remove(); continue; } b.title = title; b.held = null; }
       return;
     }
     if (!live.branch && branch) {
       live.branch = branch;
       chip.textContent = heldPrText(live);
-      for (const b of was.keys()) b.title = heldPrProjectTitle(live);
+      for (const b of was.keys()) b.title = titleOf(b, live);
     }
   });
   return chip;

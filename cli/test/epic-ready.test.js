@@ -62,25 +62,63 @@ test('not ready: backlog, later bucket and future bucket, with plain reasons', (
   assert.match(readinessLabel(ready(doc, 'E1')), /^Not ready: in backlog$/);
 });
 
-test('not ready: an open pick or co-task that another child waits on', () => {
+test('PRO138: a pick or co-task gates only the tickets that wait on it; with no free sibling the epic still waits', () => {
   const doc = mk({
     todo: [epic('E1'), task('P1', { parentId: 'E1', title: 'Co-task: pick the colours' }),
       task('T1', { parentId: 'E1', blockedBy: ['P1'] }), task('T2', { parentId: 'E1' })],
   });
   const r = ready(doc, 'E1');
-  assert.equal(r.ready, false);
-  assert.deepEqual(r.reasons, ['waits on your pick P1']);
+  assert.equal(r.ready, true, 'T2 is free to run');
+  assert.deepEqual(r.reasons, []);
+  assert.deepEqual(r.waitingPicks, ['P1']);
   const t1 = r.children.find(c => c.id === 'T1');
   assert.equal(t1.runnable, false);
   assert.equal(t1.why, 'waits on your pick P1');
   assert.deepEqual(t1.blockedBy, ['P1']);
   assert.equal(r.children.find(c => c.id === 'T2').runnable, true);
+  // No free sibling: the pick still holds the whole epic.
+  const stuck = mk({ todo: [epic('E1'), task('P1', { parentId: 'E1', title: 'Co-task: pick the colours' }), task('T1', { parentId: 'E1', blockedBy: ['P1'] })] });
+  assert.equal(ready(stuck, 'E1').ready, false);
+  assert.deepEqual(ready(stuck, 'E1').reasons, ['waits on your pick P1']);
+  assert.deepEqual(ready(stuck, 'E1').waitingPicks, []);
   // A plain co-task that gates nothing does not stop the other work.
   const solo = mk({ todo: [epic('E1'), task('P1', { parentId: 'E1', title: 'Co-task: send the form' }), task('T2', { parentId: 'E1' })] });
   assert.equal(ready(solo, 'E1').ready, true);
   // Once the pick is done the epic is ready again.
   const done = mk({ todo: [epic('E1'), task('T1', { parentId: 'E1', blockedBy: ['P1'] })], done: [task('P1', { parentId: 'E1', title: 'Co-task: pick', checked: true })] });
   assert.equal(ready(done, 'E1').ready, true);
+});
+
+test('PRO138: an epic blocker whose open tickets all wait on Tal is a soft blocker', () => {
+  const doc = mk({
+    todo: [epic('E1', { blockedBy: ['B1'] }), task('T1', { parentId: 'E1' }),
+      epic('B1'), task('P1', { parentId: 'B1', title: 'Co-task: send the form' }), task('W1', { parentId: 'B1', waitingOn: 'Tal' })],
+    backlog: [task('K1', { parentId: 'B1' })],
+  });
+  const r = ready(doc, 'E1');
+  assert.equal(r.ready, true);
+  assert.deepEqual(r.softBlockers, ['B1']);
+  assert.deepEqual(r.reasons, []);
+  // A runnable ticket under the blocker keeps it hard.
+  const hard = mk({ todo: [epic('E1', { blockedBy: ['B1'] }), task('T1', { parentId: 'E1' }), epic('B1'), task('R1', { parentId: 'B1' }), task('W1', { parentId: 'B1', waitingOn: 'Tal' })] });
+  assert.deepEqual(ready(hard, 'E1').reasons, ['waits on B1']);
+  assert.deepEqual(ready(hard, 'E1').softBlockers, []);
+  // So does a ticket in progress, and a non-epic blocker.
+  const prog = mk({ todo: [epic('E1', { blockedBy: ['B1'] }), task('T1', { parentId: 'E1' }), epic('B1'), task('W1', { parentId: 'B1', waitingOn: 'Tal' })], 'in-progress': [task('I1', { parentId: 'B1', waitingOn: 'Tal' })] });
+  assert.deepEqual(ready(prog, 'E1').reasons, ['waits on B1']);
+  const plain = mk({ todo: [epic('E1'), task('T1', { parentId: 'E1', blockedBy: ['X1'] }), task('T2', { parentId: 'E1', blockedBy: ['X1'] }), task('X1', { waitingOn: 'Tal' })] });
+  assert.equal(ready(plain, 'E1').ready, false, 'child-level blockedBy is unchanged');
+  const nonEpic = mk({ todo: [epic('E1', { blockedBy: ['X1'] }), task('T1', { parentId: 'E1' }), task('X1', { waitingOn: 'Tal' })] });
+  assert.deepEqual(ready(nonEpic, 'E1').reasons, ['waits on X1']);
+});
+
+test('PRO138: two epics that wait on each other stay hard blockers (no infinite recursion)', () => {
+  const doc = mk({
+    todo: [epic('A', { blockedBy: ['B'] }), task('TA', { parentId: 'A', waitingOn: 'Tal' }),
+      epic('B', { blockedBy: ['A'] }), task('TB', { parentId: 'B', waitingOn: 'Tal' })],
+  });
+  for (const r of openEpicReadiness(doc)) assert.equal(r.ready, false);
+  assert.deepEqual(ready(doc, 'A').softBlockers, []);
 });
 
 test('not ready: a runnable child with no How to check it', () => {
