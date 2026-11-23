@@ -9,6 +9,7 @@
 import { registerHomeView, registerStripItem, setView } from './home-state.js';
 import { boxOfWhere } from '../../shared/home-config.js';
 import { buildFlow } from './home-lifecycle.js';
+import { buildAiPath } from './home-ai-path.js';
 import { buildRuns } from './home-runs-list.js';
 import { createAutomationEditor } from './home-automation-editor.js';
 import { loadRuns, getRuns, onHealth, getHealth, healthLine, askProblems, takeProblemsAsk } from './home-health-data.js';
@@ -73,17 +74,19 @@ function render(root, ctx) {
   );
   root.appendChild(head);
   const flowHost = el('div', 'hr-block');
+  const aiHost = el('div', 'hr-block');
   const runsHost = el('div', 'hr-block hr-runs');
-  root.append(flowHost, runsHost);
+  root.append(flowHost, aiHost, runsHost);
 
   const flow = buildFlow(flowHost, ctx, {
     scope: () => ({ epicIds: scopeIds(ctx) }),
     live: liveRunning,
     placeNote: () => placeNote(ctx),
   });
+  const ai = buildAiPath(aiHost, ctx);
   const runs = buildRuns(runsHost, ctx, { serviceScope: () => placeBoxIds(ctx) });
   const editor = createAutomationEditor(ctx);
-  const rec = { flow, runs, offs: [], editor };
+  const rec = { flow, ai, runs, offs: [], editor };
   mounted.set(root, rec);
 
   const showProblems = () => {
@@ -98,6 +101,7 @@ function render(root, ctx) {
   rec.offs.push(ctx.subscribe((e) => {
     if (e.type === 'automation' || e.type === 'config') editor.sync();
     if (e.type === 'selection') { flow.update(); runs.update(); }
+    if (e.type === 'config') ai.update();
     if (e.type === 'project') loadRuns(ctx.project());
     if (e.type === 'config' && getRuns().project !== ctx.project()) loadRuns(ctx.project());
   }));
@@ -109,6 +113,14 @@ function render(root, ctx) {
     try { runningMod?.refreshRunningIfStale?.(); } catch { /* keep the fallback */ }
     flow.update();
   });
+  // A step of the flow asks to show its job: hm:open with focus "job:<automation id>" (AGE199).
+  const onOpen = (e) => {
+    const f = e.detail?.focus;
+    if (e.detail?.view !== 'how-it-runs' || typeof f !== 'string' || !f.startsWith('job:') || !root.isConnected) return;
+    runs.reveal(f.slice(4));
+  };
+  document.addEventListener('hm:open', onOpen);
+  rec.offs.push(() => document.removeEventListener('hm:open', onOpen));
   // Esc closes the open step first (before Home's own Esc clears the place).
   const onKey = (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented || !root.isConnected || !root.offsetParent) return;
@@ -132,6 +144,7 @@ registerHomeView({
     if (!rec) { root.textContent = ''; render(root, ctx); return; }
     try { runningMod?.refreshRunningIfStale?.(); } catch { /* keep the fallback */ }
     rec.flow.update();
+    rec.ai.update();
     rec.runs.update();
   },
   dispose(root) {
@@ -139,6 +152,7 @@ registerHomeView({
     if (!rec) return;
     rec.editor?.dispose();
     rec.flow.dispose();
+    rec.ai.dispose();
     rec.runs.dispose();
     rec.offs.splice(0).forEach(off => off());
     mounted.delete(root);

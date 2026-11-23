@@ -15,6 +15,7 @@ function el(tag, className, text) {
   return node;
 }
 
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
 
 const STATE_HELP = {
@@ -97,6 +98,12 @@ function makeRow(kind, entry, ctx) {
   inner.append(line, body);
   li.appendChild(inner);
 
+  /** Open the fold (when closed) so a link from the flow lands on the detail behind the chip. */
+  function openFold() {
+    if (body.dataset.open === 'true') return;
+    fold.click();
+  }
+
   function paint(e, now, hide) {
     const res = e.result || { checking: true };
     const state = healthState(res);
@@ -132,7 +139,7 @@ function makeRow(kind, entry, ctx) {
     li.dataset.hidden = String(hide);
     li.inert = hide;
   }
-  return { li, paint };
+  return { li, paint, openFold };
 }
 
 function boxName(ctx, id) {
@@ -151,7 +158,7 @@ function boxName(ctx, id) {
  * @param {HTMLElement} host
  * @param {object} ctx Home ctx
  * @param {{ serviceScope: () => Set<string>|null }} src box ids of the selected place (services used there), or null
- * @returns {{ update(): void, setProblemsOnly(on: boolean): void, dispose(): void }}
+ * @returns {{ update(): void, reveal(id): boolean, setProblemsOnly(on: boolean): void, dispose(): void }}
  */
 export function buildRuns(host, ctx, src) {
   const sections = {};
@@ -257,10 +264,25 @@ export function buildRuns(host, ctx, src) {
     filter.checked = problemsOnly;
   }
 
+  /** Show one automation: leave "Only problems" if it hides the row, scroll to it, open its fold and flash it. */
+  function reveal(id) {
+    const row = sections.automations.rows.get(id);
+    if (!row) return false;
+    if (row.li.dataset.hidden === 'true') { problemsOnly = false; update(); }
+    row.openFold();
+    row.li.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
+    row.li.classList.remove('hr-row-flash');
+    void row.li.offsetWidth;
+    row.li.classList.add('hr-row-flash');
+    row.li.querySelector('.hr-row-name')?.focus({ preventScroll: true });
+    return true;
+  }
+
   const off = onHealth(update);
   update();
   return {
     update,
+    reveal,
     setProblemsOnly(on) { problemsOnly = !!on; update(); },
     dispose() { off(); },
   };

@@ -62,7 +62,22 @@
 .hr-arrow-loop { fill: var(--hr-you); }
 .hr-loop-label, .hr-side-label { position: absolute; font-size: 12px; color: var(--text-secondary); white-space: nowrap; pointer-events: none; }
 .hr-loop-label { color: var(--hr-you); font-style: italic; }
-.hr-side-label { font-style: italic; }
+.hr-side-label { font-style: italic; transform: translateX(-100%); }
+.hr-wire-wait { stroke: var(--hr-you); stroke-dasharray: 2 4; }
+.hr-wire-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; }
+.hr-wire-tip {
+  position: absolute; z-index: 6; width: max-content; max-width: 260px; pointer-events: none;
+  background: var(--surface-4); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow-md);
+  padding: 6px 9px; font-size: 12px; line-height: 1.4;
+}
+.hr-wire-tip[hidden] { display: none; }
+.hr-wait-label {
+  position: absolute; font: inherit; font-size: 12px; font-style: italic; color: var(--hr-you); background: none; border: 0; padding: 2px 4px;
+  border-radius: 4px; cursor: pointer; white-space: nowrap;
+}
+.hr-wait-label:hover:not(:disabled), .hr-wait-label:focus-visible { background: color-mix(in srgb, var(--hr-you) 14%, transparent); }
+.hr-wait-label:disabled { color: var(--text-tertiary); cursor: default; }
+.hr-wait-label[hidden] { display: none; }
 
 .hr-stage {
   position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; text-align: left;
@@ -213,3 +228,26 @@
 .hae-save:hover { color: #fff; background: color-mix(in srgb, var(--accent) 85%, black); }
 .hae-error { margin: 0; color: var(--status-blocked); background: color-mix(in srgb, var(--status-blocked) 10%, transparent); border-radius: 6px; padding: 7px 9px; }
 .hae-error[hidden] { display: none; }
+
+/* ── Links from an open step to its job, page and skill (AGE199) ── */
+.hr-panel-links { margin: 4px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
+.hr-panel-links:empty { display: none; }
+.hr-link-skill code { font-size: 12px; }
+.hr-row-flash > .hr-row-in { animation: hr-row-flash 1.4s ease-out both; }
+@keyframes hr-row-flash { from { background: color-mix(in srgb, var(--hr-session) 24%, transparent); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .hr-row-flash > .hr-row-in { animation: none; } }
+
+/* ── Where an AI answer comes from: boxes joined by lines (AGE199) ── */
+.hr-ai-wrap { display: flex; flex-direction: column; gap: 10px; }
+.hr-ai-wrap[hidden] { display: none; }
+.hr-ai { position: relative; display: grid; grid-template-columns: repeat(var(--hr-ai-cols, 3), minmax(0, 1fr)); gap: 14px 64px; padding: 4px 0 4px 22px; align-items: stretch; }
+.hr-ai-node {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; text-align: left; font: inherit; color: var(--text-primary);
+  padding: 10px 11px 11px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.hr-ai-link { cursor: pointer; }
+.hr-ai-link:hover { border-color: var(--text-secondary); box-shadow: var(--shadow-sm); }
+.hr-ai-labels { position: absolute; inset: 0; pointer-events: none; }
+.hr-ai-label { position: absolute; transform: translate(-50%, -135%); font-size: 11.5px; font-style: italic; color: var(--text-secondary); white-space: nowrap; padding: 0 3px; }
+.hr-ai-label-end { transform: translate(-100%, -150%); }
+@media (max-width: 1100px) { .hr-ai { gap: 14px 40px; } }

@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_STAGES, LIFECYCLE_STAGE_IDS, applyLifecycleConfig, lifecycleEdges, lifecycleSnapshot,
+  DEFAULT_STAGES, LIFECYCLE_STAGE_IDS, applyLifecycleConfig, lifecycleEdges, lifecycleSnapshot, waitingSessionIds,
 } from '../../shared/lifecycle.js';
 import { countUnsentNotes } from '../../shared/review-notes.js';
 import { openEpicReadiness } from '../../shared/epic-ready.js';
@@ -108,14 +108,48 @@ test('a config relabels and hides stages; the arrows join across a hidden one', 
   assert.equal(DEFAULT_STAGES.find(s => s.id === 'ready').label, 'Ready to start'); // defaults untouched
   const edges = lifecycleEdges(stages);
   assert.deepEqual(edges.filter(e => e.kind === 'flow').map(e => `${e.from}>${e.to}`), ['note>ready', 'ready>running', 'running>review', 'review>done']);
-  assert.deepEqual(edges.find(e => e.kind === 'side'), { from: 'running', to: 'asks', kind: 'side', label: 'asks you' });
+  assert.deepEqual(edges.find(e => e.kind === 'side'), { from: 'running', to: 'asks', kind: 'side', label: 'asks you', travels: 'A question a session cannot answer alone.' });
   assert.equal(edges.find(e => e.kind === 'loop').to, 'note');
   assert.equal(lifecycleEdges(applyLifecycleConfig(DEFAULT_STAGES, { stages: [{ id: 'note', hide: true }] })).some(e => e.kind === 'loop'), false);
-  assert.equal(lifecycleEdges(DEFAULT_STAGES).length, 7);
+  assert.equal(lifecycleEdges(DEFAULT_STAGES).length, 8);
 });
 
 test('an empty doc gives zeros, never throws', () => {
   const s = lifecycleSnapshot({ sections: [] }, { running: [] }, { now: NOW });
   for (const id of LIFECYCLE_STAGE_IDS) assert.equal(s[id].count, 0, id);
   assert.equal(lifecycleSnapshot(null, null).note.count, 0);
+});
+
+test('AGE199: a stage config carries its job, skill and page links; unknown or empty ones are dropped', () => {
+  const stages = applyLifecycleConfig(DEFAULT_STAGES, { stages: [
+    { id: 'running', job: 'skill-ship-task', skill: '.claude/skills/ship-task/SKILL.md', page: 'pages/workspace.md' },
+    { id: 'ready', label: 'Queued', job: 'autorun', bogus: 'x' },
+    { id: 'done', job: '' },
+  ] });
+  const by = id => stages.find(s => s.id === id);
+  assert.equal(by('running').job, 'skill-ship-task');
+  assert.equal(by('running').skill, '.claude/skills/ship-task/SKILL.md');
+  assert.equal(by('running').page, 'pages/workspace.md');
+  assert.equal(by('ready').label, 'Queued');
+  assert.equal(by('ready').job, 'autorun');
+  assert.equal('bogus' in by('ready'), false);
+  assert.equal('job' in by('done'), false);
+  assert.equal('job' in by('note'), false);
+  assert.equal(typeof by('running').count, 'function'); // still a working stage
+});
+
+test('AGE199: every arrow says what travels on it; a "waits on" arrow runs from the questions to the waiting sessions', () => {
+  const live = { running: [
+    { id: 'BKR5', state: 'waiting-you' }, { id: 'BKR2', state: 'working' }, { id: 'BKR9', state: 'waiting-you' }, { id: 'BKR3', state: 'idle' },
+  ] };
+  assert.deepEqual(waitingSessionIds(live), ['BKR5', 'BKR9']);
+  assert.deepEqual(waitingSessionIds(null), []);
+  const edges = lifecycleEdges(DEFAULT_STAGES, live);
+  for (const e of edges) assert.ok(e.travels && e.travels.length <= 90, `${e.from}>${e.to} needs one short travels line`);
+  const wait = edges.find(e => e.kind === 'wait');
+  assert.deepEqual({ from: wait.from, to: wait.to, ids: wait.ids }, { from: 'asks', to: 'running', ids: ['BKR5', 'BKR9'] });
+  assert.deepEqual(lifecycleEdges(DEFAULT_STAGES, null).find(e => e.kind === 'wait').ids, []);
+  // Without the question step there is no side step and so no way back.
+  const noAsks = lifecycleEdges(applyLifecycleConfig(DEFAULT_STAGES, { stages: [{ id: 'asks', hide: true }] }), live);
+  assert.equal(noAsks.some(e => e.kind === 'wait' || e.kind === 'side'), false);
 });
