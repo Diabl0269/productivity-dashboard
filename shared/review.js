@@ -152,6 +152,10 @@ const CHECK_OWNER_RULES = [
 // along the strip", "the node snaps to the grid") must pass. `needs`: true = refused unless
 // something is attached; 'project' = refused unless a project is attached; false = always.
 const ID = String.raw`(?:[A-Za-z]{2,6}\d+:\s*)?`;
+const attachmentCount = c => ['project', 'video', 'audio', 'image'].filter(k => c && c[k]).length;
+const mediaCount = c => ['video', 'audio', 'image'].filter(k => c && c[k]).length;
+/** FRO2246: a check that names a design board (not the app's own canvas or a sound design). */
+export const DESIGN_BOARD_RE = /\b(?:story|design|mood|review)\s*boards?\b|\bdesign (?:canvas|round|picks?|options?)\b|\bboard (?:round|option|pick)s?\b/i;
 const FILE_EXTS = String.raw`(?:wav|mp3|flac|ogg|m4a|mp4|mov|png|jpe?g|agsproj)`;
 const CHECK_EVIDENCE_RULES = [
   {
@@ -227,6 +231,28 @@ const CHECK_EVIDENCE_RULES = [
       String.raw`\bask (?:it |the ai |the assistant |claude )?for (?:an?|the|some)\s+(?:[\w-]+\s+){0,3}(?:song|track|patch|preset|groove|beat|bassline|melody)\b`,
     ].join('|'), 'i'),
   },
+  {
+    // FRO2246 (item 3, kind check-tal-should-not-get): a check describes the finished state only. "Compare with the old",
+    // "previously", "louder than before" make Tal rebuild the old state; only an A/B with both sides attached may say it.
+    reason: 'a check describes only the finished state: drop the before/old comparison, or make it an A/B with both sides attached (two of --check-video / --check-audio / --check-image / --check-project)',
+    needs: 'ab',
+    re: new RegExp([
+      String.raw`\bcompared?\s+(?:it\s+|this\s+|that\s+)?(?:with|to|against)\s+(?:the\s+|how\s+it\s+)?(?:old|older|previous|earlier|last|current main|before|was)\b`,
+      String.raw`\bpreviously\b`,
+      String.raw`\bused to\b`,
+      String.raw`\b(?:before|old)\s*(?:vs\.?|versus|->|\u2192|\/)\s*(?:after|new)\b`,
+      String.raw`\bbefore and after\b`,
+      String.raw`\bbefore (?:this|the) (?:change|fix|pr|ticket)\b`,
+      String.raw`\bthan (?:before|it (?:was|used to be))\b`,
+      String.raw`(?:^|[\s(])before:\s`,
+    ].join('|'), 'i'),
+  },
+  {
+    // FRO2246 (item 4, FRO1594#10 "what story board?"): a check that names a board or a design links it, or shows it.
+    reason: 'it names a design board: link it on the check (--check-link N=<artifact url>; on a design ticket --design-link fills it), a clip alone does not say which board',
+    needs: 'link',
+    re: DESIGN_BOARD_RE,
+  },
 ];
 
 /**
@@ -240,12 +266,14 @@ export function checkOwnerProblem(text, evidence = {}) {
   const t = String(text ?? '');
   for (const [reason, re] of CHECK_OWNER_RULES) if (re.test(t)) return reason;
   const ev = evidence || {};
-  const attached = !!(ev.project || ev.video || ev.audio);
+  const attached = !!(ev.project || ev.video || ev.audio || ev.image);
   for (const { reason, re, needs } of CHECK_EVIDENCE_RULES) {
     if (!re.test(t)) continue;
     if (needs === true && attached) continue;
     if (needs === 'project' && ev.project) continue;
     if (needs === 'listen' && (ev.project || ev.audio)) continue;
+    if (needs === 'ab' && mediaCount(ev) >= 2) continue;
+    if (needs === 'link' && ev.link) continue;
     return reason;
   }
   return null;
@@ -307,6 +335,28 @@ export function evidencePathError(value, ext, label = 'path') {
 }
 
 export const projectPathError = (v, label = 'project') => evidencePathError(v, '.agsproj', label);
+export const CHECK_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+/** FRO2246: a still on a check (any of CHECK_IMAGE_EXTS), same path rules as the other evidence. */
+export function checkImagePathError(v, label = 'image') {
+  const ext = CHECK_IMAGE_EXTS.find(e => String(v ?? '').trim().toLowerCase().endsWith(e));
+  if (ext) return evidencePathError(v, ext, label);
+  const base = evidencePathError(v, '.png', label);
+  return base && !base.includes('must end with') ? base : `${label} must end with one of ${CHECK_IMAGE_EXTS.join(', ')}: ${String(v ?? '').trim()}`;
+}
+/** FRO2246: a check's link ({ label, url }, https only); '' when fine. */
+export function checkLinkError(v, label = 'link') {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return `${label} must be { label, url }`;
+  if (typeof v.url !== 'string' || !/^https:\/\/\S+$/.test(v.url.trim())) return `${label}.url must be an https URL`;
+  if (v.label !== undefined && (typeof v.label !== 'string' || !v.label.trim() || v.label.length > 60)) return `${label}.label must be 1-60 characters`;
+  return '';
+}
+/** A check link from a URL or { label, url }: { label, url }, label "Design board" by default. Throws on a bad one. */
+export function toCheckLink(v) {
+  const obj = typeof v === 'string' ? { url: v } : v;
+  const err = checkLinkError(obj, 'check link');
+  if (err) throw new Error(err);
+  return { label: (obj.label || 'Design board').trim(), url: obj.url.trim() };
+}
 export const videoPathError = (v, label = 'video') => evidencePathError(v, '.mp4', label);
 export const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.ogg', '.flac'];
 /** Audio evidence: any of AUDIO_EXTS, otherwise the same rules as video. */
@@ -332,11 +382,18 @@ export function normalizeCheckInput(item) {
     throw new Error('each check must be a string or an object with a text string');
   }
   const out = { text: obj.text.trim() };
-  for (const [key, check] of [['project', projectPathError], ['video', videoPathError], ['audio', audioPathError]]) {
+  for (const [key, check] of [['project', projectPathError], ['video', videoPathError], ['audio', audioPathError], ['image', checkImagePathError]]) {
     if (obj[key] === undefined || obj[key] === null || obj[key] === '') continue;
     const err = check(obj[key], `check ${key}`);
     if (err) throw new Error(err);
     out[key] = tidyEvidencePath(obj[key]);
+  }
+  if (obj.link !== undefined && obj.link !== null && obj.link !== '') out.link = toCheckLink(obj.link);
+  if (obj.taste === true) out.taste = true;
+  // FRO2246: `verify` says how the session ran the check itself (stored as agentVerified, like --check-verify N=<note>).
+  if (obj.verify !== undefined && obj.verify !== null && obj.verify !== '') {
+    if (typeof obj.verify !== 'string' || obj.verify.trim().length < 10) throw new Error('check verify must say how it was run (at least 10 characters)');
+    out.agentVerified = { at: new Date().toISOString(), by: 'agent', result: 'pass', note: obj.verify.trim() };
   }
   if (obj.noVideo !== undefined && obj.noVideo !== null && obj.noVideo !== '') {
     const err = noVideoReasonError(obj.noVideo, 'check noVideo');
@@ -403,7 +460,7 @@ export function soundCheckNeedsProjectProblem(items) {
 }
 
 const TWO_SIDED_RE = /\b(two|both)\b|\bours?\b.{0,30}\bthen\b.{0,30}\breference\b/i;
-const attachmentCount = c => ['project', 'video', 'audio'].filter(k => c && c[k]).length;
+
 
 /**
  * FRO2260 (kind proof-misses-claim): a check whose text says "two", "both" or "ours then the reference"
@@ -453,6 +510,14 @@ export function checkEvidenceErrors(check, ref) {
   }
   if (check?.audio !== undefined) {
     const e = audioPathError(check.audio, `${ref}.audio`);
+    if (e) errors.push(e);
+  }
+  if (check?.image !== undefined) {
+    const e = checkImagePathError(check.image, `${ref}.image`);
+    if (e) errors.push(e);
+  }
+  if (check?.link !== undefined) {
+    const e = checkLinkError(check.link, `${ref}.link`);
     if (e) errors.push(e);
   }
   if (check?.noVideo !== undefined) {
@@ -507,7 +572,8 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
     if (!text) continue;
     const have = byText.get(text);
     if (have) {
-      for (const key of ['project', 'video', 'audio']) if (input[key] && !have[key]) have[key] = input[key];
+      for (const key of ['project', 'video', 'audio', 'image', 'link']) if (input[key] && !have[key]) have[key] = input[key];
+      if (input.taste && !have.taste) have.taste = true;
       if (input.noVideo && !have.noVideo && !have.video) have.noVideo = input.noVideo;
       if (input.video && have.noVideo) delete have.noVideo;
       if (input.noProject && !have.noProject && !have.project) have.noProject = input.noProject;
@@ -517,7 +583,8 @@ export function addChecks(task, texts, { now = new Date().toISOString() } = {}) 
       continue;
     }
     const check = { text, checked: false, addedAt: now };
-    for (const key of ['project', 'video', 'audio']) if (input[key]) check[key] = input[key];
+    for (const key of ['project', 'video', 'audio', 'image', 'link']) if (input[key]) check[key] = input[key];
+    if (input.taste) check.taste = true;
     if (input.noVideo && !check.video) check.noVideo = input.noVideo;
     if (input.noProject && !check.project) check.noProject = input.noProject;
     if (input.agentVerified) check.agentVerified = input.agentVerified;

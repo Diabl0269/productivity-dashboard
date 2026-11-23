@@ -906,7 +906,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/review-app' && req.method === 'GET') {
     try {
       const lib = await loadEvidenceLib();
-      const picked = lib.pickReviewApp(lib.readReviewApps(DATA_ROOT));
+      // FRO2246: ?branch=X[&buildApp=Y] asks for that branch's build ({ app: null, branchMissing } when there is none).
+      // Read-only, and buildApp only counts when config.json lists it.
+      const branch = url.searchParams.get('branch') || undefined;
+      const picked = lib.pickReviewApp(lib.readReviewApps(DATA_ROOT), branch, url.searchParams.get('buildApp') || undefined);
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify(picked || { app: null }));
     } catch (e) {

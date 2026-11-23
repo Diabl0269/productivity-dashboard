@@ -25,6 +25,21 @@ async (page) => {
   ok((await page.locator('#checksMain h2').innerText()) === 'Checks (2)', 'heading counts the visible tickets');
   ok((await li('C-OPEN').locator('.rp-checks').count()) === 1, 'checks are open by default');
 
+  // FRO2246: a ticket id in a check's text is a button that opens that ticket; a non-ticket (A4) stays text.
+  // The check's board link and still show beside it.
+  const idBtn = li('C-OPEN').locator('button.rp-text-id[data-ticket="FRO9"]');
+  ok((await idBtn.count()) === 1, 'FRO9 in the check text is a button');
+  ok((await li('C-OPEN').locator('button.rp-text-id[data-ticket="A4"]').count()) === 0, 'A4 is not a ticket, so it stays text');
+  ok((await idBtn.getAttribute('aria-label')) === 'Open ticket FRO9', 'the id button is labelled');
+  const board = li('C-OPEN').locator('a.rp-check-link');
+  ok((await board.count()) === 1 && (await board.getAttribute('href')) === 'https://claude.ai/artifact/example', 'the check shows its board link');
+  ok((await li('C-OPEN').locator('img.ce-still').count()) === 1, 'the check shows its still');
+  await li('C-OPEN').screenshot({ path: '/private/tmp/claude/fro2246/check-row-ids.png' }).catch(() => {});
+  await idBtn.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.getElementById('taskDetailOverlay')?.classList.contains('visible') && document.getElementById('tdTitle')?.value === 'Ticket FRO9', null, { timeout: 3000 });
+  await page.keyboard.press('Escape');
+
   // The switch is the first Tab stop in the panel (nothing focusable comes before it).
   ok(await page.evaluate(() => {
     const first = document.querySelector('#checksPanel button, #checksPanel input, #checksPanel a[href], #checksPanel [tabindex="0"]');

@@ -151,6 +151,12 @@ export function normalizeChecks(raw) {
     if (typeof c.audio === 'string' && c.audio) e.audio = c.audio;
     if (typeof c.noVideo === 'string' && c.noVideo && !e.video) e.noVideo = c.noVideo;
     if (typeof c.noProject === 'string' && c.noProject && !e.project) e.noProject = c.noProject;
+    // FRO2246: a still, a design board link and the taste flag survive the dashboard's save too.
+    if (typeof c.image === 'string' && c.image) e.image = c.image;
+    if (c.link && typeof c.link === 'object' && typeof c.link.url === 'string' && /^https:\/\//.test(c.link.url)) {
+      e.link = { label: typeof c.link.label === 'string' && c.link.label ? c.link.label : 'Design board', url: c.link.url };
+    }
+    if (c.taste === true) e.taste = true;
     const av = c.agentVerified;
     if (av && typeof av === 'object' && typeof av.at === 'string' && av.at && typeof av.note === 'string' && av.note.trim()
         && (av.result === 'pass' || av.result === 'fail')) {

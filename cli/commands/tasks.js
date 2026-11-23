@@ -32,6 +32,8 @@
   review <id> [--shipped "..."]... [--left "..."]... [--tests "..."]... [--ci "..."]
  *       [--unverified "..."]... [--risk "..."]... [--fixed "..."]... [--opened "..."]... [--check "..."]...
  *              [--check-project N=<path>]... [--check-video N=<path>]... [--check-audio N=<path>]... [--check-no-video N=<reason>]... [--check-no-project N=<reason>]...   (N = the Nth --check; path under $CH_HOME/evidence)
+ *              [--check-image N=<still>]... [--check-link N=<url>]... [--check-verify N=<how you ran it>]...   (FRO2246: every check carries a clip/still/audio or a no-video reason, and was tried by you unless it is Tal's taste question)
+ *              [--build-app <path to the branch's .app>]   (FRO2246: with --held-pr, the branch build Open project opens; registered in config.json reviewProjectApps)
  *              [--no-checks "<reason>"] [--clear-unverified] [--resolve-unverified N] [--force]
  *              [--held-pr "<why>" --try-steps "<steps>"] [--add-link URL] [--link-label "..."]   (PRO70: an open PR link refuses review unless --held-pr with --try-steps (AGE162, 40+ chars); adds the check 'Try on branch X: <steps>', which takes the project and video of the review's other checks)
  *              [--evidence <path>]...   (PRO37: a ui/audio ticket needs --evidence or tagged --unverified lines; --force "<why>" overrides)
@@ -101,7 +103,10 @@ import { readinessLabel, parkedEpics, emptyLaterEpics, parkedAfterClosing, openE
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
-import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
+import { toEvidenceRel, resolveEvidence, readReviewApps, pickReviewApp, registerReviewApp, readScriptRoots } from '../lib/evidence.js';
+import { turnkeyCheckProblem, missingScriptPaths } from '../../shared/turnkey-check.js';
+import fs from 'node:fs';
+import os from 'node:os';
 import { tasteLinesToChecks, foldTasteChecks } from '../lib/taste-checks.js';
 import { readTasksDoc, layoutWarnings, migrateToSplit, splitDir } from '../../shared/tasks-files.js';
 import {
@@ -130,6 +135,7 @@ import { migrateTaskToProjectInDoc } from '../../shared/task-rename.js';
 import {
   REVIEW_SECTION, normalizeResult, normalizeCheckInput, noVideoReasonError, noProjectReasonError, checkProjectGateProblem, addChecks, resultLines, followUpsOf, reviewComplete, allChecksTicked, epicOf, rollUpIntoEpic, epicsToUnpin,
   rollUpAfterClose, unpinFromPlan, epicNeedsTal, settleMechanicalChecks, resolveUnverified, clearUnverified, checkOwnerProblem, REVIEW_DONE_FAST_MS, reviewClosedTooFast,
+  toCheckLink, DESIGN_BOARD_RE,
 } from '../../shared/review.js';
 import { openSubtasks, openSubtasksMessage, promoteSubtask } from '../../shared/subtasks.js';
 import {
@@ -985,11 +991,11 @@ function reviewCheckItems(base, values) {
   for (const raw of asList(base.checks)) {
     let item;
     try { item = normalizeCheckInput(raw); } catch (e) { die(`invalid --result-json: checks ${e.message}`); }
-    for (const kind of ['project', 'video', 'audio']) if (item[kind]) item[kind] = evidenceRelOrDie(item[kind], kind, `--result-json check ${kind}`);
+    for (const kind of ['project', 'video', 'audio', 'image']) if (item[kind]) item[kind] = evidenceRelOrDie(item[kind], kind, `--result-json check ${kind}`);
     items.push(item);
   }
   const flagItems = flagTexts.map(text => ({ text }));
-  for (const kind of ['project', 'video', 'audio']) {
+  for (const kind of ['project', 'video', 'audio', 'image']) {
     const flag = `--check-${kind}`;
     for (const { n, value } of parseCheckEvidenceFlags(values[`check-${kind}`], flag, flagTexts.length)) {
       flagItems[n - 1][kind] = evidenceRelOrDie(value, kind, flag);
@@ -1000,6 +1006,14 @@ function reviewCheckItems(base, values) {
   }
   for (const { n, value } of parseCheckNoProjectFlags(values['check-no-project'], flagTexts.length)) {
     flagItems[n - 1].noProject = value;
+  }
+  // FRO2246: a check's own link (a design board), and how the session tried it (agentVerified).
+  for (const { n, value } of parseCheckEvidenceFlags(values['check-link'], '--check-link', flagTexts.length)) {
+    try { flagItems[n - 1].link = toCheckLink(value); } catch (e) { die(`--check-link: ${e.message}`); }
+  }
+  for (const { n, value } of parseCheckEvidenceFlags(values['check-verify'], '--check-verify', flagTexts.length)) {
+    if (value.length < 10) die('--check-verify N=<how you ran it> needs at least 10 characters (the scenario or run that proved it, what it showed)');
+    flagItems[n - 1].agentVerified = { at: new Date().toISOString(), by: 'agent', result: 'pass', note: value };
   }
   for (const item of [...items, ...flagItems]) {
     if (item.project && item.noProject) die(`check "${item.text}" has both a project and a no-project reason: give one or the other`);
@@ -1016,11 +1030,15 @@ function applyCheckEvidence(task, values) {
   const count = (task.checks || []).length;
   const given = {};
   let any = false;
-  for (const kind of ['project', 'video', 'audio']) {
+  for (const kind of ['project', 'video', 'audio', 'image']) {
     given[kind] = parseCheckEvidenceFlags(values[`check-${kind}`], `--check-${kind}`, count)
       .map(({ n, value }) => ({ n, value: evidenceRelOrDie(value, kind, `--check-${kind}`) }));
     if (given[kind].length) any = true;
   }
+  given.link = parseCheckEvidenceFlags(values['check-link'], '--check-link', count).map(({ n, value }) => {
+    try { return { n, value: toCheckLink(value) }; } catch (e) { return die(`--check-link: ${e.message}`); }
+  });
+  if (given.link.length) any = true;
   given.noVideo = parseCheckNoVideoFlags(values['check-no-video'], count);
   if (given.noVideo.length) any = true;
   given.noProject = parseCheckNoProjectFlags(values['check-no-project'], count);
@@ -1032,7 +1050,7 @@ function applyCheckEvidence(task, values) {
   for (const a of given.project) for (const b of given.noProject) {
     if (a.n === b.n) die(`check ${a.n} has both a project and a no-project reason: give one or the other`);
   }
-  for (const kind of ['project', 'video', 'audio', 'noVideo', 'noProject']) {
+  for (const kind of ['project', 'video', 'audio', 'image', 'link', 'noVideo', 'noProject']) {
     for (const { n, value } of given[kind]) {
       const check = task.checks[n - 1];
       check[kind] = value;
@@ -1066,6 +1084,10 @@ function cmdReview(argv) {
     'check-audio': { type: 'string', multiple: true },
     'check-no-video': { type: 'string', multiple: true },
     'check-no-project': { type: 'string', multiple: true },
+    'check-image': { type: 'string', multiple: true },
+    'check-link':  { type: 'string', multiple: true },
+    'check-verify': { type: 'string', multiple: true },
+    'build-app':   { type: 'string' },
     'result-json': { type: 'string' },
     section:       { type: 'string',  short: 's' },
     json:          { type: 'boolean', short: 'j' },
@@ -1149,7 +1171,6 @@ function cmdReview(argv) {
   const asList = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
   const checkItems = reviewCheckItems(base, values);
   const checkTexts = checkItems.map(c => c.text);
-  assertChecksAreTals(checkItems, values['allow-check-owner']);
 
   const hasResult = values['result-json'] !== undefined || ['shipped', 'left', 'tests', 'ci', 'unverified', 'risk', 'fixed', 'opened'].some(k => values[k] !== undefined);
   let result = null;
@@ -1179,11 +1200,21 @@ function cmdReview(argv) {
 
   const doc = load();
   const { task, section: fromSection } = resolveTask(doc, id, values.section);
+  // FRO2246 (item 4): on a design ticket, a check that names the board or design gets the design link on its row.
+  const designUrl = values['design-link'] || (task.links || []).find(l => /^https:\/\/claude\.ai\/(code\/)?artifact\//.test(l.url || '') && /design|board|canvas/i.test(l.label || ''))?.url;
+  if (designUrl && /^https:\/\//.test(designUrl)) {
+    for (const c of checkItems) if (!c.link && DESIGN_BOARD_RE.test(c.text)) c.link = { label: 'Design board', url: designUrl };
+  }
+  assertChecksAreTals(checkItems, values['allow-check-owner']);
   // WEB40: website/backend checks have no synth project; fill the reason instead of failing the gate.
   if (NO_SYNTH_PROJECT[task.project]) for (const c of checkItems) if (!c.project && !c.noProject) c.noProject = NO_SYNTH_PROJECT[task.project];
   // PRO100: every --check carries a project to open or says why it has none (taste lines and held-PR checks added later are exempt).
-  // (CH_NO_CHECK_PROJECT_GATE=1 switches it off: for this repo's own fixture tests, not for sessions.)
-  const projectProblem = process.env.CH_NO_CHECK_PROJECT_GATE === '1' ? null : checkProjectGateProblem(checkItems);
+  // FRO2246: and is turnkey (AI ticket: its project or audio; a clip, still or audio; tried by the session unless it is taste).
+  // (CH_NO_CHECK_PROJECT_GATE=1 switches these off: for this repo's own fixture tests, not for sessions.)
+  const gatesOff = process.env.CH_NO_CHECK_PROJECT_GATE === '1';
+  const projectProblem = gatesOff ? null : (checkProjectGateProblem(checkItems)
+    || (process.env.CH_NO_TURNKEY_GATE === '1' ? null // the project-gate tests only; turnkey-check.test.js runs it
+      : turnkeyCheckProblem(checkItems, { labels: ticketAndEpic(doc, task).flatMap(t => t.labels || []), project: task.project })));
   if (tasteChecks.length) {
     const added = foldTasteChecks(tasteChecks, [...checkItems, ...(task.checks || []), ...(epicOf(doc, task)?.task.checks || [])]);
     checkItems.push(...added);
@@ -1248,6 +1279,30 @@ function cmdReview(argv) {
   if (pr.error) die(pr.error);
   pr.warnings.forEach(w => printErr(`review: warning: ${w}`));
   if (values['try-steps'] !== undefined && !pr.held) die('--try-steps goes with --held-pr (a PR held open on purpose)');
+  if (values['build-app'] !== undefined && !pr.held) die('--build-app goes with --held-pr (the build of the unmerged branch)');
+  // FRO2246 (WEB5): a script the steps or checks name must exist where they say (an old checkout lacks it).
+  {
+    const missing = [values['try-steps'] || '', ...checkItems.map(c => c.text)]
+      .flatMap(t => missingScriptPaths(t, { exists: fs.existsSync, home: os.homedir(), roots: readScriptRoots(dataRoot()) }));
+    if (missing.length) die(`review: these script paths do not exist: ${[...new Set(missing)].join(', ')}. Bring that checkout to current main (git pull --ff-only) or fix the path, and never hand Tal a path: give the button or steps instead.`);
+  }
+  // FRO2246 (item 2): Open project on a held PR opens that branch's build, never the newest main one.
+  if (pr.held) {
+    const home = dataRoot();
+    if (values['build-app'] !== undefined) {
+      const raw = values['build-app'].trim();
+      const app = path.resolve(raw.startsWith('~/') ? path.join(os.homedir(), raw.slice(2)) : raw);
+      if (!/\.app$/i.test(app) || !fs.existsSync(app) || !fs.statSync(app).isDirectory()) die(`--build-app must be an existing .app bundle: ${raw}`);
+      pr.held.buildApp = app;
+      registerReviewApp(home, app);
+    } else if (task.project === 'frontend' && !gatesOff) {
+      const picked = pickReviewApp(readReviewApps(home), pr.held.branch || '');
+      if (!picked?.branch) {
+        die(`${task.id}: no build of branch ${pr.held.branch || '<branch>'} is registered, so Open project would have nothing to open. Build the branch's app in its worktree (agentsynth profile slot build) and pass --build-app <path to the .app>.`);
+      }
+      pr.held.buildApp = picked.app;
+    }
+  }
   {
     // FRO1979: the held check inherits the project/video of the review's other checks (else the ticket's own).
     const own = checkItems.length ? checkItems.slice() : (task.checks || []);
@@ -1260,7 +1315,7 @@ function cmdReview(argv) {
   if (pr.held) {
     task.heldPr = pr.held;
     // PRO92: every check of this review is about a build of the unmerged PR's branch.
-    for (const item of checkItems) item.heldPr = { pr: pr.held.pr, branch: pr.held.branch || '' };
+    for (const item of checkItems) item.heldPr = { pr: pr.held.pr, branch: pr.held.branch || '', ...(pr.held.buildApp ? { buildApp: pr.held.buildApp } : {}) };
   }
   if (newLinks.length) task.links = [...(task.links || []), ...newLinks];
 
@@ -1572,6 +1627,8 @@ function cmdUpdate(argv) {
     'check-audio':   { type: 'string', multiple: true },
     'check-no-video': { type: 'string', multiple: true },
     'check-no-project': { type: 'string', multiple: true },
+    'check-image':   { type: 'string', multiple: true },
+    'check-link':    { type: 'string', multiple: true },
     'remove-check':  { type: 'string' },
     'clear-checks':  { type: 'boolean' },
     'check-all-checks': { type: 'boolean' },

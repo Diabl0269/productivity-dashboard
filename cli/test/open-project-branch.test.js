@@ -42,16 +42,20 @@ test('pickReviewApp with a branch: the build whose path names it wins, even when
   assert.equal(pickReviewApp([main, wt]).app, main, 'no branch: newest');
 });
 
-test('pickReviewApp with a branch and no matching build: newest build, branchMissing says so', () => {
+test('pickReviewApp with a branch and no matching build: no app, branchMissing says so (FRO2246: never main in its place)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-apps-'));
   const main = makeApp(dir, 'main/Agent Synth.app', 1);
   const picked = pickReviewApp([main], 'feat/other');
-  assert.equal(picked.app, main);
+  assert.equal(picked.app, null);
   assert.equal(picked.branchMissing, 'feat/other');
-  assert.equal(pickReviewApp([], 'feat/other'), null);
+  assert.equal(pickReviewApp([], 'feat/other').branchMissing, 'feat/other');
+  // FRO2246: the build the review registered wins for its branch, but only when config.json lists it.
+  const own = makeApp(dir, 'slot-3/Agent Synth.app', 4);
+  assert.equal(pickReviewApp([main, own], 'feat/other', own).app, own);
+  assert.equal(pickReviewApp([main], 'feat/other', own).branchMissing, 'feat/other');
 });
 
-test('openProject / handleOpenProject: branch or pr picks the branch build; a miss falls back and reports it', async () => {
+test('openProject / handleOpenProject: branch or pr picks the branch build; a miss opens nothing and says so', async () => {
   const home = makeHome();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-apps-'));
   const main = makeApp(dir, 'main/Agent Synth.app', 0);
@@ -70,9 +74,10 @@ test('openProject / handleOpenProject: branch or pr picks the branch build; a mi
   assert.equal(r.json.app, wt);
 
   r = await handleOpenProject({ ...base, bodyText: JSON.stringify({ path: P, branch: 'feat/gone' }) });
-  assert.equal(r.json.app, main);
+  assert.equal(r.status, 409);
   assert.equal(r.json.branchMissing, 'feat/gone');
-  assert.match(openedMessage(r.json), /No build of branch feat\/gone found; opened the newest build/);
+  assert.match(r.json.error, /No build of branch feat\/gone yet, so nothing was opened/);
+  assert.equal(calls.length, 2, 'nothing launched for the missing branch');
   assert.match(openedMessage({ app: wt, branch: 'feat/demo' }), /build of branch feat\/demo/);
 
   r = await handleOpenProject({ ...base, bodyText: JSON.stringify({ path: P }) });
@@ -94,8 +99,9 @@ test('AGE162: no path + branch opens the branch build alone; no path and no bran
   assert.deepEqual(calls[0], ['open', ['-a', wt]]);
   assert.equal(r.json.branch, 'feat/demo');
   r = await handleOpenProject({ ...base, bodyText: JSON.stringify({ branch: 'feat/gone' }) });
+  assert.equal(r.status, 409);
   assert.equal(r.json.branchMissing, 'feat/gone');
-  assert.deepEqual(calls[1], ['open', ['-a', main]]);
+  assert.equal(calls.length, 1, 'FRO2246: main is never opened in place of the branch build');
   assert.equal((await handleOpenProject({ ...base, bodyText: '{}' })).status, 400);
   assert.equal((await handleOpenProject({ ...base, bodyText: JSON.stringify({ branch: ' ' }) })).status, 400);
   r = await handleOpenProject({ ...base, apps: [], bodyText: JSON.stringify({ branch: 'feat/demo' }) });

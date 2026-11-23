@@ -4,6 +4,7 @@
 //   C-OPEN   review ticket, 2 checks, one ticked                          -> shows
 //   C-DONE   review ticket, all checks ticked, one unsent note (stays in review) -> hidden by default, "finished" with the switch off
 //   E-PART   in-progress epic with one unticked check                     -> shows
+//   FRO9     done ticket named in C-OPEN's second check, which also carries a board link and a still -> its id is a button (FRO2246)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -25,7 +26,7 @@ const doc = {
       id: 'review',
       name: 'Ready for review',
       tasks: [
-        base('C-OPEN', { type: 'task', result: result('2026-11-01T10:00:00Z'), checks: [check('Open it and look', true, '2026-11-01T10:00:00Z'), check('Try the second thing', false, '2026-11-01T10:00:00Z')] }),
+        base('C-OPEN', { type: 'task', result: result('2026-11-01T10:00:00Z'), checks: [check('Open it and look', true, '2026-11-01T10:00:00Z'), { ...check('Try the second thing, as in FRO9 and A4', false, '2026-11-01T10:00:00Z'), link: { label: 'Design board', url: 'https://claude.ai/artifact/example' }, image: 'C-OPEN/still.png' }] }),
         base('C-DONE', {
           type: 'task',
           result: result('2026-10-20T10:00:00Z'),
@@ -34,6 +35,7 @@ const doc = {
         }),
       ],
     },
+    { id: 'done', name: 'Done', tasks: [base('FRO9', { type: 'task', checked: true })] },
     {
       id: 'in-progress',
       name: 'In progress',
@@ -42,3 +44,6 @@ const doc = {
   ],
 };
 fs.writeFileSync(path.join(dir, 'tasks.json'), JSON.stringify(doc, null, 2));
+// A 1x1 PNG for C-OPEN's still.
+fs.mkdirSync(path.join(dir, 'evidence', 'C-OPEN'), { recursive: true });
+fs.writeFileSync(path.join(dir, 'evidence', 'C-OPEN', 'still.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'));

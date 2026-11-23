@@ -11,6 +11,7 @@
   "sprints": [],
   "claudeSessionFolder": "/path/to/your/workspace   (optional: Plan > Start opens a new Claude Code session in this folder, with the /ship-task command typed in)",
   "reviewProjectApps": [],
+  "scriptRoots": [],
   "buildFreshness": [
     {
       "repo": "/path/to/your/git/checkout",
