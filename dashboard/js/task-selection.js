@@ -6,6 +6,7 @@ import { softDeleteTasks } from './task-undo.js';
 import { appendHistory, ensureTaskFieldDefaults } from './task-fields.js';
 import { showStatus, showStatusAction } from './state.js';
 import { clearFiltersAndSearch } from './url-filters.js';
+import { withAutoLabel } from '../../shared/epic-ready.js';
 
 let getState = null;
 let getRenderTasks = null;
@@ -161,6 +162,18 @@ export function promoteBacklogTickets(taskIds) {
     onAction: () => { shift(internal, 'backlog'); showStatus(`Put ${internal.length} back in backlog`); },
   });
   return internal.length;
+}
+
+/** AGE200: turn an epic's Auto label on or off by display id (the Running panel's "Auto" button). Returns false when not found. */
+export function setEpicAuto(taskId, on) {
+  let task = null;
+  for (const list of Object.values((getState() || {}).tasks || {})) task = task || (list || []).find(t => t.taskId === taskId) || null;
+  if (!task) return false;
+  task.labels = withAutoLabel(task.labels, on);
+  markChanged(task);
+  getRenderTasks && getRenderTasks()();
+  showStatus(`${taskId}: Auto ${on ? 'on' : 'off'}`);
+  return true;
 }
 
 function bulkPriority(priority) {

@@ -49,7 +49,7 @@
 .hm-ov .hm-ov-list { display: flex; flex-direction: column; }
 .hm-ov .hm-run-row {
   grid-template-columns: auto minmax(0, 1fr) auto auto;
-  grid-template-areas: "id title title title" ". line chip age";
+  grid-template-areas: "id title title title" ". line chip age" ". act act act";
   align-items: baseline; column-gap: 8px; row-gap: 1px; padding: 4px 6px; margin: 0 -6px; cursor: pointer;
 }
 .hm-ov .hm-run-id { grid-area: id; justify-self: start; }
@@ -60,7 +60,8 @@
 .hm-ov .hm-run-row .rp-chip { grid-area: chip; font-size: 11px; padding: 1px 7px; }
 .hm-ov .hm-run-row .rp-chip:empty { display: none; }
 .hm-ov .hm-run-age { grid-area: age; font-size: 12px; text-align: right; }
-.hm-ov .hm-run-source { grid-area: line; font-size: 12px; display: block; }
+.hm-ov .hm-run-action { grid-area: act; justify-self: start; margin-top: 2px; }
+.hm-ov .hm-run-source { grid-area: line; font-size: 12px; display: block; white-space: normal; overflow-wrap: anywhere; }
 .hm-ov .hm-run-pr, .hm-ov .hm-run-epic { display: none; }
 .hm-ov-row[data-kind="note"] .hm-run-source, .hm-ov-row[data-kind="free-note"] .hm-run-source { color: var(--text-tertiary); }
 

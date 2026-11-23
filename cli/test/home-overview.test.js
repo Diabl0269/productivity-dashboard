@@ -223,3 +223,19 @@ test('rows: at most four per card, the rest counted as more', () => {
   assert.equal(n.items.length, 4);
   assert.equal(n.more, n.count - 4);
 });
+
+test('Running now (AGE200): sessions first, idle epics say why and carry their button data', () => {
+  const run = {
+    running: [{ id: 'T1', title: 'Till drawer', state: 'working', since: iso(NOW - 3600e3), sources: ['session'], epicId: 'E1' },
+      { id: 'T2', title: 'Timer knob', state: 'idle', sources: ['worktree'], epicId: 'E2', idleWhy: 'Idle: only a worktree names it' }],
+    epics: { E1: { state: 'running' }, E2: { state: 'idle', idleWhy: 'Idle: waits on E1 to finish', promoteIds: ['T2'], ready: false, auto: false } },
+    sessions: [{ id: 's1', ticketIds: ['T1'] }, { id: 's2', ticketIds: [] }],
+  };
+  const r = model(bakery(), {}, run).running;
+  assert.equal(r.sessions, 2, 'every live session, not one per ticket');
+  assert.equal(r.tickets, 1);
+  assert.equal(r.items.find(i => i.id === 'T2').line, 'Idle: only a worktree names it');
+  const quiet = r.items.find(i => i.id === 'E2');
+  assert.equal(quiet.line, 'Idle: waits on E1 to finish');
+  assert.deepEqual(quiet.epicState.promoteIds, ['T2']);
+});

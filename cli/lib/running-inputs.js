@@ -19,7 +19,55 @@ const HEAD_BYTES = 256 * 1024;
 const GIT_TIMEOUT_MS = 10000;
 const GH_TIMEOUT_MS = 15000;
 
-export const defaultProjectsDir = () => path.join(os.homedir(), '.claude', 'projects');
+// CH_PROJECTS_DIR / CH_SESSIONS_DIR point the readers at fixtures (tests, a screenshot run); unset, the real folders.
+export const defaultProjectsDir = () => process.env.CH_PROJECTS_DIR || path.join(os.homedir(), '.claude', 'projects');
+/** The desktop app's session files (macOS): one local_<id>.json per session, with `cliSessionId` and `isArchived`. */
+export const defaultSessionsDir = () => process.env.CH_SESSIONS_DIR || path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions');
+
+const metaCache = new Map(); // file -> { mtimeMs, rec }
+
+/**
+ * The desktop app's own record of each session, keyed by the transcript id (`cliSessionId`):
+ * Map(id -> { archived: boolean, title, branch, worktreeName }). Returns null when the folder cannot be read
+ * (not macOS, the app is not installed): the caller then marks every session's archive state 'unsure' (null).
+ * Read-only; an unreadable or odd file is skipped.
+ */
+export function readSessionMeta({ sessionsDir = defaultSessionsDir() } = {}) {
+  const out = new Map();
+  const walk = (dir, depth) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return depth === 0 ? null : undefined; }
+    for (const e of entries) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) { if (depth < 3) walk(f, depth + 1); continue; }
+      if (!/^local_.*\.json$/.test(e.name)) continue;
+      try {
+        const mtimeMs = fs.statSync(f).mtimeMs;
+        let hit = metaCache.get(f);
+        if (!hit || hit.mtimeMs !== mtimeMs) {
+          const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+          hit = { mtimeMs, rec: typeof j?.cliSessionId === 'string' && typeof j.isArchived === 'boolean'
+            ? { id: j.cliSessionId, archived: j.isArchived, title: String(j.title || ''), branch: String(j.branch || ''), worktreeName: String(j.worktreeName || '') } : null };
+          metaCache.set(f, hit);
+        }
+        if (hit.rec) out.set(hit.rec.id, hit.rec);
+      } catch { /* skip an unreadable file */ }
+    }
+    return out;
+  };
+  return walk(sessionsDir, 0) === null ? null : out;
+}
+
+/** `/ship-task <id>` arguments in a prompt: the ticket a session was started to work on. */
+const SHIP_TASK_RE = /\/ship-task\s+([A-Za-z]{1,4}\d+)\b/g;
+export function shipTaskIds(text) {
+  return [...new Set([...String(text ?? '').matchAll(SHIP_TASK_RE)].map(m => m[1].toUpperCase()))];
+}
+/** The id a session name starts with ("FRO1738 - Measure ..."). */
+export function titleTicketId(title) {
+  const m = /^\s*([A-Za-z]{1,4}\d+)\b/.exec(String(title ?? ''));
+  return m ? [m[1].toUpperCase()] : [];
+}
 
 /** The text of a user prompt event, or null for anything else (assistant lines, meta lines, tool results). */
 function promptText(ev) {
@@ -45,8 +93,10 @@ function readHead(file) {
  * unrelated tickets. Malformed lines are skipped.
  * @returns {Array<{ id, file, mtime, startedAt, ticketIds, project }>} newest first
  */
-export function readLiveSessions({ projectsDir = defaultProjectsDir(), liveMinutes = 20, now = Date.now(), maxPrompts = 3 } = {}) {
+export function readLiveSessions({ projectsDir = defaultProjectsDir(), liveMinutes = 20, now = Date.now(), maxPrompts = 3, sessionMeta } = {}) {
   const out = [];
+  // undefined = read the desktop app's files; null (unreadable) = every session's archive state is 'unsure'.
+  const meta = sessionMeta === undefined ? readSessionMeta() : sessionMeta;
   let projects = [];
   try { projects = fs.readdirSync(projectsDir); } catch { return out; }
   for (const project of projects) {
@@ -77,7 +127,14 @@ export function readLiveSessions({ projectsDir = defaultProjectsDir(), liveMinut
         const text = promptText(ev);
         if (text) prompts.push(text);
       }
-      const rec = { id: f.replace(/\.jsonl$/, ''), file, mtime, startedAt, ticketIds: extractTicketIds(prompts.join(' ').slice(0, 2000)), project };
+      // Working tickets: the /ship-task argument, the session's name, its branch and worktree name. Ids that a prompt only
+      // names (a coordinator listing nine tickets) are `mentionedIds` and never counted (AGE200).
+      const id = f.replace(/\.jsonl$/, '');
+      const m = meta ? meta.get(parent || id) : null;
+      const working = new Set([...shipTaskIds(prompts.join(' ')), ...(m ? [...titleTicketId(m.title), ...extractTicketIds(m.branch), ...extractTicketIds(m.worktreeName)] : [])]);
+      const mentionedIds = extractTicketIds(prompts.join(' ').slice(0, 2000)).filter(t => !working.has(t));
+      const rec = { id, file, mtime, startedAt, ticketIds: [...working], mentionedIds, archived: m ? m.archived : null, project };
+      if (m?.title) rec.title = m.title;
       if (parent) rec.subagentOf = parent;
       out.push(rec);
     }
@@ -178,10 +235,10 @@ export async function readPrs(branches, { gh = 'gh', ttlMs = 60e3 } = {}) {
 }
 
 /** Everything computeRunning needs. `config` may carry { liveSessionMinutes, recentCommitHours }. */
-export async function collectRunningInputs({ repos = [], config = {}, now = Date.now(), projectsDir, gh } = {}) {
+export async function collectRunningInputs({ repos = [], config = {}, now = Date.now(), projectsDir, gh, sessionMeta } = {}) {
   const branches = await readBranches({ repos, recentHours: config.recentCommitHours ?? 6, now });
   return {
-    sessions: readLiveSessions({ projectsDir, liveMinutes: config.liveSessionMinutes ?? 20, now, maxPrompts: 3 }),
+    sessions: readLiveSessions({ projectsDir, liveMinutes: config.liveSessionMinutes ?? 20, now, maxPrompts: 3, sessionMeta }),
     branches,
     autorun: readAutorunTick({ now }),
     prs: await readPrs(branches, gh ? { gh } : {}),

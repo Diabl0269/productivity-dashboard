@@ -5,7 +5,7 @@
 // Chips and ids are the Plan page's (rp-chip, idButton); readiness is openEpicReadiness, as on the Plan page.
 
 import { registerInspectorTab, getHomeConfig } from './home-state.js';
-import { onRunning } from './home-running-data.js';
+import { onRunning, getRunning } from './home-running-data.js';
 import { boxEpics, mapStats, readinessById, epicRun } from './home-map-data.js';
 import { statsWords } from './home-map-draw.js';
 import { chainOf } from './home-map-layout.js';
@@ -160,13 +160,14 @@ function buildRow(spec, inst) {
   const meta = el('div', 'hmw-meta');
   const chips = el('span', 'hmw-chips');
   const why = el('span', 'hmw-why');
-  meta.append(chips, why);
+  const live = el('span', 'hmw-live');
+  meta.append(chips, why, live);
   const kids = el('div', 'hmw-kids');
   kids.id = `hmwKids-${id}`;
   const kidsInner = el('ul', 'hmw-kids-list');
   kids.appendChild(kidsInner);
   li.append(line, meta, kids);
-  li._p = { caret, title, chips, why, kids, kidsInner, sig: '' };
+  li._p = { caret, title, chips, why, live, kids, kidsInner, sig: '' };
   return li;
 }
 
@@ -192,6 +193,14 @@ function fillRow(li, spec, inst) {
   setText(p.why, reason);
   p.why.title = reason;
   p.why.hidden = !reason;
+  // The running tickets inside this epic, or why it is idle (AGE200): the area card says what is going on in it.
+  const answer = getRunning();
+  const doing = e.done ? [] : (answer?.running || []).filter(i => i.epicId === id && i.state !== 'idle');
+  const idleWhy = !e.done && !doing.length ? answer?.epics?.[id]?.idleWhy || '' : '';
+  const liveText = doing.length ? `Running: ${doing.map(i => `${i.id} ${i.title || ''}`.trim()).join(', ')}` : idleWhy;
+  setText(p.live, liveText);
+  p.live.title = liveText;
+  p.live.hidden = !liveText;
   const tickets = e.done ? [] : openTickets(inst.ctx.doc(), id);
   const isOpen = inst.open.has(id) && tickets.length > 0;
   p.caret.disabled = tickets.length === 0;

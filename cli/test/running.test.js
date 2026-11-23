@@ -189,3 +189,55 @@ test('empty and odd inputs never throw', () => {
   assert.deepEqual(computeRunning({ sections: [] }, { now: NOW }).epics, {});
   assert.deepEqual(run(doc, { sessions: [{ mtime: 'nonsense', ticketIds: ['BKR1'] }] }).running, []);
 });
+
+// ---- AGE200: count sessions, not mentions; an archived session is never live ----
+
+const ids9 = Array.from({ length: 9 }, (_, i) => `BKR${i + 1}`);
+const nineDoc = () => mk({ 'in-progress': ids9.map(id => task(id)) });
+
+test('one session prompt naming 9 ids is 1 session and 0 working tickets (count-from-mentions)', () => {
+  const r = run(nineDoc(), { sessions: [session([], 1, { id: 'coord', mentionedIds: ids9, archived: false })] });
+  assert.equal(r.sessions.length, 1);
+  assert.equal(r.running.length, 0, 'ids a prompt only names are not working tickets');
+  assert.deepEqual(Object.keys(r.mentioned).sort(), [...ids9].sort());
+  assert.deepEqual(r.mentioned.BKR1, ['coord']);
+});
+
+test('a session counts once however many tickets it works on; a subagent counts with its parent', () => {
+  const r = run(nineDoc(), { sessions: [
+    session(['BKR1', 'BKR2'], 1, { id: 'p', archived: false, title: 'BKR1 - x' }),
+    session(['BKR3'], 2, { id: 'agent-1', subagentOf: 'p', archived: false }),
+  ] });
+  assert.equal(r.sessions.length, 1);
+  assert.deepEqual(r.sessions[0].ticketIds.sort(), ['BKR1', 'BKR2', 'BKR3']);
+  assert.equal(r.running.length, 3);
+  assert.deepEqual(r.byTicket.BKR3.sessionIds, ['p']);
+});
+
+test('an archived session is never live, even with a fresh transcript', () => {
+  const doc = mk({ 'in-progress': [task('BKR1')] });
+  const r = run(doc, { sessions: [session(['BKR1'], 0, { archived: true })] });
+  assert.equal(r.running.length, 0);
+  assert.equal(r.sessions.length, 0);
+  assert.equal(run(doc, { sessions: [session(['BKR1'], 0, { archived: false })] }).running.length, 1);
+});
+
+test('an unknown archive state stays counted but is flagged unsure', () => {
+  const r = run(mk({ 'in-progress': [task('BKR1')] }), { sessions: [session(['BKR1'], 1, { archived: null })] });
+  assert.equal(r.byTicket.BKR1.state, 'working');
+  assert.equal(r.sessions[0].unsure, true);
+});
+
+test('an idle epic says why and what to promote; an idle worktree item says nothing works on it', () => {
+  const doc = mk({
+    'in-progress': [epic('E1', { title: 'Epic one' }), task('BKR1', { parentId: 'E1' })],
+    backlog: [task('BKR2', { parentId: 'E1' })],
+    todo: [task('BKR3')],
+  });
+  doc.sections.find(s => s.id === 'in-progress').tasks[0].created = '2026-06-09';
+  const r = run(doc, { branches: [wt('feat/BKR3-x')] });
+  assert.equal(r.epics.E1.state, 'idle');
+  assert.match(r.epics.E1.idleWhy, /^Idle: /);
+  assert.ok(Array.isArray(r.epics.E1.promoteIds));
+  assert.match(r.byTicket.BKR3.idleWhy, /no session is working on it/);
+});

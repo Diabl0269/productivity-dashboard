@@ -21,6 +21,7 @@ import {
   refocusAfterTicket, el, tick, reveal, makeCard, rowSpecs, fillRows, setMore, setLead, syncDays, syncPlaces,
 } from './home-overview-cards.js';
 import { activeMainTab } from './state.js';
+import { promoteAction } from './home-running-actions.js';
 
 const NEXT_START_MS = 30e3;
 const instances = new WeakMap(); // view root -> instance
@@ -129,6 +130,12 @@ function build(root, ctx) {
 
 // ===== paint in place =====
 
+/** A quiet epic's row carries its one button (Move to To do / Turn on Auto) when a click could fix what it waits on. */
+function withAction(spec, item) {
+  const a = item?.epicState ? promoteAction(item.id, item.epicState) : null;
+  return a ? { ...spec, action: a } : spec;
+}
+
 function paintAll(inst) {
   const { ctx } = inst;
   const now = Date.now();
@@ -158,9 +165,11 @@ function paintAll(inst) {
   const r = inst.running;
   tick(r.count, m.running.count);
   const words = { working: 'working', 'waiting-ci': 'waiting on CI', 'waiting-you': 'waiting on you', idle: 'idle' };
-  setSub(r, Object.entries(m.running.counts).map(([s, k]) => `${k} ${words[s] || s}`).join(', '));
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const head = m.running.known && (m.running.sessions || m.running.tickets) ? [`${plural(m.running.sessions, 'session')} on ${plural(m.running.tickets, 'ticket')}`] : [];
+  setSub(r, [...head, ...Object.entries(m.running.counts).map(([s, k]) => `${k} ${words[s] || s}`)].join(', '));
   empty(r, m.running.items.length === 0, !m.running.known ? 'Checking what is running...' : place ? `Nothing is running in ${place}.` : 'Nothing is running right now.');
-  fillRows(r, rowSpecs(m.running.items, now), ctx);
+  fillRows(r, rowSpecs(m.running.items, now).map((s, i) => withAction(s, m.running.items[i])), ctx);
   setMore(r, m.running.more);
 
   // On the agenda
