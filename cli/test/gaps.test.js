@@ -133,3 +133,96 @@ console.log('  Help text is complete\n');
 console.log('All manual verification tests passed!');
 console.log('\nFor integration tests, run:');
 console.log('  node -e "import(\'./cli/index.js\').then(m => m.run([\'gaps\', \'list\']))"');
+
+// --- Integration tests (CH_HOME temp dir; never touches live memory) ---
+import { spawnSync } from 'node:child_process';
+import os from 'node:os';
+
+const CH = path.join(__dirname, '..', 'index.js');
+function mk(content) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gaps-'));
+  fs.mkdirSync(path.join(home, 'memory'));
+  if (content != null) fs.writeFileSync(path.join(home, 'memory', 'pending-gaps.md'), content);
+  return home;
+}
+function ch(home, args, input) {
+  const r = spawnSync(process.execPath, [CH, 'gaps', ...args], {
+    encoding: 'utf8', input, env: { ...process.env, CH_HOME: home },
+  });
+  return { code: r.status, out: r.stdout, err: r.stderr };
+}
+const file = home => fs.readFileSync(path.join(home, 'memory', 'pending-gaps.md'), 'utf8');
+
+console.log('✓ Test: stable ids survive index shifts');
+{
+  const home = mk(sampleContent);
+  const list = JSON.parse(ch(home, ['list', '--json']).out);
+  assert.equal(list.length, 3);
+  assert(/^g-[0-9a-f]{8}$/.test(list[2].id));
+  // Another writer resolves item 1 first; resolving by id still hits the right gap.
+  assert.equal(ch(home, ['resolve', list[0].id]).code, 0);
+  assert.equal(ch(home, ['resolve', list[2].id]).code, 0);
+  const after = file(home);
+  assert(after.includes('- [x] What is Alex'));
+  assert(after.includes('- [ ] Does Osher'));
+  assert(after.includes('- [x] What is the target release'));
+  // Unknown id / out-of-range position abort without writing.
+  const before = file(home);
+  assert.notEqual(ch(home, ['resolve', 'g-00000000']).code, 0);
+  assert.notEqual(ch(home, ['resolve', '9']).code, 0);
+  assert.notEqual(ch(home, ['resolve', '1', 'g-00000000']).code, 0);
+  assert.equal(file(home), before);
+}
+console.log('  ok\n');
+
+console.log('✓ Test: legacy positional resolve still works');
+{
+  const home = mk(sampleContent);
+  assert.equal(ch(home, ['resolve', '2']).code, 0);
+  assert(file(home).includes('- [x] Does Osher'));
+}
+console.log('  ok\n');
+
+console.log('✓ Test: reconcile classifies and (dry run) does not write');
+{
+  const home = mk(sampleContent.replace('## Projects', '## Projects\n\n- [x] Old resolved question — evidence A'));
+  const cands = [
+    '# Pending Memory Gap Questions', 'Generated: 2099-01-01', '',
+    '## People', '- [ ] what is alex\'s last name and github username? — new evidence',
+    '- [ ] Brand new question? — x',
+    '## Projects', '- [ ] Old resolved question — evidence B',
+    '- [ ] Brand new question? — dup', '',
+  ].join('\n');
+  const before = file(home);
+  const r = JSON.parse(ch(home, ['reconcile', '--candidates', '-', '--json'], cands).out);
+  assert.equal(r.new.length, 1);
+  assert.equal(r.open.length, 1);
+  assert.equal(r.resolved.length, 1);
+  assert.equal(r.stale.length, 2); // Osher, target release
+  assert.equal(r.written, false);
+  assert.equal(file(home), before);
+}
+console.log('  ok\n');
+
+console.log('✓ Test: reconcile --write merges; --prune drops stale');
+{
+  const home = mk(sampleContent);
+  const cands = '# Pending Memory Gap Questions\nGenerated: 2099-01-01\n\n## People\n- [ ] Brand new question?\n- [ ] Does Osher have a Slack ID on file? — fresh\n';
+  assert.equal(ch(home, ['reconcile', '--candidates', '-', '--write'], cands).code, 0);
+  let f = file(home);
+  assert(f.includes('Generated: 2099-01-01'));
+  assert(f.includes('- [ ] Brand new question?'));
+  assert(f.includes('- [ ] What is Alex'), 'stale open kept without --prune');
+  assert(f.includes('- [x] Confirmed: Demo-Jane'), 'resolved preserved');
+  assert.equal(ch(home, ['reconcile', '--candidates', '-', '--write', '--prune'], cands).code, 0);
+  f = file(home);
+  assert(!f.includes('What is Alex'), 'stale pruned');
+  assert(f.includes('- [x] Confirmed: Demo-Jane'));
+  // A re-run is idempotent.
+  const once = file(home);
+  ch(home, ['reconcile', '--candidates', '-', '--write', '--prune'], cands);
+  assert.equal(file(home), once);
+}
+console.log('  ok\n');
+
+console.log('Gaps integration tests passed');

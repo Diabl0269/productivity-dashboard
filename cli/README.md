@@ -117,10 +117,13 @@ Assembles a compact digest of active tasks, team Slack/Atlassian IDs, glossary, 
 
 | Command | Description |
 |---------|-------------|
-| `ch gaps list [--all]` | List pending (unchecked) gaps; `--all` includes resolved |
-| `ch gaps resolve <n...>` | Mark gap(s) by number as resolved |
+| `ch gaps list [--all] [--json]` | List pending (unchecked) gaps with stable ids (`g-xxxxxxxx`); `--all` includes resolved |
+| `ch gaps resolve <ref...>` | Resolve by stable id (preferred, safe under concurrent edits) or legacy position number; any bad ref aborts with no write |
+| `ch gaps reconcile --candidates <file\|-> [--write] [--prune] [--json]` | Diff candidate gaps (same markdown format) against the current file: reports `new` / `open` / `resolved` (skipped) / `stale`. Dry run unless `--write`, which rewrites the file keeping resolved items (and stale open items unless `--prune`) |
 | `ch gaps clear` | Remove all resolved items |
 | `ch gaps add "<category>" "<text>"` | Append a new gap item |
+
+Gap ids are a hash of the normalized question (text before the first ` — `), so they don't change when items shift or evidence text is rewritten.
 
 ### `ch slack` — Slack queries and explicitly authorized DMs
 
