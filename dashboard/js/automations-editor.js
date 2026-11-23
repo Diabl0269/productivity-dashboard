@@ -49,6 +49,21 @@ function argRow(value) {
 }
 
 const envToText = env => Object.entries(env || {}).map(([k, v]) => `${k}=${v}`).join('\n');
+const HARNESS_ENV = {
+  opencode: { model: 'OPENCODE_MODEL', agent: 'OPENCODE_AGENT', effort: 'OPENCODE_EFFORT' },
+  claude: { model: 'CLAUDE_MODEL', agent: 'CLAUDE_AGENT', effort: 'CLAUDE_EFFORT' },
+  copilot: { model: 'COPILOT_MODEL', agent: 'COPILOT_AGENT', effort: 'COPILOT_EFFORT' },
+};
+function choiceSelect(values, selected) {
+  const select = el('select', 'au-input');
+  const options = ['', ...values];
+  if (selected && !options.includes(selected)) options.push(selected);
+  for (const value of options) {
+    const option = el('option', null, value || 'Use CLI default'); option.value = value;
+    option.selected = value === (selected || ''); select.appendChild(option);
+  }
+  return select;
+}
 function textToEnv(text) {
   const out = {};
   for (const line of text.split('\n')) {
@@ -59,7 +74,7 @@ function textToEnv(text) {
 }
 
 /** Build the editor for one automation; returns { node, collect() -> PUT body }. */
-export function buildEditor(a) {
+export function buildEditor(a, capabilities = { harnesses: [] }) {
   const node = el('div', 'au-editor');
 
   const rowsBox = el('div', 'au-sched-rows');
@@ -80,8 +95,40 @@ export function buildEditor(a) {
   addArg.addEventListener('click', () => argsBox.appendChild(argRow('')));
   node.appendChild(field('Program arguments', argsBox, addArg));
 
-  const env = el('textarea', 'au-input au-env'); env.rows = 3; env.spellcheck = false; env.value = envToText(a.environment);
-  node.appendChild(field('Environment (KEY=value per line, e.g. OPENCODE_MODEL)', env));
+  const currentEnv = { ...(a.environment || {}) };
+  const harnesses = capabilities.harnesses || [];
+  const currentHarness = currentEnv.AUTOMATION_HARNESS || (a.tool === 'opencode' ? 'opencode' : a.tool);
+  const harness = choiceSelect(harnesses.map(h => h.id), currentHarness);
+  node.appendChild(field('Harness', harness));
+
+  const model = choiceSelect([], '');
+  const agent = choiceSelect([], '');
+  const effort = choiceSelect([], '');
+  const controls = el('div', 'au-runtime-controls');
+  controls.append(field('Model (live list)', model), field('Agent', agent), field('Effort', effort));
+  node.appendChild(controls);
+  const paintRuntime = () => {
+    const selected = harnesses.find(h => h.id === harness.value);
+    const keys = HARNESS_ENV[harness.value] || HARNESS_ENV.opencode;
+    const existing = {
+      model: currentEnv[keys.model] || '', agent: currentEnv[keys.agent] || '', effort: currentEnv[keys.effort] || '',
+    };
+    const setChoices = (select, values, value) => {
+      select.replaceChildren();
+      for (const option of choiceSelect(values, value).options) select.appendChild(option.cloneNode(true));
+      select.value = value || '';
+    };
+    setChoices(model, selected?.models || [], existing.model);
+    setChoices(agent, selected?.agents || [], existing.agent);
+    setChoices(effort, selected?.efforts || [], existing.effort);
+    controls.hidden = !selected;
+  };
+  harness.addEventListener('change', paintRuntime); paintRuntime();
+
+  const managedKeys = new Set(['AUTOMATION_HARNESS', ...Object.values(HARNESS_ENV).flatMap(keys => Object.values(keys))]);
+  const rawEnv = Object.fromEntries(Object.entries(currentEnv).filter(([key]) => !managedKeys.has(key)));
+  const env = el('textarea', 'au-input au-env'); env.rows = 3; env.spellcheck = false; env.value = envToText(rawEnv);
+  node.appendChild(field('Other environment (KEY=value per line)', env));
 
   let script = null;
   if (a.script) {
@@ -91,10 +138,18 @@ export function buildEditor(a) {
 
   const collect = () => {
     const calendar = rowsToCalendar([...rowsBox.querySelectorAll('.au-sched-row')].map(r => r.readRows()));
+    const environment = textToEnv(env.value);
+    if (harness.value) {
+      environment.AUTOMATION_HARNESS = harness.value;
+      const keys = HARNESS_ENV[harness.value] || HARNESS_ENV.opencode;
+      if (model.value) environment[keys.model] = model.value;
+      if (agent.value) environment[keys.agent] = agent.value;
+      if (effort.value) environment[keys.effort] = effort.value;
+    }
     const body = {
       schedule: { calendar, interval: interval.value ? Number(interval.value) * 60 : null, runAtLoad: atLoad.checked },
       arguments: [...argsBox.querySelectorAll('.au-arg')].map(t => t.value).filter(v => v !== ''),
-      environment: textToEnv(env.value),
+      environment,
     };
     if (script) body.scriptContent = script.value;
     return body;

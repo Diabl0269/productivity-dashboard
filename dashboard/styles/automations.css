@@ -1,7 +1,9 @@
 /* Automations tab (js/automations-view.js, js/automations-editor.js) */
-.au-root { width: 100%; max-width: 1280px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); display: flex; flex-direction: column; gap: var(--space-5); color: var(--text-primary); box-sizing: border-box; }
+#automationsPanel { overflow-y: auto; overflow-x: hidden; min-height: 0; }
+.au-root { width: 100%; max-width: 1280px; min-height: min-content; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); display: flex; flex-direction: column; gap: var(--space-5); color: var(--text-primary); box-sizing: border-box; }
 .au-toolbar { display: flex; align-items: center; justify-content: space-between; }
 .au-heading, .au-title { margin: 0; }
+.au-table { width: 100%; flex: none; }
 .au-table .au-row { cursor: pointer; }
 .au-table .au-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .au-row-active td { background: var(--accent-muted); }
@@ -25,6 +27,9 @@ textarea.au-input { width: 100%; font-family: var(--font-mono); resize: vertical
 .au-arg-row .au-arg { flex: 1; }
 .au-days { display: flex; gap: var(--space-2); }
 .au-day { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); }
+.au-runtime-controls { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: var(--space-3); }
+.au-history { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.au-session { min-width: min(520px, 100%); max-width: 100%; }
 .au-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .au-btn { background: var(--surface-3); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md, 6px); padding: 6px 12px; font: inherit; font-size: var(--text-sm); cursor: pointer; align-self: flex-start; }
 .au-btn:hover { background: var(--surface-4, var(--surface-3)); }

@@ -5,7 +5,7 @@ import { buildEditor } from './automations-editor.js';
 import { showStatus } from './state.js';
 
 const TOOL_LABEL = { opencode: 'OpenCode', copilot: 'Copilot', claude: 'Claude', codex: 'Codex', other: 'Other' };
-const state = { list: [], selected: null, built: false, root: null, error: null, editor: null, log: null };
+const state = { list: [], selected: null, built: false, root: null, error: null, editor: null, log: null, capabilities: { harnesses: [] }, runs: [], editorKey: null, editorDirty: false };
 
 function el(tag, className, text) {
   const n = document.createElement(tag);
@@ -44,7 +44,7 @@ function renderTable() {
     tr.appendChild(el('td', null, a.scheduleText));
     const st = el('td'); st.appendChild(el('span', `au-state au-state-${a.state.replace(' ', '-')}`, a.state)); tr.appendChild(st);
     tr.appendChild(el('td', null, lastRunText(a)));
-    const open = () => { state.selected = a.label; state.log = null; render(); };
+    const open = () => { state.selected = a.label; state.log = null; state.runs = []; state.editor = null; state.editorDirty = false; state.editorKey = null; render(); loadRuns(a); };
     tr.addEventListener('click', open);
     tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
     body.appendChild(tr);
@@ -56,6 +56,12 @@ function renderTable() {
 async function act(label, fn, okMsg) {
   try { const out = await fn(); showStatus(okMsg || 'Done'); await load(); return out; }
   catch (e) { showStatus(`Failed: ${e.message}`); return null; }
+}
+
+async function loadRuns(a) {
+  try { state.runs = (await api('GET', `/${encodeURIComponent(a.label)}/runs`)).runs || []; }
+  catch { state.runs = []; }
+  if (state.selected === a.label) render();
 }
 
 async function showLog(a, which) {
@@ -73,19 +79,32 @@ function renderDetail(a) {
   box.appendChild(el('p', 'au-meta', `${a.path}${a.lastSession?.sessionID ? ` · last session ${a.lastSession.sessionID}` : ''}`));
   if (a.error) { box.appendChild(el('p', 'au-error', a.error)); return box; }
 
-  state.editor = buildEditor(a);
+  if (!state.editor || state.editorKey !== a.label || !state.editorDirty) state.editor = buildEditor(a, state.capabilities);
+  state.editorKey = a.label;
+  state.editor.node.addEventListener('change', () => { state.editorDirty = true; }, { capture: true });
   box.appendChild(state.editor.node);
 
   const bar = el('div', 'au-actions');
   const button = (text, cls, fn) => { const b = el('button', `au-btn ${cls || ''}`, text); b.type = 'button'; b.addEventListener('click', fn); bar.appendChild(b); };
   const L = encodeURIComponent(a.label);
-  button('Save', 'au-btn-primary', () => act(a.label, () => api('PUT', `/${L}`, state.editor.collect()), 'Saved and reloaded'));
+  button('Save', 'au-btn-primary', () => act(a.label, () => api('PUT', `/${L}`, state.editor.collect()), 'Saved and reloaded').then(out => { if (out) { state.editor = null; state.editorDirty = false; state.editorKey = null; render(); } }));
   button('Run now', '', () => act(a.label, () => api('POST', `/${L}/run`), 'Started'));
   button(a.state === 'disabled' ? 'Enable' : 'Disable', '', () => act(a.label, () => api('POST', `/${L}/toggle`, { enabled: a.state === 'disabled' }), a.state === 'disabled' ? 'Enabled' : 'Disabled'));
   button('View log', '', () => showLog(a, 'stdout'));
-  button('Open session', '', async () => { const r = await act(a.label, () => api('POST', `/${L}/open-session`), 'Opened'); if (r?.note) showStatus(r.note); });
+  const session = el('select', 'au-input au-session');
+  const fallback = a.lastSession?.sessionID ? [{ ...a.lastSession }] : [];
+  const runs = state.runs.length ? state.runs : fallback;
+  if (!runs.length) { const option = el('option', null, 'No recorded sessions'); option.value = ''; session.appendChild(option); session.disabled = true; }
+  for (const run of runs) {
+    const when = run.startedAt ? new Date(run.startedAt).toLocaleString() : 'Unknown date';
+    const option = el('option', null, `${when} · ${run.exitCode ? `exit ${run.exitCode}` : 'success'} · ${run.sessionID}`);
+    option.value = run.sessionID; session.appendChild(option);
+  }
+  button('Open session', '', async () => { const r = await act(a.label, () => api('POST', `/${L}/open-session`, { sessionID: session.value }), 'Opened'); if (r?.note) showStatus(r.note); });
   button('Delete', 'au-btn-danger', () => { if (confirm(`Delete ${a.label}? This removes its plist.`)) { state.selected = null; act(a.label, () => api('DELETE', `/${L}`), 'Deleted'); } });
-  box.appendChild(bar);
+  const history = el('div', 'au-history');
+  history.append(el('span', 'au-label', 'Previous runs'), session);
+  box.append(bar, history);
 
   if (state.log) {
     const log = el('div', 'au-log');
@@ -112,9 +131,14 @@ function render() {
 }
 
 async function load() {
-  try { state.list = (await api('GET', '')).automations; state.error = null; }
+  try {
+    const [list, capabilities] = await Promise.all([api('GET', ''), api('GET', '/capabilities')]);
+    state.list = list.automations; state.capabilities = capabilities; state.error = null;
+  }
   catch (e) { state.error = `Could not load automations: ${e.message}`; }
   render();
+  const selected = state.list.find(a => a.label === state.selected);
+  if (selected) loadRuns(selected);
 }
 
 export function onAutomationsTabShow() {
