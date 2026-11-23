@@ -23,7 +23,7 @@ A modular, local-first productivity dashboard designed for [Claude Code](https:/
 | Theme | None | Dark-first design with light mode toggle |
 | Views | Single view | Board view + list view |
 | Overview | None | Sprint tracker, deadlines, blocked count, estimate total, deep links to Tasks |
-| Automation | None | Daily summary (Claude Desktop scheduled tasks / optional scripts) |
+| Automation | None | Daily summary (LaunchAgents running OpenCode — see Automations) |
 | Config | Hardcoded | External `config.json` (links, sprints, WIP limits, Slack) |
 | Global Memory | None | Global sidebar tab under Memory — view/edit Claude's cross-project memory |
 
@@ -46,10 +46,24 @@ cp -r memory.example/ memory/
 
 # Start the dashboard
 node serve.js
-# Open http://localhost:3000/dashboard/
+# Open http://127.0.0.1:3000/dashboard/
 ```
 
-**Prerequisites:** Node.js v14+ and a modern browser.
+**Prerequisites:** Node.js v14+ and a modern browser. The server binds to loopback only.
+
+### Start at login (macOS)
+
+```bash
+node scripts/dashboard-daemon.mjs enable
+node scripts/dashboard-daemon.mjs status
+node scripts/dashboard-daemon.mjs disable
+```
+
+The LaunchAgent starts at login, restarts after a crash, and logs to
+`~/Library/Logs/productivity-dashboard/`. Re-run `enable` after moving the checkout or switching
+Node versions. To apply server-side changes, re-run `enable`; static HTML/CSS/JS changes are served
+directly and only need a browser refresh. If `CH_HOME` is set, the daemon preserves that data root.
+Set `DASHBOARD_PORT` when enabling on a non-default port.
 
 ## Configuration
 
@@ -82,8 +96,10 @@ Controls Overview widgets and soft WIP limits. Copy `config.example.json` and cu
 - `externalTabs` — adds extra tab buttons pointing at any URL you run yourself (a local
   dashboard, an internal tool, etc.). Each entry is `{ label, url, mode }`: `mode:
   "iframe"` embeds the URL in the main area (with its own deep-linkable tab route),
-  `mode: "link"` opens it in a new browser tab instead. Malformed entries (missing
-  `label`/`url`, or an unrecognized `mode`) are skipped. Omit the key for no extra tabs.
+  `mode: "link"` opens it in a new browser tab instead. Loopback iframe URLs automatically
+  use the dashboard's hostname (`localhost` or `127.0.0.1`) so browsers treat the dashboard and
+  embedded app as same-site. Malformed entries (missing `label`/`url`, or an unrecognized
+  `mode`) are skipped. Omit the key for no extra tabs.
 
 Full task CLI and `tasks.json` field reference: [`cli/README.md`](cli/README.md).
 ### CLAUDE.md
@@ -187,6 +203,32 @@ keeps the project and automation (`/dashboard/home/how-it-runs/edit/<id>?hprojec
 - Dark theme is the default; toggle to light in the top-right corner
 - Preference saved to localStorage
 - Both themes share a single design-token system (`dashboard/styles/base.css`)
+
+## Automations (LaunchAgents running OpenCode)
+
+Recurring jobs (`daily-summary`, `weekly-performance-review`, `ai-ideas-watcher`, `insights`) run as macOS LaunchAgents
+`local.opencode.<id>` that call `scripts/launchagents/run-job.sh`, which runs
+`opencode-cli run --auto --format json --title "<id> <date>" "<prompt pointing at .agents/skills/<id>/SKILL.md>"`
+and writes the session id to `~/Library/Logs/opencode-automations/<id>.last.json`.
+
+```bash
+REPO_ROOT="/path/to/checkout" OPENCODE_MODEL="provider/model" node scripts/launchagents/install.mjs [--dry-run] [--no-load] [--uninstall] [--only id,id]
+```
+
+The installer copies any missing skill prompt from `~/.copilot/scheduled-tasks/<id>/` into `.agents/skills/<id>/`, writes the plists
+(`plutil`-linted) and loads them with `launchctl bootout` + `bootstrap gui/$UID`. Jobs and schedules live in `scripts/launchagents/jobs.json`.
+
+The dashboard **Automations** tab (`/dashboard/automations`) manages *any* LaunchAgent: schedule, program arguments, environment, the
+script it runs, Run now, Enable/Disable, log tail, and Open session (opencode/copilot: opens the app; claude/codex: Terminal resume;
+other: the log file). API: `server/automations-routes.js` (`/api/automations*`, local-origin only).
+
+| Env var | Purpose |
+|---|---|
+| `LAUNCH_AGENTS_DIR` | LaunchAgents directory (default `~/Library/LaunchAgents`) |
+| `AUTOMATION_LOG_DIR` | Logs and `<id>.last.json` sidecars (default `~/Library/Logs/opencode-automations`) |
+| `REPO_ROOT` | Checkout the jobs run in (installer; default this repo) |
+| `OPENCODE_CLI`, `OPENCODE_MODEL` | opencode binary / model for `run-job.sh` (model unset by default) |
+| `LAUNCHCTL_BIN`, `PLUTIL_BIN`, `OPEN_BIN`, `OSASCRIPT_BIN`, `LAUNCHD_UID` | Overrides for tests |
 
 ## Daily Automation (macOS LaunchAgent)
 

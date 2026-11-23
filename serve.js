@@ -933,6 +933,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Automations (LaunchAgents manager): /api/automations* lives in server/automations-routes.js.
+  if (url.pathname === '/api/automations' || url.pathname.startsWith('/api/automations/')) {
+    const { handleAutomationsRoute } = await import('./server/automations-routes.js');
+    if (handleAutomationsRoute(req, res, url, { corsHeaders, readBody: r => readBody(r, 2 * 1024 * 1024) })) return;
+  }
+
   // Home tab API: /api/home* routes live in server/home-routes.js (a route table, one file per route).
   if (url.pathname === '/api/home' || url.pathname.startsWith('/api/home/')) {
     const { handleHomeRoute } = await import('./server/home-routes.js');
@@ -991,6 +997,6 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Dashboard: http://localhost:${PORT}/dashboard/`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`Dashboard: http://127.0.0.1:${PORT}/dashboard/`);
 });
