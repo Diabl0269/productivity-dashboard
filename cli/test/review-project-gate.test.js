@@ -32,6 +32,7 @@ function makeHome() {
 function run(args, home) {
   const env = { ...process.env, CH_HOME: home };
   delete env.CH_NO_CHECK_PROJECT_GATE;
+  env.CH_NO_TURNKEY_GATE = '1'; // FRO2246: turnkey-check.test.js owns that gate; this file tests the project gate alone
   const r = spawnSync(process.execPath, [CH_SCRIPT, ...args], { env, encoding: 'utf8' });
   return { stdout: r.stdout || '', stderr: r.stderr || '', status: r.status ?? 2 };
 }

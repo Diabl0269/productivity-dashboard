@@ -10,7 +10,7 @@
 
 import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep, closesAfterAnswer, ANSWER_CLOSE_LINE } from '../../shared/asks.js';
 import { epicsToUnpin, reviewReadyToClose } from '../../shared/review.js';
-import { idButton } from './ticket-id-button.js';
+import { idButton, textWithIds } from './ticket-id-button.js';
 import { stateToDoc } from './epic-ready-ui.js';
 import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
@@ -289,8 +289,9 @@ export function renderAskCard(state, card, redraw, surface = 'plan') {
   li.appendChild(head);
   const titles = [...new Set(card.members.map(m => m.title).filter(Boolean))];
   li.appendChild(el('div', 'rp-ask-ticket', titles.join(' / ')));
-  li.appendChild(el('div', 'rp-title rp-ask-q', card.text));
-  if (card.details) li.appendChild(el('div', 'rp-ask-details rp-ask-details-inline', card.details.trim()));
+  // FRO2246: ticket ids in the question and its details open the ticket.
+  li.appendChild(el('div', 'rp-title rp-ask-q')).appendChild(textWithIds(card.text));
+  if (card.details) li.appendChild(el('div', 'rp-ask-details rp-ask-details-inline')).appendChild(textWithIds(card.details.trim()));
   const settles = settlesBlock(state, card);
   if (settles) li.appendChild(settles);
   const media = mediaBlock(card);

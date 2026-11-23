@@ -10,9 +10,9 @@ import { unsentNotes } from '../../shared/review-notes.js';
 import { toggleTaskComplete } from './tasks-list.js';
 import { buildFreshnessNote } from './build-freshness-note.js';
 import { checkBuildChip, noProjectNote } from './check-build-ui.js';
-import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl, openBranchButton } from './check-evidence.js';
+import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl, openBranchButton, checkStill } from './check-evidence.js';
 import { heldPrChip } from './held-pr-ui.js';
-import { idButton } from './ticket-id-button.js';
+import { idButton, textWithIds } from './ticket-id-button.js';
 import { toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { asksFromState, renderAskCard } from './asks-strip.js';
@@ -68,7 +68,17 @@ export function renderCheckGrid(ctx, task) {
     pass.appendChild(cb);
     row.appendChild(pass);
     const what = el('div', 'rp-check-what' + (c.checked ? ' rp-check-done' : ''));
-    what.appendChild(el('span', null, c.text || ''));
+    // FRO2246: ticket ids inside the check open the ticket; a design check links its board.
+    what.appendChild(textWithIds(c.text || ''));
+    if (c.link?.url) {
+      what.appendChild(document.createTextNode(' '));
+      const a = el('a', 'rp-canvas-link rp-check-link', `${c.link.label || 'Design board'} ↗`);
+      a.href = c.link.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.title = c.link.url;
+      what.appendChild(a);
+    }
     if (c.handedTo) {
       what.appendChild(document.createTextNode(' → '));
       what.appendChild(idButton(c.handedTo, 'rp-link rp-review-id'));
@@ -104,6 +114,7 @@ export function renderCheckGrid(ctx, task) {
       if (extra) { what.appendChild(document.createTextNode(' ')); what.appendChild(extra); }
     }
     if (c.audio) what.appendChild(audioPlayer(c, i + 1));
+    if (c.image) what.appendChild(checkStill(c, i + 1));
     if (c.checkedNote) {
       what.appendChild(document.createTextNode(' '));
       what.appendChild(el('span', 'rp-check-muted', c.checkedNote));

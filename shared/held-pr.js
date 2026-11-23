@@ -18,12 +18,13 @@ export function heldPrError(v, r) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return `${r} must be an object { pr, branch }`;
   if (typeof v.pr !== 'string' || mergePrError(v.pr)) return `${r}.pr must be a GitHub pull request URL`;
   if (typeof v.branch !== 'string') return `${r}.branch must be a string (may be empty)`;
+  if (v.buildApp !== undefined && (typeof v.buildApp !== 'string' || !v.buildApp)) return `${r}.buildApp must be a non-empty string (the branch build's .app path)`;
   return '';
 }
 
-/** A well-formed `{ pr, branch }` copy of a stored heldPr, or null (the dashboard loader). */
+/** A well-formed `{ pr, branch, buildApp? }` copy of a stored heldPr, or null (the dashboard loader). */
 export function cleanHeldPr(v) {
-  return heldPrError(v, 'heldPr') ? null : { pr: v.pr, branch: v.branch };
+  return heldPrError(v, 'heldPr') ? null : { pr: v.pr, branch: v.branch, ...(v.buildApp ? { buildApp: v.buildApp } : {}) };
 }
 
 /** "#12" for a pull request URL, or ''. */

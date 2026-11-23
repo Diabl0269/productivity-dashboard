@@ -56,7 +56,11 @@ export async function openProject(project, { toast = showEvidenceToast, fetchFn 
     const resp = await fetchFn('/api/open-project', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...(project ? { path: project } : {}), ...(held?.pr || held?.branch ? { branch: held.branch || '', pr: held.pr || '' } : {}) }),
+      body: JSON.stringify({
+        ...(project ? { path: project } : {}),
+        ...(held?.pr || held?.branch ? { branch: held.branch || '', pr: held.pr || '' } : {}),
+        ...(held?.buildApp ? { buildApp: held.buildApp } : {}), // FRO2246: the branch build the review registered
+      }),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(data.error || `Could not open the project (HTTP ${resp.status})`);
@@ -139,6 +143,37 @@ export function audioPlayer(check, number, label = `check ${number}`) {
   audio.title = check.audio;
   audio.src = evidenceUrl(check.audio);
   return audio;
+}
+
+/** FRO2246: a check's still (--check-image): a thumbnail that opens full size in a new tab. */
+export function checkStill(check, number, label = `check ${number}`) {
+  const a = document.createElement('a');
+  a.className = 'ce-still-link';
+  a.href = evidenceUrl(check.image);
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.title = `Open ${check.image} full size`;
+  const img = document.createElement('img');
+  img.className = 'ce-still';
+  img.src = evidenceUrl(check.image);
+  img.alt = `Still for ${label}`;
+  img.loading = 'lazy';
+  a.appendChild(img);
+  return a;
+}
+
+/**
+ * FRO2246: a branch with no build is shown plainly on its Open project buttons: disabled, "No build of
+ * branch X", never a green button that would open main's build.
+ */
+export function markBranchBuildMissing(buttons, branch) {
+  for (const b of buttons || []) {
+    b.textContent = `No build of branch ${branch}`;
+    b.disabled = true;
+    b.classList.add('ce-btn-missing');
+    b.title = `No build of branch ${branch} yet: the review session builds it. Main's build lacks the change, so nothing opens.`;
+    b.setAttribute('aria-label', b.title);
+  }
 }
 
 /** Small header row for a group of checks sharing a project: "Project: end.agsproj" and one Open project button. */

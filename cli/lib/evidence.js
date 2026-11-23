@@ -132,6 +132,29 @@ export function readReviewApps(dataRoot) {
   } catch { return []; }
 }
 
+/**
+ * FRO2246: add a branch build to config.json `reviewProjectApps` (kept once; other config keys untouched),
+ * so Open project on a held PR finds it. Returns true when it was added.
+ */
+export function registerReviewApp(dataRoot, app) {
+  const file = path.join(dataRoot, 'config.json');
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { cfg = {}; }
+  const list = Array.isArray(cfg.reviewProjectApps) ? cfg.reviewProjectApps : [];
+  if (list.map(expandHome).includes(app)) return false;
+  cfg.reviewProjectApps = [...list, app];
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+  return true;
+}
+
+/** config.json `scriptRoots`: folders a relative `scripts/...` path in a check or try steps is looked up in (FRO2246). */
+export function readScriptRoots(dataRoot) {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(dataRoot, 'config.json'), 'utf8'));
+    return Array.isArray(cfg.scriptRoots) ? cfg.scriptRoots.filter(a => typeof a === 'string' && a.trim()).map(expandHome) : [];
+  } catch { return []; }
+}
+
 /** Path spellings a build of `branch` may sit under: the branch, slashes as - or _, and its last segment. */
 function branchSlugs(branch) {
   const b = String(branch || '').trim().toLowerCase();
@@ -142,17 +165,19 @@ function branchSlugs(branch) {
 /**
  * The configured app that exists and was built last (newest mtime under Contents/MacOS), or null.
  * PRO101: with `branch`, only apps whose path names that branch count (a worktree build such as
- * `.../pro95-plan-cards/build/Agent Synth.app`); the result then has `branch`. With no such app the
- * newest build is returned with `branchMissing: <branch>` so the caller can say it fell back.
+ * `.../pro95-plan-cards/build/Agent Synth.app`); the result then has `branch`. FRO2246: `buildApp` (the build
+ * the review registered for that branch) wins when it is configured and exists. With no build of the branch
+ * the result is `{ app: null, branchMissing: <branch> }`: never the newest main build in its place.
  */
-export function pickReviewApp(apps, branch) {
+export function pickReviewApp(apps, branch, buildApp) {
   const slugs = branchSlugs(branch);
   if (slugs.length) {
+    const own = buildApp && (apps || []).includes(buildApp) ? pickReviewApp([buildApp]) : null;
+    if (own) return { ...own, branch };
     const named = (apps || []).filter(a => slugs.some(s => String(a).toLowerCase().includes(s)));
     const hit = pickReviewApp(named);
     if (hit) return { ...hit, branch };
-    const any = pickReviewApp(apps);
-    return any ? { ...any, branchMissing: branch } : null;
+    return { app: null, builtAt: null, branchMissing: branch };
   }
   let best = null;
   for (const app of apps || []) {
@@ -175,22 +200,27 @@ function defaultLaunch(cmd, args) {
   });
 }
 
+/** FRO2246: the plain refusal when an unmerged branch has no build: it never opens main's build instead. */
+export const branchMissingMessage = (branch) => `No build of branch ${branch} yet, so nothing was opened (main's build lacks the change). The review session builds it; ask for it on the card.`;
+
 /**
  * Open a saved project: `open -a <newest build> <bundle>`, or plain `open <bundle>` when no app is
  * configured or found. `launch(cmd, args)` is injectable. Throws { status } on a bad path.
  * AGE162: with a `branch` and no relPath, opens that branch's build alone (404 when no app is configured).
+ * FRO2246: with a `branch` whose build is missing, opens nothing (409, `branchMissing`).
  * @returns {Promise<{ ok: true, app: string|null, builtAt: string|null }>}
  */
-export async function openProject({ dataRoot, relPath, apps = [], branch, launch = defaultLaunch }) {
+export async function openProject({ dataRoot, relPath, apps = [], branch, buildApp, launch = defaultLaunch }) {
   // AGE162: a held check with no saved project opens just the branch's build (no bundle).
   if (!relPath && !branch) throw Object.assign(new Error('path is required'), { status: 400 });
   const bundle = relPath ? resolveEvidence(dataRoot, relPath, 'project') : null;
-  const picked = pickReviewApp(apps, branch);
+  if (branch && !(apps || []).length && !bundle) throw Object.assign(new Error('no app build is configured (reviewProjectApps in config.json)'), { status: 404 });
+  const picked = branch || (apps || []).length ? pickReviewApp(apps, branch, buildApp) : null;
+  if (picked?.branchMissing) throw Object.assign(new Error(branchMissingMessage(branch)), { status: 409, branchMissing: branch });
   if (!bundle && !picked) throw Object.assign(new Error('no app build is configured (reviewProjectApps in config.json)'), { status: 404 });
   await launch('open', picked ? (bundle ? ['-a', picked.app, bundle] : ['-a', picked.app]) : [bundle]);
   const out = { ok: true, app: picked ? picked.app : null, builtAt: picked ? picked.builtAt : null };
   if (picked?.branch) out.branch = picked.branch;
-  if (branch && (!picked || picked.branchMissing)) out.branchMissing = branch;
   return out;
 }
 
@@ -208,9 +238,11 @@ export async function handleOpenProject({ origin, host, bodyText, dataRoot, apps
     // PRO101: an unmerged PR's branch ({ branch }, or { pr } resolved by `branchOf`) picks that branch's build.
     let branch = typeof body.branch === 'string' ? body.branch.trim() : '';
     if (!branch && typeof body.pr === 'string' && body.pr && branchOf) branch = String((await branchOf(body.pr)) || '').trim();
-    const out = await openProject({ dataRoot, relPath: typeof body.path === 'string' ? body.path : undefined, apps: apps ?? readReviewApps(dataRoot), branch, launch });
+    // FRO2246: `buildApp` (stored on the held check) counts only when config.json lists it (pickReviewApp checks).
+    const buildApp = typeof body.buildApp === 'string' ? body.buildApp : undefined;
+    const out = await openProject({ dataRoot, relPath: typeof body.path === 'string' ? body.path : undefined, apps: apps ?? readReviewApps(dataRoot), branch, buildApp, launch });
     return { status: 200, json: out };
   } catch (e) {
-    return { status: e.status || 500, json: { error: e.message } };
+    return { status: e.status || 500, json: { error: e.message, ...(e.branchMissing ? { branchMissing: e.branchMissing } : {}) } };
   }
 }

@@ -3,10 +3,27 @@
 // and, when it has a project, its Open project button's tooltip says the project needs a build of that
 // branch. The PR state comes from /api/pr-state (one lookup per distinct PR per page load); once it says
 // MERGED the chip goes and the tooltip is restored. Silent when the server or gh cannot answer.
+// FRO2246: while unmerged, when the branch has no build (/api/review-app?branch=) the buttons say so and are
+// disabled ("No build of branch X"): Open project never opens main's build in its place.
 
 import { prNumber } from '../../shared/held-pr.js';
+import { markBranchBuildMissing } from './check-evidence.js';
 
 const lookups = new Map(); // PR url -> Promise<{ state, branch }>
+const builds = new Map(); // "branch\0buildApp" -> Promise<boolean missing>
+
+/** FRO2246: does the branch have no registered build? Asked once per branch per page load; false when unknown. */
+function branchBuildMissingOnce(branch, buildApp) {
+  const key = `${branch}\0${buildApp || ''}`;
+  if (!builds.has(key)) {
+    if (typeof fetch !== 'function' || (typeof location !== 'undefined' && location.protocol === 'file:')) builds.set(key, Promise.resolve(false));
+    else {
+      const q = `branch=${encodeURIComponent(branch)}${buildApp ? `&buildApp=${encodeURIComponent(buildApp)}` : ''}`;
+      builds.set(key, fetch(`/api/review-app?${q}`).then(r => (r.ok ? r.json() : null)).then(res => !!res?.branchMissing).catch(() => false));
+    }
+  }
+  return builds.get(key);
+}
 
 /** The PR's { state, branch } ('OPEN', 'MERGED', ...; '' when it cannot be read); asked once per page load. */
 function prInfoOnce(url) {
@@ -63,7 +80,7 @@ function heldChip(held, buttons) {
   chip.title = held.pr;
   const was = new Map();
   // PRO101: while unmerged, Open project asks for the PR's branch build; MERGED clears it (newest main build again).
-  const live = { pr: held.pr, branch: held.branch };
+  const live = { pr: held.pr, branch: held.branch, ...(held.buildApp ? { buildApp: held.buildApp } : {}) };
   const titleOf = (b, h) => (b.branchOnly ? heldPrBranchTitle(h) : heldPrProjectTitle(h));
   for (const b of buttons) { was.set(b, b.title); b.title = titleOf(b, held); b.held = live; }
   prInfoOnce(held.pr).then(({ state, branch }) => {
@@ -78,6 +95,13 @@ function heldChip(held, buttons) {
       chip.textContent = heldPrText(live);
       for (const b of was.keys()) b.title = titleOf(b, live);
     }
+    // FRO2246: while unmerged, a missing branch build is shown plainly on the buttons, never replaced by main's build.
+    if (live.branch && was.size) {
+      return branchBuildMissingOnce(live.branch, live.buildApp).then((missing) => {
+        if (missing) markBranchBuildMissing([...was.keys()], live.branch);
+      });
+    }
+    return null;
   });
   return chip;
 }

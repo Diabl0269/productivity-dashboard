@@ -27,8 +27,9 @@ function loadReviewApp(rerender) {
 /** The build chip of one check (path + "in your build" / "needs a newer build"), or null. `tasks` is every ticket (flat). */
 export function checkBuildChip(task, check, tasks, rerender) {
   loadReviewApp(rerender);
-  if (!check?.project) return null;
-  const freshness = check.heldPr ? null : buildFreshnessLine(task, tasks, rerender);
+  // FRO2246: a held check opens its branch's build (held-pr-ui owns that); never name main's newest build on it.
+  if (!check?.project || check.heldPr) return null;
+  const freshness = buildFreshnessLine(task, tasks, rerender);
   const info = checkBuildInfo(check, reviewApp, freshness);
   if (!info) return null;
   const chip = el('span', 'rp-check-build');
