@@ -263,6 +263,16 @@ export function applyLifecycleConfig(stages = DEFAULT_STAGES, overrides = null) 
   });
 }
 
+/**
+ * What a click on a stage box does: jump to its job's row, open its handbook page, or (no link) open the items panel.
+ * @returns {{ kind: 'job', job: string }|{ kind: 'page', page: string }|{ kind: 'panel' }}
+ */
+export function stageTarget(stage) {
+  if (stage?.job) return { kind: 'job', job: stage.job };
+  if (stage?.page) return { kind: 'page', page: stage.page };
+  return { kind: 'panel' };
+}
+
 /** Ids of the running sessions that wait for you (state "waiting-you"); [] when the running data is unknown. */
 export function waitingSessionIds(live) {
   return Array.isArray(live?.running) ? live.running.filter(r => r && r.id && r.state === 'waiting-you').map(r => r.id) : [];

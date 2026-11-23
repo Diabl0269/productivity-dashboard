@@ -7,7 +7,7 @@
 // (the config's stage `job` / `skill` / `page`); a "waits on" line runs from the questions back to the running
 // sessions that wait for you, and its label opens exactly those sessions.
 
-import { WHO, LIFECYCLE_PATH, LIFECYCLE_SIDE, applyLifecycleConfig, lifecycleEdges, lifecycleSnapshot } from '../../shared/lifecycle.js';
+import { WHO, LIFECYCLE_PATH, LIFECYCLE_SIDE, stageTarget, applyLifecycleConfig, lifecycleEdges, lifecycleSnapshot } from '../../shared/lifecycle.js';
 import { paintItems, itemsSignature } from './home-lifecycle-items.js';
 import { getRuns } from './home-health-data.js';
 
@@ -82,7 +82,6 @@ export function buildFlow(host, ctx, src) {
   const head = el('div', 'hr-flow-head');
   const title = el('h3', 'hr-h3', 'The life of a note');
   title.id = 'hrFlowTitle';
-  const sub = el('p', 'hr-sub', 'From a note you write to work that is done. Each box shows what sits at that step right now; open one to see it.');
   const legend = el('ul', 'hr-legend');
   legend.setAttribute('aria-label', 'Who acts');
   for (const w of WHO) {
@@ -92,7 +91,7 @@ export function buildFlow(host, ctx, src) {
     legend.appendChild(li);
   }
   const place = el('p', 'hr-place-note');
-  head.append(title, sub, legend, place);
+  head.append(title, legend, place);
 
   const flow = el('div', 'hr-flow');
   flow.setAttribute('role', 'group');
@@ -151,8 +150,6 @@ export function buildFlow(host, ctx, src) {
     btn.dataset.stage = s.id;
     btn.dataset.who = s.who;
     btn.dataset.hmKey = `stage-${s.id}`;
-    btn.setAttribute('aria-expanded', 'false');
-    btn.setAttribute('aria-controls', panel.id);
     if (s.id === LIFECYCLE_SIDE.id) btn.classList.add('hr-stage-side');
     const who = el('span', 'hr-who');
     who.append(el('i', 'hr-dot'), el('span', '', WHO.find(w => w.id === s.who)?.label.replace(/ \(.*\)$/, '') || s.who));
@@ -166,9 +163,24 @@ export function buildFlow(host, ctx, src) {
     tip.setAttribute('role', 'tooltip');
     btn.setAttribute('aria-describedby', tip.id);
     btn.append(who, top, what, detail, tip);
-    btn.addEventListener('click', () => (open === s.id && !filter ? closePanel(false) : openPanel(s.id)));
+    btn.addEventListener('click', () => {
+      const t = stageTarget(s);
+      if (t.kind === 'job') document.dispatchEvent(new CustomEvent('hm:open', { detail: { view: 'how-it-runs', focus: `job:${t.job}` } }));
+      else if (t.kind !== 'page' || !openPage(t.page)) togglePanel(s.id);
+    });
+    // The items behind the box stay one small button away (a sibling: a button cannot hold a button).
+    const more = el('button', 'hr-stage-more');
+    more.type = 'button';
+    more.dataset.hmKey = `stage-items-${s.id}`;
+    more.setAttribute('aria-expanded', 'false');
+    more.setAttribute('aria-controls', panel.id);
+    more.setAttribute('aria-label', `Show the items at ${s.label}`);
+    more.title = 'Show what sits here';
+    more.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    more.addEventListener('click', () => togglePanel(s.id));
+    flow.appendChild(more);
     btn.addEventListener('focus', () => { focusId = s.id; roving(); });
-    return { btn, num, detail, count: null };
+    return { btn, num, detail, more, count: null };
   }
 
   function order() {
@@ -226,6 +238,11 @@ export function buildFlow(host, ctx, src) {
       defs.appendChild(m);
     }
     wires.appendChild(defs);
+    for (const [id, b] of boxes) {
+      const q = r(id);
+      b.more.hidden = !q;
+      if (q) Object.assign(b.more.style, { left: `${q.r - 30}px`, top: `${q.b - 30}px` });
+    }
     const boxesDown = [...boxes.values()].filter(b => !b.btn.hidden).map(b => b.btn.getBoundingClientRect().bottom - fr.top);
     const bottom = Math.max(...boxesDown, 0) + 18;
     loopLabel.hidden = true;
@@ -283,7 +300,7 @@ export function buildFlow(host, ctx, src) {
 
   function build() {
     stages = applyLifecycleConfig(undefined, ctx.config()?.lifecycle || null);
-    for (const b of boxes.values()) b.btn.remove();
+    for (const b of boxes.values()) { b.btn.remove(); b.more.remove(); }
     boxes.clear();
     for (const s of stages) {
       const b = stageBox(s);
@@ -332,7 +349,7 @@ export function buildFlow(host, ctx, src) {
       const b = el('button', 'hr-btn hr-link-page', 'Open its page');
       b.type = 'button';
       b.dataset.hmKey = `stage-page-${s.id}`;
-      b.addEventListener('click', () => { ctx.setSelection(box); document.querySelector('.hm-insp-tab[data-id="how"]')?.click(); });
+      b.addEventListener('click', () => openPage(s.page));
       panelLinks.appendChild(b);
     }
     if (s.skill) {
@@ -342,11 +359,22 @@ export function buildFlow(host, ctx, src) {
     }
   }
 
+  function togglePanel(id) { if (open === id && !filter) closePanel(false); else openPanel(id); }
+
+  /** Open a handbook page in the inspector; false when no place carries it. */
+  function openPage(page) {
+    const box = boxOfPage(ctx.config(), page);
+    if (!box) return false;
+    ctx.setSelection(box);
+    document.querySelector('.hm-insp-tab[data-id="how"]')?.click();
+    return true;
+  }
+
   function openPanel(id, only = null) {
     const was = open;
     open = id;
     filter = only;
-    for (const [sid, b] of boxes) b.btn.setAttribute('aria-expanded', sid === id ? 'true' : 'false');
+    for (const [sid, b] of boxes) { b.more.setAttribute('aria-expanded', sid === id ? 'true' : 'false'); }
     shownSig = null;
     paintPanel(!!was);
     panel.dataset.open = 'true';
@@ -364,8 +392,8 @@ export function buildFlow(host, ctx, src) {
     shownSig = null;
     panel.dataset.open = 'false';
     panel.inert = true;
-    for (const b of boxes.values()) b.btn.setAttribute('aria-expanded', 'false');
-    if (focusBack) boxes.get(was)?.btn.focus();
+    for (const b of boxes.values()) { b.more.setAttribute('aria-expanded', 'false'); }
+    if (focusBack) boxes.get(was)?.more.focus();
     return true;
   }
 

@@ -70,7 +70,6 @@ function render(root, ctx) {
   const head = el('div', 'hr-head'); // not <header>: base.css makes every header sticky
   head.append(
     el('h2', 'hr-title', 'How it runs'),
-    el('p', 'hr-sub', 'How a note becomes shipped work, who acts at each step, and every job that runs by itself.'),
   );
   root.appendChild(head);
   const flowHost = el('div', 'hr-block');
