@@ -29,17 +29,20 @@ export const GROUP_ORDER = ['Scheduled jobs', 'Inside another job', 'Hooks', 'CI
 export const HEALTH_STATES = {
   ok: { label: 'ok', problem: false },
   late: { label: 'late', problem: true },
+  waiting: { label: 'waiting', problem: false },
   failed: { label: 'failed', problem: true },
   off: { label: 'off', problem: true },
   unknown: { label: 'unknown', problem: false },
   checking: { label: 'checking', problem: false },
 };
 
-/** 'ok' | 'late' | 'failed' | 'off' | 'unknown' | 'checking' for one result (cli/lib/automation-status.js). */
+/** 'ok' | 'waiting' | 'late' | 'failed' | 'off' | 'unknown' | 'checking' for one result (cli/lib/automation-status.js).
+ * 'waiting' (AGE207): it runs on time but holds its work for a stated reason (a usage limit), so it is not a problem. */
 export function healthState(result) {
   if (!result || result.checking) return 'checking';
   if (result.off) return 'off';
   if (result.ok === false) return 'failed';
+  if (result.waiting) return 'waiting';
   if (result.late) return 'late';
   if (result.ok === true) return 'ok';
   return 'unknown';

@@ -21,6 +21,7 @@ function setText(node, text) { if (node.textContent !== text) node.textContent =
 const STATE_HELP = {
   ok: 'It ran and nothing says it failed.',
   late: 'It has not run for longer than the config allows (maxAgeMin).',
+  waiting: 'It runs on time but holds its work for the reason shown, until the time shown.',
   failed: 'Its last run failed.',
   off: 'It is not loaded, so it will not run.',
   unknown: 'The tracker cannot tell from what the config points at.',
@@ -118,7 +119,7 @@ function makeRow(kind, entry, ctx) {
     const noLive = !res.sources?.length || res.sources.every(s => s.type === 'none');
     setText(last, lastText ? `${kind === 'services' ? 'last run' : 'ran'} ${lastText}`
       : state === 'checking' ? 'checking…' : noLive ? 'no live status' : res.ok === true ? 'answering now' : 'never seen');
-    setText(next, res.nextRun ? `next ${relTime(res.nextRun, now)}` : '');
+    setText(next, res.waiting ? `waiting: ${res.waiting.text}` : res.nextRun ? `next ${relTime(res.nextRun, now)}` : '');
     const tipText = `${e.name}: ${e.what || 'no description in the config'}${e.trigger ? ` Runs: ${e.trigger}.` : ''} ${STATE_HELP[state]}`;
     setText(tip, tipText);
     fold.setAttribute('aria-label', `Details of ${e.name} (${HEALTH_STATES[state].label})`);

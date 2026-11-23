@@ -4,7 +4,8 @@
  * tell, it answers { ok: null, detail: 'why unknown' }.
  *
  *   mtime        newest modification time of a file or folder, against maxAgeMin
- *   json-file    a timestamp field (default "at") and an optional ok field of a JSON file
+ *   json-file    a timestamp field (default "at") and an optional ok field of a JSON file; an optional `reasonField`
+ *                ({ label, until, waiting }) marks a job that runs on time but holds its work (AGE207: the autorun tick's gate)
  *   log-tail     the last non-empty line of a log, its leading timestamp (else the file's mtime), ok/fail patterns
  *   launchctl    `launchctl print gui/<uid>/<label>`: loaded, last exit code, run interval or calendar times.
  *                Note: on a sandboxed shell launchctl answers "Operation not permitted"; the server must run outside it.
@@ -12,7 +13,8 @@
  *   http         GET with a 3 s timeout: https, or http to this computer only; never a user, token or key
  *   none         nothing to read
  *
- * Result: { lastRun: ISO|null, ok: true|false|null, late: bool, nextRun?: ISO, detail: string, off?: true }.
+ * Result: { lastRun: ISO|null, ok: true|false|null, late: bool, nextRun?: ISO, detail: string, off?: true,
+ *   waiting?: { label, until: ISO|null, text } }.
  * readEntryStatus(entry) reads every source of one automation or service and joins them.
  */
 import fs from 'node:fs';
@@ -85,7 +87,7 @@ function field(obj, dotted) {
   return String(dotted).split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), obj);
 }
 
-export async function readJsonFile(src, { baseDir } = {}) {
+export async function readJsonFile(src, { baseDir, now = Date.now() } = {}) {
   const file = expandPath(src.path, baseDir);
   let data;
   try {
@@ -106,7 +108,29 @@ export async function readJsonFile(src, { baseDir } = {}) {
   const interval = Number(data?.intervalMin);
   const out = { lastRun: iso(at), ok, late: false, detail: `${path.basename(file)} "${key}"${src.okField ? `, "${src.okField}" = ${JSON.stringify(field(data, src.okField))}` : ''}` };
   if (Number.isFinite(interval) && interval > 0) out.intervalMin = interval;
+  const waiting = src.reasonField ? waitingFrom(field(data, src.reasonField), now) : null;
+  if (waiting) { out.waiting = waiting; out.detail += `; waiting: ${waiting.text}${waiting.detail ? ` (${clip(waiting.detail, 160)})` : ''}`; }
   return out;
+}
+
+const two = n => String(n).padStart(2, '0');
+/** "14:00" today, else "Tue 11:00", in this computer's local time. */
+export function untilWords(ms, now = Date.now()) {
+  const d = new Date(ms);
+  const hm = `${two(d.getHours())}:${two(d.getMinutes())}`;
+  return new Date(now).toDateString() === d.toDateString() ? hm : `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${hm}`;
+}
+
+/**
+ * A reason object ({ name, label, detail, until, waiting: true }, the autorun tick's `gate`) as
+ * { label, until, detail, text: "usage limit until 14:00" }, or null when it does not say the job is waiting.
+ */
+export function waitingFrom(g, now = Date.now()) {
+  if (!g || typeof g !== 'object' || g.waiting !== true) return null;
+  const label = String(g.label || g.name || 'waiting');
+  const untilMs = toMs(g.until);
+  if (untilMs !== null && untilMs <= now) return null; // the hold has lifted; the next tick will say what it does now
+  return { label, until: iso(untilMs), detail: g.detail ? String(g.detail) : '', text: untilMs !== null ? `${label} until ${untilWords(untilMs, now)}` : label };
 }
 
 const TS_RE = /^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)/;
@@ -273,15 +297,20 @@ export async function readStatus(src, opts = {}) {
  * Every source of an entry, joined: newest lastRun, ok false if any says false (else true if any says
  * true), late if any is late, off if launchd does not know the job, the first nextRun (or lastRun plus
  * the run interval), every detail. A source that ran with no failure counts as ok.
+ * AGE207: a source that is on time (not late) and says the job is waiting (json-file `reasonField`) makes the entry
+ * `waiting` with its reason; the other sources' lateness is then not a problem (the log only repeats an unchanged hold
+ * once an hour), so `late` is false. A failure or a late heartbeat still wins.
  */
 export function joinStatus(parts, now = Date.now()) {
   if (!parts.length) return { lastRun: null, ok: null, late: false, detail: 'no status in the config', sources: [] };
   const lastMs = parts.map(p => toMs(p.lastRun)).filter(n => n !== null);
   const lastRun = lastMs.length ? iso(Math.max(...lastMs)) : null;
   let ok = parts.some(p => p.ok === false) ? false : parts.some(p => p.ok === true) ? true : null;
-  const late = parts.some(p => p.late);
+  const wait = parts.find(p => p.waiting && !p.late);
+  const late = wait ? false : parts.some(p => p.late);
   if (ok === null && lastRun && !late) ok = true;
   const out = { lastRun, ok, late, detail: parts.map(p => p.detail).filter(Boolean).join(' · '), sources: parts };
+  if (wait) out.waiting = wait.waiting;
   if (parts.some(p => p.off)) out.off = true;
   const interval = parts.find(p => p.intervalMin)?.intervalMin;
   const next = parts.find(p => p.nextRun)?.nextRun || (interval && lastRun ? iso(Math.max(toMs(lastRun) + interval * 60e3, now)) : null);

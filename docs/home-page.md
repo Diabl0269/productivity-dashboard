@@ -203,7 +203,7 @@ it cannot tell (the chip is then "unknown").
 | `type` | Needs | Reads |
 | --- | --- | --- |
 | `mtime` | `path`; `match` (a folder's entries to count, by name pattern, e.g. `^\\.git$`) | the newest change of a file or folder; with `match`, only the matching entries (so other writers to the folder do not hide a stopped job) |
-| `json-file` | `path`; `field` (a time, default `at`, dots for nested keys), `okField` | a time and an ok/failed field of a JSON file |
+| `json-file` | `path`; `field` (a time, default `at`, dots for nested keys), `okField`, `reasonField` | a time and an ok/failed field of a JSON file; `reasonField` points at `{ label, detail, until, waiting }` (the autorun tick's `gate`) |
 | `log-tail` | `path`; `okPattern`, `failPattern` | the last non-empty line of a log and the time it starts with (else the file's time) |
 | `launchctl` | `label` | `launchctl print gui/<uid>/<label>`: loaded or not, last exit code, run interval or calendar times (the next run). The dashboard server must run outside a sandbox for this. |
 | `gh-workflow` | `repo` (`owner/name`), `workflow` (its name) | the last run through the `gh` command, cached for a minute |
@@ -213,8 +213,10 @@ it cannot tell (the chip is then "unknown").
 Any source can add `maxAgeMin`: a last run older than that many minutes makes the chip "late". Services
 take `gh-workflow`, `http`, `json-file` or `none`. The chip is **ok** (ran, nothing failed), **late**,
 **failed** (a failed exit, a fail pattern, a red CI run, a service that does not answer), **off**
-(launchd does not know the job) or **unknown**. With several sources, a failure wins and the newest run
-counts.
+(launchd does not know the job), **waiting** or **unknown**. With several sources, a failure wins and the newest run
+counts. **Waiting** (AGE207): a source that is on time says the job holds its work for a reason (`reasonField` with
+`waiting: true`), e.g. the autorun tick during a usage limit; the row then reads "waiting: usage limit until 14:00",
+it is not a problem, and the other sources' lateness is ignored (a late heartbeat itself is still late).
 
 `lifecycle` relabels or hides steps of the flow: `{ "stages": [{ "id": "ready", "label": "Queued" },
 { "id": "filed", "hide": true }] }`. Step ids: `note`, `filed`, `ready`, `running`, `asks`, `review`, `done`.
@@ -228,7 +230,7 @@ with a `box` (a group, area or part id) opens that place's handbook page. Keep e
 (a glance view; the suite's handbook check allows 90 characters) and put the depth in the handbook page.
 
 Server: `GET /api/home/automations?project=<slug>` and `GET /api/home/services?project=<slug>` answer each
-entry with its `result` (`{ lastRun, ok, late, nextRun?, detail, off?, sources }`); results are cached for
+entry with its `result` (`{ lastRun, ok, late, nextRun?, detail, off?, waiting?, sources }`); results are cached for
 60 s and the readers run in parallel, so a slow one answers `{ checking: true }` and fills in on the next
 request. `PUT /api/home/automation?project=<slug>` accepts `{ id, description?, schedule?, model?, skill?,
 prompt?, enabled? }`, validates it and saves one automation. Runtime changes invoke the local LaunchAgent
@@ -376,6 +378,15 @@ every 15 s while the Home tab shows (`getRunning`, `onRunning`, `runningFor`, `e
 `refreshRunning`); `dashboard/js/home-where.js` tells any view which tickets the selected place keeps
 (`selectedEpicIds`, `ticketInSelection`). The "Running now" strip item and its panel are
 `dashboard/js/home-running-strip.js`.
+
+What counts as running (AGE200): sessions first ("4 sessions on 13 tickets"; the answer's `sessions[]`), then
+tickets. A session is live when its transcript is under 20 minutes old and the desktop app's session file
+(`~/Library/Application Support/Claude/claude-code-sessions`, matched by `cliSessionId`; `CH_SESSIONS_DIR`
+overrides it, `CH_PROJECTS_DIR` does the same for the transcripts) does not say `isArchived`; an unreadable
+file leaves the session counted and `unsure`. A ticket is working only for the session's own work: its
+`/ship-task <id>` argument, the id its name starts with, or the id in its branch or worktree name. Ids a prompt only
+names are `mentioned` and never counted. Idle tickets and epics carry `idleWhy` (and an epic `promoteIds`, `ready`,
+`auto`), which the strip, the Overview card and the map's Work tab show with one button.
 
 `GET /api/home/usage?project=<slug>` returns this week's usage meter; it is cached 60 s, and an older
 answer is returned at once (`stale: true`) while a fresh one is read behind it, so only the first read

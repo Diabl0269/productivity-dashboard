@@ -49,13 +49,16 @@ export function runningLines(result, doc, now) {
     lines.push(`${pad(r.id, 8)}  ${pad(r.state, 11)}  ${pad(ago(r.since, now), 4)}  ${pad(r.epicId || 'loose', 8)}  ${r.sources.join('+')}${r.pr ? `  ${r.pr}` : ''}`);
   }
   if (!lines.length) lines.push('Nothing is running.');
+  // Sessions first (AGE200): "4 sessions on 13 tickets", the same words as the Home page.
+  const n = (result.sessions || []).length;
+  if (result.sessions) lines.unshift(`${n} ${n === 1 ? 'session' : 'sessions'} on ${result.running.filter(r => r.state !== 'idle').length} tickets`, '');
   const titles = new Map();
   for (const s of doc.sections || []) for (const t of s.tasks || []) titles.set(t.id, t.title);
   for (const [label, state] of [['Stale epics (in progress, nothing running, untouched)', 'stale'], ['Idle epics (in progress, nothing running)', 'idle']]) {
     const ids = Object.keys(result.epics).filter(id => result.epics[id].state === state);
     if (!ids.length) continue;
     lines.push('', `${label}:`);
-    for (const id of ids) lines.push(`  ${pad(id, 8)}  last touched ${result.epics[id].lastTouched || '-'}  ${titles.get(id) || ''}`);
+    for (const id of ids) lines.push(`  ${pad(id, 8)}  last touched ${result.epics[id].lastTouched || '-'}  ${titles.get(id) || ''}${result.epics[id].idleWhy ? `  (${result.epics[id].idleWhy})` : ''}`);
   }
   return lines;
 }

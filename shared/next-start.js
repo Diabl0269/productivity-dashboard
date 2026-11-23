@@ -57,6 +57,8 @@ export function formatWhen(ms, nowMs) {
  * @param {number} [input.reviewCount]  cards waiting in Ready for review
  * @param {{kind: string, resetsAtMs: number|null}[]} [input.limitHits]  plan-share distinctHits()
  * @param {number|null} [input.lastTickMs]  when the dispatcher last ran
+ * @param {object|null} [input.tickGate]  the last tick's `gate` from tick.json ({ name, until, ... }, AGE207): a 'limit'
+ *                                         gate's `until` is what the dispatcher itself holds to, so it wins over limitHits
  * @param {number} [input.tickMin]      minutes between ticks
  * @param {number} [input.machineCap]   app builds at once
  * @param {object} [input.weeklyReset]  metrics.weeklyReset ({weekday, utcHour, utcMinute}); default Tuesday 11:00 UTC
@@ -86,7 +88,12 @@ export function computeNextStart(input) {
   let gateOpensMs = null;
   let gate = null;
   const activeHit = (limitHits || []).filter(h => h.resetsAtMs && h.resetsAtMs > now).sort((a, b) => b.resetsAtMs - a.resetsAtMs)[0];
-  if (activeHit) {
+  const tg = input.tickGate;
+  const tickLimitMs = tg && tg.name === 'limit' ? Date.parse(tg.until) : NaN;
+  if (Number.isFinite(tickLimitMs) && tickLimitMs > now) {
+    gateOpensMs = tickLimitMs;
+    gate = 'the usage limit lifts';
+  } else if (activeHit) {
     gateOpensMs = activeHit.resetsAtMs;
     gate = `the ${activeHit.kind} usage limit resets`;
   } else if (weekUSD > 0 && weekCostUSD / weekUSD >= s.paceStop) {
