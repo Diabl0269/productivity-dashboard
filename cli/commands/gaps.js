@@ -6,7 +6,10 @@
  * Subcommands:
  *   list [--all]       — print pending (unchecked) gaps, numbered 1..N across all categories
  *                        --all includes checked items too
- *   resolve <n...>    — mark nth unchecked item(s) as resolved (checked), accepts multiple numbers
+ *   resolve <ref...>  — mark item(s) resolved; ref is a stable id (g-xxxxxxxx) or a 1-based
+ *                        position among unchecked items (legacy; unstable under concurrent edits)
+ *   reconcile --candidates <file|-> [--write] [--prune] [--json]
+ *                      — diff candidate gaps (same markdown format) against the current file
  *   clear             — remove all checked items, keep unchecked
  *   add "<cat>" "<text>" — append new unchecked item under category (create if missing)
  *
@@ -18,6 +21,8 @@
  *   - [x] resolved item text
  */
 
+import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { parse } from '../lib/args.js';
 import { memoryPath, readText, exists, atomicWrite } from '../lib/io.js';
 import { print, printErr, ok, die } from '../lib/output.js';
@@ -69,6 +74,19 @@ function parseGapsFile(content) {
 }
 
 /**
+ * Stable id: hash of the normalized question (text before the first " — " evidence
+ * separator), so it survives index shifts, category moves and evidence rewrites.
+ */
+function normalizeQuestion(text) {
+  const q = text.split(' — ')[0];
+  return q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function gapId(text) {
+  return 'g-' + crypto.createHash('sha1').update(normalizeQuestion(text)).digest('hex').slice(0, 8);
+}
+
+/**
  * Collect all unchecked items across categories in order.
  * Returns [{num, category, text}]
  */
@@ -78,7 +96,7 @@ function collectUncheckedItems(parsed) {
   for (const [category, catItems] of parsed.categories) {
     for (const item of catItems) {
       if (!item.checked) {
-        items.push({ num, category, text: item.text });
+        items.push({ num, id: gapId(item.text), category, text: item.text });
         num++;
       }
     }
@@ -95,7 +113,7 @@ function collectAllItems(parsed) {
   let num = 1;
   for (const [category, catItems] of parsed.categories) {
     for (const item of catItems) {
-      items.push({ num, category, text: item.text, checked: item.checked });
+      items.push({ num, id: gapId(item.text), category, text: item.text, checked: item.checked });
       num++;
     }
   }
@@ -132,10 +150,12 @@ function serializeGapsFile(parsed) {
 async function cmdList(argv) {
   const { values } = parse(argv, {
     all: { type: 'boolean' },
+    json: { type: 'boolean' },
   });
 
   if (!exists(GAPS_FILE)) {
-    ok('no pending gaps');
+    if (values.json) print('[]');
+    else ok('no pending gaps');
     return;
   }
 
@@ -146,6 +166,11 @@ async function cmdList(argv) {
     ? collectAllItems(parsed)
     : collectUncheckedItems(parsed);
 
+  if (values.json) {
+    print(JSON.stringify(items, null, 2));
+    return;
+  }
+
   if (items.length === 0) {
     ok('no pending gaps');
     return;
@@ -153,7 +178,7 @@ async function cmdList(argv) {
 
   for (const item of items) {
     const mark = values.all && item.checked ? '[x]' : '[ ]';
-    print(`${item.num} ${mark} ${item.category}: ${item.text}`);
+    print(`${item.num} ${mark} ${item.category}: ${item.text} (${item.id})`);
   }
 }
 
@@ -163,47 +188,142 @@ async function cmdList(argv) {
  */
 async function cmdResolve(argv) {
   if (argv.length === 0) {
-    die('usage: ch gaps resolve <n...>  (e.g. ch gaps resolve 1 3 5)');
+    die('usage: ch gaps resolve <ref...>  (ref = g-xxxxxxxx id from `ch gaps list`, or legacy position number)');
   }
 
   if (!exists(GAPS_FILE)) {
     die('no pending gaps file', 1);
   }
 
-  const content = readText(GAPS_FILE);
-  const parsed = parseGapsFile(content);
+  const parsed = parseGapsFile(readText(GAPS_FILE));
+  const unchecked = collectUncheckedItems(parsed);
 
-  // Get unchecked items in order
-  const uncheckedItems = collectUncheckedItems(parsed);
-  const numSet = new Set();
-
+  // Resolve every ref to a stable id up front, so one bad ref aborts before any write.
+  const ids = new Set();
+  const labels = [];
   for (const arg of argv) {
-    const num = parseInt(arg, 10);
-    if (isNaN(num) || num < 1) {
-      die(`invalid item number: ${arg}`);
+    if (/^g-[0-9a-f]{8}$/.test(arg)) {
+      if (!unchecked.some(it => it.id === arg)) die(`no open gap with id: ${arg}`);
+      ids.add(arg);
+      labels.push(arg);
+    } else if (/^\d+$/.test(arg) && parseInt(arg, 10) >= 1) {
+      const num = parseInt(arg, 10);
+      const item = unchecked[num - 1];
+      if (!item) die(`no open gap at position ${num}`);
+      ids.add(item.id);
+      labels.push(arg);
+    } else {
+      die(`invalid gap ref: ${arg}`);
     }
-    numSet.add(num);
   }
 
-  // Mark items
   let resolved = 0;
-  for (const { num } of uncheckedItems) {
-    if (numSet.has(num)) {
-      // Find and mark this item
-      for (const catItems of parsed.categories.values()) {
-        const item = catItems.find(it => !it.checked && it.text === uncheckedItems[num - 1].text);
-        if (item) {
-          item.checked = true;
-          resolved++;
-          break;
-        }
+  for (const catItems of parsed.categories.values()) {
+    for (const item of catItems) {
+      if (!item.checked && ids.has(gapId(item.text))) {
+        item.checked = true;
+        resolved++;
       }
     }
   }
 
-  const remaining = uncheckedItems.length - resolved;
+  const remaining = unchecked.length - resolved;
   atomicWrite(GAPS_FILE, serializeGapsFile(parsed));
-  ok(`resolved: ${Array.from(numSet).sort((a, b) => a - b).join(',')} (${remaining} remaining)`);
+  ok(`resolved: ${labels.join(',')} (${remaining} remaining)`);
+}
+
+/**
+ * Subcommand: reconcile --candidates <file|-> [--write] [--prune] [--json]
+ *
+ * Candidates use the same markdown format. Each candidate is classified by stable id:
+ *   new        — not in the current file
+ *   open       — already an unchecked item (kept as is)
+ *   resolved   — matches a checked item (dropped, never re-listed)
+ * Existing unchecked items absent from candidates are "stale"; kept unless --prune.
+ * Read-only unless --write; --write replaces the file with: candidate items that are
+ * new/open + (unless --prune) stale open items + existing resolved items.
+ */
+async function cmdReconcile(argv) {
+  const { values } = parse(argv, {
+    candidates: { type: 'string' },
+    write: { type: 'boolean' },
+    prune: { type: 'boolean' },
+    json: { type: 'boolean' },
+  });
+  if (!values.candidates) {
+    die('usage: ch gaps reconcile --candidates <file|-> [--write] [--prune] [--json]');
+  }
+
+  let candText;
+  try {
+    candText = values.candidates === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(values.candidates, 'utf8');
+  } catch (e) {
+    die(`cannot read candidates: ${e.message}`);
+  }
+  const cand = parseGapsFile(candText);
+  const current = exists(GAPS_FILE)
+    ? parseGapsFile(readText(GAPS_FILE))
+    : { header: [], categories: new Map() };
+
+  const resolvedIds = new Set();
+  const openIds = new Set();
+  for (const items of current.categories.values()) {
+    for (const it of items) (it.checked ? resolvedIds : openIds).add(gapId(it.text));
+  }
+
+  const report = { new: [], open: [], resolved: [], stale: [] };
+  const seen = new Set();
+  const merged = new Map();
+  const push = (cat, item) => {
+    if (!merged.has(cat)) merged.set(cat, []);
+    merged.get(cat).push(item);
+  };
+
+  for (const [category, items] of cand.categories) {
+    for (const it of items) {
+      const id = gapId(it.text);
+      if (seen.has(id)) continue; // duplicate within candidates
+      seen.add(id);
+      const entry = { id, category, text: it.text };
+      if (resolvedIds.has(id)) {
+        report.resolved.push(entry);
+      } else if (openIds.has(id)) {
+        report.open.push(entry);
+        push(category, { checked: false, text: it.text });
+      } else {
+        report.new.push(entry);
+        push(category, { checked: false, text: it.text });
+      }
+    }
+  }
+
+  for (const [category, items] of current.categories) {
+    for (const it of items) {
+      const id = gapId(it.text);
+      if (it.checked) {
+        push(category, it);
+      } else if (!seen.has(id)) {
+        report.stale.push({ id, category, text: it.text });
+        if (!values.prune) push(category, it);
+      }
+    }
+  }
+
+  if (values.write) {
+    const header = cand.header.some(l => l.trim()) ? cand.header : current.header.length
+      ? current.header
+      : ['# Pending Memory Gap Questions', '', `Generated: ${new Date().toISOString().split('T')[0]}`, ''];
+    atomicWrite(GAPS_FILE, serializeGapsFile({ header, categories: merged }));
+  }
+
+  if (values.json) {
+    print(JSON.stringify({ ...report, written: !!values.write }, null, 2));
+    return;
+  }
+  for (const kind of ['new', 'open', 'resolved', 'stale']) {
+    for (const e of report[kind]) print(`${kind} ${e.id} ${e.category}: ${e.text}`);
+  }
+  ok(`new ${report.new.length}, open ${report.open.length}, resolved-skipped ${report.resolved.length}, stale ${report.stale.length}${values.write ? ' (written)' : ' (dry run)'}`);
 }
 
 /**
@@ -303,7 +423,10 @@ export default async function gaps(argv) {
 Subcommands:
   list [--all]            — list pending (unchecked) gaps numbered 1..N
                             --all includes resolved items too
-  resolve <n...>          — mark nth item(s) as resolved (accepts multiple)
+  list --json             — machine-readable list including stable ids
+  resolve <ref...>        — resolve by stable id (g-xxxxxxxx) or legacy position number
+  reconcile --candidates <file|-> [--write] [--prune] [--json]
+                          — diff candidate gaps vs current/resolved; --write merges
   clear                   — remove all resolved items
   add "<cat>" "<text>"    — add new gap under category`);
     return;
@@ -318,6 +441,8 @@ Subcommands:
       return cmdClear(rest);
     case 'add':
       return cmdAdd(rest);
+    case 'reconcile':
+      return cmdReconcile(rest);
     default:
       die(`unknown gaps subcommand: ${sub}`);
   }
