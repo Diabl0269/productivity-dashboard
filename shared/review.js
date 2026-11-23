@@ -386,10 +386,46 @@ export function soundCheckNoProjectProblem(items) {
     + '(--force "<why>" overrides and is recorded on the ticket.)';
 }
 
+/**
+ * FRO2259 (kind check-tal-should-not-get): an ear check ships its project. A sound check with no project
+ * is refused whatever its no-project reason says, audio or not: Tal must be able to open and play it.
+ */
+export function soundCheckNeedsProjectProblem(items) {
+  const bad = [];
+  (items || []).forEach((c, i) => {
+    if (c && !c.project && SOUND_CHECK_RE.test(c.text || '')) bad.push({ n: i + 1, text: c.text });
+  });
+  if (!bad.length) return null;
+  return `${bad.length} sound check(s) carry no project, and an ear check ships its project so Tal can open it and press play:\n`
+    + bad.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
+    + '\nBuild or find the project that plays it, prove it yourself (render it and read the numbers), attach it with '
+    + '--check-project N=<path> and the render with --check-audio N=<path>. (--force "<why>" overrides and is recorded on the ticket.)';
+}
+
+const TWO_SIDED_RE = /\b(two|both)\b|\bours?\b.{0,30}\bthen\b.{0,30}\breference\b/i;
+const attachmentCount = c => ['project', 'video', 'audio'].filter(k => c && c[k]).length;
+
+/**
+ * FRO2260 (kind proof-misses-claim): a check whose text says "two", "both" or "ours then the reference"
+ * promises two things to compare, so it must carry two attachments (e.g. a project and a clip, or split it
+ * into two adjacent checks that each carry theirs and name the other as their pair).
+ */
+export function twoSidedCheckProblem(items) {
+  const bad = [];
+  (items || []).forEach((c, i) => {
+    if (c && TWO_SIDED_RE.test(c.text || '') && attachmentCount(c) < 2) bad.push({ n: i + 1, text: c.text });
+  });
+  if (!bad.length) return null;
+  return `${bad.length} check(s) say "two", "both" or "ours then the reference" but carry fewer than two attachments, so there is nothing to compare:\n`
+    + bad.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
+    + '\nAttach both sides (project + --check-audio N=<path>, or --check-video), or split it into two adjacent checks, one per side, '
+    + 'each naming the other as its pair and carrying its own attachment. (--force "<why>" overrides and is recorded on the ticket.)';
+}
+
 export function checkProjectGateProblem(items) {
   const bare = [];
   (items || []).forEach((c, i) => { if (c && !c.project && !c.noProject) bare.push({ n: i + 1, text: c.text }); });
-  if (!bare.length) return soundCheckNoProjectProblem(items);
+  if (!bare.length) return soundCheckNoProjectProblem(items) || soundCheckNeedsProjectProblem(items) || twoSidedCheckProblem(items);
   return `${bare.length} check(s) have neither a project nor a reason, and Tal opens every check from the Plan page:\n`
     + bare.map(b => `  - check ${b.n}: "${b.text}"`).join('\n')
     + '\nAttach the saved project the check was rendered from (--check-project N=<path>, N = the check number above), '
