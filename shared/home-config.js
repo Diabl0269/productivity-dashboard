@@ -238,10 +238,11 @@ export function normalizeHomeConfig(raw) {
     services: legacy ? [] : normServices(raw, errors, ctx.ids),
     automations: legacy ? [] : normAutomations(raw, errors),
     automationDefaults: legacy ? null : normDefaults(raw.automationDefaults, errors),
-    lifecycle: legacy ? null : normLifecycle(raw, errors),
+    lifecycle: null,
     fallback: null,
     legacy,
   };
+  if (!legacy) config.lifecycle = normLifecycle(raw, errors, { boxIds: new Set(ctx.ids.keys()), automationIds: new Set(config.automations.map(a => a.id)) });
   const fb = strOrNull(raw, 'fallback', '', errors);
   if (fb !== null) {
     if (config.groups.some(g => g.areas.some(a => a.id === fb))) config.fallback = fb;

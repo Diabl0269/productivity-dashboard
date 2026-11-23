@@ -6,7 +6,7 @@
  */
 
 import { isPlainObject, shown, str, strOrNull, strList, regex, id as checkId, unknownKeys, objList } from './home-config-check.js';
-import { LIFECYCLE_STAGE_IDS } from './lifecycle.js';
+import { LIFECYCLE_STAGE_IDS, STAGE_LINK_KEYS } from './lifecycle.js';
 import { normRun } from './automation-run.js';
 
 export const AUTOMATION_KINDS = ['launchd', 'cron', 'hook', 'ci', 'skill', 'file', 'inside'];
@@ -243,30 +243,83 @@ export function normServices(raw, errors, boxIds = null) {
   }).filter(Boolean);
 }
 
-/** lifecycle: { stages: [{ id, label?, hide? }] } -> the same, with known ids only (null when absent). */
-export function normLifecycle(raw, errors) {
+/** One "where the AI runs" chain: { nodes: [{ id, name, what, box? }], edges: [{ from, to, label? }] }; null when absent. */
+function normAiPath(v, errors, boxIds) {
+  if (v === undefined || v === null) return null;
+  const where = 'lifecycle > ai';
+  if (!isPlainObject(v)) {
+    errors.push(`${where}: should be an object like { "nodes": [...], "edges": [...] }, got ${shown(v)}; ignored.`);
+    return null;
+  }
+  unknownKeys(v, ['title', 'nodes', 'edges'], where, errors);
+  const seen = new Set();
+  const nodes = objList(v, 'nodes', where, errors).map((n, i) => {
+    const here = `${where} > nodes[${i}]`;
+    if (!isPlainObject(n) || typeof n.id !== 'string' || !n.id || seen.has(n.id)) {
+      errors.push(`${here}: needs a unique "id" text, got ${shown(isPlainObject(n) ? n.id : n)}; skipped.`);
+      return null;
+    }
+    seen.add(n.id);
+    unknownKeys(n, ['id', 'name', 'what', 'box'], here, errors);
+    let box = strOrNull(n, 'box', here, errors);
+    if (box && boxIds && !boxIds.has(box)) {
+      errors.push(`${here}: "box" should be a group, area or part id, got ${shown(box)}; ignored.`);
+      box = null;
+    }
+    return { id: n.id, name: str(n, 'name', here, errors) || n.id, what: str(n, 'what', here, errors), box };
+  }).filter(Boolean);
+  const edges = objList(v, 'edges', where, errors).map((e, i) => {
+    const here = `${where} > edges[${i}]`;
+    if (!isPlainObject(e) || !seen.has(e.from) || !seen.has(e.to)) {
+      errors.push(`${here}: "from" and "to" should be ids of the nodes, got ${shown(isPlainObject(e) ? `${e.from} > ${e.to}` : e)}; skipped.`);
+      return null;
+    }
+    unknownKeys(e, ['from', 'to', 'label'], here, errors);
+    return { from: e.from, to: e.to, label: strOrNull(e, 'label', here, errors) };
+  }).filter(Boolean);
+  return { title: strOrNull(v, 'title', where, errors), nodes, edges };
+}
+
+/**
+ * lifecycle: { stages: [{ id, label?, hide?, job?, skill?, page? }], ai? } -> the same, with known ids only
+ * (null when absent). `job` is an automation id (the row the stage links to), `skill` the skill file that
+ * does the work, `page` a handbook page; `ai` is the small "where the AI runs" chain (app -> backend -> model).
+ * @param {object} raw the file
+ * @param {string[]} errors
+ * @param {{ boxIds?: Set<string>|null, automationIds?: Set<string>|null }} [known] ids to check the links against
+ */
+export function normLifecycle(raw, errors, known = {}) {
   const v = raw.lifecycle;
   if (v === undefined || v === null) return null;
   if (!isPlainObject(v)) {
     errors.push(`the file: "lifecycle" should be an object like { "stages": [{ "id": "ready", "label": "..." }] }, got ${shown(v)}; ignored.`);
     return null;
   }
-  unknownKeys(v, ['stages'], 'lifecycle', errors);
+  unknownKeys(v, ['stages', 'ai'], 'lifecycle', errors);
   const stages = objList(v, 'stages', 'lifecycle', errors).map((s, i) => {
     const where = `lifecycle > stages[${i}]`;
     if (!isPlainObject(s) || !LIFECYCLE_STAGE_IDS.includes(s.id)) {
       errors.push(`${where}: "id" should be one of ${LIFECYCLE_STAGE_IDS.join(', ')}, got ${shown(isPlainObject(s) ? s.id : s)}; ignored.`);
       return null;
     }
-    unknownKeys(s, ['id', 'label', 'hide'], where, errors);
+    unknownKeys(s, ['id', 'label', 'hide', ...STAGE_LINK_KEYS], where, errors);
     const out = { id: s.id };
     const label = strOrNull(s, 'label', where, errors);
     if (label) out.label = label;
+    for (const key of STAGE_LINK_KEYS) {
+      const link = strOrNull(s, key, where, errors);
+      if (!link) continue;
+      if (key === 'job' && known.automationIds && !known.automationIds.has(link)) {
+        errors.push(`${where}: "job" should be the id of an automation, got ${shown(link)}; ignored.`);
+        continue;
+      }
+      out[key] = link;
+    }
     if (s.hide !== undefined) {
       if (typeof s.hide === 'boolean') out.hide = s.hide;
       else errors.push(`${where}: "hide" should be true or false, got ${shown(s.hide)}; ignored.`);
     }
     return out;
   }).filter(Boolean);
-  return { stages };
+  return { stages, ai: normAiPath(v.ai, errors, known.boxIds || null) };
 }

@@ -220,6 +220,14 @@ it is not a problem, and the other sources' lateness is ignored (a late heartbea
 
 `lifecycle` relabels or hides steps of the flow: `{ "stages": [{ "id": "ready", "label": "Queued" },
 { "id": "filed", "hide": true }] }`. Step ids: `note`, `filed`, `ready`, `running`, `asks`, `review`, `done`.
+A stage can also name what does its work: `job` (an automation id: the open step shows "Done by: <name>"
+and a click scrolls to that row and opens its fold), `skill` (the skill file, shown as text) and `page` (a
+handbook page path: "Open its page"). Hover a line to read what travels on it; a dotted "waits on" line runs
+from the question step back to the running sessions that wait for you, and its label opens exactly those
+sessions. `lifecycle.ai` draws the small second map, "where an AI answer comes from":
+`{ "title": "...", "nodes": [{ "id", "name", "what", "box?" }], "edges": [{ "from", "to", "label?" }] }`; a node
+with a `box` (a group, area or part id) opens that place's handbook page. Keep every `what` to one line
+(a glance view; the suite's handbook check allows 90 characters) and put the depth in the handbook page.
 
 Server: `GET /api/home/automations?project=<slug>` and `GET /api/home/services?project=<slug>` answer each
 entry with its `result` (`{ lastRun, ok, late, nextRun?, detail, off?, waiting?, sources }`); results are cached for

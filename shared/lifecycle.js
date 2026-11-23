@@ -15,7 +15,10 @@
  *           items(...) -> rows }. `live` is the running answer ({ running: [{ id, state, ... }] }) or
  * null when unknown (count is then null). `scope` = { epicIds: Set|null, now }: with a set, only
  * work inside those epics counts (the place selected on the map).
- * A project's home.config.json may relabel or hide stages: applyLifecycleConfig(stages, config.lifecycle).
+ * A project's home.config.json may relabel or hide stages and link each one to the job or skill that does it
+ * (`job` = an automation id, `skill` = the skill file, `page` = a handbook page): applyLifecycleConfig(stages, config.lifecycle).
+ * Each arrow carries a one-line `travels` text (what moves along it), and a "waits on" arrow runs from the
+ * questions back to the running sessions that wait for you (AGE199).
  */
 
 import { pendingReviewNotes } from './review-notes.js';
@@ -46,6 +49,23 @@ export const RUNNING_STATES = [
 export const LIFECYCLE_PATH = ['note', 'filed', 'ready', 'running', 'review', 'done'];
 export const LIFECYCLE_SIDE = { id: 'asks', attach: 'running', label: 'asks you' };
 export const LIFECYCLE_LOOP = { from: 'review', to: 'note', label: 'A note on shipped work sends it round again' };
+/** The side step's way back: the sessions that wait for an answer (AGE199). */
+export const LIFECYCLE_WAIT = { from: 'asks', to: 'running', label: 'waits on' };
+
+/** What travels along each arrow, one short line (shown on hover), by `from>to`. */
+export const EDGE_TRAVELS = Object.freeze({
+  'note>filed': 'Your note: its text and the ticket it was written on.',
+  'filed>ready': 'A ticket with a plain-words description, inside its epic.',
+  'ready>running': 'The next ticket of an epic that is Ready and on Auto.',
+  'running>review': 'A pull request, its CI result and a card of checks.',
+  'review>done': 'Your ticked checks: the last tick closes the ticket.',
+  'running>asks': 'A question a session cannot answer alone.',
+  'asks>running': 'Your answer; the session carries on from it.',
+  'review>note': 'A note you write on shipped work; it starts the loop again.',
+});
+
+/** The keys of a stage entry in the config that link it to what does the work. */
+export const STAGE_LINK_KEYS = ['job', 'skill', 'page'];
 
 // ===== indexing =====
 
@@ -234,21 +254,40 @@ export const DEFAULT_STAGES = Object.freeze([
  */
 export function applyLifecycleConfig(stages = DEFAULT_STAGES, overrides = null) {
   const by = new Map((overrides?.stages || []).map(o => [o.id, o]));
-  return stages.filter(s => !by.get(s.id)?.hide).map(s => (by.get(s.id)?.label ? { ...s, label: by.get(s.id).label } : s));
+  return stages.filter(s => !by.get(s.id)?.hide).map((s) => {
+    const o = by.get(s.id);
+    if (!o) return s;
+    const links = {};
+    for (const k of STAGE_LINK_KEYS) if (typeof o[k] === 'string' && o[k]) links[k] = o[k];
+    return o.label || Object.keys(links).length ? { ...s, ...(o.label ? { label: o.label } : {}), ...links } : s;
+  });
 }
+
+/** Ids of the running sessions that wait for you (state "waiting-you"); [] when the running data is unknown. */
+export function waitingSessionIds(live) {
+  return Array.isArray(live?.running) ? live.running.filter(r => r && r.id && r.state === 'waiting-you').map(r => r.id) : [];
+}
+
+const travelsOf = (from, to) => EDGE_TRAVELS[`${from}>${to}`] || '';
 
 /**
  * The arrows between the shown stages: the main path in order (a hidden stage is skipped, so its
- * neighbours join), the side step to the stage it hangs off, and the loop back.
- * @returns {Array<{ from, to, kind: 'flow'|'side'|'loop', label? }>}
+ * neighbours join), the side step to the stage it hangs off, the "waits on" arrow from the questions
+ * back to the running sessions that wait for an answer (`ids`, from the live running data), and the loop back.
+ * @param {object[]} [stages]
+ * @param {{ running: object[] }|null} [live] the running answer (home-running-data.js getRunning())
+ * @returns {Array<{ from, to, kind: 'flow'|'side'|'wait'|'loop', label?, travels: string, ids?: string[] }>}
  */
-export function lifecycleEdges(stages = DEFAULT_STAGES) {
+export function lifecycleEdges(stages = DEFAULT_STAGES, live = null) {
   const shown = new Set(stages.map(s => s.id));
   const path = LIFECYCLE_PATH.filter(id => shown.has(id));
   const edges = [];
-  for (let i = 1; i < path.length; i++) edges.push({ from: path[i - 1], to: path[i], kind: 'flow' });
-  if (shown.has(LIFECYCLE_SIDE.id) && shown.has(LIFECYCLE_SIDE.attach)) edges.push({ from: LIFECYCLE_SIDE.attach, to: LIFECYCLE_SIDE.id, kind: 'side', label: LIFECYCLE_SIDE.label });
-  if (shown.has(LIFECYCLE_LOOP.from) && shown.has(LIFECYCLE_LOOP.to)) edges.push({ ...LIFECYCLE_LOOP, kind: 'loop' });
+  for (let i = 1; i < path.length; i++) edges.push({ from: path[i - 1], to: path[i], kind: 'flow', travels: travelsOf(path[i - 1], path[i]) });
+  if (shown.has(LIFECYCLE_SIDE.id) && shown.has(LIFECYCLE_SIDE.attach)) {
+    edges.push({ from: LIFECYCLE_SIDE.attach, to: LIFECYCLE_SIDE.id, kind: 'side', label: LIFECYCLE_SIDE.label, travels: travelsOf(LIFECYCLE_SIDE.attach, LIFECYCLE_SIDE.id) });
+    edges.push({ ...LIFECYCLE_WAIT, kind: 'wait', travels: travelsOf(LIFECYCLE_WAIT.from, LIFECYCLE_WAIT.to), ids: waitingSessionIds(live) });
+  }
+  if (shown.has(LIFECYCLE_LOOP.from) && shown.has(LIFECYCLE_LOOP.to)) edges.push({ ...LIFECYCLE_LOOP, kind: 'loop', travels: travelsOf(LIFECYCLE_LOOP.from, LIFECYCLE_LOOP.to) });
   return edges;
 }
 

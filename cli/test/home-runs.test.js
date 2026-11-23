@@ -88,6 +88,41 @@ test('services: usedBy names known boxes, console must be a web address, never a
   has('service "log" > status', '"type" should be one of gh-workflow, http, json-file, none');
 });
 
+test('lifecycle (AGE199): stage links to a job, skill and page, checked against the automations', () => {
+  const { config, errors } = normalizeHomeConfig({
+    version: 1,
+    automations: [{ id: 'autorun', name: 'Autorun', what: 'Starts runs.' }],
+    lifecycle: { stages: [
+      { id: 'ready', job: 'autorun', page: 'pages/workspace.md' },
+      { id: 'running', job: 'ghost', skill: '.claude/skills/ship-task/SKILL.md' },
+    ] },
+  });
+  assert.deepEqual(config.lifecycle.stages, [
+    { id: 'ready', job: 'autorun', page: 'pages/workspace.md' },
+    { id: 'running', skill: '.claude/skills/ship-task/SKILL.md' },
+  ]);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /stages\[1\]: "job" should be the id of an automation, got "ghost"/);
+});
+
+test('lifecycle (AGE199): the "where the AI runs" chain keeps known nodes and edges, drops the rest', () => {
+  const { config, errors } = normalizeHomeConfig({
+    version: 1,
+    groups: [{ id: 'app', name: 'App', areas: [{ id: 'chat', name: 'Chat', box: [0, 0, 10, 10] }] }],
+    lifecycle: { ai: {
+      title: 'Where answers come from',
+      nodes: [{ id: 'chat', name: 'Chat', what: 'Asks.', box: 'chat' }, { id: 'api', name: 'Backend', what: 'Calls.', box: 'nowhere' }, { id: 'chat' }, { id: 'model', name: 'Model', what: 'Answers.' }],
+      edges: [{ from: 'chat', to: 'api', label: 'request' }, { from: 'api', to: 'model' }, { from: 'api', to: 'ghost' }],
+    } },
+  });
+  const ai = config.lifecycle.ai;
+  assert.equal(ai.title, 'Where answers come from');
+  assert.deepEqual(ai.nodes.map(n => [n.id, n.box]), [['chat', 'chat'], ['api', null], ['model', null]]);
+  assert.deepEqual(ai.edges, [{ from: 'chat', to: 'api', label: 'request' }, { from: 'api', to: 'model', label: null }]);
+  assert.equal(errors.length, 3); // an unknown box, a duplicate node, an edge to a node that is not there
+  assert.equal(normalizeHomeConfig({ version: 1, lifecycle: { stages: [] } }).config.lifecycle.ai, null);
+});
+
 test('lifecycle: relabels and hides known stages only', () => {
   const { config, errors } = normalizeHomeConfig({ version: 1, lifecycle: { stages: [{ id: 'ready', label: 'Queued' }, { id: 'filed', hide: true }, { id: 'warp' }, { id: 'done', hide: 'yes' }] } });
   assert.deepEqual(config.lifecycle.stages, [{ id: 'ready', label: 'Queued' }, { id: 'filed', hide: true }, { id: 'done' }]);
