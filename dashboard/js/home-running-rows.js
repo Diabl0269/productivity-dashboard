@@ -45,8 +45,9 @@ function buildRow(spec, ctx) {
   const parts = {
     id, title: el('span', 'hm-run-title'), chip: el('span', 'rp-chip'), age: el('span', 'hm-run-age'),
     source: el('span', 'hm-run-source'), pr: el('span', 'hm-run-pr'), epic: el('span', 'hm-run-epic'), epicId: null,
+    action: el('span', 'hm-run-action'),
   };
-  li.append(id, parts.title, parts.chip, parts.age, parts.source, parts.pr, parts.epic);
+  li.append(id, parts.title, parts.chip, parts.age, parts.source, parts.pr, parts.epic, parts.action);
   li._parts = parts;
   return li;
 }
@@ -62,6 +63,21 @@ function fillRow(li, spec, ctx) {
   setText(p.age, spec.age);
   p.age.title = spec.ageTitle || '';
   setText(p.source, spec.source || '');
+  p.source.title = spec.source || '';
+  // One plain button for what an idle or blocked row needs (Move to To do, Turn on Auto); rebuilt only when its label changes.
+  const actionLabel = spec.action?.label || '';
+  p.act = spec.action || null;
+  if ((p.action.firstChild?.textContent || '') !== actionLabel) {
+    p.action.textContent = '';
+    if (actionLabel) {
+      const b = el('button', 'rp-btn hm-run-actionbtn', actionLabel);
+      b.type = 'button';
+      b.dataset.hmKey = `act-${spec.key}`;
+      b.setAttribute('aria-label', `${actionLabel} (${spec.id})`);
+      b.addEventListener('click', () => p.act?.run());
+      p.action.appendChild(b);
+    }
+  }
   const prUrl = spec.pr || '';
   if ((p.pr.firstChild?.href || '') !== prUrl) {
     p.pr.textContent = '';

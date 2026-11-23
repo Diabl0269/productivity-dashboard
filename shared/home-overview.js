@@ -107,16 +107,27 @@ function needsYou(doc, keep, rows) {
 
 // "Running" is live work only (working, waiting on CI, waiting on you), as the Tickets view and the strip count it;
 // idle items (a worktree or a recent commit, nothing live) are listed after it and counted apart.
-function runningNow(running, epicIds, rows) {
+function runningNow(running, epicIds, rows, doc, placed) {
+  const titleOf = id => { for (const s of doc?.sections || []) for (const t of s.tasks || []) if (t.id === id) return t.title || ''; return ''; };
   const all = (running?.running || []).filter(i => !epicIds || epicIds.has(i.epicId || i.id));
   const counts = {};
   for (const i of all) counts[i.state] = (counts[i.state] || 0) + 1;
   const live = all.filter(i => i.state !== 'idle').length;
   const items = all.map(i => ({
     key: `t-${i.id}`, kind: 'running', id: i.id, title: i.title || '', state: i.state, since: i.since || null,
-    line: (i.sources || []).join(' + '), epicId: i.epicId || null, target: { view: 'lanes', ticket: i.id },
+    line: i.idleWhy || (i.sources || []).join(' + '), epicId: i.epicId || null, target: { view: 'lanes', ticket: i.id },
   }));
-  return { count: live, idle: all.length - live, counts, known: !!running, ...cut(items, rows), target: { view: 'lanes', focus: 'running' } };
+  // In-progress epics with nothing running say why and offer their one button (AGE200).
+  const quiet = Object.entries(running?.epics || {})
+    .filter(([id, e]) => (e.state === 'idle' || e.state === 'stale') && (!epicIds || epicIds.has(id)))
+    .map(([id, e]) => ({ key: `e-${id}`, kind: 'running', id, title: titleOf(id), state: 'idle', since: e.lastTouched || null, line: e.idleWhy || '', epicId: null, epicState: e, target: { view: 'lanes', ticket: id } }));
+  // "4 sessions on 13 tickets": sessions first. Narrowed to a place, only the sessions working on a ticket there.
+  const liveIds = new Set(all.filter(i => i.state !== 'idle').map(i => i.id));
+  const sessions = (running?.sessions || []).filter(s => !placed || (s.ticketIds || []).some(id => liveIds.has(id)));
+  return {
+    count: live, idle: all.length - live, counts, known: !!running, sessions: sessions.length, tickets: live, unsure: sessions.some(s => s.unsure),
+    ...cut([...items, ...quiet], rows), target: { view: 'lanes', focus: 'running' },
+  };
 }
 
 // ===== On the agenda: computeNextStart() (its next epic and time), the Ready epics of openEpicReadiness() in
@@ -340,7 +351,7 @@ export function overviewModel(doc, config, readinessById, running, now, extras =
   const model = {
     place: extras.placeName || null,
     needsYou: needsYou(doc, keep, rows),
-    running: runningNow(running, epicIds, rows),
+    running: runningNow(running, epicIds, rows, doc, !!extras.placeName),
     agenda: agenda(doc, ix, readinessById, running, keep, extras.nextStart, now, rows),
     finished: finished(doc, ix, keep, now, rows),
     places: places(config, doc, readinessById, running, selected, keepProject),

@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { readLiveSessions, readBranches, readPrs, checksOf, clearPrCache, collectRunningInputs } from '../lib/running-inputs.js';
+import { readLiveSessions, readSessionMeta, shipTaskIds, titleTicketId, readBranches, readPrs, checksOf, clearPrCache, collectRunningInputs } from '../lib/running-inputs.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ch-running-'));
 const MIN = 60e3;
@@ -32,24 +32,25 @@ test('readLiveSessions: fresh files only, ids from the first prompts, malformed 
   transcript(dir, '-proj-a', 'old1', [user('/ship-task BKR99')], 60, now);
   transcript(dir, '-proj-b', 'blocks', [user('meta BKR50', { isMeta: true }), JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'work on bkr13' }, { type: 'tool_result', content: 'ZZZ1' }] } })], 5, now);
   fs.writeFileSync(path.join(dir, '-proj-b', 'notes.txt'), 'BKR77');
-  const out = readLiveSessions({ projectsDir: dir, liveMinutes: 20, now });
+  const out = readLiveSessions({ sessionMeta: null, projectsDir: dir, liveMinutes: 20, now });
   assert.deepEqual(out.map(s => s.id), ['fresh1', 'blocks'], 'newest first; the 60-minute-old one is skipped');
   assert.deepEqual(out[0].ticketIds, ['BKR12'], 'assistant lines and malformed lines are ignored');
-  assert.deepEqual(out[1].ticketIds, ['BKR13'], 'meta prompts and tool results are ignored');
+  assert.deepEqual(out[1].ticketIds, [], 'a prompt that only names a ticket does not work on it');
+  assert.deepEqual(out[1].mentionedIds, ['BKR13'], 'meta prompts and tool results are ignored');
   assert.equal(out[0].project, '-proj-a');
   assert.equal(out[0].startedAt, Date.parse('2026-06-10T10:00:00Z'));
-  assert.equal(readLiveSessions({ projectsDir: dir, liveMinutes: 120, now }).length, 3, 'liveMinutes is honoured');
+  assert.equal(readLiveSessions({ sessionMeta: null, projectsDir: dir, liveMinutes: 120, now }).length, 3, 'liveMinutes is honoured');
 });
 
 test('readLiveSessions: only the first maxPrompts prompts count, and only the head of a file is read', () => {
   const dir = tmp();
   const now = Date.now();
   transcript(dir, 'p', 'many', [user('one'), user('two BKR1'), user('three'), user('four BKR2')], 1, now);
-  assert.deepEqual(readLiveSessions({ projectsDir: dir, now, maxPrompts: 3 })[0].ticketIds, ['BKR1']);
-  assert.deepEqual(readLiveSessions({ projectsDir: dir, now, maxPrompts: 4 })[0].ticketIds, ['BKR1', 'BKR2']);
+  assert.deepEqual(readLiveSessions({ sessionMeta: null, projectsDir: dir, now, maxPrompts: 3 })[0].mentionedIds, ['BKR1']);
+  assert.deepEqual(readLiveSessions({ sessionMeta: null, projectsDir: dir, now, maxPrompts: 4 })[0].mentionedIds, ['BKR1', 'BKR2']);
   // An id buried past the 256 KB head is never read.
   transcript(dir, 'p', 'huge', [user('start'), JSON.stringify({ type: 'assistant', pad: 'x'.repeat(300 * 1024) }), user('late BKR3')], 1, now);
-  assert.deepEqual(readLiveSessions({ projectsDir: dir, now }).find(s => s.id === 'huge').ticketIds, []);
+  assert.deepEqual(readLiveSessions({ sessionMeta: null, projectsDir: dir, now }).find(s => s.id === 'huge').mentionedIds, []);
 });
 
 test('readLiveSessions: a missing projects dir gives no sessions', () => {
@@ -174,9 +175,61 @@ test('readLiveSessions: a live subagent transcript counts, tagged with its paren
   const now = Date.now();
   transcript(dir, 'p', 'parent1', [user('coordinate the work')], 90, now); // the coordinator itself is quiet
   transcript(dir, path.join('p', 'parent1', 'subagents'), 'agent-a1', [user('Implement BKR7 in the worktree')], 2, now);
-  const out = readLiveSessions({ projectsDir: dir, now });
+  const out = readLiveSessions({ sessionMeta: null, projectsDir: dir, now });
   assert.equal(out.length, 1);
   assert.equal(out[0].id, 'agent-a1');
   assert.equal(out[0].subagentOf, 'parent1');
-  assert.deepEqual(out[0].ticketIds, ['BKR7']);
+  assert.deepEqual(out[0].ticketIds, [], 'a subagent brief that names a ticket is a mention');
+  assert.deepEqual(out[0].mentionedIds, ['BKR7']);
+});
+
+// ---- AGE200: working tickets, mentions, and the desktop app's archive flag ----
+
+function appFile(dir, name, rec) {
+  const d = path.join(dir, 'acct', 'org');
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, `local_${name}.json`), JSON.stringify(rec));
+}
+
+test('readSessionMeta: maps cliSessionId to archived, name and branch; odd files skipped; no folder is null', () => {
+  const dir = tmp();
+  appFile(dir, 'a', { sessionId: 'local_a', cliSessionId: 'cli-a', isArchived: true, title: 'BKR5 - Fix it', branch: 'claude/x' });
+  appFile(dir, 'b', { sessionId: 'local_b', cliSessionId: 'cli-b', isArchived: false, title: 'Chat', worktreeName: 'bkr6-work' });
+  appFile(dir, 'c', { cliSessionId: 'cli-c' }); // no isArchived: not trusted
+  fs.writeFileSync(path.join(dir, 'acct', 'org', 'local_bad.json'), '{nope');
+  const m = readSessionMeta({ sessionsDir: dir });
+  assert.deepEqual([...m.keys()].sort(), ['cli-a', 'cli-b']);
+  assert.equal(m.get('cli-a').archived, true);
+  assert.equal(m.get('cli-b').archived, false);
+  assert.equal(readSessionMeta({ sessionsDir: path.join(dir, 'nope') }), null, 'unreadable folder: unsure');
+});
+
+test('shipTaskIds and titleTicketId: only the argument and the leading id', () => {
+  assert.deepEqual(shipTaskIds('/ship-task bkr12 auto then BKR99'), ['BKR12']);
+  assert.deepEqual(shipTaskIds('see BKR12'), []);
+  assert.deepEqual(titleTicketId('FRO1738 - Measure it'), ['FRO1738']);
+  assert.deepEqual(titleTicketId('Measure FRO1738'), []);
+});
+
+test('readLiveSessions: one prompt naming nine ids works on none; name, branch and /ship-task do; archive state comes from the app', () => {
+  const dir = tmp();
+  const apps = tmp();
+  const now = Date.now();
+  const nine = Array.from({ length: 9 }, (_, i) => `BKR${i + 1}`).join(', ');
+  transcript(dir, 'p', 'coord', [user(`Coordinate ${nine}`)], 1, now);
+  transcript(dir, 'p', 'named', [user('hello')], 1, now);
+  transcript(dir, 'p', 'shipped', [user('/ship-task BKR3 auto')], 1, now);
+  transcript(dir, 'p', 'gone', [user('/ship-task BKR4')], 1, now);
+  transcript(dir, 'p', 'noapp', [user('/ship-task BKR5')], 1, now);
+  appFile(apps, 'coord', { cliSessionId: 'coord', isArchived: false, title: 'Coordinator' });
+  appFile(apps, 'named', { cliSessionId: 'named', isArchived: false, title: 'BKR2 - Title', branch: 'age200-x' });
+  appFile(apps, 'shipped', { cliSessionId: 'shipped', isArchived: false, title: 'x' });
+  appFile(apps, 'gone', { cliSessionId: 'gone', isArchived: true, title: 'x' });
+  const by = Object.fromEntries(readLiveSessions({ projectsDir: dir, now, sessionMeta: readSessionMeta({ sessionsDir: apps }) }).map(s => [s.id, s]));
+  assert.deepEqual(by.coord.ticketIds, []);
+  assert.equal(by.coord.mentionedIds.length, 9);
+  assert.deepEqual(by.named.ticketIds.sort(), ['AGE200', 'BKR2']);
+  assert.deepEqual(by.shipped.ticketIds, ['BKR3']);
+  assert.equal(by.gone.archived, true);
+  assert.equal(by.noapp.archived, null, 'no app record: unsure, not live-or-archived');
 });

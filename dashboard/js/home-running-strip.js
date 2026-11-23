@@ -9,6 +9,7 @@ import { getRunning, onRunning, startRunning, refreshRunning } from './home-runn
 import { selectedEpicIds, ticketInSelection, selectedPlaceName } from './home-where.js';
 import { syncRows, howLong } from './home-running-rows.js';
 import { activeMainTab } from './state.js';
+import { promoteAction } from './home-running-actions.js';
 
 const STATES = ['working', 'waiting-ci', 'waiting-you', 'idle'];
 const COUNT_WORDS = { working: 'working', 'waiting-ci': 'waiting on CI', 'waiting-you': 'waiting on you', idle: 'idle' };
@@ -51,6 +52,12 @@ function paintSummary(inst, ctx) {
   const live = list => list.filter(i => i.state !== 'idle').length;
   if (name) s.appendChild(el('span', 'hm-run-scope', `${name}: ${live(shown)} of ${live(all)} running`));
   const counts = STATES.map(st => [st, shown.filter(i => i.state === st).length]).filter(([, n]) => n > 0);
+  // Sessions first: "4 sessions on 13 tickets" is what you see in the app, not every ticket a prompt names (AGE200).
+  const sessions = (data.sessions || []).filter(x => !name || (x.ticketIds || []).some(id => shown.some(i => i.id === id)));
+  const tickets = shown.filter(i => i.state !== 'idle').length;
+  if (data.sessions && (sessions.length || tickets)) {
+    s.appendChild(el('span', 'hm-run-sessions', `${sessions.length} ${sessions.length === 1 ? 'session' : 'sessions'} on ${tickets} ${tickets === 1 ? 'ticket' : 'tickets'}`));
+  }
   if (!counts.length) {
     s.appendChild(el('span', 'hm-muted', name ? 'nothing running here' : 'Nothing running'));
     return;
@@ -67,14 +74,15 @@ function specsFor(ctx) {
   const now = Date.now();
   const items = shown.map(i => ({
     key: `t-${i.id}`, id: i.id, title: i.title, state: i.state, age: howLong(i.since, now),
-    ageTitle: i.since ? `Since ${new Date(i.since).toLocaleString()}` : '', source: (i.sources || []).join(' + '),
+    ageTitle: i.since ? `Since ${new Date(i.since).toLocaleString()}` : '', source: i.idleWhy || (i.sources || []).join(' + '),
     pr: i.pr, epicId: i.epicId, epicTitle: i.epicId ? titleOf(ctx, i.epicId) : '', noEpicText: 'no epic',
   }));
   const quiet = epics
     .sort((a, b) => (a.state === b.state ? a.id.localeCompare(b.id) : a.state === 'idle' ? -1 : 1))
     .map(e => ({
       key: `e-${e.id}`, id: e.id, title: titleOf(ctx, e.id), state: e.state, age: e.lastTouched ? howLong(e.lastTouched, now) : '',
-      ageTitle: e.lastTouched ? `Last touched ${e.lastTouched}` : '', source: e.lastTouched ? 'since last touched' : 'never touched',
+      ageTitle: e.lastTouched ? `Last touched ${e.lastTouched}` : '', source: e.idleWhy || (e.lastTouched ? 'since last touched' : 'never touched'),
+      action: promoteAction(e.id, e),
     }));
   return { items, quiet };
 }

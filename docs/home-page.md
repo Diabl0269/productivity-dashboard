@@ -369,6 +369,15 @@ every 15 s while the Home tab shows (`getRunning`, `onRunning`, `runningFor`, `e
 (`selectedEpicIds`, `ticketInSelection`). The "Running now" strip item and its panel are
 `dashboard/js/home-running-strip.js`.
 
+What counts as running (AGE200): sessions first ("4 sessions on 13 tickets"; the answer's `sessions[]`), then
+tickets. A session is live when its transcript is under 20 minutes old and the desktop app's session file
+(`~/Library/Application Support/Claude/claude-code-sessions`, matched by `cliSessionId`; `CH_SESSIONS_DIR`
+overrides it, `CH_PROJECTS_DIR` does the same for the transcripts) does not say `isArchived`; an unreadable
+file leaves the session counted and `unsure`. A ticket is working only for the session's own work: its
+`/ship-task <id>` argument, the id its name starts with, or the id in its branch or worktree name. Ids a prompt only
+names are `mentioned` and never counted. Idle tickets and epics carry `idleWhy` (and an epic `promoteIds`, `ready`,
+`auto`), which the strip, the Overview card and the map's Work tab show with one button.
+
 `GET /api/home/usage?project=<slug>` returns this week's usage meter; it is cached 60 s, and an older
 answer is returned at once (`stale: true`) while a fresh one is read behind it, so only the first read
 after a server start waits on the transcripts.
