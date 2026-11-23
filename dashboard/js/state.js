@@ -3,10 +3,10 @@
 import { onTabSwitch } from './search.js';
 import { syncUrl, isRoutingReady } from './routing.js';
 
-export let activeMainTab = 'overview'; // overview | tasks | search | projects | plan | checks | memory | settings | metrics | home
+export let activeMainTab = 'overview'; // overview | tasks | search | projects | plan | checks | memory | settings | metrics | home | automations
 
 const MAIN_TAB_ORDER = [
-  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings', 'metrics', 'home', 'checks',
+  'overview', 'tasks', 'search', 'projects', 'plan', 'memory', 'settings', 'metrics', 'home', 'checks', 'automations',
 ];
 
 // Externally-configured tabs (config.json externalTabs) register themselves here so
@@ -20,7 +20,7 @@ export function registerExternalTab(id, refs) {
 
 const MAIN_TAB_BTN_IDS = [
   'overviewTabBtn', 'tasksTabBtn', 'searchTabBtn', 'projectsTabBtn',
-  'runPlanTabBtn', 'memoryTabBtn', 'settingsTabBtn', 'metricsTabBtn', 'homeTabBtn', 'checksTabBtn',
+  'runPlanTabBtn', 'memoryTabBtn', 'settingsTabBtn', 'metricsTabBtn', 'homeTabBtn', 'checksTabBtn', 'automationsTabBtn',
 ];
 
 const MOD_KEY_LABEL = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
@@ -160,6 +160,7 @@ export function switchMainTab(tab, opts = {}) {
     { btn: memoryTabBtn, id: 'memory' },
     { btn: settingsTabBtn, id: 'settings' },
     { btn: document.getElementById('homeTabBtn'), id: 'home' },
+    { btn: document.getElementById('automationsTabBtn'), id: 'automations' },
   ];
   for (const { btn, id } of tabButtons) {
     if (!btn) continue;
@@ -178,6 +179,7 @@ export function switchMainTab(tab, opts = {}) {
   memoryPanel.classList.toggle('active', tab === 'memory');
   if (settingsPanel) settingsPanel.classList.toggle('active', tab === 'settings');
   document.getElementById('homePanel')?.classList.toggle('active', tab === 'home');
+  document.getElementById('automationsPanel')?.classList.toggle('active', tab === 'automations');
 
   // Externally-configured (config.json externalTabs) tabs, if any.
   for (const [extId, { btn, panel }] of externalTabs) {
@@ -245,6 +247,10 @@ export function switchMainTab(tab, opts = {}) {
     import('./home-view.js').then(m => m.renderHomeView()).catch(e => console.error('Home failed to load:', e));
   }
 
+  if (tab === 'automations') {
+    import('./automations-view.js').then(m => m.onAutomationsTabShow()).catch(e => console.error('Automations failed to load:', e));
+  }
+
   if (tab === 'search') {
     import('./search-page.js').then(m => m.onSearchTabShow()).catch(() => {});
   }
@@ -278,6 +284,7 @@ export function initStateListeners() {
   memoryTabBtn.addEventListener('click', () => switchMainTab('memory'));
   if (settingsTabBtn) settingsTabBtn.addEventListener('click', () => switchMainTab('settings'));
   document.getElementById('homeTabBtn')?.addEventListener('click', () => switchMainTab('home'));
+  document.getElementById('automationsTabBtn')?.addEventListener('click', () => switchMainTab('automations'));
 
   document.addEventListener('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
