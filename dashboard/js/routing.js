@@ -2,7 +2,7 @@
 import { stripTicketParams } from '../../shared/home-ticket-params.js';
 
 const MAIN_TABS = new Set([
-  'overview', 'tasks', 'search', 'projects', 'plan', 'checks', 'metrics', 'memory', 'settings', 'home',
+  'overview', 'tasks', 'search', 'projects', 'plan', 'checks', 'metrics', 'memory', 'settings', 'home', 'automations',
 ]);
 
 // Home tab query keys (home-state.js owns them): the selected box and the project whose map it is.

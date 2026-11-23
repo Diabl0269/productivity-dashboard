@@ -1,0 +1,6 @@
+[
+  { "id": "daily-summary", "schedule": [{ "Weekday": 0, "Hour": 8, "Minute": 58 }, { "Weekday": 1, "Hour": 8, "Minute": 58 }, { "Weekday": 2, "Hour": 8, "Minute": 58 }, { "Weekday": 3, "Hour": 8, "Minute": 58 }, { "Weekday": 4, "Hour": 8, "Minute": 58 }] },
+  { "id": "weekly-performance-review", "schedule": [{ "Weekday": 0, "Hour": 9, "Minute": 2 }] },
+  { "id": "ai-ideas-watcher", "schedule": [{ "Weekday": 0, "Hour": 9, "Minute": 3 }] },
+  { "id": "insights", "schedule": [{ "Day": 1, "Hour": 9, "Minute": 5 }] }
+]

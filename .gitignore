@@ -58,3 +58,8 @@ nicknames.json
 
 # Private backup automation + its own git repo (personal, not part of the template)
 .backup/
+
+# Skill prompts synced from the Copilot app by scripts/launchagents/install.mjs (personal; daily-summary is tracked)
+.agents/skills/weekly-performance-review/
+.agents/skills/ai-ideas-watcher/
+.agents/skills/insights/
