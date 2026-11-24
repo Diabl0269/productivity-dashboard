@@ -4,8 +4,16 @@
 .ck-root { max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; display: flex; flex-direction: column; gap: 18px; color: var(--text-primary); width: 100%; box-sizing: border-box; }
 .ck-title { margin: 0; font-size: 20px; font-weight: 600; }
 .ck-hint { margin: -10px 0 0; font-size: 13px; color: var(--text-secondary); }
-.ck-toolbar { display: flex; align-items: center; gap: 12px; }
-.ck-switch { margin-left: 0; }
+.ck-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ck-head .ck-title, .ck-head .rp-review-title { margin-right: auto; }
+.ck-switch-group { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
+.ck-switch-count { font-size: 12.5px; color: var(--text-secondary); }
+.ck-switch { margin-left: 0; color: var(--text-primary); }
+/* PRO150: off reads as a control, not as text: accent outline on the track and an accent knob. */
+.ck-switch .ht-switch-track { width: 34px; height: 18px; border: 1.5px solid var(--accent); box-sizing: border-box; }
+.ck-switch .ht-switch-knob { top: 2px; left: 2px; width: 11px; height: 11px; background: var(--accent); }
+.ck-switch[aria-checked="true"] .ht-switch-track { background: var(--accent); }
+.ck-switch[aria-checked="true"] .ht-switch-knob { transform: translateX(16px); background: #fff; }
 .ck-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ck-empty { margin: 0; }
 
