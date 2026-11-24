@@ -14,6 +14,9 @@
 import { lastWeeklyReset, WEEK_MS } from './weekly-reset.js';
 
 const HOUR = 3600e3;
+/** The override's `source` for a percent read from Claude itself (`ch metrics usage --from-claude`), and how long it stays current. */
+export const FROM_CLAUDE = 'claude';
+export const FRESH_MS = 15 * 60e3;
 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const r2 = n => Math.round(n * 100) / 100;
 const r1 = n => Math.round(n * 10) / 10;
@@ -71,6 +74,8 @@ function activeOverride(override, nowMs, weekStart) {
   if (!override || !Number.isFinite(override.pct)) return null;
   const setAt = Date.parse(override.setAt);
   if (!Number.isFinite(setAt) || setAt > nowMs) return null;
+  // A reading taken from Claude (AGE201) only counts while fresh; a stale one falls back to the labelled estimate.
+  if (override.source === FROM_CLAUDE && nowMs - setAt > FRESH_MS) return null;
   const resetsAt = override.resetsAt ? Date.parse(override.resetsAt) : NaN;
   if (Number.isFinite(resetsAt)) return nowMs < resetsAt && setAt >= resetsAt - WEEK_MS ? { ...override, setAtMs: setAt, resetsAtMs: resetsAt } : null;
   return setAt >= weekStart ? { ...override, setAtMs: setAt, resetsAtMs: null } : null;
@@ -78,7 +83,7 @@ function activeOverride(override, nowMs, weekStart) {
 
 /**
  * @returns {{weekStart:string, resetsAt:string, costThisWeekUSD:number, weekUSD:number|null, pctUsed:number|null,
- *   source:'estimated'|'set by you'|'none', setAt:string|null, reason:string|null,
+ *   source:'estimated'|'set by you'|'read from Claude'|'none', setAt:string|null, reason:string|null,
  *   perDay:{date:string, usd:number}[], perEpic:{id:string, title:string|null, usd:number}[],
  *   perRunning:{ticketId:string|null, sessionId:string, usd:number, since:string|null}[],
  *   pace:{projectedPctAtReset:number|null, reachesLimitAt:string|null}, asOf:string, capped:boolean}}
@@ -162,9 +167,14 @@ export function computeUsageMeter({
   let source = 'none';
   let reason = limit ? null : NO_PERCENT_REASON;
   if (ov) {
-    source = 'set by you';
     reason = null;
-    pctUsed = ov.pct + (limit ? (100 * costSinceSet) / limit : 0);
+    if (ov.source === FROM_CLAUDE) { // the real number: nothing is added to it
+      source = 'read from Claude';
+      pctUsed = ov.pct;
+    } else {
+      source = 'set by you';
+      pctUsed = ov.pct + (limit ? (100 * costSinceSet) / limit : 0);
+    }
   } else if (limit) {
     source = 'estimated';
     pctUsed = (100 * cost) / limit;
@@ -242,7 +252,7 @@ export function chipParts(m) {
 /** Chip colour: amber over 75%, red over 90% or under an active hit; an estimate with no hit stays neutral. */
 export function chipLevel(m) {
   if (m.limitHit) return 'red';
-  if (m.pctUsed === null || m.source !== 'set by you') return 'none';
+  if (m.pctUsed === null || (m.source !== 'set by you' && m.source !== 'read from Claude')) return 'none';
   return m.pctUsed > 90 ? 'red' : m.pctUsed > 75 ? 'amber' : 'none';
 }
 
