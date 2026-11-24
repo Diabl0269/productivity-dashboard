@@ -8,7 +8,7 @@
  * run slot, then per epic (lane busy, build cap, nothing an automatic run can take). Only epics Ready by
  * epic-ready.js may start. The start time is the next dispatcher tick after the gate opens.
  */
-import { openEpicReadiness, autoQueueOrder } from './epic-ready.js';
+import { openEpicReadiness, autoQueueOrder, unrunnableBlockers, blockerWarningText } from './epic-ready.js';
 import { DEFAULT_MACHINE_CAP } from './run-plan.js';
 import { normalizeSettings } from './autorun-settings.js';
 import { nextWeeklyReset } from './weekly-reset.js';
@@ -123,6 +123,8 @@ export function computeNextStart(input) {
   }
   const model = r => (r.children.some(c => c.runnable && c.model === 'opus') ? 'opus' : 'sonnet');
   const head = r => ({ epic: r.id, title: r.title, lane: r.lane, children: pickChildren(r).map(c => c.id), model: model(r) });
+  // PRO151: the same predicate as the Plan page: say when a blocker of this epic will not start by itself.
+  const stuckNote = r => { const bad = unrunnableBlockers(doc, r.id); return bad.length ? `; note: ${blockerWarningText(bad)}` : ''; };
 
   if (gateOpensMs !== null) {
     const r = pick || first;
@@ -130,7 +132,7 @@ export function computeNextStart(input) {
     return {
       next: { ...head(r), atMs, atKind: 'reset', waitsFor: gate },
       reason: gate,
-      line: `Next start: ${r.id} ${r.title ? `(${r.title}) ` : ''}waits until ${gate}, then starts at the next check, about ${formatWhen(atMs, now)}`,
+      line: `Next start: ${r.id} ${r.title ? `(${r.title}) ` : ''}waits until ${gate}, then starts at the next check, about ${formatWhen(atMs, now)}${stuckNote(r)}`,
     };
   }
   if (reviewCount > s.reviewCap) return none(`${reviewCount} cards wait for your review (autorun adds nothing above ${s.reviewCap})`);
@@ -140,7 +142,7 @@ export function computeNextStart(input) {
     return {
       next: { ...head(r), atMs: null, atKind: 'slot', waitsFor: why },
       reason: why,
-      line: `Next start: ${r.id} ${r.title ? `(${r.title}) ` : ''}starts when a run slot frees (${why}), at the next check`,
+      line: `Next start: ${r.id} ${r.title ? `(${r.title}) ` : ''}starts when a run slot frees (${why}), at the next check${stuckNote(r)}`,
     };
   }
   if (!pick) return none(notes.join('; '));
@@ -149,6 +151,6 @@ export function computeNextStart(input) {
   return {
     next: { ...head(pick), atMs, atKind: 'tick', waitsFor: null },
     reason: null,
-    line: `Next start: ${pick.id} ${pick.title ? `(${pick.title}) ` : ''}${when}`,
+    line: `Next start: ${pick.id} ${pick.title ? `(${pick.title}) ` : ''}${when}${stuckNote(pick)}`,
   };
 }

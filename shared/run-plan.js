@@ -8,7 +8,7 @@
 import { checksOnOpenWork, reviewQueue } from './review.js';
 import { needsTalLinesByEpic } from './needs-tal-lines.js';
 import { isDesignPick, isPickGate } from './pick-gate.js';
-import { openEpicReadiness, epicIdsForLanes, plainReasonLine, isStubEpic } from './epic-ready.js';
+import { openEpicReadiness, epicIdsForLanes, plainReasonLine, isStubEpic, blockerWillRun, blockerWarningText } from './epic-ready.js';
 
 export { isDesignPick, isPickGate };
 
@@ -385,10 +385,18 @@ export function computeRunPlan(doc, { machineCap = DEFAULT_MACHINE_CAP } = {}) {
         const rd = readinessById.get(id);
         const isReady = !!(rd && rd.ready);
         const isAuto = !!(rd && rd.auto);
-        const why = isReady && needs
-          ? `Ready${isAuto ? ' · Auto' : ''}: starts when ${needs} finish${/ and |,/.test(needs) ? '' : 'es'}`
-          : needs ? `Needs ${needs}` : 'Needs the card before it';
-        later.push({ ...card(id, 'later', false, i.work.length, why), ready: isReady, auto: isAuto });
+        // PRO151: "starts when X finishes" only when X can run; else say X will not start by itself and offer to promote it.
+        const stuck = isReady && isAuto
+          ? [...crossLane, ...laterSameLane].map(d => ({ id: d, ...blockerWillRun(doc, d) })).filter(b => !b.runs) : [];
+        const why = stuck.length
+          ? `Ready · Auto, but ${blockerWarningText(stuck)}`
+          : isReady && needs
+            ? `Ready${isAuto ? ' · Auto' : ''}: starts when ${needs} finish${/ and |,/.test(needs) ? '' : 'es'}`
+            : needs ? `Needs ${needs}` : 'Needs the card before it';
+        later.push({
+          ...card(id, 'later', false, i.work.length, why), ready: isReady, auto: isAuto,
+          ...(stuck.length ? { stuckBlockers: stuck.map(b => b.id), promoteIds: [...new Set(stuck.flatMap(b => b.promoteIds))] } : {}),
+        });
       } else if (phase === 'partial') {
         now.push(card(id, 'partial', false, i.freeWork.length, `Stops at ${pickText}`));
         later.push(card(id, 'later', true, i.gatedWork.length, `Needs ${pickText}`));

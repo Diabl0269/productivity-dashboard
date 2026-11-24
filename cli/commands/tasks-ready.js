@@ -12,7 +12,7 @@ import { print, jsonOut } from '../lib/output.js';
 import { load, save, sectionById, todayStr } from '../lib/tasks-store.js';
 import { appendHistory } from '../lib/schema.js';
 import { closeIfReviewComplete, reviewReadyToClose } from '../../shared/review.js';
-import { openEpicReadiness, readinessLabel, autoQueueOrder, withAutoLabel, isAuto, LATER_TITLE } from '../../shared/epic-ready.js';
+import { openEpicReadiness, readinessLabel, autoQueueOrder, withAutoLabel, isAuto, LATER_TITLE, unrunnableBlockers, blockerWarningText } from '../../shared/epic-ready.js';
 
 /** PRO138: can a backlog ticket under this epic move to todo (the epic is open and not a later bucket)? Mirrors PRO108 in shared/review-filing.js. */
 export function epicIsOpenForWork(epicTask, epicSectionId) {
@@ -92,7 +92,9 @@ export default async function cmdReady(argv) {
     if (!lines.length) print('Nothing to promote or label.');
     return;
   }
-  let epics = openEpicReadiness(load());
+  const doc = load();
+  // PRO151: a Ready, Auto epic whose blocker will not start by itself says so, the same words as the Plan page.
+  let epics = openEpicReadiness(doc).map(e => (e.ready && e.auto ? { ...e, stuckBlockers: unrunnableBlockers(doc, e.id) } : e));
   if (values.auto) epics = epics.filter(e => e.ready && e.auto);
   // Auto epics keep their slots but fill them in start order: priority, then autoRank, then plan order.
   const queue = autoQueueOrder(epics.filter(e => e.auto));
@@ -104,6 +106,7 @@ export default async function cmdReady(argv) {
     const runnable = e.children.filter(c => c.runnable).length;
     print(`${e.ready ? '[ready]    ' : '[not ready]'} ${e.id}  ${e.title}${e.lane ? ` (${e.lane})` : ''}${e.auto ? ` [auto ${e.priority}${e.autoRank != null ? ` #${e.autoRank}` : ''}]` : ''}`);
     if (e.softBlockers?.length) print(`             Runs now: ${e.softBlockers.join(', ')} only wait on you`);
+    if (e.stuckBlockers?.length) print(`             Ready · Auto, but ${blockerWarningText(e.stuckBlockers)}`);
     print(`             ${readinessLabel(e)}${e.ready ? ` - ${runnable} ticket${runnable === 1 ? '' : 's'} to run` : ''}`);
   }
 }

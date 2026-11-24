@@ -16,7 +16,7 @@ function el(tag, className, text) {
 }
 
 /** The two-step button: first click asks "Move N to To do? Yes / Cancel", Yes moves them (never a browser dialog). */
-function promoteButton(ids, epicId, redraw) {
+export function promoteButton(ids, epicId, redraw) {
   const wrap = el('div', 'rp-promote');
   wrap.dataset.promote = epicId;
   const idle = () => {
