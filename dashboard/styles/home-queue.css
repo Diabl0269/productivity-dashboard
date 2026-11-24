@@ -1,0 +1,55 @@
+/* Home tab — the Overview's queue panels (js/home-queue-panel.js, home-queue-rows.js, home-queue-drag.js).
+   The card is the Overview card (home-overview.css); rows, chips and buttons are the page's own. base.css tokens
+   only. The Drop button is always in the layout (only its opacity changes), so nothing moves when you hover. */
+
+.hm-q-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.hm-q-row {
+  position: relative; display: flex; flex-direction: column; margin: 0 -6px; padding: 4px 6px; border-radius: 6px;
+  cursor: grab; user-select: none; -webkit-user-select: none;
+  transition: background var(--transition-fast), transform 120ms var(--stagger-ease);
+}
+.hm-q-row:hover, .hm-q-row.hm-q-open { background: var(--surface-3); }
+.hm-q-row.hm-q-dragging { cursor: grabbing; z-index: 2; background: var(--surface-3); border: 0; outline: 1px solid var(--border); transition: none; }
+.hm-q-sorting .hm-q-row { cursor: grabbing; }
+.hm-q-row.hm-q-open { cursor: default; }
+.hm-q-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.hm-q-grip { flex: none; width: 10px; color: var(--text-tertiary); font-size: 11px; letter-spacing: -2px; touch-action: none; line-height: 1; }
+.hm-q-title {
+  flex: 1 1 auto; min-width: 5.5em; font-size: 13px; line-height: 1.35; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hm-q-chips { flex: 0 1 auto; display: inline-flex; gap: 4px; min-width: 0; overflow: hidden; }
+.hm-q-chip { font-size: 11px; padding: 1px 7px; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-q-drop, .hm-q-done, .hm-q-undo {
+  flex: none; font: inherit; font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 1px 9px;
+  transition: color var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+.hm-q-drop { opacity: 0; }
+.hm-q-row:hover .hm-q-drop, .hm-q-row:focus-within .hm-q-drop, .hm-q-drop:focus-visible { opacity: 1; }
+@media (hover: none) { .hm-q-drop { opacity: 1; } }
+.hm-q-drop:hover, .hm-q-done:hover, .hm-q-undo:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+
+/* The editor: a small labelled input per field under the row */
+.hm-q-editor { display: flex; flex-direction: column; gap: 4px; padding: 6px 0 4px 18px; cursor: default; user-select: text; -webkit-user-select: text; }
+.hm-q-field { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 8px; }
+.hm-q-key { font-size: 11.5px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-q-input {
+  font: inherit; font-size: 12.5px; min-width: 0; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px;
+}
+.hm-q-input:focus-visible { box-shadow: none; outline: 2px solid var(--accent); outline-offset: 0; }
+.hm-q-done { align-self: flex-start; margin-top: 2px; }
+
+/* Check problems, errors and the undo line: quiet text that fades in and out */
+.hm-q-warn { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hm-q-warn-line { font-size: 12px; line-height: 1.4; color: var(--text-secondary); }
+.hm-q-warn-line::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: var(--urgency-soon); }
+.hm-q-error { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--urgency-today); }
+.hm-q-toast { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; color: var(--text-secondary); }
+.hm-q-toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-q-card [hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hm-q-row, .hm-q-drop, .hm-q-done, .hm-q-undo { transition: none !important; }
+}

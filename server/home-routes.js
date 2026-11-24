@@ -18,6 +18,7 @@ import automationsRoute from './home/automations-route.js';
 import servicesRoute from './home/services-route.js';
 import automationEditRoute from './home/automation-edit-route.js';
 import automationDefaultsRoute from './home/automation-defaults-route.js';
+import queueRoutes from './home/queue-route.js';
 
 const routes = [
   configRoute, // GET /api/home?project=<slug> -> the project's home.config.json, validated
@@ -27,6 +28,7 @@ const routes = [
   automationsRoute, // GET /api/home/automations?project=<slug> -> each automation with its last run (60 s cache)
   automationEditRoute, // PUT /api/home/automation?project=<slug> -> edit one automation, reinstall its LaunchAgent when needed
   automationDefaultsRoute, // PUT /api/home/automation-defaults?project=<slug> -> project-wide model/effort/runner defaults
+  ...queueRoutes, // GET/PUT /api/home/queue?project=<slug>&id=<queue id> -> a markdown queue: list, move, edit, drop, undo (PRO152)
   servicesRoute, // GET /api/home/services?project=<slug> -> each outside service with its status (60 s cache)
 ];
 
