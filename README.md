@@ -169,7 +169,7 @@ See `memory.example/` for the expected format.
 - **Why not ready (PRO85):** a Not-ready or Later card names what is missing in plain words (`FRO1507 needs a 'How to check it' line (in its In plain words section)`), every ticket id in it is a button, and with more than one reason a "What's missing (N)" list opens under it. A card whose epic is in backlog, or whose only open tickets are in backlog, has a "Move N backlog tickets to To do" button (click once, then Yes; Undo in the toast puts them back). It moves only that epic's own backlog tickets and never a "later" bucket. CLI twin: `ch tasks promote <epicId>`.
 - **Completeness line (PRO84):** the Plan page and `ch tasks runplan` say `All 73 open epics are shown (179 finished ones are not)`; if an open epic is ever missing the line turns warn-coloured and names it. `runplan --json` carries `totals`.
 - Same data from the CLI: `ch tasks runplan` (`[running]` marks in-progress cards, `‖` a card that runs alongside the one above)
-- Start on a card also opens the Claude desktop app on a new Claude Code session with the card's `/ship-task` command typed in (a `claude://code/new` link; the app has no model parameter, so pick the model there). Set `claudeSessionFolder` in `config.json` to choose the folder it opens in.
+- Start on a card also opens the selected AI provider (Claude Desktop via `claude://code/new`, or Antigravity CLI `agy -i` in Terminal when Gemini is selected in Settings) with the card's `/ship-task` command. Set `claudeSessionFolder` in `config.json` (or Default folder in Settings) to choose the folder it opens in.
 
 ### Home Tab
 
@@ -204,30 +204,30 @@ keeps the project and automation (`/dashboard/home/how-it-runs/edit/<id>?hprojec
 - Preference saved to localStorage
 - Both themes share a single design-token system (`dashboard/styles/base.css`)
 
-## Automations (LaunchAgents running OpenCode)
+## Automations (macOS LaunchAgents)
 
 Recurring jobs (`daily-summary`, `weekly-performance-review`, `ai-ideas-watcher`, `insights`) run as macOS LaunchAgents
-`local.opencode.<id>` that call `scripts/launchagents/run-job.sh`, which runs
-`opencode-cli run --auto --format json --title "<id> <date>" "<prompt pointing at .agents/skills/<id>/SKILL.md>"`
-and writes the session id to `~/Library/Logs/opencode-automations/<id>.last.json`.
+`local.agent-automation.<id>` (and legacy `local.opencode.<id>`) that call `scripts/launchagents/run-job.sh` with the configured harness (`gemini` / `agy`, `opencode`, `claude`, `codex`, `copilot`, or `custom`)
+and record each run in `~/Library/Logs/agent-automations/<id>.last.json` and `<id>.runs.jsonl`.
 
 ```bash
-REPO_ROOT="/path/to/checkout" OPENCODE_MODEL="provider/model" node scripts/launchagents/install.mjs [--dry-run] [--no-load] [--uninstall] [--only id,id]
+REPO_ROOT="/path/to/checkout" AUTOMATION_HARNESS="gemini" AUTOMATION_CLI="agy" node scripts/launchagents/install.mjs
 ```
 
-The installer copies any missing skill prompt from `~/.copilot/scheduled-tasks/<id>/` into `.agents/skills/<id>/`, writes the plists
-(`plutil`-linted) and loads them with `launchctl bootout` + `bootstrap gui/$UID`. Jobs and schedules live in `scripts/launchagents/jobs.json`.
+Jobs, defaults, and schedules live in `home.config.json` (falling back to `scripts/launchagents/jobs.json` schedules), writes the plists
+(`plutil`-linted) and loads them with `launchctl bootout` + `bootstrap gui/$UID`.
 
-The dashboard **Automations** tab (`/dashboard/automations`) manages *any* LaunchAgent: schedule, program arguments, environment, the
-script it runs, Run now, Enable/Disable, log tail, and Open session (opencode/copilot: opens the app; claude/codex: Terminal resume;
+The dashboard **Automations** tab and **Home → How it runs** (`/dashboard/automations`) manage LaunchAgents: schedule, harness/model/effort, program arguments, environment, the
+script it runs, Run now, Enable/Disable, log tail, and Open session (`gemini`: `agy --conversation=<id>` in Terminal; `claude`/`codex`: Terminal resume in the job's working directory; `opencode`/`copilot`: opens the app or attaches in Terminal via Open in Terminal;
 other: the log file). API: `server/automations-routes.js` (`/api/automations*`, local-origin only).
 
 | Env var | Purpose |
 |---|---|
 | `LAUNCH_AGENTS_DIR` | LaunchAgents directory (default `~/Library/LaunchAgents`) |
-| `AUTOMATION_LOG_DIR` | Logs and `<id>.last.json` sidecars (default `~/Library/Logs/opencode-automations`) |
+| `AUTOMATION_LOG_DIR` | Logs, `<id>.last.json`, and `<id>.runs.jsonl` sidecars |
 | `REPO_ROOT` | Checkout the jobs run in (installer; default this repo) |
-| `OPENCODE_CLI`, `OPENCODE_MODEL` | opencode binary / model for `run-job.sh` (model unset by default) |
+| `AUTOMATION_HARNESS`, `AUTOMATION_CLI`, `AUTOMATION_MODEL`, `AUTOMATION_EFFORT` | Harness, CLI binary, model, and effort for `install.mjs` / `run-job.sh` |
+| `GEMINI_CLI`, `OPENCODE_CLI`, `OPENCODE_MODEL` | Per-harness CLI / model overrides |
 | `LAUNCHCTL_BIN`, `PLUTIL_BIN`, `OPEN_BIN`, `OSASCRIPT_BIN`, `LAUNCHD_UID` | Overrides for tests |
 
 ## Daily Automation (macOS LaunchAgent)

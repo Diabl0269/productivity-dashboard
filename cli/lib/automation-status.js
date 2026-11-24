@@ -101,7 +101,8 @@ export async function readJsonFile(src, { baseDir, now = Date.now() } = {}) {
   let ok = null;
   if (src.okField) {
     const v = field(data, src.okField);
-    if (v === true || /^(ok|success|passed|true)$/i.test(String(v))) ok = true;
+    if (typeof v === 'number' && Number.isFinite(v) && /exit/i.test(src.okField)) ok = v === 0;
+    else if (v === true || /^(ok|success|passed|true)$/i.test(String(v))) ok = true;
     else if (v === false || /^(fail|failed|failure|error|false)$/i.test(String(v))) ok = false;
   }
   if (at === null) return { ...unknown(`${src.path} has no time in "${key}"`), ok };
@@ -214,6 +215,7 @@ export async function readLaunchctl(src, { launchctl = 'launchctl', uid = proces
   const interval = Number(/^\trun interval = (\d+) seconds$/m.exec(stdout)?.[1]);
   const ok = exit === null || /never exited/i.test(exit) ? null : exit === '0';
   const out = { lastRun: null, ok, late: false, detail: `${state === 'running' ? 'running now' : 'loaded, not running'}; last exit code ${exit ?? 'unknown'}${runs ? `; ${runs} runs since login` : ''}` };
+  if (state === 'running') out.running = true;
   if (Number.isFinite(interval) && interval > 0) out.intervalMin = interval / 60;
   const next = nextCalendarRun(calendarTimes(stdout), now);
   if (next !== null) out.nextRun = iso(next);
@@ -311,6 +313,7 @@ export function joinStatus(parts, now = Date.now()) {
   if (ok === null && lastRun && !late) ok = true;
   const out = { lastRun, ok, late, detail: parts.map(p => p.detail).filter(Boolean).join(' · '), sources: parts };
   if (wait) out.waiting = wait.waiting;
+  if (parts.some(p => p.running)) out.running = true;
   if (parts.some(p => p.off)) out.off = true;
   const interval = parts.find(p => p.intervalMin)?.intervalMin;
   const next = parts.find(p => p.nextRun)?.nextRun || (interval && lastRun ? iso(Math.max(toMs(lastRun) + interval * 60e3, now)) : null);

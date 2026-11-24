@@ -16,6 +16,8 @@ const DEFAULT_FOLDER_KEY = 'dashboard.claudeLaunch.defaultFolder';
 const TASK_OVERRIDES_KEY = 'dashboard.claudeLaunch.taskPrompts';
 const AI_PROVIDER_KEY = 'dashboard.aiProvider';
 const COPILOT_REPO_KEY = 'dashboard.copilotRepository';
+const DEFAULT_TERMINAL_KEY = 'dashboard.defaultTerminal';
+export const VALID_TERMINALS = ['default', 'cmux', 'iterm', 'ghostty'];
 
 export const DEFAULT_TASK_TEMPLATE = [
   'Work on {{type}} {{id}}: {{title}}',
@@ -90,14 +92,42 @@ export function writeEpicTemplate(v) { writeString(EPIC_TEMPLATE_KEY, v, DEFAULT
 export function readDefaultFolder() { return readString(DEFAULT_FOLDER_KEY, ''); }
 export function writeDefaultFolder(v) { writeString(DEFAULT_FOLDER_KEY, (v || '').trim(), ''); }
 export function readAiProvider() {
-  return readString(AI_PROVIDER_KEY, 'claude') === 'copilot' ? 'copilot' : 'claude';
+  const v = readString(AI_PROVIDER_KEY, 'claude');
+  return v === 'copilot' || v === 'gemini' ? v : 'claude';
 }
 export function writeAiProvider(provider) {
-  writeString(AI_PROVIDER_KEY, provider === 'copilot' ? 'copilot' : 'claude', 'claude');
+  const clean = provider === 'copilot' || provider === 'gemini' ? provider : 'claude';
+  writeString(AI_PROVIDER_KEY, clean, 'claude');
+}
+export function providerButtonName(provider) {
+  if (provider === 'copilot') return 'Copilot';
+  if (provider === 'gemini') return 'Antigravity';
+  return 'Claude';
 }
 export function readCopilotRepository() { return readString(COPILOT_REPO_KEY, ''); }
 export function writeCopilotRepository(repo) {
   writeString(COPILOT_REPO_KEY, (repo || '').trim(), '');
+}
+export function readDefaultTerminal() {
+  const fromCfg = typeof window !== 'undefined' ? window.dashboardConfig?.terminalApp : null;
+  if (VALID_TERMINALS.includes(fromCfg)) return fromCfg;
+  const v = readString(DEFAULT_TERMINAL_KEY, 'default');
+  return VALID_TERMINALS.includes(v) ? v : 'default';
+}
+export function writeDefaultTerminal(terminal) {
+  const clean = VALID_TERMINALS.includes(terminal) ? terminal : 'default';
+  writeString(DEFAULT_TERMINAL_KEY, clean, 'default');
+  if (typeof window !== 'undefined' && window.dashboardConfig) {
+    if (clean === 'default') delete window.dashboardConfig.terminalApp;
+    else window.dashboardConfig.terminalApp = clean;
+  }
+  if (typeof fetch === 'function') {
+    fetch('/api/automations/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ terminalApp: clean }),
+    }).catch(() => {});
+  }
 }
 
 export function isValidCopilotRepository(repo) {
@@ -281,11 +311,38 @@ export function buildCopilotLaunchUrl({ prompt, repo }) {
   return `ghapp://session/new/${repo.trim()}?${params.toString()}`;
 }
 
+export function buildGeminiLaunchCommand({ prompt, folder }) {
+  if (!(prompt || '').trim()) return '';
+  const preview = (prompt || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  const quoted = JSON.stringify(preview + ((prompt || '').trim().length > 120 ? '…' : ''));
+  const cd = isAbsolutePath(folder) ? `cd ${JSON.stringify(folder.trim())} && ` : '';
+  return `${cd}agy -i ${quoted}`;
+}
+
 export function buildProviderLaunchUrl(opts) {
-  return opts?.aiProvider === 'copilot' ? buildCopilotLaunchUrl(opts) : buildLaunchUrl(opts);
+  if (opts?.aiProvider === 'copilot') return buildCopilotLaunchUrl(opts);
+  if (opts?.aiProvider === 'gemini') return buildGeminiLaunchCommand(opts);
+  return buildLaunchUrl(opts);
 }
 
 export function launchWithProvider(opts) {
+  if (opts?.aiProvider === 'gemini') {
+    const prompt = (opts?.prompt || '').trim();
+    if (!prompt) return false;
+    if (typeof fetch === 'function') {
+      fetch('/api/automations/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'gemini',
+          prompt,
+          folder: isAbsolutePath(opts.folder) ? opts.folder.trim() : '',
+          model: opts.model || '',
+        }),
+      }).catch(() => {});
+    }
+    return true;
+  }
   const url = buildProviderLaunchUrl(opts);
   if (url) window.location.assign(url);
   return !!url;
@@ -373,7 +430,7 @@ export function createClaudeLaunchButton({ getTask, getState, onOpenSettings }) 
     const task = getTask();
     if (!task) return;
     const r = resolveLaunch(task, getState());
-    const providerName = r.aiProvider === 'copilot' ? 'Copilot' : 'Claude';
+    const providerName = providerButtonName(r.aiProvider);
     const repoInfo = r.aiProvider === 'copilot'
       ? (isValidCopilotRepository(r.repo) ? ` · ${r.repo}` : ' · choose a GitHub repository before starting')
       : (r.folder ? ` · ${r.folder}` : ' · no folder set');
@@ -520,8 +577,11 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
   const repoWarn = overlay.querySelector('.cl-repo-warn');
   const remember = overlay.querySelector('#clRemember');
   const startBtn = overlay.querySelector('[data-act="start"]');
+  const providerName = providerButtonName(r.aiProvider);
   overlay.querySelector('#clDialogTitle').textContent =
-    `Start ${task.taskId || 'ticket'} in ${r.aiProvider === 'copilot' ? 'Copilot' : 'Claude'}`;
+    `Start ${task.taskId || 'ticket'} in ${providerName}`;
+  const summaryEl = overlay.querySelector('.cl-url-details summary');
+  if (summaryEl && r.aiProvider === 'gemini') summaryEl.textContent = 'Command that will be launched';
   promptEl.value = r.prompt;
   repoEl.value = r.repo;
   overlay.querySelector('.cl-repo-field').hidden = !needsRepository;
@@ -531,10 +591,11 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
 
   const update = () => {
     const n = promptEl.value.length;
-    const over = n > MAX_PROMPT_CHARS;
+    const maxChars = r.aiProvider === 'gemini' ? 65536 : MAX_PROMPT_CHARS;
+    const over = n > maxChars;
     counter.textContent = over
-      ? `${n.toLocaleString()} / ${MAX_PROMPT_CHARS.toLocaleString()} chars — Claude will cut the rest`
-      : `${n.toLocaleString()} / ${MAX_PROMPT_CHARS.toLocaleString()} chars`;
+      ? `${n.toLocaleString()} / ${maxChars.toLocaleString()} chars — ${providerName} will cut the rest`
+      : `${n.toLocaleString()} / ${maxChars.toLocaleString()} chars`;
     counter.classList.toggle('cl-over', over);
     const f = folderEl.value.trim();
     folderWarn.hidden = !f || isAbsolutePath(f);
@@ -548,7 +609,8 @@ export function openEditDialog({ task, state, returnFocus, onSaved }) {
     urlEl.textContent = url;
     startBtn.dataset.launchUrl = url;
     overlay.querySelector('.cl-folder-field').hidden = r.aiProvider === 'copilot';
-    startBtn.disabled = r.aiProvider === 'copilot' && !isValidCopilotRepository(launch.repo);
+    startBtn.disabled = (r.aiProvider === 'copilot' && !isValidCopilotRepository(launch.repo))
+      || (r.aiProvider === 'gemini' && !promptEl.value.trim());
     repoWarn.hidden = !needsRepository || isValidCopilotRepository(launch.repo);
   };
   promptEl.addEventListener('input', update);

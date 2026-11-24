@@ -13,7 +13,7 @@ const CACHE_VERSION = 14;
 const WANTED = new Set(['user', 'assistant', 'system', 'custom-title', 'pr-link', 'cost-state']);
 const LEAD_TYPE_RE = /^\{"type":"([\w-]+)"/; // pr-link, cost-state, api-request-*, file-history-*... lead with type
 
-/** Main transcripts in a Claude projects dir: [{sessionId, path, mtimeMs, size, helperCount}]. */
+/** Main transcripts in a Claude projects dir or an Antigravity `brain` dir: [{sessionId, path, mtimeMs, size, helperCount}]. */
 export function listTranscripts(dir) {
   let names;
   try {
@@ -23,23 +23,21 @@ export function listTranscripts(dir) {
   }
   const out = [];
   for (const n of names) {
-    if (!n.endsWith('.jsonl')) continue;
-    const p = path.join(dir, n);
-    let st;
-    try {
-      st = fs.statSync(p);
-    } catch {
+    if (n.endsWith('.jsonl')) {
+      const p = path.join(dir, n);
+      let st;
+      try { st = fs.statSync(p); } catch { continue; }
+      if (!st.isFile()) continue;
+      const sessionId = n.slice(0, -'.jsonl'.length);
+      let helperCount = 0;
+      try { helperCount = fs.readdirSync(path.join(dir, sessionId, 'subagents')).length; } catch { /* no helpers */ }
+      out.push({ sessionId, path: p, mtimeMs: st.mtimeMs, size: st.size, helperCount });
       continue;
     }
-    if (!st.isFile()) continue;
-    const sessionId = n.slice(0, -'.jsonl'.length);
-    let helperCount = 0;
-    try {
-      helperCount = fs.readdirSync(path.join(dir, sessionId, 'subagents')).length;
-    } catch {
-      /* no helpers */
-    }
-    out.push({ sessionId, path: p, mtimeMs: st.mtimeMs, size: st.size, helperCount });
+    const agTranscript = path.join(dir, n, '.system_generated', 'logs', 'transcript.jsonl');
+    let st;
+    try { st = fs.statSync(agTranscript); } catch { continue; }
+    if (st.isFile()) out.push({ sessionId: n, path: agTranscript, mtimeMs: st.mtimeMs, size: st.size, helperCount: 0 });
   }
   return out;
 }
@@ -90,13 +88,22 @@ export async function summarizeHelperFile(file, opts = {}) {
   return summarizeHelperUsage(parsed, opts);
 }
 
+function inferredSessionId(file) {
+  const base = path.basename(file, '.jsonl');
+  if (base === 'transcript' && file.includes(`${path.sep}.system_generated${path.sep}logs${path.sep}`)) {
+    return path.basename(path.resolve(path.dirname(file), '..', '..'));
+  }
+  return base;
+}
+
 export async function summarizeTranscriptFile(file, opts = {}) {
   const parsed = [];
   const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
   for await (const raw of rl) {
     if (!raw) continue;
     // user/assistant/system/attachment lines start with parentUuid and carry `type` later (after
-    // the message body for assistants), so only skip on a leading type or an attachment key.
+    // the message body for assistants), so only skip on a leading type, Antigravity GENERIC tool output, or an attachment key.
+    if (raw.slice(0, 120).includes('"type":"GENERIC"')) continue;
     const m = LEAD_TYPE_RE.exec(raw.length > 100 ? raw.slice(0, 100) : raw);
     if (m ? !WANTED.has(m[1]) : raw.slice(0, 400).includes('"attachment":{')) continue;
     try {
@@ -105,11 +112,12 @@ export async function summarizeTranscriptFile(file, opts = {}) {
       /* partial or corrupt line */
     }
   }
-  const rec = summarizeSession(parsed, opts);
-  if (rec && !rec.sessionId) rec.sessionId = rec.key = path.basename(file, '.jsonl');
+  const fallbackId = inferredSessionId(file);
+  const rec = summarizeSession(parsed, { ...opts, sessionId: fallbackId });
+  if (rec && !rec.sessionId) rec.sessionId = rec.key = fallbackId;
   if (rec) {
     const helpers = [];
-    for (const h of helperFiles(path.dirname(file), path.basename(file, '.jsonl'))) helpers.push(await summarizeHelperFile(h, { stallMinutes: opts.stallMinutes }));
+    for (const h of helperFiles(path.dirname(file), fallbackId)) helpers.push(await summarizeHelperFile(h, { stallMinutes: opts.stallMinutes }));
     applyHelpers(rec, helpers);
   }
   return rec;

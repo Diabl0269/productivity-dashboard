@@ -183,6 +183,12 @@
 .hr-fold-lines { margin: 0; padding-left: 16px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-primary); display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
 .hr-fold-meta { margin: 0; font-size: 12px; color: var(--text-secondary); }
 .hr-fold-docs { font-size: 12.5px; color: var(--accent); }
+.hr-fold-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.hr-fold-actions[hidden] { display: none; }
+.hr-fold-select { font: inherit; font-size: 12px; color: var(--text-primary); background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; max-width: min(440px, 100%); }
+.hr-btn:disabled { opacity: 0.65; cursor: default; }
+.hr-fold-live { font-size: 12px; font-weight: 600; color: var(--hr-checking); animation: hr-pulse 1.2s ease-in-out infinite; }
+.hr-fold-live[hidden] { display: none; }
 
 /* ── Lower strip: health ── */
 .hr-health[hidden] { display: none; }

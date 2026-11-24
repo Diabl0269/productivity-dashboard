@@ -13,7 +13,15 @@ export const MAX_DESCRIPTION = 500;
 export const RUNTIME_FIELDS = ['schedule', 'harness', 'model', 'skill', 'prompt', 'enabled', 'effort', 'cli', 'runner', 'arguments'];
 export const EDIT_FIELDS = [...RUNTIME_FIELDS, 'description'];
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
-export const HARNESSES = ['opencode', 'claude', 'codex', 'copilot', 'custom'];
+export const HARNESSES = ['opencode', 'claude', 'codex', 'copilot', 'gemini', 'custom'];
+export const HARNESS_LABELS = Object.freeze({
+  opencode: 'OpenCode',
+  claude: 'Claude Code',
+  codex: 'Codex',
+  copilot: 'GitHub Copilot',
+  gemini: 'Gemini (Antigravity)',
+  custom: 'Custom',
+});
 export const DEFAULT_EFFORT = 'medium';
 export const DEFAULT_RUNNER = '~/Library/Application Support/agent-automations/run-job.sh';
 export const HARNESS_DEFAULTS = Object.freeze({
@@ -21,6 +29,7 @@ export const HARNESS_DEFAULTS = Object.freeze({
   claude: { cli: 'claude', model: 'sonnet' },
   codex: { cli: 'codex', model: 'gpt-5.1-codex' },
   copilot: { cli: 'copilot', model: 'gpt-4.1' },
+  gemini: { cli: 'agy', model: '' },
   custom: { cli: '', model: '' },
 });
 

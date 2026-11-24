@@ -1,7 +1,36 @@
 import { shell } from './home-pages-overlay.js';
-import { effectiveRun, describeSchedule, checkSchedule, EFFORTS, HARNESSES, HARNESS_DEFAULTS } from '../../shared/automation-run.js';
+import { effectiveRun, describeSchedule, checkSchedule, EFFORTS, HARNESSES, HARNESS_DEFAULTS, HARNESS_LABELS } from '../../shared/automation-run.js';
 import { editAutomation, editAutomationDefaults, getAutomationId, isEditingAutomationDefaults } from './home-state.js';
 import { loadRuns, getRuns } from './home-health-data.js';
+
+let capsPromise = null;
+function fetchCapabilities() {
+  if (!capsPromise && typeof fetch === 'function') {
+    capsPromise = fetch('/api/automations/capabilities')
+      .then(r => (r.ok ? r.json() : { harnesses: [] }))
+      .catch(() => ({ harnesses: [] }));
+  }
+  return capsPromise || Promise.resolve({ harnesses: [] });
+}
+
+function attachModelSuggestions(harnessSelect, modelInput, listId) {
+  const list = document.createElement('datalist');
+  list.id = listId;
+  modelInput.setAttribute('list', listId);
+  const sync = async () => {
+    const caps = await fetchCapabilities();
+    const found = (caps?.harnesses || []).find(h => h.id === harnessSelect.value);
+    list.replaceChildren();
+    for (const m of found?.models || []) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      list.appendChild(opt);
+    }
+  };
+  harnessSelect.addEventListener('change', sync);
+  sync();
+  return list;
+}
 
 function el(tag, className, text) {
   const n = document.createElement(tag);
@@ -74,8 +103,14 @@ function formFor(entry, ctx, close) {
   description.maxLength = 500;
   description.rows = 2;
   const harness = el('select');
-  for (const value of HARNESSES) { const option = el('option', '', value); option.value = value; option.selected = value === run.harness; harness.appendChild(option); }
+  for (const value of HARNESSES) {
+    const option = el('option', '', HARNESS_LABELS[value] || value);
+    option.value = value;
+    option.selected = value === run.harness;
+    harness.appendChild(option);
+  }
   const model = input('text', run.model || '', { maxlength: '120' });
+  const modelList = attachModelSuggestions(harness, model, `haeModels-${entry.id}`);
   const effort = el('select');
   for (const value of EFFORTS) {
     const option = el('option', '', value);
@@ -108,6 +143,7 @@ function formFor(entry, ctx, close) {
   enabledWrap.append(enabled, el('span', '', 'Enabled'));
 
   form.append(
+    modelList,
     field('Automation', 'Stable id; rename it in the Home config by hand.', name),
     field('Description', 'Shown in the automation table.', description),
     field('Schedule', 'Local calendar time used by macOS LaunchAgent.', schedule.wrap),
@@ -157,7 +193,7 @@ function formFor(entry, ctx, close) {
       if (!res.ok) throw new Error(out.error || `The server answered ${res.status}.`);
       if (out.launchAgent?.warning) ctx.toast?.(out.launchAgent.warning);
       else ctx.toast?.('Automation saved.');
-      await loadRuns(ctx.project(), { force: true });
+      await loadRuns(ctx.project(), { force: true, fresh: true });
       close(true);
     } catch (err) {
       error.textContent = err.message;
@@ -219,11 +255,13 @@ function openDefaultsEditor(ctx, trigger) {
     skill: input('text', defaults.skill || '', { maxlength: '80' }),
     prompt: Object.assign(el('textarea'), { value: defaults.prompt || '', rows: 4 }),
   };
-  for (const value of HARNESSES) { const o = el('option', '', value); o.value = value; o.selected = value === effective.harness; fields.harness.appendChild(o); }
+  for (const value of HARNESSES) { const o = el('option', '', HARNESS_LABELS[value] || value); o.value = value; o.selected = value === effective.harness; fields.harness.appendChild(o); }
   for (const value of EFFORTS) { const o = el('option', '', value); o.value = value; o.selected = value === effective.effort; fields.effort.appendChild(o); }
+  const defaultsModelList = attachModelSuggestions(fields.harness, fields.model, 'haeModels-defaults');
   fields.harness.addEventListener('change', () => { const preset = HARNESS_DEFAULTS[fields.harness.value]; if (preset?.cli) fields.cli.value = preset.cli; fields.model.value = preset?.model || ''; });
   form.append(
-    field('Default harness', 'Claude Code, Codex, Copilot, OpenCode, or a custom command.', fields.harness),
+    defaultsModelList,
+    field('Default harness', 'Gemini (Antigravity), Claude Code, Codex, Copilot, OpenCode, or a custom command.', fields.harness),
     field('Default model', 'Inherited unless the automation overrides it.', fields.model),
     field('Default effort', 'Reasoning effort where the selected harness supports it.', fields.effort),
     field('Default CLI executable', 'Command name or absolute executable path.', fields.cli),
@@ -244,7 +282,7 @@ function openDefaultsEditor(ctx, trigger) {
       const out = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(out.error || `The server answered ${res.status}.`);
       ctx.toast?.(out.warnings?.length ? out.warnings.join(' ') : 'Automation defaults saved.');
-      await loadRuns(ctx.project(), { force: true });
+      await loadRuns(ctx.project(), { force: true, fresh: true });
       close(true);
     } catch (err) { error.textContent = err.message; error.hidden = false; }
     finally { save.disabled = false; }

@@ -45,8 +45,12 @@ export function getHealth() {
   };
 }
 
-async function getJson(path, project) {
-  const res = await fetch(`${path}${project ? `?project=${encodeURIComponent(project)}` : ''}`, { cache: 'no-store' });
+async function getJson(path, project, { fresh = false } = {}) {
+  const qs = new URLSearchParams();
+  if (project) qs.set('project', project);
+  if (fresh) qs.set('fresh', '1');
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await fetch(`${path}${suffix}`, { cache: 'no-store' });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `The server answered ${res.status}.`);
   return body;
@@ -55,7 +59,7 @@ async function getJson(path, project) {
 const stillChecking = rows => (rows || []).some(r => r.result?.checking);
 
 /** Fetch both lists for `project`; a project switch drops the old rows first. */
-export async function loadRuns(project, { force = false } = {}) {
+export async function loadRuns(project, { force = false, fresh = false } = {}) {
   if (project !== state.project) {
     Object.assign(state, { project, automations: null, services: null, path: null, errors: [], failed: null, at: null });
     emit();
@@ -65,7 +69,7 @@ export async function loadRuns(project, { force = false } = {}) {
   const my = ++seq;
   state.loading = true;
   startPolling();
-  const [a, s] = await Promise.allSettled([getJson('/api/home/automations', project), getJson('/api/home/services', project)]);
+  const [a, s] = await Promise.allSettled([getJson('/api/home/automations', project, { fresh }), getJson('/api/home/services', project, { fresh })]);
   if (my !== seq) return;
   state.loading = false;
   state.at = Date.now();

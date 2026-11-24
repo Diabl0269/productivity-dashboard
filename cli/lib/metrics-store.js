@@ -87,6 +87,7 @@ export function metricsConfig() {
   const arr = v => (Array.isArray(v) ? v : []);
   return {
     claudeProjects: arr(m.claudeProjects).map(expandHome),
+    geminiBrainDirs: arr(m.geminiBrainDirs).map(expandHome),
     repos: arr(m.repos).map(r => (typeof r === 'string' ? { repo: r } : r)).filter(r => r && r.repo),
     gateLogs: arr(m.gateLogs).filter(g => g && g.path).map(g => ({ ...g, path: expandHome(g.path) })),
     buildTimeLogs: arr(m.buildTimeLogs).filter(g => g && g.path).map(g => ({ ...g, path: expandHome(g.path) })),

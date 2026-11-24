@@ -5,7 +5,7 @@
 // Rows are kept between refreshes and only their text changes, so live data never makes the page jump.
 
 import { healthState, HEALTH_STATES, relTime, GROUP_ORDER } from '../../shared/home-config-runs.js';
-import { getRuns, onHealth, getHealth } from './home-health-data.js';
+import { getRuns, onHealth, getHealth, loadRuns } from './home-health-data.js';
 import { editAutomation, editAutomationDefaults } from './home-state.js';
 
 function el(tag, className, text) {
@@ -77,6 +77,205 @@ function makeRow(kind, entry, ctx) {
   const detail = el('ul', 'hr-fold-lines');
   const meta = el('p', 'hr-fold-meta');
   bodyIn.append(detail, meta);
+  let ensureLaunchdActions = null;
+  let localRunState = null; // { startedMs, prevStartedAt, sawRunning, timer, harnessLabel }
+  let lastPaintSig = '';
+  let lastPaintedEntry = entry;
+  if (kind === 'automations' && entry.kind === 'launchd') {
+    const actionsRow = el('div', 'hr-fold-actions');
+    actionsRow.hidden = true;
+    const runSelect = el('select', 'hr-fold-select');
+    runSelect.setAttribute('aria-label', `Previous runs of ${entry.name}`);
+    const openBtn = el('button', 'hr-btn', 'Open session');
+    openBtn.type = 'button';
+    const termBtn = el('button', 'hr-btn', 'Open in Terminal');
+    termBtn.type = 'button';
+    termBtn.hidden = true;
+    const runNowBtn = el('button', 'hr-btn', 'Run now');
+    runNowBtn.type = 'button';
+    const refreshBtn = el('button', 'hr-btn', '↻');
+    refreshBtn.type = 'button';
+    refreshBtn.title = 'Refresh runs';
+    refreshBtn.setAttribute('aria-label', `Refresh runs of ${entry.name}`);
+    const liveNote = el('span', 'hr-fold-live');
+    liveNote.hidden = true;
+    actionsRow.append(runSelect, openBtn, termBtn, runNowBtn, refreshBtn, liveNote);
+    bodyIn.appendChild(actionsRow);
+
+    let resolvedLabel = null;
+    let loadingRuns = false;
+    const resolveLabel = async () => {
+      if (resolvedLabel) return resolvedLabel;
+      const fromStatus = (entry.status || []).find(s => s.type === 'launchctl' && s.label)?.label;
+      const candidates = [...new Set([fromStatus, `local.agent-automation.${entry.id}`, `local.opencode.${entry.id}`].filter(Boolean))];
+      try {
+        const res = await fetch('/api/automations');
+        if (res.ok) {
+          const { automations = [] } = await res.json();
+          const hit = candidates.map(lbl => automations.find(a => a.label === lbl)).find(Boolean);
+          if (hit) {
+            resolvedLabel = hit.label;
+            return resolvedLabel;
+          }
+        }
+      } catch { /* fall back to first candidate */ }
+      resolvedLabel = candidates[0] || null;
+      return resolvedLabel;
+    };
+
+    const syncRunningUi = (autoRes = null) => {
+      const active = !!localRunState || autoRes?.state === 'running';
+      runNowBtn.disabled = active;
+      if (active) {
+        const startedMs = (autoRes?.runningSession?.startedAt && Date.parse(autoRes.runningSession.startedAt)) || localRunState?.startedMs || Date.now();
+        const sec = Math.max(0, Math.round((Date.now() - startedMs) / 1000));
+        const rs = autoRes?.runningSession;
+        const hm = rs?.harness ? `${rs.harness}${rs.model ? ` (${rs.model})` : ''}` : (localRunState?.harnessLabel || autoRes?.tool || '');
+        runNowBtn.textContent = `Running… (${sec}s)`;
+        liveNote.textContent = hm ? `Running via ${hm}…` : 'Running now…';
+        liveNote.hidden = false;
+      } else {
+        runNowBtn.textContent = 'Run now';
+        liveNote.textContent = '';
+        liveNote.hidden = true;
+      }
+      if (lastPaintedEntry) paint(lastPaintedEntry, Date.now(), li.dataset.hidden === 'true');
+    };
+
+    const startRunPoll = (enc, prevStartedAt, initialAuto = null) => {
+      if (localRunState?.timer) clearInterval(localRunState.timer);
+      localRunState = {
+        startedMs: Date.now(),
+        prevStartedAt: prevStartedAt || null,
+        sawRunning: initialAuto?.state === 'running',
+        harnessLabel: initialAuto?.tool || '',
+        timer: null,
+      };
+      syncRunningUi(initialAuto);
+      localRunState.timer = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/automations/${enc}`, { cache: 'no-store' });
+          const auto = r.ok ? (await r.json()).automation : null;
+          if (!localRunState) return;
+          if (auto?.state === 'running') {
+            localRunState.sawRunning = true;
+            syncRunningUi(auto);
+            return;
+          }
+          const advanced = auto?.lastSession?.startedAt && auto.lastSession.startedAt !== localRunState.prevStartedAt;
+          const graceDone = Date.now() - localRunState.startedMs >= 5000;
+          if (localRunState.sawRunning || advanced || graceDone) {
+            clearInterval(localRunState.timer);
+            localRunState = null;
+            await ensureLaunchdActions({ selectLatest: true });
+            await loadRuns(ctx.project(), { force: true, fresh: true });
+            const lastSess = auto?.lastSession;
+            const code = lastSess?.exitCode ?? auto?.lastExit ?? 0;
+            const hm = lastSess?.harness ? ` (${lastSess.harness}${lastSess.model ? ` · ${lastSess.model}` : ''})` : '';
+            ctx.toast?.(code ? `Failed ${entry.name} (exit ${code}).` : `Finished ${entry.name}${hm} — ready to open.`);
+          } else {
+            syncRunningUi(auto);
+          }
+        } catch {
+          syncRunningUi();
+        }
+      }, 2000);
+    };
+
+    ensureLaunchdActions = async ({ selectLatest = false } = {}) => {
+      if (loadingRuns || typeof fetch !== 'function') return;
+      loadingRuns = true;
+      const prevSelected = selectLatest ? null : runSelect.value;
+      try {
+        const label = await resolveLabel();
+        if (!label) return;
+        const enc = encodeURIComponent(label);
+        const [autoRes, runsRes] = await Promise.all([
+          fetch(`/api/automations/${enc}`, { cache: 'no-store' }).then(r => (r.ok ? r.json().then(j => j.automation) : null)).catch(() => null),
+          fetch(`/api/automations/${enc}/runs`, { cache: 'no-store' }).then(r => (r.ok ? r.json().then(j => j.runs || []) : [])).catch(() => []),
+        ]);
+        const tool = autoRes?.tool || null;
+        const fallback = autoRes?.lastSession ? [autoRes.lastSession] : [];
+        const runs = runsRes.length ? runsRes : fallback;
+        const defaultSid = prevSelected || runs.find(r => r.sessionID)?.sessionID || '';
+        runSelect.textContent = '';
+        if (!runs.length) {
+          const opt = el('option', '', 'No recorded sessions');
+          opt.value = '';
+          runSelect.appendChild(opt);
+          runSelect.disabled = true;
+          openBtn.disabled = true;
+          termBtn.hidden = true;
+        } else {
+          runSelect.disabled = false;
+          for (const r of runs) {
+            const when = r.startedAt ? new Date(r.startedAt).toLocaleString() : 'Recorded run';
+            const h = r.harness || (String(r.sessionID || '').startsWith('ses_') ? 'opencode' : tool);
+            const hm = h ? ` · ${h}${r.model ? ` (${r.model})` : ''}` : '';
+            const exit = r.exitCode ? `exit ${r.exitCode}${r.error ? ` (${r.error})` : ''}` : 'ok';
+            const opt = el('option', '', `${when}${hm} · ${exit} · ${r.sessionID || 'no session'}`);
+            opt.value = r.sessionID || '';
+            opt.dataset.harness = h || '';
+            if (defaultSid && r.sessionID === defaultSid) opt.selected = true;
+            runSelect.appendChild(opt);
+          }
+          const syncTerm = () => {
+            openBtn.disabled = !runSelect.value;
+            const h = runSelect.selectedOptions?.[0]?.dataset?.harness || tool;
+            termBtn.hidden = !runSelect.value || !(h === 'opencode' || h === 'copilot');
+          };
+          runSelect.onchange = syncTerm;
+          syncTerm();
+        }
+        if (autoRes?.state === 'running' && !localRunState) {
+          startRunPoll(enc, autoRes?.lastSession?.startedAt || null, autoRes);
+        } else {
+          syncRunningUi(autoRes);
+        }
+        openBtn.onclick = async () => {
+          try {
+            const res = await fetch(`/api/automations/${enc}/open-session`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionID: runSelect.value || null }),
+            });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
+            ctx.toast?.(out.note || 'Opened session.');
+          } catch (err) { ctx.toast?.(`Could not open session: ${err.message}`); }
+        };
+        termBtn.onclick = async () => {
+          try {
+            const res = await fetch(`/api/automations/${enc}/open-session`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionID: runSelect.value || null, mode: 'terminal' }),
+            });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
+            ctx.toast?.(out.note || 'Opened session in Terminal.');
+          } catch (err) { ctx.toast?.(`Could not open in Terminal: ${err.message}`); }
+        };
+        runNowBtn.onclick = async () => {
+          if (localRunState) return;
+          const prevStartedAt = autoRes?.lastSession?.startedAt || runs[0]?.startedAt || null;
+          try {
+            runNowBtn.disabled = true;
+            runNowBtn.textContent = 'Starting…';
+            const res = await fetch(`/api/automations/${enc}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
+            ctx.toast?.(`Running ${entry.name}…`);
+            startRunPoll(enc, prevStartedAt, { tool });
+          } catch (err) {
+            runNowBtn.disabled = false;
+            runNowBtn.textContent = 'Run now';
+            ctx.toast?.(`Could not start: ${err.message}`);
+          }
+        };
+        refreshBtn.onclick = () => ensureLaunchdActions();
+        actionsRow.hidden = false;
+      } finally { loadingRuns = false; }
+    };
+  }
   if (entry.docs && /^https?:/i.test(entry.docs)) {
     const docs = el('a', 'hr-fold-docs', 'How it works');
     docs.href = entry.docs;
@@ -95,6 +294,7 @@ function makeRow(kind, entry, ctx) {
     body.dataset.open = String(on);
     body.inert = !on;
     fold.setAttribute('aria-expanded', String(on));
+    if (on) ensureLaunchdActions?.();
   });
   inner.append(line, body);
   li.appendChild(inner);
@@ -106,23 +306,25 @@ function makeRow(kind, entry, ctx) {
   }
 
   function paint(e, now, hide) {
+    lastPaintedEntry = e;
     const res = e.result || { checking: true };
     const state = healthState(res);
-    li.dataset.state = state;
-    chip.className = `rp-chip hr-state hr-state-${state}`;
-    setText(chip, HEALTH_STATES[state].label);
+    const runningNow = !!localRunState || !!res.running;
+    li.dataset.state = runningNow ? 'checking' : state;
+    chip.className = `rp-chip hr-state hr-state-${runningNow ? 'checking' : state}`;
+    setText(chip, runningNow ? 'running' : HEALTH_STATES[state].label);
     setText(what, e.what || '');
     setText(trig, kind === 'services'
       ? (e.usedBy?.length ? `used by ${e.usedBy.map(id => boxName(ctx, id)).join(', ')}` : '')
       : (e.trigger || ''));
     const lastText = relTime(res.lastRun, now);
     const noLive = !res.sources?.length || res.sources.every(s => s.type === 'none');
-    setText(last, lastText ? `${kind === 'services' ? 'last run' : 'ran'} ${lastText}`
+    setText(last, runningNow ? 'running now…' : lastText ? `${kind === 'services' ? 'last run' : 'ran'} ${lastText}`
       : state === 'checking' ? 'checking…' : noLive ? 'no live status' : res.ok === true ? 'answering now' : 'never seen');
     setText(next, res.waiting ? `waiting: ${res.waiting.text}` : res.nextRun ? `next ${relTime(res.nextRun, now)}` : '');
     const tipText = `${e.name}: ${e.what || 'no description in the config'}${e.trigger ? ` Runs: ${e.trigger}.` : ''} ${STATE_HELP[state]}`;
     setText(tip, tipText);
-    fold.setAttribute('aria-label', `Details of ${e.name} (${HEALTH_STATES[state].label})`);
+    fold.setAttribute('aria-label', `Details of ${e.name} (${runningNow ? 'running' : HEALTH_STATES[state].label})`);
     const lines = (res.sources?.length ? res.sources.map(s => `${s.type}: ${s.detail}`) : [res.detail || 'no status in the config']);
     const sig = lines.join('\n');
     if (detail.dataset.sig !== sig) {
@@ -139,8 +341,14 @@ function makeRow(kind, entry, ctx) {
     setText(meta, metaParts.join(' · '));
     li.dataset.hidden = String(hide);
     li.inert = hide;
+    const runSig = `${res.lastRun || ''}|${JSON.stringify(e.run || null)}`;
+    if (runSig !== lastPaintSig) {
+      const changed = lastPaintSig !== '';
+      lastPaintSig = runSig;
+      if (changed && body.dataset.open === 'true' && !localRunState) ensureLaunchdActions?.();
+    }
   }
-  return { li, paint, openFold };
+  return { li, paint, openFold, dispose() { if (localRunState?.timer) clearInterval(localRunState.timer); } };
 }
 
 function boxName(ctx, id) {
@@ -285,6 +493,9 @@ export function buildRuns(host, ctx, src) {
     update,
     reveal,
     setProblemsOnly(on) { problemsOnly = !!on; update(); },
-    dispose() { off(); },
+    dispose() {
+      off();
+      for (const s of Object.values(sections)) for (const r of s.rows.values()) r.dispose?.();
+    },
   };
 }

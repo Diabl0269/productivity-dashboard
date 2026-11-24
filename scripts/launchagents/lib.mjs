@@ -60,7 +60,7 @@ export function buildPlist(job, { repoRoot, cli, dirs = dirsFor() }) {
 \t\t<key>AUTOMATION_MODEL</key><string>${escapeXml(job.model || '')}</string>
 \t\t<key>AUTOMATION_ARGUMENTS</key><string>${argumentLines}</string>
 \t\t<key>AUTOMATION_LOG_DIR</key><string>${escapeXml(dirs.logDir)}</string>
-\t\t<key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+\t\t<key>PATH</key><string>${escapeXml(path.join(dirs.home || os.homedir(), '.local', 'bin'))}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
 \t</dict>
 \t<key>Label</key><string>${escapeXml(label)}</string>
 \t<key>ProgramArguments</key>

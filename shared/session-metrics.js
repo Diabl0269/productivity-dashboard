@@ -352,7 +352,66 @@ export function mergeIntervals(list) {
   return out;
 }
 
-export function summarizeSession(lines, { stallMinutes = 20, midRunMinutes = 15, project, stopCauses } = {}) {
+/**
+ * Convert Antigravity CLI (`agy`) `transcript.jsonl` step records (`USER_INPUT` / `PLANNER_RESPONSE`) into the
+ * normalized `{ type: 'user'|'assistant', timestamp, message }` shape `summarizeSession` consumes.
+ */
+export function geminiTranscriptToLines(rawLines, sessionId = null) {
+  const out = [];
+  let idx = 0;
+  for (const l of rawLines || []) {
+    idx += 1;
+    if (!l || typeof l !== 'object') continue;
+    const timestamp = l.created_at || l.timestamp;
+    if (l.type === 'USER_INPUT') {
+      out.push({
+        type: 'user',
+        ...(sessionId ? { sessionId } : {}),
+        timestamp,
+        origin: { kind: l.source === 'USER_EXPLICIT' ? 'human' : 'other' },
+        message: { content: typeof l.content === 'string' ? l.content : '' },
+      });
+    } else if (l.type === 'PLANNER_RESPONSE') {
+      const step = l.step_index ?? idx;
+      const calls = Array.isArray(l.tool_calls) ? l.tool_calls : [];
+      const toolBlocks = calls.filter(Boolean).map((tc, i) => {
+        const rawName = tc.name || tc.tool_name || 'tool';
+        const args = tc.args && typeof tc.args === 'object' ? tc.args : {};
+        if (rawName === 'run_command') {
+          return { type: 'tool_use', id: `ag_${step}_${i}`, name: 'Bash', input: { command: String(args.CommandLine || '') } };
+        }
+        if (rawName === 'ask_question') {
+          return { type: 'tool_use', id: `ag_${step}_${i}`, name: 'AskUserQuestion', input: args };
+        }
+        if (rawName === 'invoke_subagent') {
+          return { type: 'tool_use', id: `ag_${step}_${i}`, name: 'Agent', input: { model: args.Model || 'inherit', ...args } };
+        }
+        return { type: 'tool_use', id: `ag_${step}_${i}`, name: rawName, input: args };
+      });
+      out.push({
+        type: 'assistant',
+        ...(sessionId ? { sessionId } : {}),
+        timestamp,
+        message: {
+          id: `ag_msg_${step}`,
+          model: l.model || null,
+          stop_reason: toolBlocks.length ? 'tool_use' : 'end_turn',
+          usage: {
+            input_tokens: Number(l.input_tokens) || 0,
+            output_tokens: Number(l.output_tokens) || 0,
+            cache_read_input_tokens: Number(l.cache_read_tokens) || 0,
+          },
+          content: toolBlocks.length ? toolBlocks : [{ type: 'text', text: '' }],
+        },
+      });
+    }
+  }
+  return out;
+}
+
+export function summarizeSession(rawLines, { stallMinutes = 20, midRunMinutes = 15, project, stopCauses, sessionId: explicitSessionId } = {}) {
+  const isGemini = Array.isArray(rawLines) && rawLines.some(l => l && (l.type === 'USER_INPUT' || l.type === 'PLANNER_RESPONSE'));
+  const lines = isGemini ? geminiTranscriptToLines(rawLines, explicitSessionId) : rawLines;
   const stallMs = stallMinutes * 60000;
   const midMs = midRunMinutes * 60000;
   let sessionId = null;
