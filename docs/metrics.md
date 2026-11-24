@@ -10,7 +10,8 @@ have; nothing leaves the machine.
 | Claude Code transcripts (`~/.claude/projects/<dir>/*.jsonl`) | session length, waiting on you, questions, stalls, sessions per ticket | `ch metrics collect --sessions` |
 | GitHub Actions (`gh run list`) | CI run time per repo/workflow, time a PR stays red | `ch metrics collect --ci` |
 | Local gate run logs (JSONL your gate scripts append) | local build/test time per step | `ch metrics collect --gates` |
-| Anything else you time | free-form timings | `ch metrics time <name> -- <cmd>`, `ch metrics record` |
+| Anything else you time | free-form timings | `ch metrics usage [--set <pct> [--resets <iso>]] [--clear] [--from-claude] [--json]   the Home chip's weekly percent
+ch metrics time <name> -- <cmd>`, `ch metrics record` |
 
 Collected data lives in `$CH_HOME/metrics/` (private, never in git). Collection is idempotent:
 re-running it rewrites the same records, so it can run by hand or on a schedule.
@@ -27,6 +28,30 @@ ch metrics record --name N --seconds S [--ok|--failed] [--repo R] [--kind gate|b
 ch tasks next [--n 5] [--project P] [--json]                                ready tickets, best first, with reasons
 ch tasks sweep-idle [--hours 24] [--dry-run] [--no-collect] [--json]      in-progress tickets with no session work for N hours go back to todo
 ```
+
+### Usage meter: the real weekly percent (AGE201)
+
+The Home chip prefers Claude's own weekly percent over any estimate. `usage-override.json` in `metrics/` holds
+`{ pct, setAt, resetsAt?, source? }`. Three cases, in order:
+
+1. `source: "claude"` and `setAt` under 15 minutes old: the chip shows `pct` as it is, source "read from Claude"
+   (the popover and tooltip say "read from Claude at 09:20"). No cost since the reading is added.
+2. The same reading when older than 15 minutes: ignored, so the chip falls back to case 3 (labelled "about").
+3. No reading (or one set by hand with `--set`): the estimate from cost against the calibrated limit; a hand-set
+   percent is still counted forward by the cost since it was set.
+
+`ch metrics usage --from-claude` writes case 1: it reads JSON on stdin and stores the weekly percent (silent when
+the JSON carries none, so it is safe in a hook). It takes Claude Code's statusline input
+`{"rate_limits":{"seven_day":{"used_percentage":85,"resets_at":1795000000}}}` (`resets_at` in epoch seconds) or the
+flat `{"pct":85,"resetsAt":"<iso>"}`. These statusline field names are taken from the Claude Code statusline docs and
+have not been checked against a live dump here (the feed only has `rate_limits` for subscription plans, and only
+after the first reply of a session). To wire it, add one line to the statusline script, after it reads `input`:
+
+```
+echo "$input" | ch metrics usage --from-claude >/dev/null 2>&1 &
+```
+
+The statusline refreshes while a session is active, so the reading stays under 15 minutes old during work.
 
 ## Config (`config.json`, all optional)
 
