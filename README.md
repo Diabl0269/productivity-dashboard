@@ -178,7 +178,7 @@ table and How it runs (automations and services), with an inspector, a usage chi
 Automation rows have an **Edit** panel for schedule, model, skill, prompt, enabled state and description. Its URL
 keeps the project and automation (`/dashboard/home/how-it-runs/edit/<id>?hproject=<slug>`), and
 `/dashboard/automations` opens the table directly. Each project describes its map in its own
-`home.config.json`; start from `home.config.example.json` (a made-up bakery). Full guide:
+`home.config.json`; start from `home.config.example.json` (a made-up bakery). A project can also list a markdown file as a `queues` card on the Overview (drag or `Alt+Up/Down` to reorder, edit a line, drop with undo). Full guide:
 [docs/home-page.md](docs/home-page.md).
 
 ![Home tab, Map view of the example bakery](docs/screenshots/home.png)

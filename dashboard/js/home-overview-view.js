@@ -22,6 +22,7 @@ import {
 } from './home-overview-cards.js';
 import { activeMainTab } from './state.js';
 import { promoteAction } from './home-running-actions.js';
+import { mountQueues } from './home-queue-panel.js';
 
 const NEXT_START_MS = 30e3;
 const instances = new WeakMap(); // view root -> instance
@@ -106,6 +107,7 @@ function build(root, ctx) {
   inst.health.card.hidden = true;
   inst.where = card('where', 'Where the work is', { view: 'map' }, 'Open the Map');
   inst.where.card.classList.add('hm-ov-wide');
+  inst.queues = mountQueues(grid, inst.where.card); // a card per `queues` entry of the home config (PRO152); none without
 
   inst.addNote = el('button', 'hm-ov-action', 'Add a note');
   inst.addNote.type = 'button';
@@ -207,6 +209,8 @@ function paintAll(inst) {
   // Health (only when something is wrong)
   paintHealth(inst, m.health.lines);
 
+  inst.queues.sync(ctx.config()?.queues || [], ctx.project());
+
   // Where the work is
   const w = inst.where;
   const total = m.places.groups.reduce((s, g) => s + g.open, 0);
@@ -298,6 +302,7 @@ registerHomeView({
     const inst = instances.get(root);
     if (!inst) return;
     inst.offs.splice(0).forEach(off => off());
+    inst.queues?.dispose();
     instances.delete(root);
   },
 });
