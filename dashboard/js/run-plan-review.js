@@ -19,6 +19,7 @@ import { asksFromState, renderAskCard } from './asks-strip.js';
 import { renderInterpretationCard } from './interpretation-card.js';
 import { markChanged } from './tasks-io.js';
 import { renderFileBar } from './run-plan-notes-bar.js';
+import { hideFinished, setHideFinished, buildSwitch, switchGroup, finishedCount } from './hide-finished-switch.js';
 import { el, truncate, shortDate, threadAnchor, reviewOfNote, SHIPPED_MAX } from './run-plan-util.js';
 
 const allTasks = ctx => Object.values(ctx.getState?.()?.tasks || {}).flat();
@@ -153,7 +154,14 @@ export function renderReview(ctx, review, openChecks, asks, interps = []) {
   const block = el('section', 'rp-review rp-for-you');
   const total = review.length + asks.length + interps.length;
   block.setAttribute('aria-label', `For you (${total})`);
-  block.appendChild(el('h2', 'rp-review-title', total ? `For you (${total})` : 'For you'));
+  const head = el('div', 'ck-head');
+  head.appendChild(el('h2', 'rp-review-title', total ? `For you (${total})` : 'For you'));
+  if (ctx.doc) {
+    const on = hideFinished();
+    const sw = buildSwitch(on, () => { setHideFinished(!on); ctx.redraw(); }, 'forYouHideFinished', 'Same setting as the Checks tab');
+    head.appendChild(switchGroup(sw, finishedCount(ctx.doc), on));
+  }
+  block.appendChild(head);
   const fileBar = renderFileBar(ctx);
   if (fileBar) block.appendChild(fileBar);
   if (total) block.appendChild(renderReviewList(ctx, review, asks, interps));

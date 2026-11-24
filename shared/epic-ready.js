@@ -549,3 +549,80 @@ export function plainReasonLine(r) {
   if (r.reasonDetails && r.reasonDetails.length) return r.reasonDetails[0].text;
   return plainReasonText((r.reasons || [])[0], r.parked);
 }
+
+/** The epic a ticket belongs to: itself when it is an epic, else its nearest epic ancestor, or null. */
+function epicOwning(ix, id) {
+  for (let t = ix.byId.get(id), hops = 0; t && hops < 50; t = ix.byId.get(t.parentId), hops++) if (t.type === 'epic') return t;
+  return null;
+}
+
+/**
+ * PRO151: will epic `id`, which something else waits on, ever start and finish by itself? Pure and transitive.
+ * It will when work under it is already underway (the epic or an open ticket in In progress), or it is Ready with
+ * Auto on, or it is Auto and waits only on epics that will themselves run. Otherwise it sits still until Tal moves it.
+ * `docOrIx` is a tasks document. Returns { runs, reason, promoteIds }: `reason` completes "it is ..." in plain
+ * words; `promoteIds` are the backlog tickets its "Move to To do" button moves (same list as the Not-ready card).
+ */
+export function blockerWillRun(docOrIx, id, seen = new Set()) {
+  const ix = docOrIx && docOrIx.byId ? docOrIx : indexDoc(docOrIx);
+  const yes = { runs: true, reason: '', promoteIds: [] };
+  const epic = ix.byId.get(id);
+  if (!epic || seen.has(id)) return yes; // unknown ids and cycles are not this predicate's call (PRO133 owns loops)
+  const section = ix.sectionOf.get(id);
+  if (FINISHED.has(section)) return yes;
+  seen = new Set(seen).add(id);
+  const underway = section === 'in-progress'
+    || descendantIds(id, ix.childrenOf).some(d => ix.sectionOf.get(d) === 'in-progress' && !ix.byId.get(d).checked);
+  if (underway) return yes;
+  const r = readinessIn(ix, epic);
+  const no = reason => ({ runs: false, reason, promoteIds: r.promotable });
+  if (r.ready) return r.auto ? yes : no('Ready but Auto is off');
+  const kinds = r.reasonDetails.map(d => d.kind);
+  if (kinds.includes('later-bucket')) return no('in a later phase');
+  if (kinds.includes('backlog')) return no('in backlog');
+  if (kinds.includes('section')) return no(`in ${section}`);
+  const gate = r.reasonDetails.find(d => d.kind === 'pick' || d.kind === 'co-task');
+  if (gate) return no(`waiting on your ${gate.kind} ${gate.ids[0]}`);
+  if (kinds.every(k => k === 'epic-blocker')) {
+    if (!r.auto) return no(`waiting on ${r.reasonDetails[0].ids.join(', ')} with Auto off`);
+    for (const b of r.reasonDetails[0].ids) {
+      const owner = epicOwning(ix, b);
+      if (!owner || owner.id === id) continue;
+      const inner = blockerWillRun(ix, owner.id, seen);
+      if (!inner.runs) return { runs: false, reason: `waiting on ${owner.id}, which is ${inner.reason}`, promoteIds: inner.promoteIds };
+    }
+    return yes;
+  }
+  return no(`not Ready (${r.reasons[0] || 'it cannot start'})`);
+}
+
+/**
+ * PRO151: the epics that `epicId` waits on (its own open blockers, and those of its open tickets) that will not
+ * start by themselves. [{ id, reason, promoteIds }]; empty when every one of them will run.
+ */
+export function unrunnableBlockers(doc, epicId) {
+  const ix = indexDoc(doc);
+  const epic = ix.byId.get(epicId);
+  if (!epic) return [];
+  const open = b => ix.byId.has(b) && !FINISHED.has(ix.sectionOf.get(b)) && !ix.byId.get(b).checked;
+  const owners = new Map();
+  for (const t of [epic, ...descendantIds(epicId, ix.childrenOf).map(d => ix.byId.get(d))]) {
+    if (t !== epic && (FINISHED.has(ix.sectionOf.get(t.id)) || t.checked)) continue;
+    for (const b of (t.blockedBy || []).filter(open)) {
+      const owner = epicOwning(ix, b);
+      if (owner && owner.id !== epicId) owners.set(owner.id, owner);
+    }
+  }
+  const out = [];
+  for (const owner of owners.values()) {
+    const w = blockerWillRun(ix, owner.id);
+    if (!w.runs) out.push({ id: owner.id, reason: w.reason, promoteIds: w.promoteIds });
+  }
+  return out;
+}
+
+/** "BAC114 will not start by itself (it is in a later phase)" for each unrunnable blocker, joined in plain words. */
+export function blockerWarningText(bad) {
+  const parts = bad.map(b => `${b.id} will not start by itself (it is ${b.reason})`);
+  return parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}

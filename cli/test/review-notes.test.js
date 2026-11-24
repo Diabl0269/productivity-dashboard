@@ -16,6 +16,8 @@ import {
   pendingReviewNotes, countUnsentNotes,
 } from '../../shared/review-notes.js';
 import { reviewComplete } from '../../shared/review.js';
+import { computeRunPlan } from '../../shared/run-plan.js';
+import { blockerWillRun } from '../../shared/epic-ready.js';
 
 // PRO100: these fixtures file bare checks; the project-or-reason gate has its own tests (review-project-gate.test.js).
 process.env.CH_NO_CHECK_PROJECT_GATE = '1';
@@ -194,4 +196,29 @@ test('editReviewNote changes text and kind of an unsent note only', () => {
   assert.throws(() => editReviewNote(task, 9, { kind: 'fix' }), /no review note/);
   setNoteState(task, 1, 'dismissed');
   assert.throws(() => editReviewNote(task, 1, { kind: 'fix' }), /already dismissed/);
+});
+
+// PRO151, bug kind ticket-section-mismatch (dependency case): a Ready + Auto epic is never shown as
+// "starts when X finishes" where X cannot run by itself. One guard over every place X can sit.
+test('guard: no Ready+Auto card says "starts when X" where X will not run', () => {
+  const PLAIN = "## In plain words\n**How to check it:** look\n";
+  const t = (id, extra = {}) => ({ id, title: id, checked: false, priority: 'medium', type: 'task', subtasks: [], description: PLAIN, ...extra });
+  const e = (id, extra = {}) => t(id, { type: 'epic', lane: 'mixer', description: '', labels: ['model:sonnet'], ...extra });
+  const variants = {
+    'later phase': { sec: 'todo', epic: { title: 'Canvas: later' } },
+    backlog: { sec: 'backlog' },
+    'auto off': { sec: 'todo' },
+    'auto on': { sec: 'todo', epic: { labels: ['model:sonnet', 'auto'] } },
+    'in progress': { sec: 'in-progress' },
+  };
+  for (const [name, v] of Object.entries(variants)) {
+    const bySec = { todo: [], 'in-progress': [], backlog: [], done: [] };
+    bySec.todo.push(e('F', { labels: ['model:sonnet', 'auto'] }), t('F1', { parentId: 'F' }), t('F2', { parentId: 'F', blockedBy: ['B1'] }));
+    bySec[v.sec].push(e('B', { lane: 'canvas', ...(v.epic || {}) }), t('B1', { parentId: 'B' }));
+    const doc = { version: 1, meta: { dailyPlan: { taskIds: ['B'] } }, sections: Object.entries(bySec).map(([id, tasks]) => ({ id, name: id, tasks })) };
+    const card = computeRunPlan(doc).lanes.flatMap(l => l.later).find(c => c.id === 'F');
+    assert.ok(card && card.ready && card.auto, `${name}: F is a Ready, Auto later card`);
+    const runs = blockerWillRun(doc, 'B').runs;
+    assert.equal(/starts when/.test(card.why), runs, `${name}: "${card.why}" must say "starts when" only if B runs (${runs})`);
+  }
 });

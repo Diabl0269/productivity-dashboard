@@ -7,8 +7,8 @@ import { stateToDoc } from './epic-ready-ui.js';
 import { createPlanCtx, preparePlan } from './run-plan-page.js';
 import { renderReviewList } from './run-plan-review.js';
 import { el, makeToast } from './run-plan-util.js';
+import { hideFinished, setHideFinished, buildSwitch, switchGroup, finishedCount } from './hide-finished-switch.js';
 
-const KEY = 'checks.hideFinished';
 const LEAVE_MS = 200;
 
 let getState = null;
@@ -26,25 +26,9 @@ const page = createPlanCtx({
   idPrefix: 'checks-',
 });
 
-function safeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
-function safeSet(key, value) { try { localStorage.setItem(key, value); } catch { /* storage off: still works for this visit */ } }
-
-const hideFinished = () => safeGet(KEY) !== 'false';
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 export function setChecksStateGetter(fn) { getState = fn; }
-
-function buildSwitch(on, onToggle) {
-  const sw = el('button', 'ht-switch ck-switch');
-  sw.type = 'button';
-  sw.setAttribute('role', 'switch');
-  sw.setAttribute('aria-checked', on ? 'true' : 'false');
-  sw.id = 'checksHideFinished';
-  sw.append(el('span', 'ht-switch-track'), el('span', 'ht-switch-label', 'Hide finished'));
-  sw.querySelector('.ht-switch-track').appendChild(el('span', 'ht-switch-knob'));
-  sw.addEventListener('click', onToggle);
-  return sw;
-}
 
 /** ArrowDown / ArrowUp / Home / End move between tickets' "n/m checked" buttons. */
 function installListKeys(list) {
@@ -99,16 +83,16 @@ export function renderChecksView(opts = {}) {
     page.ui.openReview.add(row.id);
   }
   const counts = checksPageCounts(rows);
+  const headRow = el('div', 'ck-head');
   const heading = el('h2', 'ck-title', `Checks (${counts.tickets})`);
   heading.title = `${counts.open} check${counts.open === 1 ? '' : 's'} still to tick`;
-  root.appendChild(heading);
-  root.appendChild(el('p', 'ck-hint', 'Tickets with a check only you can tick. Finished ones wait for the next notes run.'));
-  const bar = el('div', 'ck-toolbar');
-  bar.appendChild(buildSwitch(hide, () => {
-    safeSet(KEY, hide ? 'false' : 'true');
+  const sw = buildSwitch(hide, () => {
+    setHideFinished(!hide);
     redrawChecks({ focusSwitch: true });
-  }));
-  root.appendChild(bar);
+  });
+  headRow.append(heading, switchGroup(sw, finishedCount(page.doc), hide));
+  root.appendChild(headRow);
+  root.appendChild(el('p', 'ck-hint', 'Tickets with a check only you can tick. Finished ones wait for the next notes run.'));
   if (!rows.length) {
     let text = 'No open checks. Everything you were asked to look at is ticked.';
     if (hide) {
