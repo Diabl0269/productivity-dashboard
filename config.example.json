@@ -25,6 +25,7 @@
   },
   "metrics": {
     "claudeProjects": ["~/.claude/projects/-Users-you-work*"],
+    "geminiBrainDirs": ["~/.gemini/antigravity-cli/brain"],
     "repos": [{ "repo": "owner/name", "workflows": ["CI"] }],
     "gateLogs": [{ "repo": "name", "path": "/path/to/checkout/.git/gate-runs.jsonl" }],
     "buildTimeLogs": [{ "repo": "name", "path": "/path/to/checkout/.git/ci-local-build-times.log" }],
@@ -42,6 +43,13 @@
   "waitingReminderDays": 5,
   "defaultWorkshops": [],
   "teamName": "Your Team",
+  "jira_hygiene": {
+    "team_id": "YOUR_ATLASSIAN_TEAM_ID   (optional: enables the Jira board-hygiene step in daily-summary)",
+    "dashboard_url": "https://YOUR_ORG.atlassian.net/jira/dashboards/YOUR_DASHBOARD_ID",
+    "wip_limit_epics": 3,
+    "wip_limit_features": 3,
+    "stale_days": 2
+  },
   "team": [],
   "slack_user_id": "U0XXXXXXXXXX",
   "jira_base_url": "https://YOUR_ORG.atlassian.net",
