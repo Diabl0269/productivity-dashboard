@@ -16,6 +16,7 @@ import { openTaskDetail, commitReviewChange } from './task-detail.js';
 import { moveTask } from './tasks-board.js';
 import { todayStr } from './tasks-parser.js';
 import { askHeldPrChip } from './held-pr-ui.js';
+import { tagChip } from './ask-tag-ui.js';
 import { openProjectButton, playVideoButton, audioPlayer, evidenceUrl, showEvidenceToast } from './check-evidence.js';
 
 // The text box that is open per surface: { handle, mode: 'answer' | 'park' }; drafts survive re-renders.
@@ -282,7 +283,7 @@ export function renderAskCard(state, card, redraw, surface = 'plan') {
     b.setAttribute('aria-label', `Open ticket ${id}`);
     head.appendChild(b);
   }
-  head.appendChild(el('span', 'rp-chip rp-ask-kind', card.kind === 'merge' ? 'Merge' : 'Decision'));
+  head.appendChild(tagChip(card.tag?.area ? card.tag : { ...card.tag, area: card.kind === 'merge' ? 'merge' : '' }));
   if (card.by) head.appendChild(el('span', 'rp-chip rp-ask-by', `by ${shortDate(card.by)}`));
   const since = card.at ? shortDate(card.at) : '';
   if (since) head.appendChild(el('span', 'rp-review-since', `since ${since}`));
