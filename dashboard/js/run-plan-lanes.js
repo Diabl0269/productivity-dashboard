@@ -8,7 +8,7 @@ import { readAiProvider, readDefaultFolder, launchWithProvider } from './claude-
 import { idButton } from './ticket-id-button.js';
 import { buildAutoToggle } from './epic-ready-ui.js';
 import { renderLaterFold } from './run-plan-later.js';
-import { renderReasonBlock } from './run-plan-reasons.js';
+import { renderReasonBlock, promoteButton, textWithIdButtons } from './run-plan-reasons.js';
 import { el, plainTitle, truncate, threadAnchor, reviewOfNote, copyText, refinePrompt } from './run-plan-util.js';
 
 const STATE_LABEL = { backlog: 'In backlog', ready: 'Ready now', partial: 'Partly ready', later: 'Later', notready: 'Not ready', pick: 'Your pick' };
@@ -92,6 +92,13 @@ function renderCard(ctx, card, phase) {
   if (fromReview) article.appendChild(fromReview);
   if (card.state === 'notready' && card.reasons?.length) {
     renderReasonBlock(card, id => idButton(id, 'rp-link rp-chip-id'), ctx.redraw, ctx.folds).forEach(n => article.appendChild(n));
+  } else if (card.stuckBlockers?.length) {
+    // PRO151: Ready · Auto, but what it waits on will not start by itself: amber line, ids as buttons, the same Move to To do button.
+    const line = el('div', 'rp-why rp-why-warn');
+    line.dataset.stuckBlockers = card.stuckBlockers.join(',');
+    line.appendChild(textWithIdButtons(card.why, card.stuckBlockers, id => idButton(id, 'rp-link rp-chip-id'), ''));
+    article.appendChild(line);
+    if ((card.promoteIds || []).length) article.appendChild(promoteButton(card.promoteIds, card.id, ctx.redraw));
   } else if (card.why && !(card.ticketIds && /^(Picks|Co-tasks): /.test(card.why))) article.appendChild(el('div', 'rp-why', card.why));
 
   const actions = el('div', 'rp-actions');

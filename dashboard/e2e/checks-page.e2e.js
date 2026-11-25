@@ -19,6 +19,15 @@ async (page) => {
   await sw.waitFor();
   await li('C-OPEN').waitFor();
   ok((await sw.getAttribute('aria-checked')) === 'true', 'Hide finished is on by default');
+  // PRO150: the switch is findable: inside the viewport, labelled, on the heading line, with a count.
+  const box = await sw.boundingBox();
+  const vp = page.viewportSize();
+  ok(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height, 'the switch is inside the viewport');
+  ok(((await sw.innerText()) || '').trim() === 'Hide finished', 'the switch carries the label Hide finished');
+  const headBox = await page.locator('#checksMain h2').boundingBox();
+  ok(Math.abs((box.y + box.height / 2) - (headBox.y + headBox.height / 2)) < headBox.height, 'the switch sits on the heading line');
+  ok(box.x > headBox.x + headBox.width, 'the switch is right of the heading');
+  ok(/^\d+ finished hidden$/.test(await page.locator('#checksMain .ck-switch-count').innerText()), 'the count reads "n finished hidden"');
   const shown = await ids();
   ok(shown.includes('C-OPEN') && shown.includes('E-PART'), `C-OPEN and E-PART show: ${shown}`);
   ok(!shown.includes('C-DONE'), `C-DONE is hidden: ${shown}`);

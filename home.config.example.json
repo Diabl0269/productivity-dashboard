@@ -114,5 +114,12 @@
       "trigger": "every pull request", "kind": "ci",
       "status": { "type": "gh-workflow", "repo": "corner-bakery/bakery-site", "workflow": "CI" }
     }
+  ],
+  "queues": [
+    {
+      "id": "next-bakes", "title": "Next bakes", "file": "docs/next-bakes.md", "show": 4, "dropAs": "skipped",
+      "hiddenStatuses": ["skipped", "made"],
+      "check": { "command": ["node", "scripts/check-next-bakes.js"], "cwd": "." }
+    }
   ]
 }

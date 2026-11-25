@@ -93,7 +93,14 @@ function paintChip() {
   text.appendChild(el('span', 'hu-rest', parts.rest)); // hidden when the top bar is narrow (home-palette.css)
   chip.dataset.level = chipLevel(m);
   chip.dataset.stale = st.error ? 'true' : 'false';
-  chip.title = `${m.source === 'set by you' ? `Set by you at ${hm(Date.parse(m.setAt))}` : m.source === 'estimated' ? 'Estimated from cost this week' : 'No percent yet'}, as of ${hm(Date.parse(m.asOf))}. Click for the details.`;
+  chip.title = `${sourceLine(m)}, as of ${hm(Date.parse(m.asOf))}. Click for the details.`;
+}
+
+/** Where the chip's number comes from, named for the tooltip: the reading's own time for a set or read percent. */
+export function sourceLine(m) {
+  return m.source === 'set by you' ? `Set by you at ${hm(Date.parse(m.setAt))}`
+    : m.source === 'read from Claude' ? `Read from Claude at ${hm(Date.parse(m.setAt))}`
+      : m.source === 'estimated' ? 'Estimated from cost this week' : 'No percent yet';
 }
 
 // ---------- popover ----------
@@ -189,7 +196,8 @@ function paintPopover() {
   }
   pop.appendChild(live);
 
-  const how = m.source === 'set by you' ? `Set by you at ${hm(Date.parse(m.setAt))}, then counted forward from the cost since.`
+  const how = m.source === 'read from Claude' ? `${sourceLine(m)}: Claude's own weekly percent.`
+    : m.source === 'set by you' ? `Set by you at ${hm(Date.parse(m.setAt))}, then counted forward from the cost since.`
     : m.source === 'estimated' ? `Estimated: cost this week against a limit of about ${fmtMoney(m.weekUSD)} learned from past limit hits.`
       : (m.reason || 'No percent yet.');
   const foot = el('div', 'hu-foot');

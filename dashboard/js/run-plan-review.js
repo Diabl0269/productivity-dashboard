@@ -16,9 +16,11 @@ import { idButton, textWithIds } from './ticket-id-button.js';
 import { toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { asksFromState, renderAskCard } from './asks-strip.js';
+import { tagChip, reviewTag, renderTagFilter, effectiveTag, filterByTag } from './ask-tag-ui.js';
 import { renderInterpretationCard } from './interpretation-card.js';
 import { markChanged } from './tasks-io.js';
 import { renderFileBar } from './run-plan-notes-bar.js';
+import { hideFinished, setHideFinished, buildSwitch, switchGroup, finishedCount } from './hide-finished-switch.js';
 import { el, truncate, shortDate, threadAnchor, reviewOfNote, SHIPPED_MAX } from './run-plan-util.js';
 
 const allTasks = ctx => Object.values(ctx.getState?.()?.tasks || {}).flat();
@@ -94,7 +96,7 @@ export function renderCheckGrid(ctx, task) {
       what.appendChild(badge);
     }
     // AGE162: a held check with no project still gets Open project (the branch's build); the chip owns it.
-    const branchButton = c.heldPr && !c.project ? openBranchButton(c.heldPr) : null;
+    const branchButton = c.heldPr && !c.project ? openBranchButton(c.heldPr, c.text) : null;
     if (branchButton) { what.appendChild(document.createTextNode(' ')); what.appendChild(branchButton); }
     const branchChip = heldPrChip(c, branchButton ? [...projectButtons, branchButton] : projectButtons);
     if (branchChip) {
@@ -152,10 +154,28 @@ export function renderCheckGrid(ctx, task) {
 export function renderReview(ctx, review, openChecks, asks, interps = []) {
   const block = el('section', 'rp-review rp-for-you');
   const total = review.length + asks.length + interps.length;
+  // AGE220: filter chips by tag; cards with no tag and interpretations hide while a tag is chosen.
+  const tagOfReviewItem = item => reviewTag(ctx, item);
+  const tags = [...review.map(tagOfReviewItem), ...asks.map(c => c.tag || {})];
+  const chosen = effectiveTag(tags);
+  if (chosen) {
+    review = filterByTag(review, chosen, tagOfReviewItem);
+    asks = filterByTag(asks, chosen, c => c.tag);
+    interps = [];
+  }
   block.setAttribute('aria-label', `For you (${total})`);
-  block.appendChild(el('h2', 'rp-review-title', total ? `For you (${total})` : 'For you'));
+  const head = el('div', 'ck-head');
+  head.appendChild(el('h2', 'rp-review-title', total ? `For you (${total})` : 'For you'));
+  if (ctx.doc) {
+    const on = hideFinished();
+    const sw = buildSwitch(on, () => { setHideFinished(!on); ctx.redraw(); }, 'forYouHideFinished', 'Same setting as the Checks tab');
+    head.appendChild(switchGroup(sw, finishedCount(ctx.doc), on));
+  }
+  block.appendChild(head);
   const fileBar = renderFileBar(ctx);
   if (fileBar) block.appendChild(fileBar);
+  const filter = renderTagFilter(tags, ctx.redraw);
+  if (filter) block.appendChild(filter);
   if (total) block.appendChild(renderReviewList(ctx, review, asks, interps));
   else block.appendChild(el('p', 'rp-review-empty', 'Nothing waits on you: no epic to review, no decision to make.'));
   if (openChecks.length) {
@@ -282,6 +302,8 @@ export function renderReviewList(ctx, items, asks = [], interps = []) {
     const li = el('li', 'rp-review-item' + (open ? ' rp-open' : ''));
     const row = el('div', 'rp-row');
     row.appendChild(idButton(item.id));
+    const tag = reviewTag(ctx, item);
+    if (tag.area || tag.action) row.appendChild(tagChip(tag, 'Review'));
     const since = shortDate(item.enteredAt);
     if (since) row.appendChild(el('span', 'rp-review-since', `since ${since}`));
     const toggle = el('button', 'rp-chip rp-chip-review rp-chip-toggle', `${item.checks.done}/${item.checks.total} checked ${open ? '▴' : '▾'}`);

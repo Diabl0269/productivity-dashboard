@@ -160,6 +160,59 @@ Keys starting with `$` (like `$comment`) are ignored. Any other unknown key is r
   `name`, `what`, plus the keys under "How it runs" below. Unknown keys are kept, as for services.
 - **`lifecycle`**: optional changes to the "How it runs" flow (below).
 
+- **`queues`**: optional lists kept in a markdown file that the Overview shows as a card of their own (no
+  `queues`, no card). See "Queues: a markdown list on the Overview" below.
+
+### Queues: a markdown list on the Overview
+
+A queue shows the first items of a markdown file and lets you reorder, edit and drop them without opening
+the file. Each entry of `queues`:
+
+```json
+{ "id": "next-bakes", "title": "Next bakes", "file": "docs/next-bakes.md", "show": 4, "dropAs": "skipped",
+  "hiddenStatuses": ["skipped", "made"], "check": { "command": ["node", "scripts/check-next-bakes.js"], "cwd": "." } }
+```
+
+- `id` (letters, digits, `-`, `_`), `title` (the card's name) and `file` (a `.md` path relative to the config
+  file; absolute paths are refused) are needed. The file is only ever reached through the queue's id, never
+  through a path in a request.
+- `show`: how many items the card lists (1 to 50, default 4).
+- `dropAs`: `"skipped"` makes Drop set `- status: skipped` in the item (it then leaves the list but stays in the
+  file); leave it out and Drop deletes the item's section.
+- `hiddenStatuses`: items whose `status` value is one of these are not listed (default `["skipped", "made"]`).
+  The count on the card says how many are hidden.
+- `check`: a program that looks at the file. `command` is an argument list run without a shell (10 seconds
+  at most), `cwd` is relative to the config file. It runs on every read and after every write: exit 0 means all is
+  well, exit 1 means each line it prints is a problem (shown on the card as a quiet warning list), a program that
+  cannot start shows one line saying so.
+
+The file: free text first, then one `## title` section per item, with `- key: value` lines (any other line in a
+section is kept as written):
+
+```markdown
+Anything the baker wants to say up here is kept.
+
+## Rye loaf
+- status: idea
+- length: 8 min
+
+## Sourdough starter
+- status: made
+```
+
+Every change keeps all other bytes of the file as they were: a move reorders whole sections (the visible items swap
+places among the sections that are visible; hidden ones stay where they are), an edit replaces one value (a new key
+adds a line; the title is the field `title`; a value is one line), a drop deletes the section or marks it skipped.
+An item is its title plus how many earlier sections have the same title (`Rye loaf#0`). Every read returns an `etag`
+(a hash of the file) and every write must send it back; if the file changed in between, the server answers 409 and
+the card refreshes with a plain-words message. Writes are atomic (temp file, then rename).
+
+On the card: drag a row, or focus it and press `Alt+Up` / `Alt+Down`; `Enter` opens the row's fields (one input each,
+`Enter` saves that field, `Esc` closes); `Delete` or the Drop button drops it, and an Undo line puts the file back
+(`Ctrl/Cmd+Z` too) while nothing else has changed it. Everything animates (and stops animating under
+reduced motion). Code: `shared/md-queue.js` (file format), `shared/home-config-queues.js` (config),
+`server/home/queue-route.js` (+ `queue-store.js`, `queue-check.js`), `dashboard/js/home-queue-*.js`.
+
 ### How it runs: automations, services and the flow
 
 The "How it runs" view (key 5) draws the life of a note as a flow (note written, filed and explained,
@@ -386,6 +439,13 @@ file leaves the session counted and `unsure`. A ticket is working only for the s
 `/ship-task <id>` argument, the id its name starts with, or the id in its branch or worktree name. Ids a prompt only
 names are `mentioned` and never counted. Idle tickets and epics carry `idleWhy` (and an epic `promoteIds`, `ready`,
 `auto`), which the strip, the Overview card and the map's Work tab show with one button.
+
+`GET /api/home/queue?project=<slug>&id=<queue id>` returns `{ id, title, items: [{ id, title, fields: [{ key,
+value }] }], total, hidden, show, dropAs, violations[], etag, error? }` (a missing file is an `error` line, not a
+failure). `PUT /api/home/queue?project=<slug>` takes `{ id, etag, op, ... }`: `move { itemId, to }`,
+`edit { itemId, key, value }`, `drop { itemId }` or `undo { token }`, and answers like the GET plus `{ undo, itemId }`;
+`undo` is a token for the last write only (held in memory, valid while the file is exactly what that write left).
+A stale etag is 409, an unknown queue or item 404, a bad op or value 400.
 
 `GET /api/home/usage?project=<slug>` returns this week's usage meter; it is cached 60 s, and an older
 answer is returned at once (`stale: true`) while a fresh one is read behind it, so only the first read

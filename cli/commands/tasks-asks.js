@@ -3,10 +3,10 @@
  * Decisions a session leaves for Tal, shown in the Plan page's "For you" list (PRO73, PRO86):
  *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
  *       [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--link <url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
- *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]
+ *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag <area>] [--json]
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
  *   answer <id> <key> --reopen [--json]   put a dismissed / answered question back to open (PRO107)
- *   asks [--ticket ID] [--refresh] [--json]
+ *   asks [--ticket ID] [--tag <area>] [--refresh] [--json]   (AGE220: area = merge, account, marketing, design or taste)
  * Keys come from `ch tasks asks`: the ask's number, L<i> for an older Left question, W for a
  * ticket whose waitingOn names Tal. Rules and shapes: shared/asks.js.
  */
@@ -22,6 +22,7 @@ import { ghPrState } from '../lib/open-pr-gate.js';
 import { clearMergedHeldPrs } from '../../shared/held-pr.js';
 import { overlapsForAsk } from '../../shared/ask-check-overlap.js';
 import { checkEntries, askOverlapMessage, ticketAndEpic } from '../lib/ask-overlap.js';
+import { tagError, tagText } from '../../shared/ask-tags.js';
 import { toEvidenceRel, resolveEvidence } from '../lib/evidence.js';
 import { dataRoot } from '../lib/io.js';
 import { liveEpicsNow } from '../lib/next-start-inputs.js';
@@ -48,7 +49,7 @@ function mediaRelOrDie(value, kind) {
   return rel;
 }
 
-const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--json]';
+const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag marketing|design|merge|taste|account] [--json]';
 
 /** `ch tasks ask <id> "<question>"`: leave a decision for Tal on the ticket (sets its waitingOn). */
 export async function cmdAsk(argv) {
@@ -68,6 +69,7 @@ export async function cmdAsk(argv) {
     'same-judgement': { type: 'boolean' },
     'not-same': { type: 'string' },
     'link-check': { type: 'string', multiple: true },
+    tag: { type: 'string' },
     json: { type: 'boolean', short: 'j' },
   });
   const [id, text] = positionals;
@@ -75,6 +77,7 @@ export async function cmdAsk(argv) {
   const doc = load();
   const task = ticketOrDie(doc, id);
   if (values['same-as']) ticketOrDie(doc, values['same-as']);
+  if (values.tag !== undefined && tagError(values.tag)) die(`ask: ${tagError(values.tag)}`);
   const media = {};
   for (const kind of MEDIA_KINDS) if (values[kind]) media[kind] = kind === 'board' ? values[kind].trim() : mediaRelOrDie(values[kind], kind);
   // PRO90: one judgement, one card: a question that repeats an unticked check on the ticket or its epic links to it or says it differs.
@@ -101,7 +104,7 @@ export async function cmdAsk(argv) {
   try {
     ask = addAsk(task, {
       text, by: values['ask-by'], mergePr: values['merge-pr'], options: values.option, recommend: values.recommend,
-      details: values.details, link: values.link, media, sameAs: values['same-as'], checkRefs, notSame: values['not-same'],
+      details: values.details, link: values.link, media, sameAs: values['same-as'], checkRefs, notSame: values['not-same'], tag: values.tag,
       labels: labelsOf(doc, task),
     });
   } catch (e) { die(`ask: ${e.message}`); }
@@ -189,6 +192,7 @@ export async function cmdAnswer(argv) {
 export async function cmdAsks(argv) {
   const { values } = parse(argv, {
     ticket: { type: 'string' },
+    tag: { type: 'string' },
     refresh: { type: 'boolean' },
     json: { type: 'boolean', short: 'j' },
   });
@@ -215,7 +219,9 @@ export async function cmdAsks(argv) {
   }
   if (closed.length || cleared.length) save(doc);
   let rows = openAsks(doc);
+  if (values.tag !== undefined && tagError(values.tag)) die(`asks: ${tagError(values.tag)}`);
   if (values.ticket) rows = rows.filter(r => r.id === values.ticket);
+  if (values.tag) rows = rows.filter(r => r.tag?.area === String(values.tag).trim().toLowerCase());
   const cards = groupAsks(rows);
   if (values.json) { jsonOut({ asks: rows, cards: cards.length, closed, cleared }); return; }
   closed.forEach(c => print(`closed ${c.id} ask ${c.key}: ${c.mergePr} merged`));
@@ -224,7 +230,8 @@ export async function cmdAsks(argv) {
   print(`Decisions for you (${cards.length})`);
   for (const c of cards) {
     const by = c.by ? ` (by ${c.by})` : '';
-    print(`  ${c.members.map(m => `${m.id} ${m.key}`).join(' + ')}  ${c.text}${by}${c.mergePr ? ` [${c.mergePr}]` : ''}`);
+    const tag = tagText(c.tag);
+    print(`  ${c.members.map(m => `${m.id} ${m.key}`).join(' + ')}  ${tag ? `[${tag}] ` : ''}${c.text}${by}${c.mergePr ? ` [${c.mergePr}]` : ''}`);
     for (const o of c.options || []) print(`        ${o.key}: ${o.text}${c.recommend === o.key ? ' (recommended)' : ''}`);
     for (const [kind, p] of Object.entries(c.media || {})) print(`        ${kind}: ${p}`);
   }

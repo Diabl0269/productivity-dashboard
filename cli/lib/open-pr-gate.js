@@ -10,6 +10,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { saysNothingToTry } from '../../shared/merge-decision.js';
 
 const MIN_STEPS = 40;
 const PR_LABEL = /^\s*PR\s*#\d+/i;
@@ -72,6 +73,11 @@ export function openPrGate({ id, links, heldPr, trySteps, state = ghPrState, che
     if (heldPr !== undefined && !why) { out.error = '--held-pr needs a reason: --held-pr "<why the PR stays open>"'; return out; }
     if (!why) {
       out.error = `${id}: ${url} is still open, so a review would check a build without the feature. Merge it first, or if it is held open on purpose pass --held-pr "<why>" --try-steps "<exact steps on branch ${s.branch || '<branch>'} and what Tal should see>" (adds the check "Try on branch ${s.branch || '<branch>'}: <steps>").`;
+      return out;
+    }
+    if (steps && saysNothingToTry(steps)) {
+      // AGE219: nothing to see or hear is a merge decision, not a check: no "Try on branch" check, no Open project button.
+      out.error = `${id}: --try-steps says there is nothing to see or hear on branch ${s.branch || '<branch>'}, so there is no check to file: the merge decision belongs on a merge ask (or file a merge ask with ch tasks ask --merge-pr). File it with ch tasks ask ${id} "<merge question naming the PR and the live effect>" --option "A: Merge" --option "B: Keep held" --details "<60+ chars>" --merge-pr ${url} (drop --held-pr/--try-steps here; pass --no-checks "<reason>" when the review has no other checks).`;
       return out;
     }
     if (steps.length < MIN_STEPS || /say merge or not/i.test(steps)) {

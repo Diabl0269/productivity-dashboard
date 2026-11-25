@@ -39,6 +39,7 @@ import {
   evidencePathError, videoPathError, audioPathError, projectPathError, tidyEvidencePath, epicOf,
 } from './review.js';
 import { addReviewNote } from './review-notes.js';
+import { tagError, tagOfAsk } from './ask-tags.js';
 import { epicsToUnpin, unpinFromPlan, closeIfReviewComplete } from './review.js';
 import { planFiling, applyFiling } from './review-filing.js';
 
@@ -173,7 +174,7 @@ export function parseOption(input, i = 0) {
  * empty question, a bad date, PR URL, option, recommendation or media path, or a taste question.
  */
 export function addAsk(task, {
-  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, link, now = new Date().toISOString(),
+  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, link, tag, now = new Date().toISOString(),
 } = {}) {
   if (isKillCommandText(text) || isKillCommandText(details)) {
     throw new Error('a kill command is not a question for Tal: tell the session that owns the stuck process, then kill it yourself by pid (never pkill/killall) and note it on the ticket');
@@ -209,6 +210,7 @@ export function addAsk(task, {
     m[kind] = kind === 'board' ? String(v).trim() : tidyEvidencePath(v);
   }
   if (sameAs != null && sameAs !== '' && !ID_RE.test(String(sameAs).trim())) throw new Error(`--same-as must be a ticket id: ${sameAs}`);
+  if (tag != null && tag !== '' && tagError(tag)) throw new Error(tagError(tag));
   const refs = (checkRefs || []).map(r => ({ id: String(r?.id ?? '').trim(), text: String(r?.text ?? '') }));
   if (refs.some(r => !ID_RE.test(r.id) || !r.text.trim())) throw new Error('checkRefs must be [{ id: ticket id, text: the check text }]');
   const why = notSame != null ? String(notSame).trim() : '';
@@ -240,6 +242,7 @@ export function addAsk(task, {
   if (sameAs) ask.sameAs = String(sameAs).trim();
   if (refs.length) ask.checkRefs = refs;
   if (why) ask.notSame = why;
+  if (tag) ask.tag = String(tag).trim().toLowerCase();
   task.asks.push(ask);
   task.waitingOn = `Tal: ${ask.text}`;
   return ask;
@@ -270,7 +273,7 @@ export function taskAsks(task, { skipLine = () => false } = {}) {
   for (const a of task?.asks || []) {
     if (!a || a.state !== 'open') continue;
     const row = { key: String(a.n), kind: a.mergePr ? 'merge' : 'ask', text: a.text, at: a.at || '', legacy: false };
-    for (const k of ['by', 'mergePr', 'recommend', 'details', 'sameAs']) if (a[k]) row[k] = a[k];
+    for (const k of ['by', 'mergePr', 'recommend', 'details', 'sameAs', 'tag']) if (a[k]) row[k] = a[k];
     if (a.checkRefs?.length) row.checkRefs = a.checkRefs.map(r => ({ id: r.id, text: r.text }));
     if (a.options?.length) row.options = a.options.map(o => ({ key: o.key, text: o.text }));
     if (a.media && Object.keys(a.media).length) row.media = { ...a.media };
@@ -345,7 +348,9 @@ export function openAsks(doc) {
     if (!own && !ASK_OPEN_SECTIONS.includes(epicSection(task, byId))) continue;
     for (const ask of taskAsks(task, { skipLine: rolledCopySkipper(task, byId) })) {
       if (ask.legacy && !own) continue;
-      out.push({ id: task.id, title: task.title || '', section, ...ask });
+      const row = { id: task.id, title: task.title || '', section, ...ask };
+      row.tag = tagOfAsk(row, task, byId.get(task.parentId)?.task);
+      out.push(row);
     }
   }
   const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -390,6 +395,7 @@ export function groupAsks(rows) {
     if (!cards.has(root)) cards.set(root, { ...r, members: [], ids: [] });
     const card = cards.get(root);
     card.members.push(r);
+    if (!card.tag?.area && r.tag?.area) card.tag = r.tag;
     if (!card.ids.includes(r.id)) card.ids.push(r.id);
     for (const k of ['options', 'recommend', 'details', 'media', 'mergePr', 'by']) if (card[k] == null && r[k] != null) card[k] = r[k];
     for (const ref of r.checkRefs || []) {
@@ -777,6 +783,7 @@ function askExtraErrors(a, r) {
       errors.push(`${r}.checkRefs must be an array of { id: ticket id, text: non-empty string }`);
     }
   }
+  if (a.tag !== undefined && tagError(a.tag)) errors.push(`${r}.tag: ${tagError(a.tag)}`);
   if (a.notSame !== undefined && typeof a.notSame !== 'string') errors.push(`${r}.notSame must be a string`);
   if (a.filedAs !== undefined && (typeof a.filedAs !== 'string' || !a.filedAs.trim())) errors.push(`${r}.filedAs must be a non-empty string`);
   return errors;
@@ -823,7 +830,7 @@ export function cleanAsks(task) {
     ? task.asks.filter(a => a && typeof a === 'object' && Number.isInteger(a.n) && a.n > 0 && !askTextError(a.text)
       && typeof a.at === 'string' && ASK_STATES.includes(a.state)).map((a) => {
       const e = { n: a.n, at: a.at, text: a.text, state: a.state };
-      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs', 'notSame', 'filedAs']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
+      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs', 'notSame', 'filedAs', 'tag']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
       if (Array.isArray(a.checkRefs)) {
         const refs = a.checkRefs.filter(x => x && ID_RE.test(String(x.id)) && typeof x.text === 'string' && x.text.trim()).map(x => ({ id: x.id, text: x.text }));
         if (refs.length) e.checkRefs = refs;
