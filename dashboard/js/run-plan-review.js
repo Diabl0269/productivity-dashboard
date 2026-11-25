@@ -96,7 +96,7 @@ export function renderCheckGrid(ctx, task) {
       what.appendChild(badge);
     }
     // AGE162: a held check with no project still gets Open project (the branch's build); the chip owns it.
-    const branchButton = c.heldPr && !c.project ? openBranchButton(c.heldPr) : null;
+    const branchButton = c.heldPr && !c.project ? openBranchButton(c.heldPr, c.text) : null;
     if (branchButton) { what.appendChild(document.createTextNode(' ')); what.appendChild(branchButton); }
     const branchChip = heldPrChip(c, branchButton ? [...projectButtons, branchButton] : projectButtons);
     if (branchChip) {

@@ -104,7 +104,8 @@ import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
 import { toEvidenceRel, resolveEvidence, readReviewApps, pickReviewApp, registerReviewApp, readScriptRoots } from '../lib/evidence.js';
-import { turnkeyCheckProblem, missingScriptPaths } from '../../shared/turnkey-check.js';
+import { turnkeyCheckProblem, missingScriptPaths, turnkeyOpenChecksProblems } from '../../shared/turnkey-check.js';
+import { boardCheckProblem, boardAnsweredProblem, boardSweepProblems, mentionsBoard } from '../../shared/board-check.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import { tasteLinesToChecks, foldTasteChecks } from '../lib/taste-checks.js';
@@ -1205,6 +1206,14 @@ function cmdReview(argv) {
   if (designUrl && /^https:\/\//.test(designUrl)) {
     for (const c of checkItems) if (!c.link && DESIGN_BOARD_RE.test(c.text)) c.link = { label: 'Design board', url: designUrl };
   }
+  // AGE214: a check that names "the board" needs the board linked, and a board that has an answer is no check.
+  {
+    const boardTexts = checkItems.map(c => c.text);
+    const own = checkItems.filter(c => mentionsBoard(c.text) && c.link).map(c => c.link);
+    const boardProblem = boardCheckProblem(boardTexts, { tasks: ticketAndEpic(doc, task), extraLinks: [values['design-link'], ...(values['add-link'] || []), ...own].filter(Boolean) })
+      || boardAnsweredProblem(boardTexts, task);
+    if (boardProblem) die(boardProblem);
+  }
   assertChecksAreTals(checkItems, values['allow-check-owner']);
   // WEB40: website/backend checks have no synth project; fill the reason instead of failing the gate.
   if (NO_SYNTH_PROJECT[task.project]) for (const c of checkItems) if (!c.project && !c.noProject) c.noProject = NO_SYNTH_PROJECT[task.project];
@@ -2152,6 +2161,9 @@ function cmdUpdate(argv) {
   }
   if (values['add-check'] && values['add-check'].length) {
     if (!Array.isArray(task.checks)) task.checks = [];
+    const boardProblem = boardCheckProblem(values['add-check'], { tasks: ticketAndEpic(doc, task), extraLinks: values['add-link'] || [] })
+      || boardAnsweredProblem(values['add-check'], task);
+    if (boardProblem) die(boardProblem);
     assertChecksAreTals(values['add-check'].map(text => ({ text })), values['allow-check-owner']);
     for (const text of values['add-check']) {
       task.checks.push({ text, checked: false, addedAt: new Date().toISOString() });
@@ -2467,8 +2479,15 @@ function applyAgentVerification(task, values) {
 
 /** ch tasks checks [--json]: unticked, not handed-off, agent-unverified checks on open epics and in-progress/review tickets. */
 function cmdChecks(argv) {
-  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' } });
+  const { values } = parse(argv, { json: { type: 'boolean', short: 'j' }, lint: { type: 'boolean' }, turnkey: { type: 'boolean' } });
   const doc = load();
+  if (values.lint || values.turnkey) { // AGE214 / AGE215: sweeps over every open check; exit 1 when any offends
+    const lines = [...(values.lint ? boardSweepProblems(doc) : []), ...(values.turnkey ? turnkeyOpenChecksProblems(doc) : [])];
+    if (values.json) jsonOut({ problems: lines });
+    else print(lines.length ? lines.join('\n') : 'Every open check passes.');
+    if (lines.length) process.exitCode = 1;
+    return;
+  }
   const rows = [];
   for (const section of doc.sections || []) {
     if (section.id === 'done' || section.id === 'archive') continue;

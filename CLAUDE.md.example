@@ -66,7 +66,7 @@ Install once: `cd cli && npm link`. Then use `ch ...` from anywhere, or `./ch ..
 | Update fields | `ch tasks update <id> --title "..." --description "..." --priority high --due ... --estimate 30m --assignee ...` |
 | Add a note (with screenshots) / edit one | `ch tasks update <id> --add-note "..." [--note-image file.png]...` / `--edit-note N --note-text "..."`; `ch tasks get <id>` prints `image: <path>` per image: open it with the Read tool |
 | Record an agent run of a check | `ch tasks update <id> --verify-check N --verify-note "<how it was run>" [--verify-result pass\|fail] [--verify-by name]` (note 10+ chars; never ticks the check itself; the tick stays Tal's for any check with a clip, audio, project or taste flag, but an epic in review whose only unticked checks are passed, media-less ones closes to Done with those checks ticked (PRO111), and so does an epic reaching review with only such checks; `--unverify-check N` removes the marker; shown on the Plan page as "Agent verified <date>" or "Agent: failed") |
-| List checks no agent has run | `ch tasks checks [--json]` (unticked, not handed-off, unverified checks on open epics and in-progress/review tickets, as `<id>#<n> <text>`) |
+| List checks no agent has run | `ch tasks checks [--json] [--lint] [--turnkey]` (`--lint`: board checks with no board link; `--turnkey`: checks that are not turnkey; both exit 1 on any) (unticked, not handed-off, unverified checks on open epics and in-progress/review tickets, as `<id>#<n> <text>`) |
 | Next available id | `ch tasks next-id` |
 | Validate tasks.json | `ch tasks lint [--fix]` |
 | Markdown snapshot | `ch tasks export --md` |

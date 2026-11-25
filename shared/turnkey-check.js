@@ -14,7 +14,9 @@
  * Pure (no fs, no DOM): the caller passes `exists`.
  */
 
-const NOTHING_TO_SEE_RE = /\bnothing (?:to (?:see|show|look at|watch|film)|visible|visual|on screen)\b|\bno (?:visible|visual|ui|screen|on-screen) (?:change|difference)s?\b|\bnot (?:a )?visual\b|^\s*(?:n\/?a|none|-)\s*\.?\s*$/i;
+import { openCheckEntries } from './check-entries.js';
+
+export const NOTHING_TO_SEE_RE = /\bnothing (?:to (?:see|show|look at|watch|film)|visible|visual|on screen)\b|\bno (?:visible|visual|ui|screen|on-screen) (?:change|difference)s?\b|\bnot (?:a )?visual\b|^\s*(?:n\/?a|none|-)\s*\.?\s*$/i;
 const TAL_ONLY_RE = /needs-tal|taste|\bhear|\blisten|\bby ear|hardware|consent|\bsounds?\b/i;
 const QUESTION_RE = /\?\s*$/;
 
@@ -66,6 +68,21 @@ export function turnkeyCheckProblem(items, ctx = {}) {
   return `${lines.length} problem(s) keep these checks from being turnkey (only taste goes to Tal, ready to judge):\n`
     + lines.map(l => `  - ${l}`).join('\n')
     + '\n(--force "<why>" overrides and is recorded on the ticket.)';
+}
+
+/**
+ * AGE215: every open check is turnkey. Runs turnkeyCheckProblems over every open check (shared/check-entries.js:
+ * unticked, not handed off, on open epics and in-progress/review tickets) with its ticket's and epic's labels
+ * and project. @returns {string[]} one line per problem, prefixed `<id>#<n>`.
+ */
+export function turnkeyOpenChecksProblems(doc) {
+  const out = [];
+  for (const e of openCheckEntries(doc)) {
+    const labels = [...(e.task.labels || []), ...(e.epic?.labels || [])];
+    const project = e.task.project || e.epic?.project || null;
+    for (const l of turnkeyCheckProblems([e.check], { labels, project })) out.push(`${e.task.id}#${e.n} ${l.replace(/^check 1 /, '')}`);
+  }
+  return out;
 }
 
 const ABS_SCRIPT_RE = /(?:^|[\s`'"(])((?:~\/|\/)[\w.@+/-]+\.(?:sh|py|mjs|cjs|js|ts))\b/g;
