@@ -7,31 +7,17 @@
  * the description is the entry's existing `what`.
  */
 
+import { HARNESSES, HARNESS_LABELS, HARNESS_DEFAULTS, EXTENDED_EFFORTS } from './harnesses.js';
+
+export { HARNESSES, HARNESS_LABELS, HARNESS_DEFAULTS };
 export const SKILL_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 export const MAX_PROMPT = 4000;
 export const MAX_DESCRIPTION = 500;
 export const RUNTIME_FIELDS = ['schedule', 'harness', 'model', 'skill', 'prompt', 'enabled', 'effort', 'cli', 'runner', 'arguments'];
 export const EDIT_FIELDS = [...RUNTIME_FIELDS, 'description'];
-export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
-export const HARNESSES = ['opencode', 'claude', 'codex', 'copilot', 'gemini', 'custom'];
-export const HARNESS_LABELS = Object.freeze({
-  opencode: 'OpenCode',
-  claude: 'Claude Code',
-  codex: 'Codex',
-  copilot: 'GitHub Copilot',
-  gemini: 'Gemini (Antigravity)',
-  custom: 'Custom',
-});
+export const EFFORTS = [...EXTENDED_EFFORTS];
 export const DEFAULT_EFFORT = 'medium';
 export const DEFAULT_RUNNER = '~/Library/Application Support/agent-automations/run-job.sh';
-export const HARNESS_DEFAULTS = Object.freeze({
-  opencode: { cli: '/Applications/OpenCode.app/Contents/Resources/opencode-cli', model: 'github-copilot/mai-code-2' },
-  claude: { cli: 'claude', model: 'sonnet' },
-  codex: { cli: 'codex', model: 'gpt-5.1-codex' },
-  copilot: { cli: 'copilot', model: 'gpt-4.1' },
-  gemini: { cli: 'agy', model: '' },
-  custom: { cli: '', model: '' },
-});
 
 /** The jobs the installer sets up when home.config.json says nothing else. */
 export const DEFAULT_SCHEDULES = Object.freeze({

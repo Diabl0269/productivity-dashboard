@@ -4,16 +4,10 @@ import path from 'node:path';
 import { automationId, readRecordedRuns } from './model.js';
 import { getAutomation } from './service.js';
 import { run } from './exec.js';
+import { inferRunHarness } from '../../shared/harnesses.js';
 
 const ID_RE = /^[A-Za-z0-9_.-]+$/;
 const OPENCODE = '/Applications/OpenCode.app/Contents/Resources/opencode-cli';
-
-function inferHarness(entry, fallback = null) {
-  if (entry?.harness) return entry.harness;
-  if (String(entry?.sessionID || '').startsWith('ses_')) return 'opencode';
-  if (entry?.source === 'opencode') return 'opencode';
-  return fallback;
-}
 
 function readGeminiTranscriptModel(sessionID) {
   if (!sessionID || sessionID.startsWith('ses_')) return '';
@@ -71,7 +65,7 @@ async function readOpencodeDbSessions(id) {
 
 export function recordedRuns(label, env = {}) {
   return readRecordedRuns(label, env).map(r => {
-    const harness = inferHarness(r);
+    const harness = inferRunHarness(r);
     const model = r.model || (harness === 'gemini' ? readGeminiTranscriptModel(r.sessionID) : '');
     return { ...r, ...(harness ? { harness } : {}), ...(model ? { model } : {}) };
   });
@@ -126,7 +120,7 @@ export async function automationRuns(label, { cli, cwd = process.cwd() } = {}) {
     const key = hasSid ? entry.sessionID : (entry.startedAt && entry.exitCode ? `failed:${entry.startedAt}` : null);
     if (!key) continue;
     const prev = byID.get(key) || {};
-    const harness = inferHarness(entry, prev.harness || null);
+    const harness = inferRunHarness(entry, prev.harness || null);
     const model = entry.model || prev.model || (hasSid && harness === 'gemini' ? readGeminiTranscriptModel(entry.sessionID) : '');
     byID.set(key, {
       ...prev,

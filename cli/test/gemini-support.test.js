@@ -113,8 +113,34 @@ echo '{"session_id":"00000000-0000-4000-8000-000000000099"}'
       '--reasoning-effort', 'medium',
       '-p', 'Check repo status',
     ]);
-    const cpLast = JSON.parse(fs.readFileSync(path.join(logDir, 'copilot-job.last.json'), 'utf8'));
-    assert.equal(cpLast.sessionID, '00000000-0000-4000-8000-000000000099');
+    // Validate generic protocol: a brand-new harness not hardcoded in run-job.sh works purely via AUTOMATION_* env vars
+    const futureCalls = path.join(dir, 'future.args');
+    const mockFuture = path.join(dir, 'future-agent');
+    fs.writeFileSync(mockFuture, `#!/bin/bash
+printf '%s\\n' "$@" > "${futureCalls}"
+echo '{"session_id":"00000000-0000-4000-8000-000000000777","model":"future-v1"}'
+`, { mode: 0o755 });
+    const r3 = spawnSync('/bin/bash', [RUN_JOB, 'future-job', 'Ship it'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        AUTOMATION_HARNESS: 'future-agent',
+        AUTOMATION_CLI: mockFuture,
+        AUTOMATION_BASE_ARGS: 'headless\n--json',
+        AUTOMATION_EFFORT_FLAG: '--thinking',
+        AUTOMATION_EFFORT: 'high',
+        AUTOMATION_PROMPT_FLAG: '--prompt',
+        AUTOMATION_LOG_DIR: logDir,
+      },
+    });
+    assert.equal(r3.status, 0, r3.stderr);
+    assert.deepEqual(fs.readFileSync(futureCalls, 'utf8').trim().split('\n'), [
+      'headless', '--json', '--thinking', 'high', '--prompt', 'Ship it',
+    ]);
+    const futLast = JSON.parse(fs.readFileSync(path.join(logDir, 'future-job.last.json'), 'utf8'));
+    assert.equal(futLast.sessionID, '00000000-0000-4000-8000-000000000777');
+    assert.equal(futLast.model, 'future-v1');
+    assert.equal(futLast.harness, 'future-agent');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -310,7 +336,7 @@ echo "surface:9"
     });
     assert.equal(upgraded.status, 200);
     assert.match(upgraded.body.automation.environment.PATH, /\.local\/bin/);
-    assert.match(fs.readFileSync(legacyRunner, 'utf8'), /gemini\|agy\|antigravity/);
+    assert.match(fs.readFileSync(legacyRunner, 'utf8'), /AUTOMATION_BASE_ARGS/);
 
     // 8. Switching harness to gemini keeps past opencode runs with their harness & model, and dispatches open-session per run
     fs.writeFileSync(path.join(logsDir, 'daily-summary.runs.jsonl'), [

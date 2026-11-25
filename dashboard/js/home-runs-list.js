@@ -5,6 +5,7 @@
 // Rows are kept between refreshes and only their text changes, so live data never makes the page jump.
 
 import { healthState, HEALTH_STATES, relTime, GROUP_ORDER } from '../../shared/home-config-runs.js';
+import { inferRunHarness, hasDesktopApp } from '../../shared/harnesses.js';
 import { getRuns, onHealth, getHealth, loadRuns } from './home-health-data.js';
 import { editAutomation, editAutomationDefaults } from './home-state.js';
 
@@ -210,7 +211,7 @@ function makeRow(kind, entry, ctx) {
           runSelect.disabled = false;
           for (const r of runs) {
             const when = r.startedAt ? new Date(r.startedAt).toLocaleString() : 'Recorded run';
-            const h = r.harness || (String(r.sessionID || '').startsWith('ses_') ? 'opencode' : tool);
+            const h = inferRunHarness(r, tool);
             const hm = h ? ` · ${h}${r.model ? ` (${r.model})` : ''}` : '';
             const exit = r.exitCode ? `exit ${r.exitCode}${r.error ? ` (${r.error})` : ''}` : 'ok';
             const opt = el('option', '', `${when}${hm} · ${exit} · ${r.sessionID || 'no session'}`);
@@ -222,7 +223,7 @@ function makeRow(kind, entry, ctx) {
           const syncTerm = () => {
             openBtn.disabled = !runSelect.value;
             const h = runSelect.selectedOptions?.[0]?.dataset?.harness || tool;
-            termBtn.hidden = !runSelect.value || !(h === 'opencode' || h === 'copilot');
+            termBtn.hidden = !runSelect.value || !hasDesktopApp(h);
           };
           runSelect.onchange = syncTerm;
           syncTerm();

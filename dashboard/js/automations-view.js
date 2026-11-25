@@ -3,8 +3,9 @@
 
 import { buildEditor } from './automations-editor.js';
 import { showStatus } from './state.js';
+import { HARNESS_SHORT_LABELS, inferRunHarness, hasDesktopApp } from '../../shared/harnesses.js';
 
-const TOOL_LABEL = { opencode: 'OpenCode', copilot: 'Copilot', claude: 'Claude', codex: 'Codex', gemini: 'Gemini', other: 'Other' };
+const TOOL_LABEL = HARNESS_SHORT_LABELS;
 const POLL_INTERVAL_MS = 2000;
 const START_GRACE_MS = 5000;
 const state = {
@@ -33,7 +34,7 @@ async function api(method, path, body) {
 }
 
 function runHarnessLabel(run, fallbackTool = null) {
-  const h = run?.harness || (String(run?.sessionID || '').startsWith('ses_') ? 'opencode' : fallbackTool);
+  const h = inferRunHarness(run, fallbackTool);
   if (!h) return '';
   const label = TOOL_LABEL[h] || h;
   return run?.model ? `${label} (${run.model})` : label;
@@ -149,7 +150,7 @@ function renderDetail(a) {
   for (const run of runs) {
     const option = el('option', null, formatRunOption(run, a.tool));
     option.value = run.sessionID || '';
-    option.dataset.harness = run.harness || (String(run.sessionID || '').startsWith('ses_') ? 'opencode' : a.tool);
+    option.dataset.harness = inferRunHarness(run, a.tool) || '';
     if (defaultOpenable && run.sessionID === defaultOpenable) option.selected = true;
     session.appendChild(option);
   }
@@ -160,7 +161,7 @@ function renderDetail(a) {
     state.selectedSession = session.value || null;
     openBtn.disabled = !session.value;
     const h = session.selectedOptions?.[0]?.dataset?.harness || a.tool;
-    termBtn.hidden = !session.value || !(h === 'opencode' || h === 'copilot');
+    termBtn.hidden = !session.value || !hasDesktopApp(h);
   };
   termBtn.addEventListener('click', async () => { const r = await act(a.label, () => api('POST', `/${L}/open-session`, { sessionID: session.value, mode: 'terminal' }), 'Opened in Terminal'); if (r?.note) showStatus(r.note); });
   session.addEventListener('change', syncTermBtn);

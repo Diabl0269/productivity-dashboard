@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { DEFAULT_SCHEDULES, HARNESS_DEFAULTS, effectiveRun } from '../../shared/automation-run.js';
+import { getHarnessSpec } from '../../shared/harnesses.js';
 
 export const LABEL_PREFIX = 'local.agent-automation';
 export const LEGACY_LABEL_PREFIX = 'local.opencode';
@@ -48,6 +49,16 @@ export function buildPlist(job, { repoRoot, cli, dirs = dirsFor() }) {
   const executable = job.cli || cli || HARNESS_DEFAULTS[harness]?.cli || '';
   if (!harness || !executable) throw new Error(`The automation "${job.id}" needs both harness and cli values.`);
   const argumentLines = (job.arguments || []).map(arg => escapeXml(arg)).join('\n');
+  const spec = getHarnessSpec(harness);
+  const runSpec = spec?.run;
+  const specEnvLines = runSpec ? [
+    `\t\t<key>AUTOMATION_BASE_ARGS</key><string>${escapeXml((runSpec.baseArgs || []).join('\n'))}</string>`,
+    `\t\t<key>AUTOMATION_MODEL_FLAG</key><string>${escapeXml(runSpec.modelFlag ?? '--model')}</string>`,
+    `\t\t<key>AUTOMATION_EFFORT_FLAG</key><string>${escapeXml(runSpec.effortFlag ?? '')}</string>`,
+    `\t\t<key>AUTOMATION_AGENT_FLAG</key><string>${escapeXml(runSpec.agentFlag ?? '')}</string>`,
+    `\t\t<key>AUTOMATION_PROMPT_FLAG</key><string>${escapeXml(runSpec.promptFlag ?? '')}</string>`,
+    `\t\t<key>AUTOMATION_TITLE_FLAG</key><string>${escapeXml(runSpec.titleFlag ?? '')}</string>`,
+  ].join('\n') + '\n' : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -59,7 +70,7 @@ export function buildPlist(job, { repoRoot, cli, dirs = dirsFor() }) {
 \t\t<key>AUTOMATION_EFFORT</key><string>${escapeXml(job.effort || 'medium')}</string>
 \t\t<key>AUTOMATION_MODEL</key><string>${escapeXml(job.model || '')}</string>
 \t\t<key>AUTOMATION_ARGUMENTS</key><string>${argumentLines}</string>
-\t\t<key>AUTOMATION_LOG_DIR</key><string>${escapeXml(dirs.logDir)}</string>
+${specEnvLines}\t\t<key>AUTOMATION_LOG_DIR</key><string>${escapeXml(dirs.logDir)}</string>
 \t\t<key>PATH</key><string>${escapeXml(path.join(dirs.home || os.homedir(), '.local', 'bin'))}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
 \t</dict>
 \t<key>Label</key><string>${escapeXml(label)}</string>

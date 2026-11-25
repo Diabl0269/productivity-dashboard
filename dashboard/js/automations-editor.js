@@ -1,5 +1,6 @@
 // automations-editor.js — detail panel of the Automations tab: schedule, arguments, environment, script.
 import { WEEKDAYS, calendarToRows, rowsToCalendar } from '../../shared/automation-schedule.js';
+import { harnessEnvKeys, allManagedHarnessEnvKeys } from '../../shared/harnesses.js';
 
 function el(tag, className, text) {
   const n = document.createElement(tag);
@@ -49,13 +50,6 @@ function argRow(value) {
 }
 
 const envToText = env => Object.entries(env || {}).map(([k, v]) => `${k}=${v}`).join('\n');
-const HARNESS_ENV = {
-  opencode: { model: 'OPENCODE_MODEL', agent: 'OPENCODE_AGENT', effort: 'OPENCODE_EFFORT' },
-  claude: { model: 'CLAUDE_MODEL', agent: 'CLAUDE_AGENT', effort: 'CLAUDE_EFFORT' },
-  codex: { model: 'CODEX_MODEL', agent: 'CODEX_AGENT', effort: 'CODEX_EFFORT' },
-  copilot: { model: 'COPILOT_MODEL', agent: 'COPILOT_AGENT', effort: 'COPILOT_EFFORT' },
-  gemini: { model: 'GEMINI_MODEL', agent: 'GEMINI_AGENT', effort: 'GEMINI_EFFORT' },
-};
 function choiceSelect(values, selected) {
   const select = el('select', 'au-input');
   const options = ['', ...values];
@@ -111,7 +105,7 @@ export function buildEditor(a, capabilities = { harnesses: [] }) {
   node.appendChild(controls);
   const paintRuntime = () => {
     const selected = harnesses.find(h => h.id === harness.value);
-    const keys = HARNESS_ENV[harness.value] || HARNESS_ENV.opencode;
+    const keys = harnessEnvKeys(harness.value || 'opencode');
     const existing = {
       model: currentEnv[keys.model] || currentEnv.AUTOMATION_MODEL || '',
       agent: currentEnv[keys.agent] || currentEnv.AUTOMATION_AGENT || '',
@@ -129,10 +123,7 @@ export function buildEditor(a, capabilities = { harnesses: [] }) {
   };
   harness.addEventListener('change', paintRuntime); paintRuntime();
 
-  const managedKeys = new Set([
-    'AUTOMATION_HARNESS', 'AUTOMATION_MODEL', 'AUTOMATION_AGENT', 'AUTOMATION_EFFORT',
-    ...Object.values(HARNESS_ENV).flatMap(keys => Object.values(keys)),
-  ]);
+  const managedKeys = allManagedHarnessEnvKeys();
   const rawEnv = Object.fromEntries(Object.entries(currentEnv).filter(([key]) => !managedKeys.has(key)));
   const env = el('textarea', 'au-input au-env'); env.rows = 3; env.spellcheck = false; env.value = envToText(rawEnv);
   node.appendChild(field('Other environment (KEY=value per line)', env));
@@ -148,7 +139,7 @@ export function buildEditor(a, capabilities = { harnesses: [] }) {
     const environment = textToEnv(env.value);
     if (harness.value) {
       environment.AUTOMATION_HARNESS = harness.value;
-      const keys = HARNESS_ENV[harness.value] || HARNESS_ENV.opencode;
+      const keys = harnessEnvKeys(harness.value);
       if (model.value) {
         environment[keys.model] = model.value;
         if ('AUTOMATION_MODEL' in currentEnv) environment.AUTOMATION_MODEL = model.value;

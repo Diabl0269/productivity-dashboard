@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { calendarEntries, formatSchedule } from '../../shared/automation-schedule.js';
+import { HARNESSES, normalizeHarness, harnessForBinary } from '../../shared/harnesses.js';
 
 export const LABEL_PREFIX = 'local.opencode.';
 export const AGENT_LABEL_PREFIX = 'local.agent-automation.';
@@ -33,27 +34,16 @@ export function logDirsFor(env = {}) {
   return [...new Set([env?.AUTOMATION_LOG_DIR, ...defaults].filter(Boolean))];
 }
 
-const TOOLS = {
-  opencode: 'opencode', 'opencode-cli': 'opencode',
-  copilot: 'copilot',
-  claude: 'claude',
-  codex: 'codex',
-  agy: 'gemini', gemini: 'gemini', antigravity: 'gemini',
-};
-const KNOWN_HARNESSES = new Set(['opencode', 'copilot', 'claude', 'codex', 'gemini']);
-
-/** opencode | copilot | claude | codex | gemini | other, from env, program arguments, script text, and label. */
+/** Known harness id or 'other', resolved declaratively from env, program arguments, script text, and label. */
 export function detectTool(args = [], scriptText = '', label = '', env = {}) {
-  const rawHarness = String(env?.AUTOMATION_HARNESS || '').toLowerCase();
-  if (rawHarness === 'agy' || rawHarness === 'antigravity') return 'gemini';
-  if (KNOWN_HARNESSES.has(rawHarness)) return rawHarness;
-  const envCli = env?.AUTOMATION_CLI ? TOOLS[path.basename(env.AUTOMATION_CLI)] : null;
-  if (envCli) return envCli;
-  const argHits = new Set(args.map(t => TOOLS[path.basename(t)]).filter(Boolean));
-  for (const t of ['gemini', 'opencode', 'copilot', 'claude', 'codex']) if (argHits.has(t)) return t;
-  const tokens = String(scriptText).split(/[\s"';|&()=]+/).map(t => path.basename(t));
-  const hits = new Set(tokens.map(t => TOOLS[t]).filter(Boolean));
-  for (const t of ['gemini', 'opencode', 'copilot', 'claude', 'codex']) if (hits.has(t)) return t;
+  const fromEnv = normalizeHarness(env?.AUTOMATION_HARNESS);
+  if (fromEnv && fromEnv !== 'custom') return fromEnv;
+  const fromCli = env?.AUTOMATION_CLI ? harnessForBinary(path.basename(env.AUTOMATION_CLI)) : null;
+  if (fromCli) return fromCli;
+  const argHits = new Set(args.map(t => harnessForBinary(path.basename(t))).filter(Boolean));
+  for (const id of HARNESSES) if (argHits.has(id)) return id;
+  const scriptHits = new Set(String(scriptText).split(/[\s"';|&()=]+/).map(t => harnessForBinary(path.basename(t))).filter(Boolean));
+  for (const id of HARNESSES) if (scriptHits.has(id)) return id;
   if (label.startsWith(LABEL_PREFIX)) return 'opencode';
   return 'other';
 }
