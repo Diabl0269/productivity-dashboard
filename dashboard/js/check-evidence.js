@@ -3,6 +3,7 @@
 // Used by the Plan page check grid and the review panel in the task detail.
 
 import { projectName } from '../../shared/review.js';
+import { isMergeDecisionCheck } from '../../shared/merge-decision.js';
 
 let toastTimer = null;
 
@@ -89,7 +90,8 @@ export function openProjectButton(project, label) {
 }
 
 /** AGE162: "Open project" for a held check with no saved project: opens the build of its PR branch, no project. */
-export function openBranchButton(held) {
+export function openBranchButton(held, text) {
+  if (isMergeDecisionCheck(text)) return null; // AGE219: nothing to open, only a merge decision
   const where = held?.branch ? `branch ${held.branch}` : 'its PR branch';
   const btn = button('Open project', `Open the build of ${where} (no saved project)`);
   btn.title = `Open the build of ${where} (no saved project)`;

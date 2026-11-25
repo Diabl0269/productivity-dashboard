@@ -10,6 +10,7 @@
 import { parse } from '../lib/args.js';
 import { print, jsonOut } from '../lib/output.js';
 import { load, save, sectionById, todayStr } from '../lib/tasks-store.js';
+import { pickWithoutBoard } from '../../shared/pick-without-board.js';
 import { appendHistory } from '../lib/schema.js';
 import { closeIfReviewComplete, reviewReadyToClose } from '../../shared/review.js';
 import { openEpicReadiness, readinessLabel, autoQueueOrder, withAutoLabel, isAuto, LATER_TITLE, unrunnableBlockers, blockerWarningText } from '../../shared/epic-ready.js';
@@ -82,6 +83,7 @@ export default async function cmdReady(argv) {
     auto: { type: 'boolean' },
     'apply-auto': { type: 'boolean' },
     'dry-run': { type: 'boolean' },
+    'check-picks': { type: 'boolean' },
   });
   if (values['apply-auto']) {
     const doc = load();
@@ -100,8 +102,12 @@ export default async function cmdReady(argv) {
   const queue = autoQueueOrder(epics.filter(e => e.auto));
   let next = 0;
   epics = epics.map(e => (e.auto ? queue[next++] : e));
-  if (values.json) { jsonOut({ epics }); return; }
-  if (!epics.length) { print(values.auto ? 'No epic is Ready with Auto on.' : 'No open epics.'); return; }
+  // FRO2329: open design picks with no board link (`--check-picks` exits 1 when any, for the daily job).
+  const picks = pickWithoutBoard(doc);
+  if (picks.length && values['check-picks']) process.exitCode = 1;
+  if (values.json) { jsonOut({ epics, pickWithoutBoard: picks }); return; }
+  if (values['check-picks']) { print(picks.length ? picksText(picks) : 'Every open pick has a board.'); return; }
+  if (!epics.length) { print(values.auto ? 'No epic is Ready with Auto on.' : 'No open epics.'); if (picks.length) print(picksText(picks)); return; }
   for (const e of epics) {
     const runnable = e.children.filter(c => c.runnable).length;
     print(`${e.ready ? '[ready]    ' : '[not ready]'} ${e.id}  ${e.title}${e.lane ? ` (${e.lane})` : ''}${e.auto ? ` [auto ${e.priority}${e.autoRank != null ? ` #${e.autoRank}` : ''}]` : ''}`);
@@ -109,4 +115,9 @@ export default async function cmdReady(argv) {
     if (e.stuckBlockers?.length) print(`             Ready · Auto, but ${blockerWarningText(e.stuckBlockers)}`);
     print(`             ${readinessLabel(e)}${e.ready ? ` - ${runnable} ticket${runnable === 1 ? '' : 's'} to run` : ''}`);
   }
+  if (picks.length) print(picksText(picks));
+}
+
+function picksText(picks) {
+  return ['Pick without board:', ...picks.map(p => `${p.id} ${p.title}`)].join('\n');
 }
