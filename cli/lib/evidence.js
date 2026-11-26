@@ -194,7 +194,7 @@ export function pickReviewApp(apps, branch, buildApp) {
   return best ? { app: best.app, builtAt: new Date(best.mtime).toISOString() } : null;
 }
 
-function defaultLaunch(cmd, args) {
+export function defaultLaunch(cmd, args) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, (err) => (err ? reject(err) : resolve()));
   });

@@ -4,7 +4,7 @@
  * An ask is a choice between options, never a thing to look at (those are checks on the epic's
  * review card). It lives on the ticket as `asks`:
  *   asks: [{ n, at, text, by?, mergePr?, options?: [{ key, text }], recommend?, details?,
- *            media?: { video?, audio?, image?, project?, board? }, sameAs?, checkRefs?: [{ id, text }], notSame?,
+ *            media?: { video?, audio?, image?, project?, board? }, evalRun?: { label, url }, sameAs?, checkRefs?: [{ id, text }], notSame?,
  *            state, answer?, resolvedAt?, filedAs? }]
  *   filedAs (PRO102, PRO104): where a free-text answer nobody will read went: the review note handle
  *   ("T1#2") or the ticket id the notes run filed; a filed ask is never listed or filed again.
@@ -12,6 +12,8 @@
  *   is open and tick themselves when it is answered or done (tickLinkedChecks); notSame says why a check
  *   that looks alike is a different judgement.
  *   state: 'open' | 'answered' | 'done' | 'dismissed' | 'parked'
+ * evalRun (AGE244): the eval run behind a deploy ask, `{ label, url }` (the eval viewer's run page); a merge ask that
+ *   mentions "prompt v<N>" needs it, or says `no eval ran: <why>` in its details (evalRunProblem).
  * A new ask's text is at most 140 characters (the rest goes in `details`, which is required: at least
  * ASK_DETAILS_MIN characters; a question about something seen or heard also needs media); media paths are
  * relative to $CH_HOME/evidence, like review evidence. A taste question ("taste: ...") is never
@@ -153,6 +155,30 @@ export function boardUrlError(v, label = 'board') {
   return BOARD_URL_RE.test(String(v ?? '').trim()) ? '' : `${label} must be a claude.ai artifact link (https://claude.ai/artifact/<id>): ${String(v ?? '').trim()}`;
 }
 
+const EVAL_URL_RE = /^https?:\/\/\S+$/i;
+const PROMPT_VERSION_RE = /\bprompt\s+v\d+/i;
+const NO_EVAL_RE = /\bno eval ran:\s*\S{3,}/i;
+
+/** Error text for an eval run link `{ label, url }`, or ''. */
+export function evalRunError(v, flag = '--eval-run') {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return `${flag} must be { label, url }`;
+  if (typeof v.label !== 'string' || !v.label.trim() || v.label.trim().length > 120) return `${flag} needs a label of 1-120 characters naming what the run tested`;
+  if (typeof v.url !== 'string' || !EVAL_URL_RE.test(v.url.trim())) return `${flag} needs the run's viewer URL (http://localhost:3100/ai-evals/#run=<folder>/<run>), got: ${String(v.url ?? '').trim()}`;
+  return '';
+}
+
+/**
+ * AGE244: a merge ask (it has a PR, or its question says merge) that mentions "prompt v<N>" deploys a prompt, so it
+ * links the eval run behind it (evalRun) or says plainly "no eval ran: <why>" in its details. Returns the error or ''.
+ */
+export function evalRunProblem({ text, details, options, mergePr, evalRun } = {}) {
+  const t = String(text ?? '');
+  const isMerge = !!mergePr || /\bmerge\b/i.test(t);
+  const mentions = [t, details, ...(options || []).map(o => (typeof o === 'string' ? o : o?.text))].some(x => PROMPT_VERSION_RE.test(String(x ?? '')));
+  if (!isMerge || !mentions || evalRun || NO_EVAL_RE.test(String(details ?? ''))) return '';
+  return 'a merge question about a prompt version needs the eval run that proves it: add --eval-run <viewer run url> --eval-run-label "<what it tested>", or say "no eval ran: <why>" in --details';
+}
+
 const MEDIA_CHECK = { video: videoPathError, audio: audioPathError, image: imagePathError, project: projectPathError, board: boardUrlError };
 
 /** Error for one media path of `kind`, or null. */
@@ -169,12 +195,41 @@ export function parseOption(input, i = 0) {
   return m ? { key: m[1].toUpperCase(), text: m[2].trim() } : { key: String.fromCharCode(65 + i), text: s };
 }
 
+/** AGE244: the card's "Eval run: <label>" link as { text, url }, or null when the ask has no eval run. */
+export function evalRunLink(card) {
+  const e = card?.evalRun;
+  return e && !evalRunError(e) ? { text: `Eval run: ${e.label.trim()}`, url: e.url.trim() } : null;
+}
+
+/**
+ * AGE244: attach the eval run behind an open ask after the fact (`ch tasks ask-eval`): either a linked run
+ * `{ label, url }` or `noEval` (the reason no eval ran, written into its details as "no eval ran: <why>").
+ * Returns the updated ask; throws on an unknown or closed ask, a bad link or a missing reason.
+ */
+export function setAskEvalRun(task, n, { evalRun, noEval } = {}) {
+  const ask = (task?.asks || []).find(a => a && a.n === Number(n));
+  if (!ask) throw new Error(`no ask #${n} on this ticket`);
+  if (ask.state !== 'open') throw new Error(`ask #${n} is ${ask.state}, not open`);
+  if (!!evalRun === !!(noEval && String(noEval).trim())) throw new Error('give the eval run (--eval-run <url> --eval-run-label "<what it tested>") or --no-eval "<why no eval ran>", one of them');
+  if (evalRun) {
+    const e = evalRunError(evalRun);
+    if (e) throw new Error(e);
+    ask.evalRun = { label: evalRun.label.trim(), url: evalRun.url.trim() };
+  } else {
+    const why = String(noEval).trim();
+    if (why.length < 3) throw new Error('--no-eval needs a reason');
+    const line = `no eval ran: ${why}`;
+    ask.details = `${ask.details ? `${ask.details}\n` : ''}${line}`;
+  }
+  return ask;
+}
+
 /**
  * Add an open ask to `task` and set its waitingOn to Tal. Returns the new ask; throws on a long or
  * empty question, a bad date, PR URL, option, recommendation or media path, or a taste question.
  */
 export function addAsk(task, {
-  text, by, mergePr, options, recommend, details, media, sameAs, checkRefs, notSame, labels, link, tag, now = new Date().toISOString(),
+  text, by, mergePr, options, recommend, details, media, evalRun, sameAs, checkRefs, notSame, labels, link, tag, now = new Date().toISOString(),
 } = {}) {
   if (isKillCommandText(text) || isKillCommandText(details)) {
     throw new Error('a kill command is not a question for Tal: tell the session that owns the stuck process, then kill it yourself by pid (never pkill/killall) and note it on the ticket');
@@ -230,6 +285,9 @@ export function addAsk(task, {
   if (!exempt && designAsk && !m.board && !ANY_URL_RE.test(det)) {
     throw new Error('a question about a design needs the link to the board or artifact it is about: add --board <claude.ai artifact url> or --link <url> (or put the URL in --details), so the answer lands on the right card');
   }
+  if (evalRun != null) { const e = evalRunError(evalRun); if (e) throw new Error(e); }
+  const evalProblem = evalRunProblem({ text, details: det, options: opts, mergePr, evalRun });
+  if (evalProblem) throw new Error(evalProblem);
   if (!Array.isArray(task.asks)) task.asks = [];
   const n = task.asks.reduce((mx, a) => Math.max(mx, Number(a?.n) || 0), 0) + 1;
   const ask = { n, at: now, text: text.trim(), state: 'open' };
@@ -239,6 +297,7 @@ export function addAsk(task, {
   if (rec) ask.recommend = rec;
   if (det) ask.details = det;
   if (Object.keys(m).length) ask.media = m;
+  if (evalRun) ask.evalRun = { label: evalRun.label.trim(), url: evalRun.url.trim() };
   if (sameAs) ask.sameAs = String(sameAs).trim();
   if (refs.length) ask.checkRefs = refs;
   if (why) ask.notSame = why;
@@ -277,6 +336,7 @@ export function taskAsks(task, { skipLine = () => false } = {}) {
     if (a.checkRefs?.length) row.checkRefs = a.checkRefs.map(r => ({ id: r.id, text: r.text }));
     if (a.options?.length) row.options = a.options.map(o => ({ key: o.key, text: o.text }));
     if (a.media && Object.keys(a.media).length) row.media = { ...a.media };
+    if (a.evalRun) row.evalRun = { label: a.evalRun.label, url: a.evalRun.url };
     out.push(row);
   }
   const ownOpen = out.length > 0;
@@ -397,7 +457,7 @@ export function groupAsks(rows) {
     card.members.push(r);
     if (!card.tag?.area && r.tag?.area) card.tag = r.tag;
     if (!card.ids.includes(r.id)) card.ids.push(r.id);
-    for (const k of ['options', 'recommend', 'details', 'media', 'mergePr', 'by']) if (card[k] == null && r[k] != null) card[k] = r[k];
+    for (const k of ['options', 'recommend', 'details', 'media', 'evalRun', 'mergePr', 'by']) if (card[k] == null && r[k] != null) card[k] = r[k];
     for (const ref of r.checkRefs || []) {
       if (!card.checkRefs) card.checkRefs = [];
       if (!card.checkRefs.some(x => x.id === ref.id && x.text === ref.text)) card.checkRefs.push(ref);
@@ -777,6 +837,7 @@ function askExtraErrors(a, r) {
     if (!a.media || typeof a.media !== 'object' || Array.isArray(a.media)) errors.push(`${r}.media must be an object`);
     else for (const [k, v] of Object.entries(a.media)) { const e = mediaPathError(k, v); if (e) errors.push(`${r}.media.${e}`); }
   }
+  if (a.evalRun !== undefined) { const e = evalRunError(a.evalRun, 'evalRun'); if (e) errors.push(`${r}.${e}`); }
   if (a.sameAs !== undefined && !ID_RE.test(String(a.sameAs))) errors.push(`${r}.sameAs must be a ticket id`);
   if (a.checkRefs !== undefined) {
     if (!Array.isArray(a.checkRefs) || a.checkRefs.some(x => !x || typeof x !== 'object' || !ID_RE.test(String(x.id)) || typeof x.text !== 'string' || !x.text.trim())) {
@@ -844,6 +905,7 @@ export function cleanAsks(task) {
         for (const k of MEDIA_KINDS) if (typeof a.media[k] === 'string' && !mediaPathError(k, a.media[k])) m[k] = a.media[k];
         if (Object.keys(m).length) e.media = m;
       }
+      if (a.evalRun && !evalRunError(a.evalRun)) e.evalRun = { label: a.evalRun.label.trim(), url: a.evalRun.url.trim() };
       return e;
     })
     : [];

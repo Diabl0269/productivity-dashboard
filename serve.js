@@ -919,6 +919,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // WEB49: "Run site and open" for a held website branch (config.json branchSites)
+  if (url.pathname.startsWith('/api/branch-site')) {
+    try {
+      const bs = await import('./server/branch-site.js');
+      let out;
+      if (url.pathname === '/api/branch-site/ready' && req.method === 'GET') out = await bs.handleBranchSiteReady({ url: url.searchParams.get('url') || '' });
+      else if (url.pathname === '/api/branch-site' && req.method === 'GET') out = bs.handleBranchSiteInfo({ dataRoot: DATA_ROOT, project: url.searchParams.get('project') || '' });
+      else if (url.pathname === '/api/branch-site' && req.method === 'POST') out = await bs.handleStartBranchSite({ origin: req.headers.origin, host: req.headers.host, bodyText: await readBody(req, 64 * 1024), dataRoot: DATA_ROOT });
+      if (out) { res.writeHead(out.status, { ...corsHeaders, 'Content-Type': 'application/json' }); res.end(JSON.stringify(out.json)); return; }
+    } catch (e) {
+      res.writeHead(e.status || 500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+      return;
+    }
+  }
+
   // Review projects: POST /api/open-project {path} launches the newest configured build on a saved project
   if (url.pathname === '/api/open-project' && req.method === 'POST') {
     try {
