@@ -8,6 +8,7 @@ const BASE = '..';
 
 let httpWatchInterval = null;
 let lastTaskContent = null;
+let lastTaskEtag = null; // validator of the last full body, so an unchanged poll is a 304 with no body
 
 export function getLastTaskContent() {
   return lastTaskContent;
@@ -26,6 +27,7 @@ export async function loadTasksViaHttp() {
     if (!res.ok) return null;
     const content = await res.text();
     lastTaskContent = content;
+    lastTaskEtag = res.headers?.get?.('etag') || null;
     return { content, parsed: loadTasksJson(content) };
   } catch (e) {
     console.log('HTTP task load failed:', e.message);
@@ -48,7 +50,9 @@ export function startHttpTaskWatching(onUpdate, { shouldSkip, intervalMs = 5000 
     try {
       if (shouldSkip && shouldSkip()) return;
       const baseline = lastTaskContent;
-      const res = await fetch(`${BASE}/tasks.json`, { cache: 'no-store' });
+      const etag = lastTaskEtag;
+      const res = await fetch(`${BASE}/tasks.json`, { cache: 'no-store', headers: etag ? { 'If-None-Match': etag } : {} });
+      if (res.status === 304) return; // nothing changed: no body to read
       if (!res.ok) return;
       // Always read the body: a skipped poll that leaves it unread keeps its connection busy, and a few
       // of those fill the browser's connection pool so the save after an edit never gets through.
@@ -59,6 +63,7 @@ export function startHttpTaskWatching(onUpdate, { shouldSkip, intervalMs = 5000 
       if (lastTaskContent !== baseline && content !== lastTaskContent) return;
       if (content === lastTaskContent) return;
       lastTaskContent = content;
+      lastTaskEtag = res.headers?.get?.('etag') || null;
       onUpdate(loadTasksJson(content));
     } catch (e) { /* silent */ } finally { polling = false; }
   }, intervalMs);
@@ -137,14 +142,29 @@ export async function loadMemoryViaHttp() {
 /**
  * Save a file via HTTP POST
  */
-export async function httpSave(filePath, content, { baseContent } = {}) {
+// A save that never answers (a stuck server) must fail so the caller can warn and retry; before this
+// the request hung forever, `isSaving` stayed true, and every later edit waited behind it unsaved.
+export const SAVE_TIMEOUT_MS = 30000;
+
+export async function httpSave(filePath, content, { baseContent, timeoutMs = SAVE_TIMEOUT_MS } = {}) {
   const body = { path: filePath, content };
   if (baseContent !== undefined) body.baseContent = baseContent;
-  const res = await fetch('/api/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctl.signal
+    });
+  } catch (e) {
+    if (ctl.signal.aborted) throw new Error(`the server did not answer within ${Math.round(timeoutMs / 1000)}s`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 409) {
     const data = await res.json();
     const err = new Error(data.error || 'conflict');

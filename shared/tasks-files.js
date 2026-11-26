@@ -98,12 +98,48 @@ function readJsonFile(abs) {
   }
 }
 
+// ---- read cache ---------------------------------------------------------------------------
+// The dashboard polls the whole document every few seconds and every save re-reads it for the
+// conflict check. Re-opening ~3,000 ticket files each time blocked the server's event loop for
+// seconds, so a save request waited behind polls and never came back. Files are now re-read only
+// when their (mtime, size) changed, and the assembled text is reused while nothing changed.
+const fileCache = new Map(); // abs path -> { sig, value }
+let textCache = null;        // { root, sig, text }
+
+function fileSig(abs) {
+  try {
+    const st = fs.statSync(abs);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch { return null; }
+}
+
+function readJsonCached(abs) {
+  const sig = fileSig(abs);
+  if (sig === null) { fileCache.delete(abs); return null; }
+  const hit = fileCache.get(abs);
+  if (hit && hit.sig === sig) return hit.value;
+  const value = readJsonFile(abs);
+  fileCache.set(abs, { sig, value });
+  return value;
+}
+
+/** Cheap change marker for the stored document: stats only, no file reads. null when nothing is stored. */
+export function tasksSignature(root) {
+  const layout = tasksLayout(root);
+  if (layout === 'single') return `single|${fileSig(singlePath(root))}`;
+  if (layout !== 'split') return null;
+  const parts = [`split|${fileSig(indexPath(root))}`];
+  let names = [];
+  try { names = fs.readdirSync(ticketsDir(root)); } catch { /* no tickets yet */ }
+  for (const name of names.sort()) {
+    if (name.endsWith('.json')) parts.push(`${name}:${fileSig(path.join(ticketsDir(root), name))}`);
+  }
+  return parts.join('|');
+}
+
 function readSplit(root) {
   const index = readJsonFile(indexPath(root));
-  return assembleDoc(index, (id) => {
-    const abs = ticketPath(root, id);
-    return fs.existsSync(abs) ? readJsonFile(abs) : null;
-  });
+  return assembleDoc(index, (id) => readJsonCached(ticketPath(root, id)));
 }
 
 /** Read the assembled document. Throws when neither layout exists. */
@@ -119,9 +155,21 @@ export function readTasksDoc(root) {
  * a split layout is assembled and stringified.
  */
 export function readTasksText(root) {
+  return readTasksTextWithSignature(root).text;
+}
+
+/**
+ * The text plus the signature it matches (for an ETag). The signature is taken before the read,
+ * so a write that lands in between makes the next call rebuild rather than serve stale text under a new tag.
+ */
+export function readTasksTextWithSignature(root) {
   const layout = tasksLayout(root);
-  if (layout === 'single') return fs.readFileSync(singlePath(root), 'utf8');
-  return stringifyDoc(readTasksDoc(root));
+  if (layout === 'single') return { sig: tasksSignature(root), text: fs.readFileSync(singlePath(root), 'utf8') };
+  const sig = tasksSignature(root);
+  if (textCache && textCache.root === root && textCache.sig === sig) return textCache;
+  const text = stringifyDoc(readTasksDoc(root));
+  textCache = { root, sig, text };
+  return textCache;
 }
 
 function writeIfChanged(abs, text) {

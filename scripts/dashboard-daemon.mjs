@@ -67,7 +67,8 @@ ${envEntries}
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ThrottleInterval</key><integer>10</integer>
-  <key>ProcessType</key><string>Background</string>
+  <!-- Interactive, not Background: macOS throttles Background jobs hard, which stalled saves for minutes -->
+  <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>${xml(path.join(LOG_DIR, 'server.out.log'))}</string>
   <key>StandardErrorPath</key><string>${xml(path.join(LOG_DIR, 'server.err.log'))}</string>
 </dict>
