@@ -2,6 +2,7 @@
 // default on) shown on the Checks tab heading and on the Plan page's For you heading, with a count beside it.
 
 import { openCheckTickets } from '../../shared/open-checks.js';
+import { reviewQueue, hiddenAsFinished } from '../../shared/review.js';
 import { el } from './run-plan-util.js';
 
 export const HIDE_FINISHED_KEY = 'checks.hideFinished';
@@ -12,9 +13,16 @@ function safeSet(key, value) { try { localStorage.setItem(key, value); } catch {
 export const hideFinished = () => safeGet(HIDE_FINISHED_KEY) !== 'false';
 export const setHideFinished = on => safeSet(HIDE_FINISHED_KEY, on ? 'true' : 'false');
 
-/** Finished tickets (every check ticked) as a number, whatever the switch says. */
-export function finishedCount(doc) {
-  return openCheckTickets(doc, { hideAllTicked: false }).filter(r => r.finished).length;
+/**
+ * Finished tickets (every check ticked) as a number, whatever the switch says. AGE240: pass the For you
+ * list's ask cards to count what that list hides: a review ticket with an unsent note or a decision card
+ * is not finished there.
+ */
+export function finishedCount(doc, asks) {
+  const rows = openCheckTickets(doc, { hideAllTicked: false }).filter(r => r.finished);
+  if (!asks) return rows.length;
+  const review = new Map(reviewQueue(doc).map(r => [r.id, r]));
+  return rows.filter(r => !review.has(r.id) || hiddenAsFinished(review.get(r.id), asks)).length;
 }
 
 /** "3 finished hidden" / "3 finished shown"; '' when there are none. */

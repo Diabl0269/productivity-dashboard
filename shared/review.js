@@ -25,6 +25,28 @@ export function allChecksTicked(task) {
   return (task?.checks || []).every(c => c && c.checked);
 }
 
+/**
+ * AGE240: a review ticket Tal has nothing left to do on: at least one check, all ticked, no unsent note, no open
+ * ask, no unresolved needs-tal line. The one 'finished' predicate for the For you list (the Checks tab's own
+ * rule, shared/open-checks.js, is looser: it ignores notes).
+ */
+export function isFinishedReview(task) {
+  return (task?.checks || []).length > 0 && allChecksTicked(task)
+    && !hasUnsentNotes(task)
+    && !(task.asks || []).some(a => a && a.state === 'open')
+    && !(task.result?.unverified || []).some(isNeedsTalLine);
+}
+
+/**
+ * Does the 'Hide finished' switch drop this review row? `finished` rows with no decision card of their own
+ * (`asks` are the grouped ask cards, as in isCompactReview). Rows with 0 checks stay: moving them to Done is the action.
+ */
+export function hiddenAsFinished(item, asks = []) {
+  if (!item?.finished) return false;
+  const id = String(item.id || '').toUpperCase();
+  return !asks.some(card => (card.members || []).some(m => String(m.id || '').toUpperCase() === id));
+}
+
 /** { done, total } for a ticket's checks. */
 export function checkProgress(task) {
   const checks = task?.checks || [];
@@ -644,6 +666,7 @@ export function reviewQueue(doc) {
       notes: unsentNotes(task).length,
       result: task.result || null,
       followUps: followUpsOf(doc, task.id),
+      finished: isFinishedReview(task),
     }))
     .sort((a, b) => (a.enteredAt < b.enteredAt ? -1 : a.enteredAt > b.enteredAt ? 1 : 0));
 }
