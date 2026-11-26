@@ -12,6 +12,9 @@
   "claudeSessionFolder": "/path/to/your/workspace   (optional: Plan > Start opens a new Claude Code session in this folder, with the /ship-task command typed in)",
   "reviewProjectApps": [],
   "scriptRoots": [],
+  "branchSites": [
+    { "projects": ["website"], "command": "bash /path/to/launch-branch-site.sh {branch}", "url": "http://localhost:4321/", "note": "optional: a held-branch review check of these projects gets a Run site and open button; the command starts that branch's site ({branch} is replaced by the single-quoted branch name) and runs in a Terminal window, the page opens once the URL's port answers" }
+  ],
   "buildFreshness": [
     {
       "repo": "/path/to/your/git/checkout",

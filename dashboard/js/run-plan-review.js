@@ -12,6 +12,7 @@ import { buildFreshnessNote } from './build-freshness-note.js';
 import { checkBuildChip, noProjectNote } from './check-build-ui.js';
 import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl, openBranchButton, checkStill } from './check-evidence.js';
 import { heldPrChip } from './held-pr-ui.js';
+import { branchSiteButton } from './branch-site-ui.js';
 import { idButton, textWithIds } from './ticket-id-button.js';
 import { toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
@@ -98,6 +99,10 @@ export function renderCheckGrid(ctx, task) {
     // AGE162: a held check with no project still gets Open project (the branch's build); the chip owns it.
     const branchButton = c.heldPr && !c.project ? openBranchButton(c.heldPr, c.text) : null;
     if (branchButton) { what.appendChild(document.createTextNode(' ')); what.appendChild(branchButton); }
+    // WEB49: a project with a branchSites rule runs the branch's site instead of the app-build Open project.
+    const siteProject = task.project || ctx.doc.sections.flatMap(s => s.tasks).find(t => t.id === task.taskId)?.project;
+    const siteButton = c.heldPr ? branchSiteButton(c, siteProject) : null;
+    if (siteButton) { what.appendChild(document.createTextNode(' ')); what.appendChild(siteButton); siteButton.configured.then(ok => { if (ok) branchButton?.remove(); }); }
     const branchChip = heldPrChip(c, branchButton ? [...projectButtons, branchButton] : projectButtons);
     if (branchChip) {
       what.appendChild(document.createTextNode(' '));
