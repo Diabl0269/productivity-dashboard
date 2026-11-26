@@ -4,6 +4,7 @@
  *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
  *       [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--link <url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
  *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag <area>] [--json]
+ *   ask-eval <id> <n> (--eval-run <url> [--eval-run-label L] | --no-eval "<why>")   add the eval run (or 'no eval ran') to an open ask (AGE244)
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
  *   answer <id> <key> --reopen [--json]   put a dismissed / answered question back to open (PRO107)
  *   asks [--ticket ID] [--tag <area>] [--refresh] [--json]   (AGE220: area = merge, account, marketing, design or taste)
@@ -16,7 +17,7 @@ import { parse } from '../lib/args.js';
 import { print, jsonOut, ok, die, printErr } from '../lib/output.js';
 import { load, save, findTask, todayStr, nextId } from '../lib/tasks-store.js';
 import {
-  addAsk, reopenAsk, reopenHint, openAsks, groupAsks, answerAsk, liveOwnerOf, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
+  addAsk, setAskEvalRun, reopenAsk, reopenHint, openAsks, groupAsks, answerAsk, liveOwnerOf, closeMergedAsks, asksNotice, countAsks, taskAsks, onlyAskKey, MEDIA_KINDS,
 } from '../../shared/asks.js';
 import { ghPrState } from '../lib/open-pr-gate.js';
 import { clearMergedHeldPrs } from '../../shared/held-pr.js';
@@ -49,7 +50,8 @@ function mediaRelOrDie(value, kind) {
   return rel;
 }
 
-const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag marketing|design|merge|taste|account] [--json]';
+const ASK_EVAL_USAGE = 'usage: ch tasks ask-eval <id> <ask n> (--eval-run <viewer run url> [--eval-run-label "<what it tested>"] | --no-eval "<why no eval ran>")';
+const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--eval-run <viewer run url> [--eval-run-label "<what it tested>"]] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag marketing|design|merge|taste|account] [--json]';
 
 /** `ch tasks ask <id> "<question>"`: leave a decision for Tal on the ticket (sets its waitingOn). */
 export async function cmdAsk(argv) {
@@ -64,6 +66,8 @@ export async function cmdAsk(argv) {
     image: { type: 'string' },
     project: { type: 'string' },
     board: { type: 'string' },
+    'eval-run': { type: 'string' },
+    'eval-run-label': { type: 'string' },
     link: { type: 'string' },
     'same-as': { type: 'string' },
     'same-judgement': { type: 'boolean' },
@@ -104,7 +108,7 @@ export async function cmdAsk(argv) {
   try {
     ask = addAsk(task, {
       text, by: values['ask-by'], mergePr: values['merge-pr'], options: values.option, recommend: values.recommend,
-      details: values.details, link: values.link, media, sameAs: values['same-as'], checkRefs, notSame: values['not-same'], tag: values.tag,
+      details: values.details, link: values.link, media, evalRun: evalRunOf(values), sameAs: values['same-as'], checkRefs, notSame: values['not-same'], tag: values.tag,
       labels: labelsOf(doc, task),
     });
   } catch (e) { die(`ask: ${e.message}`); }
@@ -114,6 +118,29 @@ export async function cmdAsk(argv) {
   ok(`ask ${task.id} #${ask.n}: ${ask.text}${ask.mergePr ? ' (closes when the PR merges)' : ''} (waiting on Tal)`);
   if (ask.checkRefs) print(`linked ${ask.checkRefs.length} check(s): they hide while the question is open and tick when it is answered`);
   print(asksNotice(countAsks(doc)));
+}
+
+/** AGE244: `--eval-run <url> [--eval-run-label "<what it tested>"]` as { label, url }, or undefined. */
+function evalRunOf(values) {
+  if (values['eval-run-label'] && !values['eval-run']) die('ask: --eval-run-label needs --eval-run <viewer run url>');
+  return values['eval-run'] ? { label: values['eval-run-label'] || 'Eval run', url: values['eval-run'] } : undefined;
+}
+
+/** AGE244: `ch tasks ask-eval <id> <n> (--eval-run <url> [--eval-run-label L] | --no-eval "<why>")`: add the eval proof to an open ask. */
+export async function cmdAskEval(argv) {
+  const { values, positionals } = parse(argv, {
+    'eval-run': { type: 'string' }, 'eval-run-label': { type: 'string' }, 'no-eval': { type: 'string' }, json: { type: 'boolean', short: 'j' },
+  });
+  const [id, n] = positionals;
+  if (!id || !/^\d+$/.test(n || '')) die(ASK_EVAL_USAGE);
+  const doc = load();
+  const task = ticketOrDie(doc, id);
+  let ask;
+  try { ask = setAskEvalRun(task, Number(n), { evalRun: evalRunOf(values), noEval: values['no-eval'] }); } catch (e) { die(`ask-eval: ${e.message}`); }
+  task.updated = todayStr();
+  save(doc);
+  if (values.json) { jsonOut({ id: task.id, ask }); return; }
+  ok(`ask ${task.id} #${ask.n}: ${ask.evalRun ? `eval run linked (${ask.evalRun.label})` : 'says no eval ran'}`);
 }
 
 /** Split `answer` positionals into { key, reply } for `task`. */

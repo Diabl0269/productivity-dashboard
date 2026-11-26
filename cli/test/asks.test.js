@@ -608,3 +608,77 @@ test('CLI: ask on a ui ticket without a design link is refused with the board-li
   r = runCli(['tasks', 'ask', 'T1', Q, '--details', D, '--project', 'T1/p.agsproj', '--link', 'https://claude.ai/artifact/BtoY6LyNmK69dgZtBah24Y'], dir);
   assert.equal(r.status, 0, r.stderr);
 });
+
+// ---- AGE244: a merge ask about a prompt version links its eval run or says no eval ran ----
+import { evalRunLink, evalRunProblem, setAskEvalRun } from '../../shared/asks.js';
+
+const EV = { label: 'Song key, prompt v13: 24/24 over 3 rounds', url: 'http://localhost:3100/ai-evals/#run=2026-01-01-demo/haiku-v13-final' };
+const MERGE_DET = 'Merging deploys prompt v13 to the live API; the eval run shows what was tested and the pass counts for the key cases.';
+const PR = 'https://github.com/example/repo/pull/1';
+
+test('AGE244: a merge ask mentioning prompt v<N> with no eval run or "no eval ran" is refused', () => {
+  const t = { id: 'T1', asks: [] };
+  assert.throws(() => addAsk(t, { text: 'Merge PR #1? It deploys prompt v13.', mergePr: PR, details: MERGE_DET, now: AT }), /eval run/);
+  assert.throws(() => addAsk(t, { text: 'Merge platform PR #285 (prompt v14) after #276?', details: MERGE_DET, now: AT }), /eval run/);
+  assert.equal(t.asks.length, 0);
+});
+
+test('AGE244: the same ask passes with an evalRun, or with "no eval ran: <why>" in details; non-merge and no-version asks need neither', () => {
+  const t = { id: 'T1', asks: [] };
+  const a = addAsk(t, { text: 'Merge PR #1? It deploys prompt v13.', mergePr: PR, details: MERGE_DET, evalRun: EV, now: AT });
+  assert.deepEqual(a.evalRun, EV);
+  const b = addAsk(t, { text: 'Merge PR #2? It deploys prompt v14.', mergePr: PR, details: `${MERGE_DET} no eval ran: only unit tests exist for the LFO curve prompt`, now: AT });
+  assert.equal(b.evalRun, undefined);
+  addAsk(t, { text: 'Merge PR #3? A docs fix.', mergePr: PR, details: MERGE_DET.replace('prompt v13', 'the site'), now: AT });
+  addAsk(t, { text: 'Which default for prompt v13 wording, A or B?', details: MERGE_DET, now: AT });
+  assert.equal(t.asks.length, 4);
+  assert.equal(evalRunProblem({ text: 'Merge it? prompt v2', details: 'no eval ran:', mergePr: PR }) !== '', true, 'an empty reason is not a reason');
+});
+
+test('AGE244: a bad evalRun is refused, and it survives cleanAsks, taskAsks, groupAsks and askErrors', () => {
+  const t = { id: 'T1', asks: [] };
+  assert.throws(() => addAsk(t, { text: 'Merge PR #1? prompt v13.', mergePr: PR, details: MERGE_DET, evalRun: { label: '', url: EV.url }, now: AT }), /label/);
+  assert.throws(() => addAsk(t, { text: 'Merge PR #1? prompt v13.', mergePr: PR, details: MERGE_DET, evalRun: { label: 'x', url: 'file:///etc/passwd' }, now: AT }), /URL/);
+  addAsk(t, { text: 'Merge PR #1? prompt v13.', mergePr: PR, details: MERGE_DET, evalRun: EV, now: AT });
+  assert.deepEqual(cleanAsks(t).asks[0].evalRun, EV);
+  const rows = taskAsks(t);
+  assert.deepEqual(rows[0].evalRun, EV);
+  const card = groupAsks(rows.map(r => ({ ...r, id: 'T1' })))[0];
+  assert.deepEqual(card.evalRun, EV);
+  assert.deepEqual(askErrors(t, 'tasks[0]'), []);
+  assert.match(askErrors({ ...t, asks: [{ ...t.asks[0], evalRun: { label: 'x' } }] }, 'tasks[0]').join('\n'), /evalRun/);
+});
+
+test('AGE244: the card renders an "Eval run: <label>" link only when the ask has an eval run', () => {
+  assert.deepEqual(evalRunLink({ evalRun: EV }), { text: `Eval run: ${EV.label}`, url: EV.url });
+  assert.equal(evalRunLink({}), null);
+  assert.equal(evalRunLink({ evalRun: { label: 'x', url: 'javascript:alert(1)' } }), null);
+});
+
+test('AGE244: backfill an open ask with an eval run, or with the plain "no eval ran" line', () => {
+  const t = { id: 'T1', asks: [{ n: 1, at: AT, text: 'Merge PR #1? prompt v13.', state: 'open', details: MERGE_DET }, { n: 2, at: AT, text: 'Merge PR #2? prompt v14.', state: 'open' }, { n: 3, at: AT, text: 'x?', state: 'answered' }] };
+  setAskEvalRun(t, 1, { evalRun: EV });
+  assert.deepEqual(t.asks[0].evalRun, EV);
+  setAskEvalRun(t, 2, { noEval: 'only unit tests exist' });
+  assert.equal(t.asks[1].details, 'no eval ran: only unit tests exist');
+  assert.throws(() => setAskEvalRun(t, 3, { noEval: 'why' }), /not open/);
+  assert.throws(() => setAskEvalRun(t, 9, { noEval: 'why' }), /no ask/);
+  assert.throws(() => setAskEvalRun(t, 1, {}), /one of them/);
+  assert.throws(() => setAskEvalRun(t, 1, { evalRun: EV, noEval: 'both' }), /one of them/);
+});
+
+test('AGE244: ch tasks ask --eval-run files the link, and the guard refuses a prompt merge ask without it (CLI)', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'age244-'));
+  fs.copyFileSync(FIXTURE_SAMPLE, path.join(home, 'tasks.json'));
+  const run = (...args) => spawnSync(process.execPath, [CH_SCRIPT, 'tasks', ...args], { env: { ...process.env, CH_HOME: home }, encoding: 'utf8' });
+  const id = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8'));
+  const first = (JSON.stringify(id).match(/"id":\s*"([A-Z]+\d+)"/) || [])[1];
+  const base = ['ask', first, 'Merge PR #1? It deploys prompt v13.', '--merge-pr', PR, '--details', MERGE_DET];
+  const refused = run(...base);
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr + refused.stdout, /eval run/);
+  const okRun = run(...base, '--eval-run', EV.url, '--eval-run-label', EV.label);
+  assert.equal(okRun.status, 0, okRun.stderr + okRun.stdout);
+  const got = JSON.parse(run('asks', '--json').stdout);
+  assert.deepEqual(JSON.stringify(got).includes(EV.url), true);
+});

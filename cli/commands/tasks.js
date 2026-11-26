@@ -147,7 +147,7 @@ import { proofGateProblem, splitForceReason } from '../../shared/proof-gate.js';
 import { openPrGate, inheritHeldCheckEvidence, NO_SYNTH_PROJECT } from '../lib/open-pr-gate.js';
 import { reviewOverlap, applyLinks, ticketAndEpic } from '../lib/ask-overlap.js';
 import { addAsk, askByError, askLines, countAsks, asksNotice, openAskBlock } from '../../shared/asks.js';
-import { cmdAsk, cmdAnswer, cmdAsks } from './tasks-asks.js';
+import { cmdAsk, cmdAskEval, cmdAnswer, cmdAsks } from './tasks-asks.js';
 import { cmdInterpret } from './tasks-interpret.js';
 
 // ---------------------------------------------------------------------------
@@ -3282,6 +3282,7 @@ const SUBCOMMANDS = {
   ask:           cmdAsk,
   interpret:     cmdInterpret,
   answer:        cmdAnswer,
+  'ask-eval':    cmdAskEval,
   asks:          cmdAsks,
   notes:         cmdNotes,
   done:          cmdDone,

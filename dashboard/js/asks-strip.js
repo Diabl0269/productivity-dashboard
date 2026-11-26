@@ -8,7 +8,7 @@
 // through commitReviewChange: decision + waitingOn cleared, Park moves it to backlog, an answer on a
 // done ticket becomes a review note that the Plan page files as a follow-up (setAskFiler).
 
-import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep, closesAfterAnswer, ANSWER_CLOSE_LINE } from '../../shared/asks.js';
+import { openAsks, groupAsks, resolveAsk, reopenAsk, reopenHint, resolvedTaskAsks, closeMergedAsks, tickLinkedChecks, liveOwnerOf, nextStep, closesAfterAnswer, ANSWER_CLOSE_LINE, evalRunLink } from '../../shared/asks.js';
 import { epicsToUnpin, reviewReadyToClose } from '../../shared/review.js';
 import { idButton, textWithIds } from './ticket-id-button.js';
 import { stateToDoc } from './epic-ready-ui.js';
@@ -183,7 +183,7 @@ function textBox(state, card, mode, redraw, surface) {
 /** The card's video / sound / screenshot / project, with the review card's evidence controls. */
 function mediaBlock(card) {
   const m = card.media || {};
-  if (!card.media && !card.mergePr) return null;
+  if (!card.media && !card.mergePr && !card.evalRun) return null;
   const wrap = el('div', 'rp-ask-media');
   const label = `${card.ids[0]} decision`;
   const row = el('div', 'rp-actions');
@@ -209,6 +209,15 @@ function mediaBlock(card) {
     wrap.appendChild(a);
   }
   if (m.audio) wrap.appendChild(audioPlayer({ audio: m.audio }, 1, label));
+  const evalLink = evalRunLink(card);
+  if (evalLink) {
+    const a = el('a', 'rp-btn rp-ask-eval-link', evalLink.text);
+    a.href = evalLink.url;
+    a.title = 'Open the eval viewer on the run that proves this change';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    wrap.appendChild(a);
+  }
   if (m.board) {
     const a = el('a', 'rp-btn rp-ask-board-link', 'Open board');
     a.href = m.board;
