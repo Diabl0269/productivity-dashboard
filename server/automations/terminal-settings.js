@@ -75,7 +75,7 @@ function findCmuxSocket() {
 async function openInCmuxAppleScript(cmd, { title = null } = {}) {
   if (!fs.existsSync(CMUX_APP)) return null;
   const fullCmd = title
-    ? `command -v cmux >/dev/null 2>&1 && cmux rename-workspace ${JSON.stringify(title)} >/dev/null 2>&1; ${cmd}`
+    ? `command -v cmux >/dev/null 2>&1 && cmux rename-workspace '${String(title).replaceAll("'", "'\\''")}' >/dev/null 2>&1; ${cmd}`
     : cmd;
   const script = [
     `tell application ${JSON.stringify(CMUX_APP)}`,

@@ -31,7 +31,7 @@ case "$harness" in
 esac
 
 # Resolve <PREFIX>_* fallbacks generically (e.g. GEMINI_MODEL, CLAUDE_EFFORT, OPENCODE_CLI).
-prefix="$(printf '%s' "$harness" | tr '[:lower:]-' '[:upper:]_')"
+prefix="$(printf '%s' "$harness" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9\n' '_')"
 env_val() { eval "printf '%s' \"\${${1}:-}\""; }
 
 cli="${AUTOMATION_CLI:-$(env_val "${prefix}_CLI")}"
