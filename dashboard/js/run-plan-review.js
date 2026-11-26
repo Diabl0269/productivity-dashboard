@@ -2,7 +2,7 @@
 // their check grids, compact review rows, needs-you lines, decision and interpretation cards.
 // Every function takes the page's ctx (run-plan-page.js createPlanCtx) instead of module state.
 
-import { groupChecksByProject, isCompactReview } from '../../shared/review.js';
+import { groupChecksByProject, isCompactReview, hiddenAsFinished } from '../../shared/review.js';
 import { noteArea, areaOptions } from '../../shared/review-filing.js';
 import { resolveNeedsTalLine } from '../../shared/needs-tal-lines.js';
 import { linkedCheckKeys } from '../../shared/ask-check-overlap.js';
@@ -158,6 +158,10 @@ export function renderCheckGrid(ctx, task) {
  */
 export function renderReview(ctx, review, openChecks, asks, interps = []) {
   const block = el('section', 'rp-review rp-for-you');
+  // AGE240: 'Hide finished' also drops finished review rows (same predicate as the count beside the switch).
+  const allAsks = asks;
+  const hide = ctx.doc ? hideFinished() : false;
+  if (hide) review = review.filter(item => !hiddenAsFinished(item, asks));
   const total = review.length + asks.length + interps.length;
   // AGE220: filter chips by tag; cards with no tag and interpretations hide while a tag is chosen.
   const tagOfReviewItem = item => reviewTag(ctx, item);
@@ -174,7 +178,7 @@ export function renderReview(ctx, review, openChecks, asks, interps = []) {
   if (ctx.doc) {
     const on = hideFinished();
     const sw = buildSwitch(on, () => { setHideFinished(!on); ctx.redraw(); }, 'forYouHideFinished', 'Same setting as the Checks tab');
-    head.appendChild(switchGroup(sw, finishedCount(ctx.doc), on));
+    head.appendChild(switchGroup(sw, finishedCount(ctx.doc, allAsks), on));
   }
   block.appendChild(head);
   const fileBar = renderFileBar(ctx);
