@@ -232,11 +232,10 @@ An **automation**:
 | `run` | editable LaunchAgent settings: `schedule`, `harness`, `model`, `effort`, `cli`, `arguments`, `runner`, `skill`, `prompt` and `enabled` |
 | `automationDefaults` | project-wide `harness`, `model`, `effort`, `cli`, `arguments`, `runner`, `skill` and `prompt` defaults for jobs without an override |
 
-The `harness` is `opencode`, `claude`, `codex`, `copilot`, or `custom`, and must be explicitly configured along with `cli`.
+The `harness` is `opencode`, `claude`, `codex`, `copilot`, `gemini` (Antigravity CLI, `agy`), or `custom`, and must be explicitly configured along with `cli`.
 The installer never chooses a provider silently. The selected harness controls the non-interactive
-command shape; `cli` may be a command on `PATH` or an absolute path, and `arguments` appends additional argv values before the
-prompt. `model` and `effort` remain optional because each harness supports a different set of model controls; `effort`
-is not injected as a flag unless the selected CLI documents one, in which case add it through `arguments`.
+command shape; `cli` may be a command on `PATH` (including `~/.local/bin`) or an absolute path, and `arguments` appends additional argv values before the
+prompt. `model` and `effort` remain optional because each harness supports a different set of model controls.
 
 Click **Edit** on an automation row to change its description and, for a `launchd` automation, its local schedule,
 harness, model, effort, CLI executable, extra arguments, runner path, skill, optional full prompt and enabled switch. Click **Defaults** above

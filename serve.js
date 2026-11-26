@@ -955,7 +955,7 @@ const server = http.createServer(async (req, res) => {
   // Automations (LaunchAgents manager): /api/automations* lives in server/automations-routes.js.
   if (url.pathname === '/api/automations' || url.pathname.startsWith('/api/automations/')) {
     const { handleAutomationsRoute } = await import('./server/automations-routes.js');
-    if (handleAutomationsRoute(req, res, url, { corsHeaders, readBody: r => readBody(r, 2 * 1024 * 1024) })) return;
+    if (handleAutomationsRoute(req, res, url, { dataRoot: DATA_ROOT, root: ROOT, corsHeaders, readBody: r => readBody(r, 2 * 1024 * 1024) })) return;
   }
 
   // Home tab API: /api/home* routes live in server/home-routes.js (a route table, one file per route).

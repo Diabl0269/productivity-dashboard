@@ -11,31 +11,41 @@
  */
 import * as svc from './automations/service.js';
 import { automationCapabilities } from './automations/capabilities.js';
-import { openSession } from './automations/open-session.js';
+import { openSession, launchAgentSession } from './automations/open-session.js';
 import { automationRuns } from './automations/history.js';
+import { TERMINALS, readTerminalSetting, writeTerminalSetting } from './automations/terminal-settings.js';
+import { clearStatusCache } from './home/status-cache.js';
 
 const BASE = '/api/automations';
+const clearHome = p => Promise.resolve(p).then(out => { clearStatusCache(); return out; });
 
-function route(method, rest, body, url) {
+function route(method, rest, body, url, deps) {
+  const dataRoot = deps?.dataRoot || process.env.CH_HOME || process.cwd();
   const [label, action] = rest.split('/').filter(Boolean).map(decodeURIComponent);
   if (method === 'GET' && label === 'capabilities' && !action) return automationCapabilities({ force: url.searchParams.has('refresh') });
+  if (label === 'settings' && !action) {
+    if (method === 'GET') return Promise.resolve({ terminalApp: readTerminalSetting(dataRoot), terminals: TERMINALS });
+    if (method === 'PUT') return Promise.resolve({ terminalApp: writeTerminalSetting(dataRoot, body?.terminalApp), terminals: TERMINALS });
+    return null;
+  }
+  if (method === 'POST' && label === 'launch' && !action) return launchAgentSession(body, { dataRoot });
   if (!label) {
     if (method === 'GET') return svc.listAutomations().then(automations => ({ automations }));
-    if (method === 'POST') return svc.createAutomation(body);
+    if (method === 'POST') return clearHome(svc.createAutomation(body));
     return null;
   }
   if (!action) {
     if (method === 'GET') return svc.getAutomation(label).then(automation => ({ automation }));
-    if (method === 'PUT') return svc.updateAutomation(label, body);
-    if (method === 'DELETE') return svc.deleteAutomation(label);
+    if (method === 'PUT') return clearHome(svc.updateAutomation(label, body));
+    if (method === 'DELETE') return clearHome(svc.deleteAutomation(label));
     return null;
   }
   if (method === 'GET' && action === 'log') return svc.tailLog(label, url.searchParams.get('which') || 'stdout');
   if (method === 'GET' && action === 'runs') return automationRuns(label, { cwd: process.cwd() }).then(runs => ({ runs }));
   if (method !== 'POST') return null;
-  if (action === 'run') return svc.runAutomation(label);
-  if (action === 'toggle') return svc.toggleAutomation(label, body?.enabled);
-  if (action === 'open-session') return openSession(label, body?.sessionID || null);
+  if (action === 'run') return clearHome(svc.runAutomation(label));
+  if (action === 'toggle') return clearHome(svc.toggleAutomation(label, body?.enabled));
+  if (action === 'open-session') return openSession(label, body?.sessionID || null, { mode: body?.mode || null, terminal: body?.terminal || null, dataRoot });
   return null;
 }
 
@@ -56,7 +66,7 @@ export function handleAutomationsRoute(req, res, url, deps) {
     const raw = hasBody ? await deps.readBody(req) : '';
     let body = {};
     if (raw) { try { body = JSON.parse(raw); } catch { return send(400, { error: 'Body must be JSON' }); } }
-    const out = route(req.method, url.pathname.slice(BASE.length), body, url);
+    const out = route(req.method, url.pathname.slice(BASE.length), body, url, deps);
     if (!out) return send(405, { error: `${req.method} is not allowed on ${url.pathname}` });
     send(200, await out);
   }).catch(e => send(e.status || 500, { error: e.message }));

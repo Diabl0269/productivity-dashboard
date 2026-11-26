@@ -220,8 +220,9 @@ async function collectSessionsStep(cfg, sinceMs) {
   const cachePath = path.join(metricsDir(), '.sessions-cache.json');
   let cache = {};
   try { cache = JSON.parse(fs.readFileSync(cachePath, 'utf8')); } catch { /* none yet */ }
+  const dirs = [...(cfg.claudeProjects || []), ...(cfg.geminiBrainDirs || [])];
   const res = await collectSessions({
-    dirs: cfg.claudeProjects, cache, since: sinceMs ? sinceCutoff(sinceMs) : null, stallMinutes: cfg.stallMinutes,
+    dirs, cache, since: sinceMs ? sinceCutoff(sinceMs) : null, stallMinutes: cfg.stallMinutes,
     // A suite script writes why sessions stopped to $CH_HOME/stop-causes.jsonl; a missing file changes nothing.
     stopCauses: readRecords(path.join(dataRoot(), 'stop-causes.jsonl')),
   });
@@ -257,7 +258,7 @@ export async function runCollect({ ci, gates, sessions, sinceMs = null } = {}) {
     lines.push(`gates: ${records.length} runs`);
   }
   if (all || sessions) {
-    if (!cfg.claudeProjects.length) {
+    if (!cfg.claudeProjects.length && !(cfg.geminiBrainDirs && cfg.geminiBrainDirs.length)) {
       lines.push('sessions: no transcript dirs configured (metrics.claudeProjects), skipped');
     } else {
       const res = await collectSessionsStep(cfg, sinceMs);

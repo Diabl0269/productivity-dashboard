@@ -40,6 +40,8 @@ import {
   isValidCopilotRepository,
   readAiProvider,
   writeAiProvider,
+  readDefaultTerminal,
+  writeDefaultTerminal,
   readCopilotRepository,
   writeCopilotRepository,
   readDefaultFolder,
@@ -162,6 +164,7 @@ function initDisplayPrefs() {
 
 function initClaudeLaunchPrefs() {
   const provider = document.getElementById('aiProviderSelect');
+  const defaultTerminal = document.getElementById('defaultTerminalSelect');
   const copilotRepo = document.getElementById('copilotRepositoryInput');
   const folder = document.getElementById('claudeDefaultFolderInput');
   const taskTpl = document.getElementById('claudeTaskTemplateInput');
@@ -172,16 +175,33 @@ function initClaudeLaunchPrefs() {
 
   const load = () => {
     provider.value = readAiProvider();
+    if (defaultTerminal) defaultTerminal.value = readDefaultTerminal();
     copilotRepo.value = readCopilotRepository();
     folder.value = readDefaultFolder();
     taskTpl.value = readTaskTemplate();
     epicTpl.value = readEpicTemplate();
   };
   load();
+  if (defaultTerminal && typeof fetch === 'function') {
+    fetch('/api/automations/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.terminalApp) defaultTerminal.value = j.terminalApp; })
+      .catch(() => {});
+  }
 
   provider.addEventListener('change', () => {
     writeAiProvider(provider.value);
-    showStatus(`AI provider set to ${provider.value === 'copilot' ? 'GitHub Copilot' : 'Claude Desktop'}`);
+    const label = provider.value === 'copilot'
+      ? 'GitHub Copilot'
+      : provider.value === 'gemini'
+        ? 'Gemini (Antigravity)'
+        : 'Claude Desktop';
+    showStatus(`AI provider set to ${label}`);
+  });
+  defaultTerminal?.addEventListener('change', () => {
+    writeDefaultTerminal(defaultTerminal.value);
+    const label = defaultTerminal.selectedOptions?.[0]?.textContent || defaultTerminal.value;
+    showStatus(`Default terminal set to ${label}`);
   });
   copilotRepo.addEventListener('blur', () => {
     const value = copilotRepo.value.trim();

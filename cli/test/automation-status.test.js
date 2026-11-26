@@ -65,6 +65,10 @@ test('json-file: a timestamp field, an ok field, epoch seconds, bad JSON', async
   assert.equal(r.lastRun, '2026-06-15T11:55:00.000Z');
   assert.equal(r.ok, false);
   assert.equal(r.intervalMin, 10);
+  fs.writeFileSync(path.join(dir, 'exit0.json'), JSON.stringify({ finishedAt: '2026-06-15T11:58:00Z', exitCode: 0 }));
+  assert.equal((await readStatus({ type: 'json-file', path: 'exit0.json', field: 'finishedAt', okField: 'exitCode' }, { baseDir: dir, now })).ok, true);
+  fs.writeFileSync(path.join(dir, 'exit1.json'), JSON.stringify({ finishedAt: '2026-06-15T11:58:00Z', exitCode: 2 }));
+  assert.equal((await readStatus({ type: 'json-file', path: 'exit1.json', field: 'finishedAt', okField: 'exitCode' }, { baseDir: dir, now })).ok, false);
   fs.writeFileSync(path.join(dir, 'sec.json'), JSON.stringify({ when: 1781524800 }));
   assert.equal((await readStatus({ type: 'json-file', path: 'sec.json', field: 'when' }, { baseDir: dir })).lastRun, new Date(1781524800e3).toISOString());
   fs.writeFileSync(path.join(dir, 'bad.json'), '{');
@@ -130,6 +134,7 @@ esac`,
     assert.equal((await readStatus({ type: 'launchctl', label: 'com.example.bad' })).ok, false);
     const never = await readStatus({ type: 'launchctl', label: 'com.example.never' });
     assert.equal(never.ok, null);
+    assert.equal(never.running, true);
     assert.match(never.detail, /running now/);
     const off = await readStatus({ type: 'launchctl', label: 'com.example.gone' });
     assert.equal(off.off, true);

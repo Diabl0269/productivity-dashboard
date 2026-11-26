@@ -19,10 +19,12 @@ const HEAD_BYTES = 256 * 1024;
 const GIT_TIMEOUT_MS = 10000;
 const GH_TIMEOUT_MS = 15000;
 
-// CH_PROJECTS_DIR / CH_SESSIONS_DIR point the readers at fixtures (tests, a screenshot run); unset, the real folders.
+// CH_PROJECTS_DIR / CH_SESSIONS_DIR / CH_GEMINI_BRAIN_DIR point the readers at fixtures (tests, a screenshot run); unset, the real folders.
 export const defaultProjectsDir = () => process.env.CH_PROJECTS_DIR || path.join(os.homedir(), '.claude', 'projects');
 /** The desktop app's session files (macOS): one local_<id>.json per session, with `cliSessionId` and `isArchived`. */
 export const defaultSessionsDir = () => process.env.CH_SESSIONS_DIR || path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions');
+/** Antigravity CLI (`agy`) brain directory: `<brainDir>/<conversation-id>/.system_generated/logs/transcript.jsonl`. */
+export const defaultGeminiBrainDir = () => process.env.CH_GEMINI_BRAIN_DIR || path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain');
 
 const metaCache = new Map(); // file -> { mtimeMs, rec }
 
@@ -88,17 +90,68 @@ function readHead(file) {
 }
 
 /**
- * Live sessions: a transcript <projectsDir>/<project>/<id>.jsonl written within `liveMinutes`. The ticket ids come
- * from the first `maxPrompts` user prompts (e.g. "/ship-task BKR12"), not the whole transcript, which names many
+ * Live Antigravity (`agy`) sessions: `<brainDir>/<conversation-id>/.system_generated/logs/transcript.jsonl`
+ * written within `liveMinutes`. Reads only `USER_INPUT` lines from the first `HEAD_BYTES`.
+ */
+export function readLiveGeminiSessions({ brainDir = defaultGeminiBrainDir(), liveMinutes = 20, now = Date.now(), maxPrompts = 3 } = {}) {
+  const out = [];
+  if (!brainDir) return out;
+  let convs = [];
+  try { convs = fs.readdirSync(brainDir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of convs) {
+    if (!entry.isDirectory()) continue;
+    const id = entry.name;
+    const file = path.join(brainDir, id, '.system_generated', 'logs', 'transcript.jsonl');
+    let mtime;
+    try { mtime = fs.statSync(file).mtimeMs; } catch { continue; }
+    if (now - mtime > liveMinutes * 60e3) continue;
+    let head = '';
+    try { head = readHead(file); } catch { continue; }
+    const prompts = [];
+    let startedAt = null;
+    for (const line of head.split('\n')) {
+      if (prompts.length >= maxPrompts) break;
+      let ev;
+      try { ev = JSON.parse(line); } catch { continue; }
+      const ts = ev?.created_at || ev?.timestamp;
+      if (startedAt === null && ts && Number.isFinite(Date.parse(ts))) startedAt = Date.parse(ts);
+      if (ev?.type === 'USER_INPUT' && ev.source === 'USER_EXPLICIT' && typeof ev.content === 'string') {
+        prompts.push(ev.content);
+      }
+    }
+    const joined = prompts.join(' ');
+    const working = new Set(shipTaskIds(joined));
+    const mentionedIds = extractTicketIds(joined.slice(0, 2000)).filter(t => !working.has(t));
+    out.push({
+      id, file, mtime, startedAt,
+      ticketIds: [...working], mentionedIds,
+      archived: null, project: 'gemini', harness: 'gemini',
+    });
+  }
+  return out.sort((a, b) => b.mtime - a.mtime);
+}
+
+/**
+ * Live sessions: a transcript <projectsDir>/<project>/<id>.jsonl written within `liveMinutes` (plus live Antigravity
+ * CLI conversations unless an isolated `projectsDir` test fixture was supplied without `geminiBrainDir`). The ticket ids
+ * come from the first `maxPrompts` user prompts (e.g. "/ship-task BKR12"), not the whole transcript, which names many
  * unrelated tickets. Malformed lines are skipped.
  * @returns {Array<{ id, file, mtime, startedAt, ticketIds, project }>} newest first
  */
-export function readLiveSessions({ projectsDir = defaultProjectsDir(), liveMinutes = 20, now = Date.now(), maxPrompts = 3, sessionMeta } = {}) {
+export function readLiveSessions(opts = {}) {
+  const {
+    projectsDir = defaultProjectsDir(),
+    geminiBrainDir = opts.projectsDir === undefined ? defaultGeminiBrainDir() : null,
+    liveMinutes = 20,
+    now = Date.now(),
+    maxPrompts = 3,
+    sessionMeta,
+  } = opts;
   const out = [];
   // undefined = read the desktop app's files; null (unreadable) = every session's archive state is 'unsure'.
   const meta = sessionMeta === undefined ? readSessionMeta() : sessionMeta;
   let projects = [];
-  try { projects = fs.readdirSync(projectsDir); } catch { return out; }
+  try { projects = fs.readdirSync(projectsDir); } catch { projects = []; }
   for (const project of projects) {
     const dir = path.join(projectsDir, project);
     let names = [];
@@ -138,6 +191,9 @@ export function readLiveSessions({ projectsDir = defaultProjectsDir(), liveMinut
       if (parent) rec.subagentOf = parent;
       out.push(rec);
     }
+  }
+  if (geminiBrainDir) {
+    out.push(...readLiveGeminiSessions({ brainDir: geminiBrainDir, liveMinutes, now, maxPrompts }));
   }
   return out.sort((a, b) => b.mtime - a.mtime);
 }

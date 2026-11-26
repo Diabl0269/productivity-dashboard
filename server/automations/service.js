@@ -1,11 +1,15 @@
 // Automations service: list/edit/create/delete/run/toggle LaunchAgents. Only files directly inside the
 // LaunchAgents dir (and the script a plist runs) are ever written. All subprocesses use execFile.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { validateCalendar } from '../../shared/automation-schedule.js';
 import { readPlist, writePlist } from './plist.js';
 import { buildModel, launchAgentsDir, findScript, programArguments } from './model.js';
 import * as lc from './launchctl.js';
+
+const REPO_RUN_JOB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'launchagents', 'run-job.sh');
 
 const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$/;
 const fail = (status, message) => Object.assign(new Error(message), { status });
@@ -71,6 +75,26 @@ async function install(file, label) {
   return r.code === 0 ? null : (r.stderr || r.stdout).trim() || 'launchctl bootstrap failed';
 }
 
+function ensureAgentPath(env) {
+  if (!env || typeof env !== 'object' || !env.AUTOMATION_HARNESS) return env;
+  const localBin = path.join(os.homedir(), '.local', 'bin');
+  const current = String(env.PATH || '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin');
+  const parts = current.split(':').filter(Boolean);
+  if (!parts.includes(localBin)) parts.unshift(localBin);
+  return { ...env, PATH: parts.join(':') };
+}
+
+function maybeUpgradeLegacyRunner(args, content, env) {
+  if (typeof content !== 'string') return content;
+  const script = findScript(args);
+  if (!script || path.basename(script.path) !== 'run-job.sh') return content;
+  // Legacy OpenCode-only runner script from before multi-harness support: upgrade to scripts/launchagents/run-job.sh.
+  if (env?.AUTOMATION_HARNESS && content.includes('# Runs one OpenCode automation') && !content.includes('AUTOMATION_HARNESS') && fs.existsSync(REPO_RUN_JOB)) {
+    return fs.readFileSync(REPO_RUN_JOB, 'utf8');
+  }
+  return content;
+}
+
 export async function updateAutomation(label, body) {
   const h = await find(label);
   const p = { ...h.p };
@@ -79,9 +103,15 @@ export async function updateAutomation(label, body) {
     p.ProgramArguments = body.arguments;
     delete p.Program;
   }
-  if (body.environment && typeof body.environment === 'object') p.EnvironmentVariables = body.environment;
+  if (body.environment && typeof body.environment === 'object') p.EnvironmentVariables = ensureAgentPath(body.environment);
   applySchedule(p, body.schedule);
-  writeScript(programArguments(p), body.scriptContent);
+  const scriptArgs = programArguments(p);
+  const nextScript = maybeUpgradeLegacyRunner(scriptArgs, body.scriptContent, p.EnvironmentVariables);
+  writeScript(scriptArgs, nextScript);
+  if (typeof nextScript === 'string') {
+    const s = findScript(scriptArgs);
+    if (s) try { fs.chmodSync(s.path, 0o755); } catch { /* ignore */ }
+  }
   await writePlist(h.file, p);
   const wasLoaded = h.loaded.has(label) && !h.disabled.has(label);
   const reloadError = wasLoaded ? await install(h.file, label) : null;

@@ -187,6 +187,10 @@ test('GET /api/home/automations and /services: each entry with its result, relat
   const s = await call(dir, '/api/home/services?project=bakery');
   assert.equal(s.body.services[0].console, 'https://pay.example/');
   assert.equal(s.body.services[0].result.ok, null);
+  // ?fresh=1 bypasses the 60 s server status cache immediately
+  fs.writeFileSync(path.join(dir, 'tick.json'), JSON.stringify({ at: new Date().toISOString(), ok: false }));
+  assert.equal((await call(dir, '/api/home/automations?project=bakery')).body.automations.find(a => a.id === 'tick').result.ok, true);
+  assert.equal((await call(dir, '/api/home/automations?project=bakery&fresh=1')).body.automations.find(a => a.id === 'tick').result.ok, false);
   assert.equal((await call(dir, '/api/home/automations?project=../etc')).status, 400);
   const missing = await call(tmp(), '/api/home/automations?project=bakery');
   assert.equal(missing.body.missing, true);

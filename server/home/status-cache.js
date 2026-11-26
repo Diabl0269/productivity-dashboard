@@ -48,8 +48,9 @@ export async function statusRoute(kind, { url, deps }, opts = {}) {
   }
   const home = loadProjectHomeConfig(deps.dataRoot, slug);
   const entries = home.config?.[kind] || [];
+  const freshOpts = url.searchParams.has('fresh') ? { ttlMs: 0 } : {};
   const rows = entries.length
-    ? await cachedStatus(kind, home.project, entries, { baseDir: path.dirname(home.path || deps.dataRoot), ...opts })
+    ? await cachedStatus(kind, home.project, entries, { baseDir: path.dirname(home.path || deps.dataRoot), ...freshOpts, ...opts })
     : [];
   return {
     body: {

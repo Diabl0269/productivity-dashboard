@@ -73,13 +73,15 @@ async function withStorage(fn) {
   }
 }
 
-test('provider settings default to Claude and persist the selected provider and Copilot repo', async () => {
+test('provider settings default to Claude and persist Claude, Copilot, and Gemini (Antigravity)', async () => {
   await withStorage(() => {
     assert.equal(readAiProvider(), 'claude');
     writeAiProvider('copilot');
     writeCopilotRepository('owner/repo');
     assert.equal(readAiProvider(), 'copilot');
     assert.equal(readCopilotRepository(), 'owner/repo');
+    writeAiProvider('gemini');
+    assert.equal(readAiProvider(), 'gemini');
     writeAiProvider('unknown');
     assert.equal(readAiProvider(), 'claude');
   });
@@ -197,5 +199,26 @@ test('configured Copilot and Claude main buttons still launch directly', async (
     button.children[0].click();
     assert.equal(new URL(launched[2]).protocol, 'claude:');
     assert.equal(body.children.length, 0);
+
+    const prevFetch = globalThis.fetch;
+    const apiCalls = [];
+    globalThis.fetch = async (url, init) => { apiCalls.push({ url, body: JSON.parse(init.body) }); return { ok: true }; };
+    try {
+      writeAiProvider('gemini');
+      const geminiBtn = createClaudeLaunchButton({
+        getTask: () => ({ taskId: 'T12', title: 'Example', project: 'demo' }),
+        getState: () => ({ meta: { projects: [{ id: 'demo', name: 'Demo', docDirs: ['/Users/you/projects/demo'] }] } }),
+      });
+      assert.equal(geminiBtn.children[0].querySelector('.cl-label').textContent, 'Start in Antigravity');
+      assert.match(geminiBtn.children[0].dataset.launchUrl, /agy -i/);
+      geminiBtn.children[0].click();
+      assert.equal(apiCalls.length, 1);
+      assert.equal(apiCalls[0].url, '/api/automations/launch');
+      assert.equal(apiCalls[0].body.provider, 'gemini');
+      assert.equal(apiCalls[0].body.folder, '/Users/you/projects/demo');
+      assert.match(apiCalls[0].body.prompt, /Work on Task T12: Example/);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
   }));
 });

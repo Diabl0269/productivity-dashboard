@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { dataRoot } from './io.js';
 import { metricsDir, readRecords, metricsConfig } from './metrics-store.js';
-import { expandProjectDirs, summarizeTranscriptFile, helperFiles, helperSignature } from './session-files.js';
+import { expandProjectDirs, listTranscripts, summarizeTranscriptFile, helperFiles, helperSignature } from './session-files.js';
 import { readUsageOverride } from './usage-override.js';
 import { readTasksDoc } from '../../shared/tasks-files.js';
 import { normalizeTasksDoc } from './schema.js';
@@ -38,14 +38,8 @@ function storedSessions(dir) {
 function recentTranscripts(dirs, cutoffMs) {
   const out = [];
   for (const dir of expandProjectDirs(dirs)) {
-    let names = [];
-    try { names = fs.readdirSync(dir); } catch { continue; }
-    for (const n of names) {
-      if (!n.endsWith('.jsonl')) continue;
-      const file = path.join(dir, n);
-      let st;
-      try { st = fs.statSync(file); } catch { continue; }
-      if (st.isFile() && st.mtimeMs >= cutoffMs) out.push({ sessionId: n.slice(0, -6), file, dir, mtimeMs: st.mtimeMs, size: st.size });
+    for (const t of listTranscripts(dir)) {
+      if (t.mtimeMs >= cutoffMs) out.push({ sessionId: t.sessionId, file: t.path, dir, mtimeMs: t.mtimeMs, size: t.size });
     }
   }
   return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
@@ -62,7 +56,7 @@ export async function usageNow({ project = null, now = Date.now(), budgetMs = 70
   const lastCollect = Math.max(mtimeOf(path.join(dir, '.sessions-cache.json')), mtimeOf(path.join(dir, 'sessions.jsonl')));
 
   const bySession = new Map(storedSessions(dir).map(r => [r.sessionId || r.key, r]));
-  const recent = recentTranscripts(projectDirs || cfg.claudeProjects, cutoff);
+  const recent = recentTranscripts(projectDirs || [...(cfg.claudeProjects || []), ...(cfg.geminiBrainDirs || [])], cutoff);
   const liveIds = recent.filter(t => now - t.mtimeMs <= LIVE_MIN * 60e3).map(t => t.sessionId);
 
   let reads = 0;

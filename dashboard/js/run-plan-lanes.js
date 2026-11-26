@@ -4,6 +4,7 @@
 
 import { claudeCodeSessionUrl } from '../../shared/claude-deeplink.js';
 import { totalsLine } from '../../shared/run-plan.js';
+import { readAiProvider, readDefaultFolder, launchWithProvider } from './claude-launch.js';
 import { idButton } from './ticket-id-button.js';
 import { buildAutoToggle } from './epic-ready-ui.js';
 import { renderLaterFold } from './run-plan-later.js';
@@ -24,9 +25,16 @@ function writeProgress(map) {
 const NEXT = { '': 'started', started: 'done', done: '' };
 const TOGGLE_LABEL = { '': 'Start', started: 'Started', done: 'Done' };
 
-/** Start: open the Claude desktop app on a new Code session with this card's command typed in. */
+/** Start: open the configured AI provider (Claude Desktop or Antigravity CLI) with this card's command. */
 function openClaudeSession(ctx, card) {
-  const folder = window.dashboardConfig?.claudeSessionFolder;
+  const provider = readAiProvider();
+  const folder = window.dashboardConfig?.claudeSessionFolder || readDefaultFolder();
+  if (provider === 'gemini') {
+    if (!launchWithProvider({ aiProvider: 'gemini', prompt: card.command, folder })) return;
+    const pick = card.model ? ` (orchestrator: ${card.model})` : '';
+    ctx.toast(folder ? `Opening Antigravity: ${card.command}${pick}` : `Opening Antigravity${pick} (set claudeSessionFolder in config.json to pick the folder)`);
+    return;
+  }
   const url = claudeCodeSessionUrl(card.command, folder);
   if (!url) return;
   window.location.assign(url);
