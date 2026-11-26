@@ -1018,4 +1018,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Dashboard: http://127.0.0.1:${PORT}/dashboard/`);
+  if (process.env.DASHBOARD_AUTORELOAD === '1') import('./server/autoreload.js').then(m => m.watchForCodeChanges({ root: ROOT, server }));
 });

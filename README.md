@@ -61,7 +61,7 @@ node scripts/dashboard-daemon.mjs disable
 
 The LaunchAgent starts at login, restarts after a crash, and logs to
 `~/Library/Logs/productivity-dashboard/`. Re-run `enable` after moving the checkout or switching
-Node versions. To apply server-side changes, re-run `enable`; static HTML/CSS/JS changes are served
+Node versions. The daemon restarts itself when server code (`serve.js`, `server/`, `shared/`, `cli/lib/`) changes, e.g. after `git pull`; re-run `enable` once after upgrading to get this. Static HTML/CSS/JS changes are served
 directly and only need a browser refresh. If `CH_HOME` is set, the daemon preserves that data root.
 Set `DASHBOARD_PORT` when enabling on a non-default port.
 
