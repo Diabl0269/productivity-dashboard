@@ -87,6 +87,7 @@ function prStateCached(prUrl) {
 
 /** Same document, ignoring formatting: what a save conflict check should compare. */
 function sameTasksDoc(a, b) {
+  if (a === b) return true; // the usual case; skips parsing two 10 MB documents
   try {
     return JSON.stringify(JSON.parse(a)) === JSON.stringify(JSON.parse(b));
   } catch {
@@ -181,8 +182,28 @@ function getProjectDisplayName(decodedPath) {
   return segments[segments.length - 1] || decodedPath;
 }
 
+// Stall diagnostics (the notes-not-saving incident): a request that takes over 1.5 s, and any gap of over 1.5 s
+// where the event loop did not run, are written to the server log with the requests that were in flight.
+const inFlight = new Set();
+setInterval((() => {
+  let last = Date.now();
+  return () => {
+    const now = Date.now();
+    if (now - last > 2000) console.log(`[stall] event loop blocked ~${((now - last - 500) / 1000).toFixed(1)}s; in flight: ${[...inFlight].join(', ') || 'none'}`);
+    last = now;
+  };
+})(), 500).unref();
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+  const label = `${req.method} ${url.pathname}`;
+  const startedAt = Date.now();
+  inFlight.add(label);
+  res.on('close', () => {
+    inFlight.delete(label);
+    const ms = Date.now() - startedAt;
+    if (ms > 1500) console.log(`[slow] ${label} took ${(ms / 1000).toFixed(1)}s`);
+  });
 
   // CORS headers for all responses
   const corsHeaders = {
@@ -221,8 +242,15 @@ const server = http.createServer(async (req, res) => {
         res.end('Not found');
         return;
       }
-      const text = tf.readTasksText(DATA_ROOT);
-      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      // The ETag is a hash of the file stamps, so an unchanged poll costs stats plus a 304, not a 10 MB body.
+      const { sig, text } = tf.readTasksTextWithSignature(DATA_ROOT);
+      const etag = '"' + require('crypto').createHash('sha1').update(String(sig)).digest('hex') + '"';
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, { ...corsHeaders, ETag: etag, 'Cache-Control': 'no-store' });
+        res.end();
+        return;
+      }
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ETag: etag });
       res.end(text);
     } catch (e) {
       res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });

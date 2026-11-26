@@ -125,6 +125,7 @@ export async function autoSave() {
         }
       }
     }
+    retryDelayMs = 2000;
     if (changeSeq === seqAtStart) {
       state.hasChanges = false;
       document.getElementById('saveBtn').disabled = true;
@@ -134,10 +135,20 @@ export async function autoSave() {
       saveTimeout = setTimeout(autoSave, 0);
     }
   } catch (e) {
-    showStatus('Save failed: ' + e.message);
+    // Never fail quietly: the edits live only in this tab. Keep them flagged, say so until it works, and retry.
+    warnUnsaved(state, `save failed (${e.message})`);
+    scheduleRetry();
   } finally {
     isSaving = false;
   }
+}
+
+let retryDelayMs = 2000;
+/** Retry a failed save with a growing pause (2s, 4s ... 30s); a save that works resets it. */
+function scheduleRetry() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(autoSave, retryDelayMs);
+  retryDelayMs = Math.min(retryDelayMs * 2, 30000);
 }
 
 /** Edits are only in memory: say so, stay on screen until dealt with, and never offer a discarding Reload. */
