@@ -43,7 +43,7 @@ function responding(port) {
 }
 
 function plist() {
-  const env = { HOME, PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' };
+  const env = { HOME, PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin', DASHBOARD_AUTORELOAD: '1' };
   if (process.env.CH_HOME) env.CH_HOME = process.env.CH_HOME;
   const envEntries = Object.entries(env)
     .map(([key, value]) => `    <key>${xml(key)}</key>\n    <string>${xml(value)}</string>`)
