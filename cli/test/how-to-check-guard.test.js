@@ -78,8 +78,11 @@ test('lint warns about an open ticket under an open epic with no line', () => wi
   todo.tasks.push({ id: 'E9', title: 'Epic nine', checked: false, priority: 'medium', type: 'epic', lane: 'a', labels: ['model:sonnet'], subtasks: [] });
   todo.tasks.push({ id: 'C1', title: 'No line', checked: false, priority: 'medium', type: 'task', parentId: 'E9', subtasks: [] });
   todo.tasks.push({ id: 'C2', title: 'Has line', checked: false, priority: 'medium', type: 'task', parentId: 'E9', description: PLAIN, subtasks: [] });
+  if (!doc.sections.some(s => s.id === 'backlog')) doc.sections.push({ id: 'backlog', name: 'Backlog', tasks: [] });
+  doc.sections.find(s => s.id === 'backlog').tasks.push({ id: 'C3', title: 'Parked, no line', checked: false, priority: 'medium', type: 'task', parentId: 'E9', subtasks: [] });
   fs.writeFileSync(path.join(d, 'tasks.json'), JSON.stringify(doc));
   const r = ch(d, 'tasks', 'lint');
   assert.match(r.err, /lint: warning: C1 has no How to check it \(its epic E9 cannot auto-run\)/);
+  assert.match(r.err, /lint: warning: C3 has no How to check it \(add it before moving it to todo, or E9 stops auto-running\)/);
   assert.doesNotMatch(r.err, /C2 has no How/);
 }));

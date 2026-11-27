@@ -2663,7 +2663,10 @@ function cmdLint(argv) {
       if (t.type === 'epic' || !t.parentId) continue;
       const parent = findTask(doc, t.parentId)?.task;
       if (!parent || parent.type !== 'epic' || parent.checked) continue;
-      if (howToCheckText(t) === null) printErr(`lint: warning: ${t.id} has no How to check it (its epic ${parent.id} cannot auto-run)`);
+      if (howToCheckText(t) !== null) continue;
+      // Readiness skips backlog tickets, so a parked one only needs the line before it is promoted.
+      const why = sec.id === 'backlog' ? `add it before moving it to todo, or ${parent.id} stops auto-running` : `its epic ${parent.id} cannot auto-run`;
+      printErr(`lint: warning: ${t.id} has no How to check it (${why})`);
     }
   }
 
