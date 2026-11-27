@@ -104,6 +104,7 @@ import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
 import { toEvidenceRel, resolveEvidence, readReviewApps, pickReviewApp, registerReviewApp, readScriptRoots } from '../lib/evidence.js';
+import { harnessNameProblem } from '../lib/harness-names.js';
 import { turnkeyCheckProblem, missingScriptPaths, turnkeyOpenChecksProblems } from '../../shared/turnkey-check.js';
 import { boardCheckProblem, boardAnsweredProblem, boardSweepProblems, mentionsBoard } from '../../shared/board-check.js';
 import fs from 'node:fs';
@@ -953,7 +954,8 @@ function cmdPromote(argv) {
 /** Checks are for what only Tal can judge; refuse the ones the session should verify itself. */
 function assertChecksAreTals(items, allow) {
   if (allow) return;
-  const bad = items.map(c => ({ t: c.text, why: checkOwnerProblem(c.text, c) })).filter(x => x.why);
+  const roots = readScriptRoots(dataRoot());
+  const bad = items.map(c => ({ t: c.text, why: checkOwnerProblem(c.text, c) || harnessNameProblem(c, roots) })).filter(x => x.why);
   if (!bad.length) return;
   die(`these checks are yours, not Tal's (${bad.length}):\n${bad.map(x => `  - "${x.t}" (${x.why})`).join('\n')}\nDo what each reason says (verify it yourself and put the result in --tests, attach evidence, or use --no-checks), then pass only checks Tal must judge. (--allow-check-owner overrides.)`);
 }
