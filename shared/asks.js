@@ -6,6 +6,8 @@
  *   asks: [{ n, at, text, by?, mergePr?, options?: [{ key, text }], recommend?, details?,
  *            media?: { video?, audio?, image?, project?, board? }, evalRun?: { label, url }, sameAs?, checkRefs?: [{ id, text }], notSame?,
  *            state, answer?, resolvedAt?, filedAs? }]
+ *   readBy (MAR38): short slug of an automation job that reads the answer (`ch tasks ask --read-by`); such an ask is never
+ *   "finished" outside done / archive, so a typed answer stays a decision and is never filed as a note or follow-up ticket.
  *   filedAs (PRO102, PRO104): where a free-text answer nobody will read went: the review note handle
  *   ("T1#2") or the ticket id the notes run filed; a filed ask is never listed or filed again.
  *   checkRefs (PRO90): checks (ticket id + exact text) that put the same judgement; they hide while the ask
@@ -70,9 +72,11 @@ export function liveOwnerOf(doc, liveEpics = []) {
  * Is `task` finished, so nobody will read an answer on it: ticked, done / archived, or open with no live run.
  * A ticket in review is Tal's own queue: its answered asks are picked up by the notes run (PRO104) instead.
  */
-function isFinished(task, section, isLive) {
+function isFinished(task, section, isLive, readBy) {
   if (section === 'review') return false;
-  if (task?.checked === true || CLOSED_SECTIONS.includes(section)) return true;
+  if (CLOSED_SECTIONS.includes(section)) return true;
+  if (readBy) return false; // MAR38: a job reads the answer, whatever the run state
+  if (task?.checked === true) return true;
   return typeof isLive === 'function' && !isLive(task);
 }
 /** A new question's length cap; longer context goes in --details. */
@@ -95,6 +99,7 @@ export const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[A-Za-z]{1,8}\d+$/;
 const PR_URL_RE = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+\/?$/i;
+const READ_BY_RE = /^[a-z][a-z0-9-]{0,39}$/;
 const TAL_RE = /\bTal\b/i;
 // "FRO12: " at the start of a line an epic rolled up from its child.
 const ROLLED_PREFIX = /^([A-Za-z]{1,8}\d+):\s*/;
@@ -229,7 +234,7 @@ export function setAskEvalRun(task, n, { evalRun, noEval } = {}) {
  * empty question, a bad date, PR URL, option, recommendation or media path, or a taste question.
  */
 export function addAsk(task, {
-  text, by, mergePr, options, recommend, details, media, evalRun, sameAs, checkRefs, notSame, labels, link, tag, now = new Date().toISOString(),
+  text, by, mergePr, options, recommend, details, media, evalRun, sameAs, checkRefs, notSame, labels, link, tag, readBy, now = new Date().toISOString(),
 } = {}) {
   if (isKillCommandText(text) || isKillCommandText(details)) {
     throw new Error('a kill command is not a question for Tal: tell the session that owns the stuck process, then kill it yourself by pid (never pkill/killall) and note it on the ticket');
@@ -302,6 +307,11 @@ export function addAsk(task, {
   if (refs.length) ask.checkRefs = refs;
   if (why) ask.notSame = why;
   if (tag) ask.tag = String(tag).trim().toLowerCase();
+  if (readBy != null && readBy !== '') {
+    const rb = String(readBy).trim();
+    if (!READ_BY_RE.test(rb)) throw new Error(`--read-by must be a short slug like short-production: ${readBy}`);
+    ask.readBy = rb;
+  }
   task.asks.push(ask);
   task.waitingOn = `Tal: ${ask.text}`;
   return ask;
@@ -332,7 +342,7 @@ export function taskAsks(task, { skipLine = () => false } = {}) {
   for (const a of task?.asks || []) {
     if (!a || a.state !== 'open') continue;
     const row = { key: String(a.n), kind: a.mergePr ? 'merge' : 'ask', text: a.text, at: a.at || '', legacy: false };
-    for (const k of ['by', 'mergePr', 'recommend', 'details', 'sameAs', 'tag']) if (a[k]) row[k] = a[k];
+    for (const k of ['by', 'mergePr', 'recommend', 'details', 'sameAs', 'tag', 'readBy']) if (a[k]) row[k] = a[k];
     if (a.checkRefs?.length) row.checkRefs = a.checkRefs.map(r => ({ id: r.id, text: r.text }));
     if (a.options?.length) row.options = a.options.map(o => ({ key: o.key, text: o.text }));
     if (a.media && Object.keys(a.media).length) row.media = { ...a.media };
@@ -457,7 +467,7 @@ export function groupAsks(rows) {
     card.members.push(r);
     if (!card.tag?.area && r.tag?.area) card.tag = r.tag;
     if (!card.ids.includes(r.id)) card.ids.push(r.id);
-    for (const k of ['options', 'recommend', 'details', 'media', 'evalRun', 'mergePr', 'by']) if (card[k] == null && r[k] != null) card[k] = r[k];
+    for (const k of ['options', 'recommend', 'details', 'media', 'evalRun', 'mergePr', 'by', 'readBy']) if (card[k] == null && r[k] != null) card[k] = r[k];
     for (const ref of r.checkRefs || []) {
       if (!card.checkRefs) card.checkRefs = [];
       if (!card.checkRefs.some(x => x.id === ref.id && x.text === ref.text)) card.checkRefs.push(ref);
@@ -546,7 +556,7 @@ export function resolveAsk(task, key, {
   if (action === 'park') {
     out.decision = { at: now, text: `${by} ${day}: parked "${question}": ${said || 'not now'}` };
     out.park = !CLOSED_SECTIONS.includes(section) && section !== 'backlog';
-  } else if (CLOSED_SECTIONS.includes(section) || (action === 'answer' && !opt && isFinished(task, section, isLive))) {
+  } else if (CLOSED_SECTIONS.includes(section) || (action === 'answer' && !opt && isFinished(task, section, isLive, ask.readBy || (ask.key !== 'W' && !ask.legacy ? task.asks.find(a => String(a.n) === ask.key)?.readBy : undefined)))) {
     const own = ask.key !== 'W' && !ask.legacy ? task.asks.find(a => String(a.n) === ask.key) : null;
     if (filedTo) {
       if (own) own.filedAs = filedTo;
@@ -799,6 +809,8 @@ export function nextStep(card, { task, section = '', isLive } = {}) {
     tail = !card?.legacy
       ? `Your answer is ${decision} and ${note}.`
       : `Your answer is ${decision}.`;
+  } else if (card?.readBy) {
+    tail = `The ${card.readBy} job reads your answer: go, or any change you type, starts it; skip moves it back.`;
   } else if (isFinished(task, section, isLive)) {
     tail = hasOptions
       ? `Picking an option is ${decision}; a typed answer ${note}, because no run is working on this ticket.`
@@ -839,6 +851,7 @@ function askExtraErrors(a, r) {
   }
   if (a.evalRun !== undefined) { const e = evalRunError(a.evalRun, 'evalRun'); if (e) errors.push(`${r}.${e}`); }
   if (a.sameAs !== undefined && !ID_RE.test(String(a.sameAs))) errors.push(`${r}.sameAs must be a ticket id`);
+  if (a.readBy !== undefined && !READ_BY_RE.test(String(a.readBy))) errors.push(`${r}.readBy must be a short slug`);
   if (a.checkRefs !== undefined) {
     if (!Array.isArray(a.checkRefs) || a.checkRefs.some(x => !x || typeof x !== 'object' || !ID_RE.test(String(x.id)) || typeof x.text !== 'string' || !x.text.trim())) {
       errors.push(`${r}.checkRefs must be an array of { id: ticket id, text: non-empty string }`);
@@ -891,7 +904,7 @@ export function cleanAsks(task) {
     ? task.asks.filter(a => a && typeof a === 'object' && Number.isInteger(a.n) && a.n > 0 && !askTextError(a.text)
       && typeof a.at === 'string' && ASK_STATES.includes(a.state)).map((a) => {
       const e = { n: a.n, at: a.at, text: a.text, state: a.state };
-      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs', 'notSame', 'filedAs', 'tag']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
+      for (const k of ['by', 'mergePr', 'answer', 'resolvedAt', 'recommend', 'details', 'sameAs', 'notSame', 'filedAs', 'tag', 'readBy']) if (typeof a[k] === 'string' && a[k]) e[k] = a[k];
       if (Array.isArray(a.checkRefs)) {
         const refs = a.checkRefs.filter(x => x && ID_RE.test(String(x.id)) && typeof x.text === 'string' && x.text.trim()).map(x => ({ id: x.id, text: x.text }));
         if (refs.length) e.checkRefs = refs;
