@@ -3,7 +3,7 @@
  * Decisions a session leaves for Tal, shown in the Plan page's "For you" list (PRO73, PRO86):
  *   ask <id> "<question>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars>"
  *       [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--link <url>] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL]
- *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag <area>] [--json]
+ *       [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag <area>] [--read-by <job-slug>] [--json]
  *   ask-eval <id> <n> (--eval-run <url> [--eval-run-label L] | --no-eval "<why>")   add the eval run (or 'no eval ran') to an open ask (AGE244)
  *   answer <id> [<key>] <A|B|"reply"> [--done | --dismiss | --park ["reason"]] [--json]
  *   answer <id> <key> --reopen [--json]   put a dismissed / answered question back to open (PRO107)
@@ -51,7 +51,7 @@ function mediaRelOrDie(value, kind) {
 }
 
 const ASK_EVAL_USAGE = 'usage: ch tasks ask-eval <id> <ask n> (--eval-run <viewer run url> [--eval-run-label "<what it tested>"] | --no-eval "<why no eval ran>")';
-const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--eval-run <viewer run url> [--eval-run-label "<what it tested>"]] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag marketing|design|merge|taste|account] [--json]';
+const ASK_USAGE = 'usage: ch tasks ask <id> "<question, max 140 chars>" [--option "A: ..."]... [--recommend A] --details "<at least 60 chars: which screen or card, what to try, why it matters>" [--video|--audio|--image|--project <path>] [--board <claude.ai artifact url>] [--eval-run <viewer run url> [--eval-run-label "<what it tested>"]] [--same-as <id>] [--ask-by YYYY-MM-DD] [--merge-pr URL] [--same-judgement | --not-same "<why>"] [--link-check <ticket>:<n>]... [--tag marketing|design|merge|taste|account] [--read-by <job-slug>] [--json]';
 
 /** `ch tasks ask <id> "<question>"`: leave a decision for Tal on the ticket (sets its waitingOn). */
 export async function cmdAsk(argv) {
@@ -60,6 +60,7 @@ export async function cmdAsk(argv) {
     'merge-pr': { type: 'string' },
     option: { type: 'string', multiple: true },
     recommend: { type: 'string' },
+    'read-by': { type: 'string' },
     details: { type: 'string' },
     video: { type: 'string' },
     audio: { type: 'string' },
@@ -108,7 +109,7 @@ export async function cmdAsk(argv) {
   try {
     ask = addAsk(task, {
       text, by: values['ask-by'], mergePr: values['merge-pr'], options: values.option, recommend: values.recommend,
-      details: values.details, link: values.link, media, evalRun: evalRunOf(values), sameAs: values['same-as'], checkRefs, notSame: values['not-same'], tag: values.tag,
+      details: values.details, link: values.link, media, evalRun: evalRunOf(values), sameAs: values['same-as'], checkRefs, notSame: values['not-same'], tag: values.tag, readBy: values['read-by'],
       labels: labelsOf(doc, task),
     });
   } catch (e) { die(`ask: ${e.message}`); }
