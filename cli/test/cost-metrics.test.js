@@ -105,6 +105,27 @@ test('byTicket: `ch tasks move <ID> in-progress` switches the current ticket', (
   assert.deepEqual(summarizeSession([human(0), asst(1, 'a', 'claude-opus-5', big)]).byTicket, {});
 });
 
+test('byTicket: an "autorun notes <ID>" session is charged to <ID>, not to tickets it touches (PRO153)', () => {
+  const big = u({ output_tokens: 1e6 }); // $25 on opus-5
+  const r = summarizeSession([
+    title('autorun notes AGE54 2026-11-26'), human(0),
+    asst(1, 'a', 'claude-opus-5', big),
+    bash(2, 'b1', 'ch tasks move FRO2158 in-progress', 'b'), // the prompt mentions it and the run touches it
+    asst(3, 'c', 'claude-opus-5', big),
+  ]);
+  assert.equal(r.ticket, 'AGE54');
+  assert.equal(r.byTicket.AGE54.costUSD, 50);
+  assert.equal(r.byTicket.FRO2158, undefined);
+  assert.deepEqual(r.ticketTimeline, []);
+  // a normal ship-task session still switches to the ticket it moves
+  const n = summarizeSession([
+    title('FRO1 - normal'), human(0), asst(1, 'a', 'claude-opus-5', big),
+    bash(2, 'b1', 'ch tasks move FRO2 in-progress', 'b'), asst(3, 'c', 'claude-opus-5', big),
+  ]);
+  assert.equal(n.byTicket.FRO1.costUSD, 25);
+  assert.equal(n.byTicket.FRO2.costUSD, 25);
+});
+
 test('helpers: summarized by usage and attributed to the ticket current at their first line', () => {
   const big = u({ output_tokens: 1e6 });
   const main = summarizeSession([

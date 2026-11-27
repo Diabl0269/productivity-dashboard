@@ -12,9 +12,18 @@ const BRANCH_RE = /(?:^|[^a-z])([a-z]{2,5}\d+)(?![a-z0-9])/i;
 const SHIP_RE = /\/ship-task\b[\s\S]{0,80}?\b([A-Za-z]{2,5}\d+)\b/;
 const ARGS_RE = /<command-args>\s*([A-Za-z]{2,5}\d+)\b/;
 
+const NOTES_RE = /^\s*autorun\s+notes\s+([A-Za-z]{2,5}\d+)\b/i;
+/** The ticket a notes run ("autorun notes AGE54 <date>") belongs to, or null: it is charged there, never to tickets it touches. */
+export function notesTicketFrom(title) {
+  const m = title ? NOTES_RE.exec(String(title)) : null;
+  return m ? m[1].toUpperCase() : null;
+}
+
 /** Ticket id from the session title, else the branch, else the first `/ship-task <id>` prompt. */
 export function ticketFrom({ title, branch, firstPrompt } = {}) {
   if (title) {
+    const n = notesTicketFrom(title);
+    if (n) return n;
     const m = TICKET_RE.exec(String(title));
     if (m) return m[1];
   }
@@ -624,17 +633,20 @@ export function summarizeSession(rawLines, { stallMinutes = 20, midRunMinutes = 
 
   if (firstMs === null) return null;
   const ticket = ticketFrom({ title, branch, firstPrompt });
+  // A notes run owns all its cost: drop the `ch tasks move` switches so nothing is charged to tickets it touches.
+  const notes = notesTicketFrom(title);
+  if (notes) switches.length = 0;
   const ut = usage.totals();
   const byTicket = {};
   for (const [k, v] of Object.entries(ut.byTicket)) {
-    const id = k === SESSION ? ticket : k;
+    const id = notes || (k === SESSION ? ticket : k);
     if (!id) continue;
     const e = byTicket[id] || (byTicket[id] = { costUSD: 0, tokens: 0, toolCalls: 0 });
     e.costUSD += v.costUSD;
     e.tokens += v.tokens;
   }
   for (const [k, n] of Object.entries(usage.ticketTools)) {
-    const id = k === SESSION ? ticket : k;
+    const id = notes || (k === SESSION ? ticket : k);
     if (!id) continue;
     const e = byTicket[id] || (byTicket[id] = { costUSD: 0, tokens: 0, toolCalls: 0 });
     e.toolCalls += n;
