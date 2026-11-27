@@ -90,6 +90,7 @@ import { REVIEW_SECTION, reviewComplete, allChecksTicked, checkProgress, resultL
 import { askLines } from '../../shared/asks.js';
 import { renderResolvedAsks } from './asks-strip.js';
 import { idButton } from './ticket-id-button.js';
+import { appendCheckText } from './check-text.js';
 import { projectGroupHeader, playVideoButton, audioPlayer } from './check-evidence.js';
 import { unsentNotes } from '../../shared/review-notes.js';
 import { reviewNoteAddRow, reviewNoteRow } from './review-notes-ui.js';
@@ -2904,7 +2905,7 @@ function buildReviewPanel(task, body) {
       });
       const text = document.createElement('span');
       text.className = 'td-review-check-text';
-      text.textContent = c.text || '';
+      appendCheckText(text, c.text || '', id => idButton(id, 'rp-link rp-review-id'), t => document.createTextNode(t));
       row.appendChild(cb);
       row.appendChild(text);
       if (c.handedTo) { text.appendChild(document.createTextNode(' → ')); text.appendChild(idButton(c.handedTo, 'rp-link rp-review-id')); }

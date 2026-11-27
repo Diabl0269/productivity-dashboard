@@ -14,6 +14,7 @@ import { projectGroupHeader, playVideoButton, audioPlayer, evidenceUrl, openBran
 import { heldPrChip } from './held-pr-ui.js';
 import { branchSiteButton } from './branch-site-ui.js';
 import { idButton, textWithIds } from './ticket-id-button.js';
+import { appendCheckText } from './check-text.js';
 import { toggleReviewCheck, commitReviewChange } from './task-detail.js';
 import { reviewNoteRow, reviewNoteAddRow } from './review-notes-ui.js';
 import { asksFromState, renderAskCard } from './asks-strip.js';
@@ -72,7 +73,7 @@ export function renderCheckGrid(ctx, task) {
     row.appendChild(pass);
     const what = el('div', 'rp-check-what' + (c.checked ? ' rp-check-done' : ''));
     // FRO2246: ticket ids inside the check open the ticket; a design check links its board.
-    what.appendChild(textWithIds(c.text || ''));
+    appendCheckText(what, c.text || '', id => idButton(id, 'rp-link rp-review-id'), t => textWithIds(t));
     if (c.link?.url) {
       what.appendChild(document.createTextNode(' '));
       const a = el('a', 'rp-canvas-link rp-check-link', `${c.link.label || 'Design board'} ↗`);
@@ -216,7 +217,8 @@ export function renderNeedsTalLines(ctx, lines, epicId) {
     row.appendChild(pass);
     const what = el('div', 'rp-check-what');
     what.appendChild(idButton(l.from, 'rp-link rp-review-id'));
-    what.appendChild(document.createTextNode(` ${l.text}`));
+    what.appendChild(document.createTextNode(' '));
+    appendCheckText(what, l.text, id => idButton(id, 'rp-link rp-review-id'), t => textWithIds(t));
     const media = l.media || {};
     if (media.project) { what.appendChild(document.createTextNode(' ')); what.appendChild(projectGroupHeader(media.project, 'ce-group-head')); }
     if (media.video) { what.appendChild(document.createTextNode(' ')); what.appendChild(playVideoButton({ video: media.video }, i + 1, what, `${l.from} line ${i + 1}`)); }
