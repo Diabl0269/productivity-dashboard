@@ -99,7 +99,7 @@ import cmdNextStart from './tasks-next-start.js';
 import cmdRunning from './tasks-running.js';
 import cmdSweepIdle from './tasks-sweep-idle.js';
 import cmdAutomations from './tasks-automations.js';
-import { readinessLabel, parkedEpics, emptyLaterEpics, parkedAfterClosing, openEpicReadiness, dependencyLoops, reviewFollowUpLoop } from '../../shared/epic-ready.js';
+import { readinessLabel, parkedEpics, emptyLaterEpics, parkedAfterClosing, openEpicReadiness, dependencyLoops, reviewFollowUpLoop, howToCheckText } from '../../shared/epic-ready.js';
 import { cleanupPins, handPin, handUnpin } from '../../shared/pin-rules.js';
 import { print, printErr, jsonOut, ok, die } from '../lib/output.js';
 import { dataRoot } from '../lib/io.js';
@@ -662,7 +662,20 @@ function cmdGet(argv) {
   print(`  created: ${task.created || 'n/a'}  updated: ${task.updated || 'n/a'}`);
 }
 
-function cmdAdd(argv) {
+/**
+ * A non-epic ticket without a "How to check it" line stops its epic from auto-running, so
+ * `add` and `update` refuse one unless --no-check-line "<reason>" says why (recorded as a decision).
+ * Returns the reason to record, or null. Dies when the ticket needs the line and has none.
+ */
+function enforceCheckLine(values, label, description) {
+  const reason = values['no-check-line'] === undefined ? null : String(values['no-check-line']).trim();
+  if (values['no-check-line'] !== undefined && !reason) die('--no-check-line needs a reason: --no-check-line "<why this ticket has nothing to check>"');
+  if (howToCheckText({ description }) !== null) return null;
+  if (reason) return reason;
+  die(`refused: ${label} has no 'How to check it' line. Start the description with "## In plain words" containing **What you'll notice:**, **Why it matters:**, **How to check it:** (autorun cannot start an epic with a ticket missing it). For a bookkeeping ticket: --no-check-line "<reason>".`);
+}
+
+function cmdAdd(argv, opts = {}) {
   const { values, positionals } = parse(argv, {
     section:       { type: 'string', short: 's', default: 'todo' },
     priority:      { type: 'string', short: 'p', default: 'medium' },
@@ -682,6 +695,7 @@ function cmdAdd(argv) {
     model: { type: 'string' },
     snooze:        { type: 'string' },
     decision:      { type: 'string' },
+    'no-check-line': { type: 'string' },
     'log-time':    { type: 'string' },
     recur:         { type: 'string' },
     'recur-interval': { type: 'string' },
@@ -780,6 +794,7 @@ function cmdAdd(argv) {
   const projectId = resolved.project;
   const id = nextId(doc, projectId);
   const description = values.description ?? values.note;
+  const noCheckLineReason = (ticketType === 'epic' || opts.skipCheckLine) ? null : enforceCheckLine(values, `"${title}"`, description);
 
   const task = {
     id,
@@ -807,6 +822,9 @@ function cmdAdd(argv) {
   if (values.snooze) task.snoozeUntil = values.snooze;
   if (values.decision) {
     task.decisions = [{ at: new Date().toISOString(), text: values.decision.trim() }];
+  }
+  if (noCheckLineReason) {
+    task.decisions = [...(task.decisions || []), { at: new Date().toISOString(), text: `No 'How to check it' line: ${noCheckLineReason}` }];
   }
   if (loggedMinutes != null) task.loggedMinutes = loggedMinutes;
   if (values.recur) {
@@ -1585,6 +1603,7 @@ function cmdUpdate(argv) {
     snooze:          { type: 'string' },
     'clear-snooze':  { type: 'boolean' },
     decision:        { type: 'string' },
+    'no-check-line': { type: 'string' },
     'remove-decision': { type: 'string' },
     'clear-decisions': { type: 'boolean' },
     'remove-note':   { type: 'string' },
@@ -1712,6 +1731,13 @@ function cmdUpdate(argv) {
     task.description = existing ? existing + '\n' + addDesc : addDesc;
     delete task.note;
     changed = true;
+  }
+  if ((newDesc !== undefined || addDesc !== undefined) && task.type !== 'epic' && values.type !== 'epic') {
+    const reason = enforceCheckLine(values, task.id, task.description);
+    if (reason) {
+      if (!Array.isArray(task.decisions)) task.decisions = [];
+      task.decisions.push({ at: new Date().toISOString(), text: `No 'How to check it' line: ${reason}` });
+    }
   }
   if (values.priority !== undefined) {
     const prev = task.priority;
@@ -2631,6 +2657,19 @@ function cmdLint(argv) {
   for (const t of noLane) printErr(`lint: warning: epic ${t.id} has no lane (ch tasks update ${t.id} --lane <slug>)`);
   for (const t of openEpicsWithoutModel(doc)) printErr(`lint: warning: epic ${t.id} has no model label (ch tasks update ${t.id} --add-label model:opus|sonnet)`);
 
+  // An open ticket with no How to check it line keeps its epic from auto-running.
+  for (const sec of doc.sections.filter(x => ['todo', 'in-progress', 'backlog'].includes(x.id))) {
+    for (const t of sec.tasks || []) {
+      if (t.type === 'epic' || !t.parentId) continue;
+      const parent = findTask(doc, t.parentId)?.task;
+      if (!parent || parent.type !== 'epic' || parent.checked) continue;
+      if (howToCheckText(t) !== null) continue;
+      // Readiness skips backlog tickets, so a parked one only needs the line before it is promoted.
+      const why = sec.id === 'backlog' ? `add it before moving it to todo, or ${parent.id} stops auto-running` : `its epic ${parent.id} cannot auto-run`;
+      printErr(`lint: warning: ${t.id} has no How to check it (${why})`);
+    }
+  }
+
   // PRO72: an open epic whose only open tickets are in backlog can never start.
   const parked = parkedEpics(doc);
   for (const r of parked) printErr(`lint: warning: epic ${r.id} is in ${r.section} but its only open tickets are in backlog (${r.parked.join(', ')}); move them to todo or to a "(later)" epic`);
@@ -2779,7 +2818,7 @@ function cmdCapture(argv) {
   if (values.project) rest.push('--project', values.project);
   if (values['no-project']) rest.push('--no-project');
   if (values.json) rest.push('--json');
-  return cmdAdd(rest);
+  return cmdAdd(rest, { skipCheckLine: true });
 }
 
 const EPIC_MODEL_HELP = 'an epic needs a model label naming who orchestrates it: --label model:opus (judgment, many tickets sharing files) or model:sonnet (a few independent tickets); also model:haiku or model:local';
@@ -3202,7 +3241,7 @@ Subcommands:
   interpret <id> "<reading>" [--json]   record how you read a vague ticket (an 'Interpretation:' line in its description); the Plan page's
          "For you" list shows it with OK / Not this + text (a review note, newest on the ticket). Never blocks: no ask, no waitingOn
   asks [--ticket ID] [--refresh] [--json]   every decision on open work; --refresh first closes merge asks whose PR merged (needs gh)
-  add "<title>" [--section todo] [--priority medium] [--description "..."] [--color "#RRGGBB"]
+  add "<title>" [--section todo] [--priority medium] [--description "..." (non-epics need a '## In plain words' section with a **How to check it:** line, or --no-check-line "<reason>")] [--color "#RRGGBB"]
       [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--jira PROJECT-123] [--issue URL]
       (--project slug | --no-project; a --parent/--review-of child inherits its parent's project) [--energy deep|shallow|errands|creative] [--lane slug]
       [--model "claude-sonnet"] [--snooze YYYY-MM-DD]

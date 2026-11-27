@@ -86,10 +86,10 @@ test('reviewFollowUpLoop: only while the source is open and the target epic wait
 
 test('ch tasks add --review-of warns when the parent epic waits on the source epic; no warning under the source epic', () => {
   const doc = mk({ 'in-progress': [epic('T10')], todo: [task('T11', { parentId: 'T10' }), epic('T20', { blockedBy: ['T10'] })] });
-  const bad = ch(home(doc), 'tasks', 'add', 'Redraw first', '--no-project', '--parent', 'T20', '--review-of', 'T11');
+  const bad = ch(home(doc), 'tasks', 'add', '--no-check-line', 'test fixture', 'Redraw first', '--no-project', '--parent', 'T20', '--review-of', 'T11');
   assert.equal(bad.status, 0, bad.err);
   assert.match(bad.err, /could never start.*--parent T10/);
-  const good = ch(home(doc), 'tasks', 'add', 'Redraw first', '--no-project', '--parent', 'T10', '--review-of', 'T11');
+  const good = ch(home(doc), 'tasks', 'add', '--no-check-line', 'test fixture', 'Redraw first', '--no-project', '--parent', 'T10', '--review-of', 'T11');
   assert.equal(good.status, 0, good.err);
   assert.doesNotMatch(good.err, /could never start/);
 });
