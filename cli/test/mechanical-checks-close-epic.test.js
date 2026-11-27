@@ -75,7 +75,7 @@ test('ch tasks update --verify-check on the last mechanical check of an epic in 
   fs.copyFileSync(FIXTURE_SAMPLE, path.join(dir, 'tasks.json'));
   const added = runCli(['tasks', 'add', '--no-project', 'Epic E', '--type', 'epic', '--lane', 'canvas', '--label', 'model:opus', '--json'], dir);
   const epic = JSON.parse(added.stdout).id;
-  const kid = JSON.parse(runCli(['tasks', 'add', '--no-project', 'Child', '--parent', epic, '--json'], dir).stdout).id;
+  const kid = JSON.parse(runCli(['tasks', 'add', '--no-check-line', 'test fixture', '--no-project', 'Child', '--parent', epic, '--json'], dir).stdout).id;
   assert.equal(runCli(['tasks', 'review', kid, '--shipped', 'did it', '--check', 'the page lists it'], dir).status, 0);
   assert.equal(find(dir, epic).section, 'review');
   const r = runCli(['tasks', 'update', epic, '--verify-check', '1', '--verify-note', 'drove the page in a browser'], dir);

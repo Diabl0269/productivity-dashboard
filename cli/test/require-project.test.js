@@ -40,7 +40,7 @@ test('resolveCreateProject: explicit, opt-out, inherited, refused', () => {
 
 test('ch tasks add refuses without a project and names the valid ones', () => {
   const dir = home();
-  const r = ch(['tasks', 'add', 'Forgot the project'], dir);
+  const r = ch(['tasks', 'add', '--no-check-line', 'test fixture', 'Forgot the project'], dir);
   assert.notEqual(r.status, 0);
   assert.match(r.err + r.out, /needs a project/);
   assert.match(r.err + r.out, /frontend, backend/);
@@ -48,22 +48,22 @@ test('ch tasks add refuses without a project and names the valid ones', () => {
 
 test('ch tasks add --project gets that project prefix; --no-project gets a T id', () => {
   const dir = home();
-  const a = JSON.parse(ch(['tasks', 'add', 'A', '--project', 'frontend', '--json'], dir).out);
+  const a = JSON.parse(ch(['tasks', 'add', '--no-check-line', 'test fixture', 'A', '--project', 'frontend', '--json'], dir).out);
   assert.match(a.id, /^FRO\d+$/);
-  const b = JSON.parse(ch(['tasks', 'add', 'B', '--no-project', '--json'], dir).out);
+  const b = JSON.parse(ch(['tasks', 'add', '--no-check-line', 'test fixture', 'B', '--no-project', '--json'], dir).out);
   assert.match(b.id, /^T\d+$/);
 });
 
 test('a child inherits its --parent and --review-of project', () => {
   const dir = home();
   const epic = JSON.parse(ch(['tasks', 'add', 'E', '--type', 'epic', '--lane', 'canvas', '--label', 'model:opus', '--project', 'backend', '--json'], dir).out).id;
-  const child = JSON.parse(ch(['tasks', 'add', 'C', '--parent', epic, '--json'], dir).out).id;
+  const child = JSON.parse(ch(['tasks', 'add', '--no-check-line', 'test fixture', 'C', '--parent', epic, '--json'], dir).out).id;
   assert.match(child, /^BAC\d+$/);
-  const followUp = JSON.parse(ch(['tasks', 'add', 'F', '--review-of', child, '--json'], dir).out).id;
+  const followUp = JSON.parse(ch(['tasks', 'add', '--no-check-line', 'test fixture', 'F', '--review-of', child, '--json'], dir).out).id;
   assert.match(followUp, /^BAC\d+$/);
   // a parent without a project does not rescue the child
-  const personal = JSON.parse(ch(['tasks', 'add', 'P', '--no-project', '--json'], dir).out).id;
-  assert.notEqual(ch(['tasks', 'add', 'Under personal', '--parent', personal], dir).status, 0);
+  const personal = JSON.parse(ch(['tasks', 'add', '--no-check-line', 'test fixture', 'P', '--no-project', '--json'], dir).out).id;
+  assert.notEqual(ch(['tasks', 'add', '--no-check-line', 'test fixture', 'Under personal', '--parent', personal], dir).status, 0);
 });
 
 test('ch tasks capture needs a project too', () => {

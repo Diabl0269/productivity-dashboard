@@ -57,7 +57,7 @@ function addEpic(dir, title = 'Epic E') {
 }
 
 function addChild(dir, title, parent, extra = []) {
-  const r = runCli(['tasks', 'add', '--no-project', title, '--parent', parent, ...extra, '--json'], dir);
+  const r = runCli(['tasks', 'add', '--no-check-line', 'test fixture', '--no-project', title, '--parent', parent, ...extra, '--json'], dir);
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout).id;
 }

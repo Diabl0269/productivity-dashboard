@@ -21,7 +21,7 @@ test('several CLI writers at once all land (no lost updates, unique ids)', async
   const before = JSON.parse(fs.readFileSync(path.join(dir, 'tasks.json'), 'utf8')).sections.reduce((n, s) => n + s.tasks.length, 0);
   const N = 16;
   const runs = Array.from({ length: N }, (_, i) => new Promise((resolve) => {
-    const p = spawn(process.execPath, [CH_SCRIPT, 'tasks', 'add', '--no-project', `Writer ${i}`, '--json'], { env: { ...process.env, CH_HOME: dir } });
+    const p = spawn(process.execPath, [CH_SCRIPT, 'tasks', 'add', '--no-check-line', 'test fixture', '--no-project', `Writer ${i}`, '--json'], { env: { ...process.env, CH_HOME: dir } });
     let err = '';
     p.stderr.on('data', d => { err += d; });
     p.on('close', code => resolve({ code, err }));
