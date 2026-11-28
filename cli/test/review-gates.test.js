@@ -189,3 +189,45 @@ test('checks that make Tal prompt or generate an AI song are refused unless audi
   }
   assert.equal(checkOwnerProblem('Press Run and listen: the song starts at the first bar'), null);
 });
+
+// A design pick closed with --no-checks shows Tal's pick nowhere: refused unless --allow-design-no-checks.
+function designChild(extraLabels = ['design']) {
+  const home = makeHome();
+  const e = run(['tasks', 'add', '--no-project', 'Epic E', '--type', 'epic', '--lane', 'canvas', '--label', 'model:opus', '--json'], home);
+  assert.equal(e.status, 0, e.stderr);
+  const epic = JSON.parse(e.stdout).id;
+  const labels = extraLabels.flatMap(l => ['--label', l]);
+  const c = run(['tasks', 'add', '--no-check-line', 'test fixture', '--no-project', 'Pick the layout', '--parent', epic, ...labels, '--json'], home);
+  assert.equal(c.status, 0, c.stderr);
+  return { home, id: JSON.parse(c.stdout).id };
+}
+
+test('review --no-checks on a design pick is refused and names --allow-design-no-checks', () => {
+  const { home, id } = designChild();
+  const r = run(['tasks', 'review', id, '--shipped', 'x', '--no-checks', 'x'], home);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--allow-design-no-checks/);
+  assert.notEqual(taskOf(home, id)?.checked, true);
+});
+
+test('a design pick passes with a board check and --design-link', () => {
+  const { home, id } = designChild();
+  const r = run(['tasks', 'review', id, '--shipped', 'x', '--check', 'Comment A, B or C on the board', '--design-link', 'https://claude.ai/artifact/abc'], home);
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test('a design pick passes --no-checks with --allow-design-no-checks "<why>", an empty reason is refused', () => {
+  const { home, id } = designChild();
+  let r = run(['tasks', 'review', id, '--shipped', 'x', '--no-checks', 'x', '--allow-design-no-checks', ' '], home);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /needs a reason/);
+  r = run(['tasks', 'review', id, '--shipped', 'x', '--no-checks', 'x', '--allow-design-no-checks', 'answered in chat', '--design-link', 'https://claude.ai/artifact/abc'], home);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /review: warning:.*answered in chat/);
+});
+
+test('a non-design epic child still passes --no-checks', () => {
+  const { home, id } = designChild(['model:sonnet']);
+  const r = run(['tasks', 'review', id, '--shipped', 'x', '--no-checks', 'x'], home);
+  assert.equal(r.status, 0, r.stderr);
+});
