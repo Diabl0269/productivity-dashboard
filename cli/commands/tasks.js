@@ -1121,6 +1121,7 @@ function cmdReview(argv) {
     evidence:      { type: 'string', multiple: true },
     'allow-check-owner': { type: 'boolean' },
     'allow-parked': { type: 'string' },
+    'allow-design-no-checks': { type: 'string' },
     'held-pr':     { type: 'string' },
     'try-steps':   { type: 'string' },
     'add-link':    { type: 'string', multiple: true },
@@ -1274,6 +1275,15 @@ function cmdReview(argv) {
   }
 
   if (isDesignTicket(task)) {
+    // A design pick closed with --no-checks shows Tal's pick nowhere, and tickets blocked by it unblock without it.
+    if (noChecksReason && !checkTexts.length && !(task.checks || []).length) {
+      const allowDesign = values['allow-design-no-checks'] === undefined ? null : values['allow-design-no-checks'].trim();
+      if (values['allow-design-no-checks'] !== undefined && !allowDesign) die('--allow-design-no-checks needs a reason: --allow-design-no-checks "<why Tal already answered elsewhere>"');
+      if (!allowDesign) {
+        die(`${task.id} is a design pick: --no-checks would close it with Tal's pick shown nowhere. Pass --check "Comment A, B or C on the board" (with --design-link <board url>) so the pick shows on the Plan page, or --allow-design-no-checks "<why>" when Tal already answered elsewhere.`);
+      }
+      printErr(`review: warning: ${task.id} is a design pick closed with no check: ${allowDesign}`);
+    }
     if (values['design-link']) {
       if (!/^https:\/\//.test(values['design-link'])) die('--design-link must be an https URL');
       if (!Array.isArray(task.links)) task.links = [];
@@ -3210,7 +3220,7 @@ Subcommands:
          ui/audio tickets (label on the ticket or its epic): each --unverified line starts with taste: / hardware: /
          outside: / consent:, and the review needs --evidence (or a check with a file attached) or a tagged
          --unverified line; --force "<why>" overrides and records the reason on the ticket
-         [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--allow-parked "<why>"] [--json]
+         [--result-json '<json>'] [--file-left] [--design-link URL] [--allow-check-owner] [--allow-parked "<why>"] [--allow-design-no-checks "<why>"] [--json]
          --check-project / --check-video / --check-audio attach a saved .agsproj / short .mp4 / .wav (or .mp3 .m4a .ogg .flac) to the Nth --check of this call; --check-no-video N=<reason> (3-200 chars) says why a check has no video (not with a video on the same check) (Open project / Play video / audio player
          on the Plan page); the path is absolute or relative to $CH_HOME/evidence, must lie inside it and exist; --result-json checks may be
          {"text","project","video","audio","noVideo","noProject"} objects
